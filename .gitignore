@@ -1,0 +1,13 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+
+
+# Ignore Rproj user files
+.Rproj.user/
+*.Rproj
+
+# Ignore MERRA-2 data folder
+data/merra2/
+
