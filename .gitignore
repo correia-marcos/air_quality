@@ -11,3 +11,4 @@
 # Ignore MERRA-2 data folder
 data/merra2/
 
+.DS_Store
