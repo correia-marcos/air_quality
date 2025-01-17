@@ -1,0 +1,19 @@
+# Ignore Git folder
+.git
+
+# Ignore local OS files
+.DS_Store
+
+# R project info (as in .gitignore)
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+
+# Possibly ignore Rproj files if you don't want them in the image
+*.Rproj
+
+# Ignore your raw data folders
+data/raw/
+data/raw/merra2/
+data/raw/merra2_test/
