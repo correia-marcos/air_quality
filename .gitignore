@@ -9,7 +9,7 @@
 *.Rproj
 
 # Ignore MERRA-2 data folder
-data/merra2/
+data/raw/merra2/
 
 .DS_Store
 /data/.DS_Store
