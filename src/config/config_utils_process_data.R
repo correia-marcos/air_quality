@@ -6,19 +6,23 @@
 # @Date: Nov 2024
 # @author: Marcos
 
-# Load libraries - groundhog increases code reproducibility
-library(groundhog)            # You need to have at least R version = 4.3.1
+# List of the necessary packages
+packages <- c(
+  "doParallel",
+  "exactextractr",
+  "foreach",
+  "here",
+  "sf",
+  "terra",
+  "tidyr")
 
-# Loading required packages 
-groundhog.library(
-  pkg  = c("doParallel",
-           "exactextractr",
-           "foreach",
-           "here",
-           "sf",
-           "terra", 
-           "tidyr"),
-  date = "2024-05-07")
+# Check if each package is installed; if not, install it and Then load them
+for (pkg in packages) {
+  if (!requireNamespace(pkg, quietly = TRUE)) {
+    install.packages(pkg, repos = "https://cloud.r-project.org/")
+  }
+  library(pkg, character.only = TRUE)
+}
 
 here::i_am(".gitignore")
 

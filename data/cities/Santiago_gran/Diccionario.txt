@@ -1,9 +1,0 @@
-VARIABLE      |    DESCRIPCIÓN
--------------- -------------------------
-MANZENT_I      Corresponde al código de la manzana definido por el INE, 2017. 
-
-CIUDAD         Nombre de la ciudad. 
-
-CALCULO        Corresponde al índice sintético de Caracterización Territorial por manzana. 
-
-ZONAS          Cluster que define el tipo de zona en el que se encuentra la manzana. 
