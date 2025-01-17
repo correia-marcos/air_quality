@@ -1,3 +1,4 @@
+# R project information
 .Rproj.user
 .Rhistory
 .RData
@@ -8,8 +9,14 @@
 .Rproj.user/
 *.Rproj
 
+
+# Ignore entire raw data folder
+data/raw/
+
+
 # Ignore MERRA-2 data folder
 data/raw/merra2/
+Data/raw/merra2_test/
 
 .DS_Store
 /data/.DS_Store
