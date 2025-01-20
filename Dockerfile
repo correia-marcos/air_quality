@@ -1,24 +1,54 @@
-# Dockerfile
+################################################################################
+# STAGE 1: Build base environment + install packages via renv
+################################################################################
+FROM rocker/r-ver:4.4.2 AS base
 
-# 1) Use the official R image from Rocker
-FROM rocker/r-ver:4.2.2
-
-# 2) Set a working directory inside the container
-WORKDIR /home/rstudio/my-project
-
-# 3) Copy your project files (except what is ignored by .dockerignore)
-COPY . /home/rstudio/my-project
-
-# 4) Install Linux packages needed for your R packages (example: libxml2-dev, etc.)
+# Install system libraries needed to compile certain R packages
 RUN apt-get update && apt-get install -y \
     libxml2-dev \
-    libcurl4-openssl-dev \
     libssl-dev \
+    libcurl4-openssl-dev \
+    # Add more system dependencies if needed...
     && rm -rf /var/lib/apt/lists/*
 
-# 5) If you're using `renv`, restore from your lockfile
-RUN R -e "install.packages('renv', repos='https://cloud.r-project.org/')"
-RUN R -e "renv::restore()"  # this will install the packages listed in renv.lock
+# Create the air_monitoring directory and set it as working directory
+WORKDIR /air_monitoring
 
-# 6) Set an entrypoint or command. For interactive sessions:
+# Copy only the files required for renv::restore()
+COPY renv.lock renv.lock
+COPY .Rprofile .Rprofile
+COPY renv/activate.R renv/activate.R
+COPY renv/settings.dcf renv/settings.dcf
+
+# (Optional) set a local renv cache inside the project
+RUN mkdir -p renv/.cache
+ENV RENV_PATHS_CACHE renv/.cache
+
+# Install renv + restore packages
+RUN R -e "install.packages('renv', repos='https://cloud.r-project.org/'); renv::restore()"
+
+
+################################################################################
+# STAGE 2: Final image
+################################################################################
+FROM rocker/r-ver:4.4.2
+
+# Reinstall system libraries so the final image has them available at runtime
+RUN apt-get update && apt-get install -y \
+    libxml2-dev \
+    libssl-dev \
+    libcurl4-openssl-dev \
+    # Add more system dependencies if needed...
+    && rm -rf /var/lib/apt/lists/*
+
+# Create the air_monitoring directory and set it as working directory
+WORKDIR /air_monitoring
+
+# Copy all files from Stage 1 (including installed R packages) into final image
+COPY --from=base /air_monitoring /air_monitoring
+
+# Copy the rest of your project files that change frequently (R scripts, data, etc.)
+COPY . /air_monitoring
+
+# Default command: drop into a bash shell
 CMD ["/bin/bash"]
