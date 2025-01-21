@@ -2,27 +2,44 @@
 # IDB: Air monitoring
 # ============================================================================================
 # @Goal: Create configuration file for setup of packages and functions used in the project
-#
+# 
+# @Description: This script sets up the necessary environment by checking and installing 
+# required packages and defining utility functions for all "plot_table" scripts.
+# 
 # @Date: Nov 2024
-# @author: Marcos
+# @author: Marcos Paulo
+# ============================================================================================
 
-# Load libraries - groundhog increases code reproducibility
-library(groundhog)            # You need to have at least R version = 4.3.1
+# List of necessary packages
+packages <- c(
+  "cowplot",
+  "dplyr",
+  "ggplot2",
+  "ggspatial",
+  "here",
+  "rnaturalearth",
+  "rnaturalearthdata",
+  "sf",
+  "terra",
+  "tidyr")
 
-# Loading required packages 
-groundhog.library(
-  pkg  = c("cowplot",
-           "dplyr",
-           "ggplot2",
-           "ggspatial",
-           "rnaturalearth",
-           "rnaturalearthdata",
-           "sf",
-           "terra", 
-           "tidyr"),
-  date = "2024-05-05")
+# Define the default source library for packages installation - may have problems otherwise
+options(repos=c(CRAN="https://cran.rstudio.com/"))
 
-here::i_am(".gitignore")
+# Check if each package is installed; if not, install it and Then load them
+for (pkg in packages) {
+  if (!requireNamespace(pkg, quietly = TRUE)) {
+    renv::install(pkg, configure.args = c("--with-gdal",
+                                          "--with-proj",
+                                          "--with-geos",
+                                          "--with-data-copy=true")
+                  )
+  }
+  library(pkg, character.only = TRUE)
+}
+
+# Clear objects on environment
+rm(list = ls())
 
 # ############################################################################################
 # Functions

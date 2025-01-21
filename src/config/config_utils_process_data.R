@@ -2,9 +2,13 @@
 # IDB: Air monitoring
 # ============================================================================================
 # @Goal: Create configuration file for setup of packages and functions used in the project
-#
+# 
+# @Description: This script sets up the necessary environment by checking and installing 
+# required packages and defining utility functions for all "process_data" scripts.
+# 
 # @Date: Nov 2024
-# @author: Marcos
+# @author: Marcos Paulo
+# ============================================================================================
 
 # List of the necessary packages
 packages <- c(
@@ -12,19 +16,28 @@ packages <- c(
   "exactextractr",
   "foreach",
   "here",
+  "memuse",
   "sf",
   "terra",
   "tidyr")
 
+# Define the default source library for packages installation - may have problems otherwise
+options(repos=c(CRAN="https://cran.rstudio.com/"))
+
 # Check if each package is installed; if not, install it and Then load them
 for (pkg in packages) {
   if (!requireNamespace(pkg, quietly = TRUE)) {
-    install.packages(pkg, repos = "https://cloud.r-project.org/")
+    renv::install(pkg, configure.args = c("--with-gdal",
+                                          "--with-proj",
+                                          "--with-geos",
+                                          "--with-data-copy=true")
+    )
   }
   library(pkg, character.only = TRUE)
 }
 
-here::i_am(".gitignore")
+# Clear objects on environment
+rm(list = ls())
 
 # ############################################################################################
 # Functions

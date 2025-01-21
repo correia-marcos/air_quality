@@ -24,8 +24,13 @@ COPY renv/settings.dcf renv/settings.dcf
 RUN mkdir -p renv/.cache
 ENV RENV_PATHS_CACHE renv/.cache
 
-# Install renv + restore packages
-RUN R -e "install.packages('renv', repos='https://cloud.r-project.org/'); renv::restore()"
+# 1) Install the archived renv version from the URL you provided
+RUN R -e "options(repos = c(CRAN='https://cran.rstudio.com/')); \
+          install.packages('https://cran.r-project.org/src/contrib/Archive/renv/renv_1.0.10.tar.gz', \
+                           type='source')"
+
+# 2) Restore packages with CRAN = 'https://cran.rstudio.com/'
+RUN R -e "options(repos = c(CRAN='https://cran.rstudio.com/')); renv::restore()"
 
 
 ################################################################################

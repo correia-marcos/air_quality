@@ -1,23 +1,31 @@
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-# @Goal: Create image of the four cities placed on Latin American Continent
-#
+# @Goal: Generate and save distribution plots of aerosol variables across four metro areas
+# 
+# @Description: This script imports processed panel data for Bogotá, Ciudad de México, Santiago, 
+# and São Paulo (metro areas) to create distribution plots of key aerosol variables.
+# 
+# @Summary: This program performs the following steps:
+#   I.   Import processed panel data for the four cities
+#   II.  Generate distribution plots for aerosol variables using a standardized function
+#   III. Save the resulting plots as high-resolution PDFs
+# 
 # @Date: Nov 2024
-# @author: Marcos
+# @Author: Marcos
+# ============================================================================================
 
 # Get all libraries and functions
-source(here::here("src", "config", "config_utils.R"))
-library("ggplot2") # incompatibility issue with R version and "Groundhog"
+source(here::here("src", "config", "config_utils_plot_tables.R"))
 
 # ============================================================================================
 # I: Import data
 # ============================================================================================
 # Open panel data for each city
-bogota        <- read.csv(here::here("results", "panel_data", "bogota_panel_pm25.csv"))
-ciudad_mexico <- read.csv(here::here("results", "panel_data", "ciudad_mexico_panel_pm25.csv"))
-santiago      <- read.csv(here::here("results", "panel_data", "santiago_panel_pm25.csv"))
-sao_paulo     <- read.csv(here::here("results", "panel_data", "sao_paulo_panel_pm25.csv"))
+bogota        <- read.csv(here::here("data", "processed", "bogota_pm25.csv"))
+ciudad_mexico <- read.csv(here::here("data", "processed", "ciudad_mexico_pm25.csv"))
+santiago      <- read.csv(here::here("data", "processed", "santiago_pm25.csv"))
+sao_paulo     <- read.csv(here::here("data", "processed", "sao_paulo_pm25.csv"))
 
 # ============================================================================================
 # II: Process data

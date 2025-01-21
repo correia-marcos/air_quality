@@ -1,25 +1,33 @@
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-# @Goal: Create image of the four cities placed on Latin American Continent
-#
+# @Goal: Visualize the location of four metropolitan areas on Latin American
+# 
+# @Description: This script creates a high-resolution map of Latin America, highlighting the 
+# metropolitan areas of Bogotá, Ciudad de México, Santiago, and São Paulo. It processes
+# shapefiles for individual cities and merges them with continental data to produce a clear
+# visual context. The resulting map is saved as a PDF for use in reports or presentations.
+# 
+# @Summary: This program performs the following steps:
+#   I.   Import shapefiles for city boundaries and continents
+#   II.  Process the data to exclude unnecessary regions and combine shapefiles
+#   III. Create and export a map of Latin America with the highlighted cities
+# 
 # @Date: Nov 2024
-# @author: Marcos
+# @author: Marcos Paulo
+# ============================================================================================
 
 # Get all libraries and functions
-source(here::here("src", "config", "config_utils.R"))
-library(ggplot2)
-library(ggspatial)  # For scale bar and compass
-library(cowplot)    # For improved layout aesthetics
+source(here::here("src", "config", "config_utils_plot_tables.R"))
 
 # ============================================================================================
 # I: Import data
 # ============================================================================================
 # Open city shapefiles and convert their CRS
-bogota        <- sf::st_read(here::here("data", "cities", "Bogota_metro"))
-ciudad_mexico <- sf::st_read(here::here("data", "cities", "Mexico_city"))
-santiago      <- sf::st_read(here::here("data", "cities", "Santiago"))
-sao_paulo     <- sf::st_read(here::here("data", "cities", "Sao_Paulo"))
+bogota        <- sf::st_read(here::here("data", "raw", "cities", "Bogota_metro"))
+ciudad_mexico <- sf::st_read(here::here("data", "raw", "cities", "Mexico_city"))
+santiago      <- sf::st_read(here::here("data", "raw", "cities", "Santiago"))
+sao_paulo     <- sf::st_read(here::here("data", "raw", "cities", "Sao_Paulo"))
 
 # Open Countries and continent shapefiles
 north_america <- ne_countries(continent = "North America", returnclass = "sf")

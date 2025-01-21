@@ -1,26 +1,36 @@
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-# @Goal: Create image of the four cities placed on Latin American Continent
-#
+# @Goal: Generate grid visualizations of MERRA-2 raster data for four Latin American cities
+# 
+# @Description: This script processes MERRA-2 raster data and shapefiles for Bogotá, Ciudad de 
+# México, Santiago, and São Paulo to create grid-based visualizations of atmospheric variables 
+# over each city’s metropolitan area. The plots provide spatial insights into the data and 
+# are saved as high-resolution PDFs for reporting and analysis.
+# 
+# @Summary: This program performs the following steps:
+#   I.   Import MERRA-2 raster data and city shapefiles
+#   II.  Process data and generate grid plots for each city
+#   III. Save the resulting plots as high-resolution PDFs
+# 
 # @Date: Nov 2024
-# @author: Marcos
+# @Author: Marcos Paulo
+# ============================================================================================
 
 # Get all libraries and functions
-source(here::here("src", "config", "config_utils.R"))
-library("ggplot2") # incompatibility issue with R version and "Groundhog"
+source(here::here("src", "config", "config_utils_plot_tables.R"))
 
 # ============================================================================================
 # I: Import data
 # ============================================================================================
 # Create list of all raster files from MERRA2
-nc_files      <- list.files(here::here("data", "merra2"), full.names = TRUE)
+nc_files      <- list.files(here::here("data", "raw", "merra2"), full.names = TRUE)
 
 # Open city shapefiles
-bogota        <- sf::st_read(here::here("data", "cities", "Bogota_metro"))
-ciudad_mexico <- sf::st_read(here::here("data", "cities", "Mexico_city"))
-santiago      <- sf::st_read(here::here("data", "cities", "Santiago")) 
-sao_paulo     <- sf::st_read(here::here("data", "cities", "Sao_Paulo"))
+bogota        <- sf::st_read(here::here("data", "raw", "cities", "Bogota_metro"))
+ciudad_mexico <- sf::st_read(here::here("data", "raw", "cities", "Mexico_city"))
+santiago      <- sf::st_read(here::here("data", "raw", "cities", "Santiago")) 
+sao_paulo     <- sf::st_read(here::here("data", "raw", "cities", "Sao_Paulo"))
 
 # ============================================================================================
 # II: Process data
