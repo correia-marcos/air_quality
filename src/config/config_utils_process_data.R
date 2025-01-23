@@ -17,6 +17,8 @@ packages <- c(
   "foreach",
   "here",
   "memuse",
+  "rnaturalearth",
+  "rnaturalearthdata",
   "sf",
   "terra",
   "tidyr")
