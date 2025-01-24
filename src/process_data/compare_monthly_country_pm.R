@@ -13,7 +13,7 @@
 #   III. Save the finalized datasets in a new directory
 # 
 # @Date: Nov 2024
-# @Author: Marcos
+# @Author: Marcos Paulo
 # ============================================================================================
 
 # Get all libraries and functions
