@@ -36,56 +36,39 @@ sao_paulo            <- sf::st_read(here::here("data", "raw", "cities", "Sao_Pau
 # ============================================================================================
 # II: Process data
 # ============================================================================================
-# Check RAM usage and define if the machine can use parallelization
-ram_gb <- memuse::Sys.meminfo()[1]$totalram@size
-use_parallel <- (ram_gb > 30)
 
-# Apply function to crop data for each city and generate a panel - based on memory size
-if (use_parallel) {
-  bogota_results <- process_merra2_city_hourly_parallel(
-    shapefile = bogota,
-    nc_files = nc_files,
-    city_name = "Bogotá",
-    num_cores = NULL)
-  
-  ciudad_mexico_results <- process_merra2_city_hourly_parallel(
-    shapefile = ciudad_mexico,
-    nc_files = nc_files,
-    city_name = "Ciudad de México",
-    num_cores = NULL)
-  
-  santiago_results <- process_merra2_city_hourly_parallel(
-    shapefile = santiago,
-    nc_files = nc_files,
-    city_name = "Santiago",
-    num_cores = NULL)
-  
-  sao_paulo_results <- process_merra2_city_hourly_parallel(
-    shapefile = sao_paulo,
-    nc_files = nc_files,
-    city_name = "São Paulo",
-    num_cores = NULL)
-} else {
-  bogota_results <- process_merra2_city_hourly(
-    shapefile = bogota,
-    nc_files = nc_files,
-    city_name = "Bogotá")
-  
-  ciudad_mexico_results <- process_merra2_city_hourly(
-    shapefile = ciudad_mexico,
-    nc_files = nc_files,
-    city_name = "Ciudad de México")
-  
-  santiago_results <- process_merra2_city_hourly(
-    shapefile = santiago,
-    nc_files = nc_files,
-    city_name = "Santiago")
-  
-  sao_paulo_results <- process_merra2_city_hourly(
-    shapefile = sao_paulo,
-    nc_files = nc_files,
-    city_name = "São Paulo")
-}
+# Apply function to crop data for each city and generate a panel - parallel possible
+bogota_results <- process_merra2_region_hourly(
+  shapefile = bogota,
+  nc_files = nc_files,
+  region_name = "Bogotá",
+  num_cores = NULL,
+  extraction_fun = "mean",
+  parallel = TRUE)
+
+ciudad_mexico_results <- process_merra2_city_hourly_parallel(
+  shapefile = ciudad_mexico,
+  nc_files = nc_files,
+  region_name = "Ciudad de México",
+  num_cores = NULL,
+  extraction_fun = "mean",
+  parallel = TRUE)
+
+santiago_results <- process_merra2_city_hourly_parallel(
+  shapefile = santiago,
+  nc_files = nc_files,
+  region_name = "Santiago",
+  num_cores = NULL,
+  extraction_fun = "mean",
+  parallel = TRUE)
+
+sao_paulo_results <- process_merra2_city_hourly_parallel(
+  shapefile = sao_paulo,
+  nc_files = nc_files,
+  region_name = "São Paulo",
+  num_cores = NULL,
+  extraction_fun = "mean",
+  parallel = TRUE)
 
 # ============================================================================================
 # III: Save data
