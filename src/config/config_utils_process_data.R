@@ -16,14 +16,14 @@ packages <- c(
   "doParallel",
   "exactextractr",
   "foreach",
-  "haven",
   "here",
   "memuse",
   "rnaturalearth",
   "rnaturalearthdata",
   "sf",
   "terra",
-  "tidyr")
+  "tidyr",
+  "rlang")
 
 # Define the default source library for packages installation - may have problems otherwise
 options(repos=c(CRAN="https://cran.rstudio.com/"))
@@ -256,7 +256,7 @@ process_merra2_region_hourly <- function(shapefile,
   # Calculate and print total processing time.
   end_time <- Sys.time()
   total_time <- end_time - start_time
-  cat("Total processing time for", region_name, ":", total_time, " min.\n")
+  cat("Total processing time for", region_name, ":", total_time, " .\n")
   
   return(results)
 }
@@ -324,7 +324,7 @@ compare_pm25_to_nasa <- function(user_pm_data,
     dplyr::group_by(year_month) %>%
     # Get the mean monthly value
     dplyr::summarize(
-      my_pm25 = mean(pm25_estimate, na.rm = TRUE),
+      IDB_pm25 = mean(pm25_estimate, na.rm = TRUE),
       .groups = "drop")
   
   # Prepare NASA data
@@ -344,7 +344,72 @@ compare_pm25_to_nasa <- function(user_pm_data,
   
   # Create final data
   final_data <- merged_data %>%
-    dplyr::select(country, my_pm25, nasa_pm25)
+    dplyr::select(country, year_month, IDB_pm25, nasa_pm25)
   
   return(final_data)
+}
+
+
+# Function --------------------------------------------------------------------
+# @Arg         : shapefile is an 'sf' object containing boundaries for all regions.
+# @Arg         : filter_field is a string specifying the column name in the shapefile used 
+#                to identify a region (e.g., "sov_a3" or "admin").
+# @Arg         : filter_value is a string with the value in filter_field corresponding to the 
+#                desired region (e.g., "BRA" for Brazil or "Argentina" for Argentina).
+# @Arg         : region_name is a string with the full name of the region (or country) used 
+#                for labeling in the output (e.g., "Brazil" or "Argentina").
+# @Arg         : nc_files is a vector of file paths to the MERRA-2 .nc4 files.
+# @Arg         : nasa_monthly_data is a dataframe with monthly PM2.5 values from NASA. It should
+#                contain a "date" column (in "YYYY-MM" format) and a column named exactly as
+#                region_name.
+# @Arg         : num_cores is the number of CPU cores to use for parallel processing (default: 
+#                NULL, which uses one less than the total available cores).
+# @Arg         : extraction_fun is either a character string (e.g., "mean") for aggregated
+#                extraction, or NULL to return grid-level values.
+# @Arg         : parallel is a logical indicating whether to attempt parallel processing.
+#                When TRUE, the function checks if available RAM is >30GB before running in
+#                parallel.
+# @Output      : A data frame with columns "country", "year_month", "IDB_pm25" (the region's 
+#                monthly PM2.5 estimate from your MERRA-2 processing) and "nasa_pm25" (NASA's
+#                monthly PM2.5 value).
+# @Purpose     : This function automates the creation of a monthly PM2.5 comparison panel for a 
+#                given region. It filters the shapefile, processes MERRA-2 netCDF files to
+#                generate hourly data, converts the data to monthly averages, and then merges
+#                the result with NASA's PM2.5 data.
+# @Written_on  : 01/02/2025
+# @Written_by  : Marcos Paulo
+generate_region_comparison <- function(shapefile, 
+                                       filter_field = "sov_a3", 
+                                       filter_value, 
+                                       region_name, 
+                                       nc_files, 
+                                       nasa_monthly_data,
+                                       num_cores = NULL,
+                                       extraction_fun = "mean",
+                                       parallel = TRUE) {
+
+  # Filter the shapefile for the desired region.
+  region_shapefile <- shapefile %>% 
+    dplyr::filter(!!sym(filter_field) == filter_value)
+  
+  # Process the netCDF files to generate the region's hourly panel using MERRA-2 data.
+  region_results <- process_merra2_region_hourly(
+    shapefile      = region_shapefile,
+    nc_files       = nc_files,
+    region_name    = region_name,
+    num_cores      = num_cores,
+    extraction_fun = extraction_fun,
+    parallel       = parallel
+  )
+  
+  # Convert the results to add a PM2.5 measurement column (in µg/m³).
+  region_pm25    <- convert_and_add_pm25(region_results)
+  
+  # Compare your PM2.5 estimates with NASA's monthly PM2.5 data.
+  comparison_panel <- compare_pm25_to_nasa(
+    user_pm_data      = region_pm25,
+    nasa_monthly_data = nasa_monthly_data,
+    country_name      = region_name)
+  
+  return(comparison_panel)
 }

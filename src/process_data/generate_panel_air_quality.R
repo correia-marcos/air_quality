@@ -25,7 +25,7 @@ source(here::here("src", "config", "config_utils_process_data.R"))
 # I: Import data
 # ============================================================================================
 # Create list of all raster files from MERRA2
-nc_files  <- list.files(here::here("data", "raw","merra2"), full.names = TRUE)
+nc_files             <- list.files(here::here("data", "raw","merra2"), full.names = TRUE)
 
 # Open city shapefiles
 bogota               <- sf::st_read(here::here("data", "raw", "cities", "Bogota_metro"))
@@ -39,50 +39,50 @@ sao_paulo            <- sf::st_read(here::here("data", "raw", "cities", "Sao_Pau
 
 # Apply function to crop data for each city and generate a panel - parallel possible
 bogota_results <- process_merra2_region_hourly(
-  shapefile = bogota,
-  nc_files = nc_files,
-  region_name = "Bogotá",
-  num_cores = NULL,
+  shapefile      = bogota,
+  nc_files       = nc_files,
+  region_name    = "Bogotá",
+  num_cores      = NULL,
   extraction_fun = "mean",
-  parallel = TRUE)
+  parallel       = TRUE)
 
 ciudad_mexico_results <- process_merra2_city_hourly_parallel(
-  shapefile = ciudad_mexico,
-  nc_files = nc_files,
-  region_name = "Ciudad de México",
-  num_cores = NULL,
+  shapefile      = ciudad_mexico,
+  nc_files       = nc_files,
+  region_name    = "Ciudad de México",
+  num_cores      = NULL,
   extraction_fun = "mean",
-  parallel = TRUE)
+  parallel       = TRUE)
 
 santiago_results <- process_merra2_city_hourly_parallel(
-  shapefile = santiago,
-  nc_files = nc_files,
-  region_name = "Santiago",
-  num_cores = NULL,
+  shapefile      = santiago,
+  nc_files       = nc_files,
+  region_name    = "Santiago",
+  num_cores      = NULL,
   extraction_fun = "mean",
-  parallel = TRUE)
+  parallel       = TRUE)
 
 sao_paulo_results <- process_merra2_city_hourly_parallel(
-  shapefile = sao_paulo,
-  nc_files = nc_files,
-  region_name = "São Paulo",
-  num_cores = NULL,
+  shapefile      = sao_paulo,
+  nc_files       = nc_files,
+  region_name    = "São Paulo",
+  num_cores      = NULL,
   extraction_fun = "mean",
-  parallel = TRUE)
+  parallel       = TRUE)
 
 # ============================================================================================
 # III: Save data
 # ============================================================================================
 # Save processed dataframes
 write.csv(bogota_results,
-          file = here::here("data", "interim", "bogota_panel.csv"),
+          file      = here::here("data", "interim", "bogota_panel.csv"),
           row.names = FALSE)
 write.csv(ciudad_mexico_results,
-          file = here::here("data", "interim", "ciudad_mexico_panel.csv"), 
+          file      = here::here("data", "interim", "ciudad_mexico_panel.csv"), 
           row.names = FALSE)
 write.csv(santiago_results,
-          file = here::here("data", "interim", "santiago_panel.csv"),
+          file      = here::here("data", "interim", "santiago_panel.csv"),
           row.names = FALSE)
 write.csv(sao_paulo_results,
-          file = here::here("data", "interim", "sao_paulo_panel.csv"), 
+          file      = here::here("data", "interim", "sao_paulo_panel.csv"), 
           row.names = FALSE)
