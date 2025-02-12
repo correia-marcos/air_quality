@@ -24,16 +24,16 @@ source(here::here("src", "config", "config_utils_process_data.R"))
 # ============================================================================================
 # Open panel data for each city
 bogota        <- read.csv(here::here("data",
-                                     "processed",
+                                     "interim",
                                      "bogota_panel.csv"))
 ciudad_mexico <- read.csv(here::here("data",
-                                     "processed",
+                                     "interim",
                                      "ciudad_mexico_panel.csv"))
 santiago      <- read.csv(here::here("data",
-                                     "processed",
+                                     "interim",
                                      "santiago_panel.csv"))
 sao_paulo     <- read.csv(here::here("data",
-                                     "processed",
+                                     "interim",
                                      "sao_paulo_panel.csv"))
 # ============================================================================================
 # II: Process data

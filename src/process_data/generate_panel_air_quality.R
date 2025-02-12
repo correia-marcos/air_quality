@@ -92,14 +92,14 @@ if (use_parallel) {
 # ============================================================================================
 # Save processed dataframes
 write.csv(bogota_results,
-          file = here::here("data", "processed", "bogota_panel.csv"),
+          file = here::here("data", "interim", "bogota_panel.csv"),
           row.names = FALSE)
 write.csv(ciudad_mexico_results,
-          file = here::here("data", "processed", "ciudad_mexico_panel.csv"), 
+          file = here::here("data", "interim", "ciudad_mexico_panel.csv"), 
           row.names = FALSE)
 write.csv(santiago_results,
-          file = here::here("data", "processed", "santiago_panel.csv"),
+          file = here::here("data", "interim", "santiago_panel.csv"),
           row.names = FALSE)
 write.csv(sao_paulo_results,
-          file = here::here("data", "processed", "sao_paulo_panel.csv"), 
+          file = here::here("data", "interim", "sao_paulo_panel.csv"), 
           row.names = FALSE)
