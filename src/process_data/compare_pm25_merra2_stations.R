@@ -125,8 +125,6 @@ bogota_correlation_daily <- cor(bogota_combined_daily$pm25_merra2,
                                 bogota_combined_daily$pm25_station,
                                 use = "complete.obs")
 
-
-
 # ============================================================================================
 # II:Save data
 # ============================================================================================
