@@ -1,0 +1,13 @@
+"City","Time_Scale","Correlation"
+"Bogota","hourly",0.411306882546227
+"Bogota","daily",0.571701376090574
+"Bogota","monthly",0.721208566127981
+"Ciudad_Mexico","hourly",0.20924896715082
+"Ciudad_Mexico","daily",0.424652356287535
+"Ciudad_Mexico","monthly",0.515832197883171
+"Santiago","hourly",0.129460716226168
+"Santiago","daily",0.13782035569026
+"Santiago","monthly",-0.216203184768112
+"Sao_Paulo","hourly",0.124694188167179
+"Sao_Paulo","daily",0.116287244744311
+"Sao_Paulo","monthly",-0.187456262977061

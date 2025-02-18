@@ -49,14 +49,14 @@ sao_paulo     <- convert_and_add_pm25(sao_paulo)
 # ============================================================================================
 # Save processed dataframes
 write.csv(bogota,
-          file = here::here("data", "processed", "bogota_pm25.csv"),
+          file = here::here("data", "processed", "merra2_pm25", "bogota_pm25.csv"),
           row.names = FALSE)
 write.csv(ciudad_mexico,
-          file = here::here("data", "processed", "ciudad_mexico_pm25.csv"), 
+          file = here::here("data", "processed", "merra2_pm25", "ciudad_mexico_pm25.csv"), 
           row.names = FALSE)
 write.csv(santiago,
-          file = here::here("data", "processed", "santiago_pm25.csv"),
+          file = here::here("data", "processed", "merra2_pm25", "santiago_pm25.csv"),
           row.names = FALSE)
 write.csv(sao_paulo,
-          file = here::here("data", "processed", "sao_paulo_pm25.csv"), 
+          file = here::here("data", "processed", "merra2_pm25", "sao_paulo_pm25.csv"), 
           row.names = FALSE)

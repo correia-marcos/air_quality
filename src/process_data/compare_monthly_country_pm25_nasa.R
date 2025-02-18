@@ -109,5 +109,6 @@ countries_comparison <- rbind(brazil_comparison,
 write.csv(countries_comparison,
           file      = here::here("data",
                                  "processed",
-                                 "countries_comparison_3m_idb_nasa_merra2.csv"),
+                                 "comparisons",
+                                 "countries_comparison_month_idb_nasa_merra2.csv"),
           row.names = FALSE)

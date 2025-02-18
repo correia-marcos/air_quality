@@ -17,11 +17,13 @@ packages <- c(
   "ggplot2",
   "ggspatial",
   "here",
+  "lubridate",
   "rnaturalearth",
   "rnaturalearthdata",
   "sf",
   "terra",
-  "tidyr")
+  "tidyr",
+  "zoo")
 
 # Define the default source library for packages installation - may have problems otherwise
 options(repos=c(CRAN="https://cran.rstudio.com/"))
@@ -432,4 +434,116 @@ save_plot_list_to_pdf <- function(plot_list, city_name, output_dir) {
   
   # Print confirmation
   cat("Saved:", output_file, "\n")
+}
+
+
+# Function --------------------------------------------------------------------
+# @Arg         : df is a data frame with columns "Date", "Hour", and PM 2.5 data.
+# @Arg         : region_name is a string representing the region or city name.
+# @Arg         : apply_rolling is a logical indicating whether to apply a rolling window.
+# @Arg         : window_hours is an integer specifying size (in hours) of the rolling window.
+# @Arg         : corr_method is a string specifying the correlation method ("pearson" default).
+# @Arg         : color_merra2 is a string specifying the color for the MERRA-2 series.
+# @Arg         : color_stations is a string specifying the color for the ground station series.
+# @Output      : A ggplot object showing the PM2.5 time series (raw or optionally smoothed),
+#                with an annotation showing the correlation (based on raw data).
+# @Purpose     : To visualize PM2.5 from MERRA-2 and ground stations, optionally applying a 
+#                rolling average to reduce noise, and annotate the correlation of the raw data.
+# @Written_on  : 14/02/2025
+# @Written_by  : Marcos Paulo
+plot_pm25_timeseries_smooth <- function(df, 
+                                        region_name, 
+                                        apply_rolling  = TRUE, 
+                                        window_hours   = 24,
+                                        corr_method    = "pearson",
+                                        color_merra2   = "darkred",
+                                        color_stations = "darkblue") {
+
+  # Ensure a proper Datetime column
+  df <- df %>%
+    mutate(
+      Datetime = as.POSIXct(paste(Date, sprintf("%02d:00:00", Hour)),
+                            format = "%Y-%m-%d %H:%M:%S")
+    ) %>%
+    arrange(Datetime)
+  
+  # Compute correlation on raw data
+  corr_value <- cor(df$pm25_merra2, df$pm25_stations,
+                    use = "pairwise.complete.obs", method = corr_method)
+  
+  # If rolling is applied, compute rolling means
+  if (apply_rolling) {
+    df <- df %>%
+      mutate(
+        pm25_merra2_smooth   = rollmean(pm25_merra2, k = window_hours, fill = NA,
+                                        align = "right"),
+        pm25_stations_smooth = rollmean(pm25_stations, k = window_hours, fill = NA,
+                                        align = "right")
+      )
+  }
+  
+  if (apply_rolling) {
+    # Compute rolling means
+    df <- df %>%
+      mutate(
+        pm25_merra2_smooth   = rollmean(pm25_merra2,   k = window_hours,
+                                        fill = NA, align = "right"),
+        pm25_stations_smooth = rollmean(pm25_stations, k = window_hours,
+                                        fill = NA, align = "right")
+      )
+    
+    # Define legend labels for smoothed data
+    legend_names <- c(
+      paste0("MERRA-2 (", window_hours, "hr MA)"),
+      paste0("Stations (", window_hours, "hr MA)")
+    )
+    
+    # Build plot with smoothed lines using setNames() for color vector
+    p <- ggplot(df, aes(x = Datetime)) +
+      geom_line(aes(y = pm25_merra2_smooth, color = legend_names[1]),
+                linewidth = 0.7, na.rm = TRUE) +
+      geom_line(aes(y = pm25_stations_smooth, color = legend_names[2]),
+                linewidth = 0.7, na.rm = TRUE) +
+      scale_color_manual(values = setNames(c(color_merra2, color_stations), legend_names)) +
+      labs(
+        title = paste("PM2.5 Time Series in", region_name, "(Rolling", window_hours, "hrs)"),
+        x     = "Datetime",
+        y     = "PM2.5 (µg/m³)",
+        color = "Legend"
+      ) +
+      theme_minimal(base_size = 14)
+    
+  } else {
+    # Build plot with raw lines
+    p <- ggplot(df, aes(x = Datetime)) +
+      geom_line(aes(y = pm25_merra2, color = "MERRA-2"), linewidth = 0.2, na.rm = TRUE) +
+      geom_line(aes(y = pm25_stations, color = "Stations"), linewidth = 0.2, na.rm = TRUE) +
+      scale_color_manual(values = c("MERRA-2" = color_merra2, "Stations" = color_stations)) +
+      labs(
+        title = paste("PM2.5 Time Series in", region_name, "(Raw)"),
+        x     = "Datetime",
+        y     = "PM2.5 (µg/m³)",
+        color = "Legend"
+      ) +
+      theme_minimal(base_size = 14)
+  }
+  
+  # Determine annotation placement using raw data limits
+  max_datetime <- max(df$Datetime, na.rm = TRUE)
+  y_max <- if (apply_rolling) {
+    max(c(df$pm25_merra2_smooth, df$pm25_stations_smooth), na.rm = TRUE)
+  } else {
+    max(c(df$pm25_merra2, df$pm25_stations), na.rm = TRUE)
+  }
+  
+  # Annotate the correlation at the top-right corner
+  p <- p + annotate(
+    "text",
+    x = max_datetime - 2000,
+    y = y_max + 2,
+    label = paste0("Correlation (", corr_method, "): ", round(corr_value, 2)),
+    hjust = 1, vjust = 1, size = 3, color = "black"
+  )
+  
+  return(p)
 }

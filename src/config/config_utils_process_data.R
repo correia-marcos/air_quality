@@ -17,6 +17,7 @@ packages <- c(
   "exactextractr",
   "foreach",
   "here",
+  "lubridate",
   "memuse",
   "rnaturalearth",
   "rnaturalearthdata",
@@ -412,4 +413,137 @@ generate_region_comparison <- function(shapefile,
     country_name      = region_name)
   
   return(comparison_panel)
+}
+
+
+# Function --------------------------------------------------------------------
+# @Arg         : station_df is a data frame containing ground station PM2.5 measurements
+# @Arg         : station_datetime_col is a string with the name of the column in station_df 
+#                that stores the date-time information (e.g., "datetime"). 
+# @Arg         : station_pm25_col is a string with the name of the PM2.5 column in station_df
+# @Arg         : merra2_df is a data frame representing MERRA-2 data, which must have columns:
+#                "Date", "Hour", and "pm25_estimate".
+# @Output      : A data frame with the following columns:
+#                - "Date"          : The date (in YYYY-MM-DD format)
+#                - "Hour"          : The hour of the day (0 to 23)
+#                - "pm25_stations" : The averaged PM2.5 values from the ground station data
+#                - "pm25_merra2"   : The PM2.5 estimates from the MERRA-2 data
+# @Purpose     : This function merges hourly ground station PM2.5 data with MERRA-2 PM2.5 
+#                estimates by matching on date and hour. The ground station data may contain 
+#                multiple stations in the same city; the function computes an average PM2.5 for 
+#                each hour across all stations.
+# @Written_on  : 13/02/2025
+# @Written_by  : Marcos Paulo
+combine_station_merra2_pm25 <- function(station_df,
+                                        station_datetime_col = "datetime",
+                                        station_pm25_col     = "pm25",
+                                        merra2_df) {
+  # Convert the date-time column to POSIXct and extract Date & Hour
+  station_processed <- station_df %>%
+    mutate(
+      temp_datetime = as.POSIXct(.data[[station_datetime_col]]),  # Convert to POSIXct
+      Date          = as.Date(temp_datetime),                     # Extract the date
+      Hour          = hour(temp_datetime)                         # Extract the hour
+    ) %>%
+    # Group by Date and Hour to average PM2.5 across all stations
+    group_by(Date, Hour) %>%
+    summarize(
+      pm25_stations = mean(.data[[station_pm25_col]], na.rm = TRUE),
+      .groups       = "drop"
+    )
+  
+  # Prepare MERRA-2 data by renaming the PM2.5 column
+  merra2_processed <- merra2_df %>%
+    rename(pm25_merra2 = pm25_estimate) %>% 
+    mutate(Date = as.Date(Date)) %>% 
+    select(Date, Hour, pm25_merra2)
+  
+  # Join on Date and Hour to create the final merged data frame
+  combined_data <- left_join(merra2_processed, station_processed, by = c("Date", "Hour"))
+  
+  return(combined_data)
+}
+
+
+# Function --------------------------------------------------------------------
+# @Arg         : df is a data frame that results from combining ground station and 
+#                MERRA-2 data. It must contain at least the following columns:
+#                - "Date"          : Date (in YYYY-MM-DD format)
+#                - "pm25_merra2"   : PM2.5 estimates from MERRA-2 data
+#                - "pm25_stations" : Averaged ground station PM2.5 values
+# @Arg         : time_scale is a string indicating the aggregation level. It must be one of:
+#                "hourly", "daily", or "monthly". 
+#                - "hourly": Use the data as-is (assumes one row per hour).
+#                - "daily": Average over each day.
+#                - "monthly": Average over each month.
+# @Output      : A numeric value representing the Pearson correlation between 
+#                pm25_merra2 and pm25_stations for the specified time scale.
+# @Purpose     : Aggregates the merged data to a desired time scale and computes 
+#                the correlation between the MERRA-2 and ground station PM2.5 values.
+# @Written_on  : 14/02/2025
+# @Written_by  : Marcos Paulo
+aggregate_and_correlate <- function(df, time_scale = "daily") {
+
+  if (time_scale == "hourly") {
+    # Use the raw data (assumes one row per hour)
+    agg_df <- df
+  } else if (time_scale == "daily") {
+    # Group by Date and average the PM2.5 values
+    agg_df <- df %>%
+      group_by(Date) %>%
+      summarize(
+        pm25_merra2 = mean(pm25_merra2, na.rm = TRUE),
+        pm25_stations = mean(pm25_stations, na.rm = TRUE),
+        .groups = "drop"
+      )
+  } else if (time_scale == "monthly") {
+    # Create a year-month variable and group by it
+    agg_df <- df %>%
+      mutate(year_month = format(Date, "%Y-%m")) %>%
+      group_by(year_month) %>%
+      summarize(
+        pm25_merra2 = mean(pm25_merra2, na.rm = TRUE),
+        pm25_stations = mean(pm25_stations, na.rm = TRUE),
+        .groups = "drop"
+      )
+  } else {
+    stop("Invalid time scale. Choose 'hourly', 'daily', or 'monthly'.")
+  }
+  
+  # Compute and return the Pearson correlation using pairwise complete observations
+  cor_val <- cor(agg_df$pm25_merra2, agg_df$pm25_stations, use = "pairwise.complete.obs")
+  return(cor_val)
+}
+
+
+# Function --------------------------------------------------------------------
+# @Arg         : city_dfs is a named list of merged data frames (one per city) produced by
+#                combine_station_merra2_pm25(). Each data frame must contain the columns:
+#                "Date", "pm25_merra2", and "pm25_stations".
+# @Arg         : timescales is a character vector specifying the aggregation levels to test.
+#                Default is c("hourly", "daily", "monthly").
+# @Output      : A data frame with columns "City", "Time_Scale", and "Correlation", containing
+#                the Pearson correlation between pm25_merra2 and pm25_stations for each city and
+#                each specified time scale.
+# @Purpose     : This function computes the correlation between MERRA-2 and ground station PM2.5
+#                measurements at different time scales for a collection of cities.
+# @Written_on  : 14/02/2025
+# @Written_by  : Marcos Paulo
+compute_correlations_for_cities <- function(city_dfs,
+                                            timescales = c("hourly", "daily", "monthly")) {
+  
+  # Create new empty data frame 
+  results <- data.frame(City = character(), Time_Scale = character(), Correlation = numeric(), 
+                        stringsAsFactors = FALSE)
+  
+  # Adding values using nested for loops
+  for (city in names(city_dfs)) {
+    df <- city_dfs[[city]]
+    for (ts in timescales) {
+      cor_val <- aggregate_and_correlate(df, time_scale = ts)
+      results <- rbind(results, data.frame(City = city, Time_Scale = ts, Correlation = cor_val,
+                                           stringsAsFactors = FALSE))
+    }
+  }
+  return(results)
 }
