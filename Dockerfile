@@ -8,6 +8,8 @@ RUN apt-get update && apt-get install -y \
     libxml2-dev \
     libssl-dev \
     libcurl4-openssl-dev \
+    libgdal-dev \
+    libudunits2-dev \
     # Add more system dependencies if needed...
     && rm -rf /var/lib/apt/lists/*
 
@@ -22,7 +24,7 @@ COPY renv/activate.R renv/activate.R
 
 # (Optional) set a local renv cache inside the project
 RUN mkdir -p renv/.cache
-ENV RENV_PATHS_CACHE renv/.cache
+ENV RENV_PATHS_CACHE=renv/.cache
 
 # 1) Install the archived renv version from the URL you provided
 RUN R -e "options(repos = c(CRAN='https://cran.rstudio.com/')); \
