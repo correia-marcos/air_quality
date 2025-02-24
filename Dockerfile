@@ -18,7 +18,7 @@ WORKDIR /air_monitoring
 COPY renv.lock renv.lock
 COPY .Rprofile .Rprofile
 COPY renv/activate.R renv/activate.R
-COPY renv/settings.dcf renv/settings.dcf
+# COPY renv/settings.dcf renv/settings.dcf
 
 # (Optional) set a local renv cache inside the project
 RUN mkdir -p renv/.cache

@@ -18,6 +18,7 @@ packages <- c(
   "ggspatial",
   "here",
   "lubridate",
+  "plotly",
   "rnaturalearth",
   "rnaturalearthdata",
   "sf",

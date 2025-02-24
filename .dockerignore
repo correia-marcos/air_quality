@@ -16,4 +16,4 @@
 # Ignore your raw data folders
 data/raw/
 data/raw/merra2/
-data/raw/merra2_test/
+data/raw/merra2_country_pm/
