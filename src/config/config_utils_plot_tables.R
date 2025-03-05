@@ -16,9 +16,9 @@ packages <- c(
   "dplyr",
   "ggplot2",
   "ggspatial",
+  "ggridges",
   "here",
   "lubridate",
-  "plotly",
   "rnaturalearth",
   "rnaturalearthdata",
   "sf",
@@ -545,6 +545,147 @@ plot_pm25_timeseries_smooth <- function(df,
     label = paste0("Correlation (", corr_method, "): ", round(corr_value, 2)),
     hjust = 1, vjust = 1, size = 3, color = "black"
   )
+  
+  return(p)
+}
+
+
+# Function --------------------------------------------------------------------
+# @Arg         : df is a data frame with columns "Date", "Hour", "pm25_merra2" 
+#                and "pm25_stations".
+# @Arg         : region_name is a string representing the region or city name.
+# @Arg         : plot_ci is a logical indicating whether to add error bars (standard error).
+# @Arg         : bar_width is a numeric value for the width of the bars (default is 0.7).
+# @Arg         : color_merra2_main is a string specifying the main color for MERRA-2 bars.
+# @Arg         : color_stations_main is a string specifying the main color for stations bars.
+# @Arg         : color_merra2_error is a string specifying the color for MERRA-2 error bars.
+# @Arg         : color_stations_error is a string specifying the color for station error bars.
+# @Output      : A ggplot object showing the average hourly PM2.5 (from MERRA-2 and stations),
+#                with optional error bars in matching/darker tones.
+# @Purpose     : To visualize and compare the hourly persistence of PM2.5 pollution, 
+#                facilitating an understanding of differences among cities/hours.
+# @Written_on  : 28/02/2025
+# @Written_by  : Marcos Paulo
+plot_hourly_avg_pollution <- function(df, 
+                                      region_name, 
+                                      plot_ci             = FALSE, 
+                                      bar_width           = 0.7,
+                                      color_merra2_main   = "#cc9900",
+                                      color_stations_main = "#009999",
+                                      color_merra2_error  = "#440154FF",
+                                      color_stations_error= "#440154FF") {
+  # ---
+  # Summarize data by Hour - group by Hour and then compute:
+  # - Mean and standard deviation (for both MERRA-2 and station data)
+  # - Count of non-missing observations (n)
+  # - Standard error (SE) as sd/sqrt(n)
+  # ---
+  summary_df <- df %>%
+    group_by(Hour) %>%
+    summarise(
+      mean_MERRA2   = mean(pm25_merra2, na.rm = TRUE),
+      sd_MERRA2     = sd(pm25_merra2, na.rm = TRUE),
+      n_MERRA2      = sum(!is.na(pm25_merra2)),
+      mean_Stations = mean(pm25_stations, na.rm = TRUE),
+      sd_Stations   = sd(pm25_stations, na.rm = TRUE),
+      n_Stations    = sum(!is.na(pm25_stations))
+    ) %>%
+    mutate(
+      se_MERRA2   = sd_MERRA2 / sqrt(n_MERRA2),
+      se_Stations = sd_Stations / sqrt(n_Stations)
+    ) %>%
+    ungroup() %>%
+    # Reshape data from wide to long format for plotting
+    pivot_longer(
+      cols      = starts_with("mean"),
+      names_to  = "series",
+      values_to = "mean_value",
+      names_prefix = "mean_"
+    ) %>%
+    # Map the corresponding standard error for each series
+    mutate(
+      se = ifelse(series == "MERRA2", se_MERRA2, se_Stations)
+    )
+  
+  # ---
+  # Build the Plot
+  # ---
+  # We'll define color mapping for bar fills:
+  fill_values <- c(
+    "MERRA2"   = color_merra2_main,
+    "Stations" = color_stations_main
+  )
+  # For error bars, we need a color scale as well:
+  error_colors <- c(
+    "MERRA2"   = color_merra2_error,
+    "Stations" = color_stations_error
+  )
+  
+  # Create a horizontal bar plot
+  p <- ggplot(summary_df, aes(x = mean_value, y = as.factor(Hour), fill = series)) +
+    geom_bar(stat = "identity",
+             position = position_dodge(width = bar_width),
+             width    = bar_width,
+             color    = "black") +
+    scale_fill_manual(values = fill_values) +
+    labs(
+      title = paste("Average Hourly PM2.5 in", region_name),
+      x     = "Average PM2.5 (µg/m³)",
+      y     = "Hour of Day",
+      fill  = "Data Source"
+    ) +
+    theme_minimal(base_size = 14)
+  
+  # If error bars (CI) are requested, add them in a matching/darker color
+  if (plot_ci) {
+    p <- p + geom_errorbar(
+      aes(xmin = mean_value - se, xmax = mean_value + se, color = series),
+      position = position_dodge(width = bar_width),
+      width    = 0.2
+    ) +
+      scale_color_manual(values = error_colors) +
+      guides(color = "none")  # Hide separate legend for error bars
+  }
+  
+  return(p)
+}
+
+
+# Function --------------------------------------------------------------------
+# @Arg         : df is a data frame with columns "Date", "Hour", and PM2.5 data
+#                (either "pm25_merra2" or "pm25_stations").
+# @Arg         : region_name is a string representing the region or city name.
+# @Arg         : pollution_var is a string specifying which column of PM2.5 data to visualize.
+# @Output      : A ggplot object showing the distribution of PM2.5 across 24 hours using
+#                "ridgeline" form.
+# @Purpose     : To visualize the distribution (rather than just the mean) of pollutants by 
+#                hour of day,helping to spot patterns in how pollution accumulates over time.
+# @Written_on  : 28/02/2025
+# @Written_by  : Marcos Paulo
+plot_hourly_ridgeline_pollution <- function(df, 
+                                            region_name,
+                                            pollution_var = "pm25_merra2") {
+
+  # Filter out rows with missing values in the chosen pollution column
+  df <- df %>%
+    filter(!is.na(.data[[pollution_var]]))
+  
+  # Build ridgeline plot
+  # Note: 'scale' adjusts vertical spacing, 'rel_min_height' helps separate the ridges
+  p <- ggplot(df, aes_string(x = pollution_var, y = "factor(Hour)")) +
+    geom_density_ridges_gradient(
+      aes(fill = after_stat(x)),
+      scale = 8.5,
+      rel_min_height = 0.000001, 
+      color = "black"
+    ) +
+    scale_fill_viridis_c(option = "plasma", name = "PM2.5 (µg/m³)") +
+    labs(
+      title = paste("Hourly PM2.5 Distribution in", region_name, "using", pollution_var),
+      x     = "PM2.5 (µg/m³)",
+      y     = "Hour of Day"
+    ) +
+    theme_minimal(base_size = 14)
   
   return(p)
 }
