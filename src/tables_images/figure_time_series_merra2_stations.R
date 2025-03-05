@@ -125,34 +125,35 @@ sao_paulo_raw_series <- plot_pm25_timeseries_smooth(
   color_stations = "darkblue"
 )
 
-bogota_raw_series
+# Convert to an interactive plotly object
+# interactive_plot <- ggplotly(santiago_raw_series)
 # ============================================================================================
 # II: Save data
 # ============================================================================================
 # Save rolling window plots
 ggsave(
-  filename = here::here("results", "figures", "bogota_time_series_pm25.pdf"),
+  filename = here("results", "figures", "time_series", "bogota_moving_average_pm25.pdf"),
   plot     = bogota_plot_series,
   device   = cairo_pdf, 
   width    = 16, height = 9, dpi = 300
   )
 
 ggsave(
-  filename = here::here("results", "figures", "ciudad_mexico_time_series_pm25.pdf"),
+  filename = here("results", "figures", "time_series", "ciudad_mexico_moving_average_pm25.pdf"),
   plot     = ciudad_mexico_plot_series,
   device   = cairo_pdf, 
   width    = 16, height = 9, dpi = 300
   )
 
 ggsave(
-  filename = here::here("results", "figures", "santiago_time_series_pm25.pdf"),
+  filename = here("results", "figures", "time_series", "santiago_moving_average_pm25.pdf"),
   plot     = santiago_plot_series,
   device   = cairo_pdf, 
   width    = 16, height = 9, dpi = 300
   )
 
 ggsave(
-  filename = here::here("results", "figures", "sao_paulo_time_series_pm25.pdf"), 
+  filename = here("results", "figures", "time_series", "sao_paulo_moving_average_pm25.pdf"), 
   plot     = sao_paulo_plot_series,
   device   = cairo_pdf, 
   width    = 16, height = 9, dpi = 300
@@ -160,28 +161,28 @@ ggsave(
 
 # Save raw plots
 ggsave(
-  filename = here::here("results", "figures", "bogota_raw_series_pm25.pdf"),
+  filename = here("results", "figures", "time_series", "bogota_time_series_pm25.pdf"),
   plot     = bogota_raw_series,
   device   = cairo_pdf,
   width    = 16, height = 9, dpi = 300
   )
 
 ggsave(
-  filename = here::here("results", "figures", "ciudad_mexico_raw_series_pm25.pdf"),
+  filename = here("results", "figures", "time_series", "ciudad_mexico_time_series_pm25.pdf"),
   plot     = ciudad_mexico_raw_series,
   device   = cairo_pdf,
   width    = 16, height = 9, dpi = 300
   )
 
 ggsave(
-  filename = here::here("results", "figures", "santiago_raw_series_pm25.pdf"),
+  filename = here("results", "figures", "time_series", "santiago_time_series_pm25.pdf"),
   plot     = santiago_raw_series,
   device   = cairo_pdf,
   width    = 16, height = 9, dpi = 300
   )
 
 ggsave(
-  filename = here::here("results", "figures", "sao_paulo_raw_series_pm25.pdf"),
+  filename = here("results", "figures", "time_series", "sao_paulo_time_series_pm25.pdf"),
   plot     = sao_paulo_raw_series,
   device   = cairo_pdf,
   width    = 16, height = 9, dpi = 300

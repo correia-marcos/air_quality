@@ -58,5 +58,6 @@ latin_america_map <- plot_latin_america_map(
 # II: Save data
 # ============================================================================================
 # Save plot
-ggsave(here::here("results", "figures", "latin_america_cities.pdf"), latin_america_map,
+ggsave(here::here("results", "figures", "maps", "latin_america_cities.pdf"),
+       latin_america_map,
        device = cairo_pdf, width = 16, height = 9, dpi = 300)

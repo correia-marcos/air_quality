@@ -47,11 +47,11 @@ sao_paulo_plot     <- plot_merra2_grid_city(sao_paulo, merra_raster, "Sao Paulo"
 # ============================================================================================
 # III: Save data
 # ============================================================================================
-ggsave(here::here("results", "figures", "bogota_grid.pdf"), bogota_plot,
+ggsave(here::here("results", "figures", "maps", "bogota_grid.pdf"), bogota_plot,
        device = cairo_pdf, width = 16, height = 9, dpi = 300)
-ggsave(here::here("results", "figures", "ciudad_mexico_grid.pdf"), ciudad_mexico_plot,
+ggsave(here::here("results", "figures", "maps", "ciudad_mexico_grid.pdf"), ciudad_mexico_plot,
        device = cairo_pdf, width = 16, height = 9, dpi = 300)
-ggsave(here::here("results", "figures", "santiago_grid.pdf"), santiago_plot,
+ggsave(here::here("results", "figures", "maps", "santiago_grid.pdf"), santiago_plot,
        device = cairo_pdf, width = 16, height = 9, dpi = 300)
-ggsave(here::here("results", "figures", "sao_paulo_grid.pdf"), sao_paulo_plot,
+ggsave(here::here("results", "figures", "maps", "sao_paulo_grid.pdf"), sao_paulo_plot,
        device = cairo_pdf, width = 16, height = 9, dpi = 300)

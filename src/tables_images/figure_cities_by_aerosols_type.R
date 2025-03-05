@@ -22,14 +22,10 @@ source(here::here("src", "config", "config_utils_plot_tables.R"))
 # I: Import data
 # ============================================================================================
 # Open panel data for each city
-bogota        <- read.csv(here::here("data", "processed",
-                                     "merra2_pm25", "bogota_pm25.csv"))
-ciudad_mexico <- read.csv(here::here("data", "processed",
-                                     "merra2_pm25", "ciudad_mexico_pm25.csv"))
-santiago      <- read.csv(here::here("data", "processed",
-                                     "merra2_pm25", "santiago_pm25.csv"))
-sao_paulo     <- read.csv(here::here("data", "processed",
-                                     "merra2_pm25", "sao_paulo_pm25.csv"))
+bogota        <- read.csv(here("data", "processed", "merra2_pm25", "bogota_pm25.csv"))
+ciudad_mexico <- read.csv(here("data", "processed", "merra2_pm25", "ciudad_mexico_pm25.csv"))
+santiago      <- read.csv(here("data", "processed", "merra2_pm25", "santiago_pm25.csv"))
+sao_paulo     <- read.csv(here("data", "processed", "merra2_pm25", "sao_paulo_pm25.csv"))
 
 # ============================================================================================
 # II: Process data
@@ -89,7 +85,7 @@ pm_25_plot    <- plot_variable_across_cities(
 
 # Save the Dust Surface Mass concentration plot
 ggsave(
-  filename = here::here("results", "figures", "dust_plot.pdf"),
+  filename = here::here("results", "figures", "joint_plots", "dust_plot.pdf"),
   plot = dust_plot,
   device = cairo_pdf,
   width = 16, height = 9, dpi = 300
@@ -97,7 +93,7 @@ ggsave(
 
 # Save the Organic Carbon Surface Mass Concentration plot
 ggsave(
-  filename = here::here("results", "figures", "organic_carbon_plot.pdf"),
+  filename = here::here("results", "figures", "joint_plots", "organic_carbon_plot.pdf"),
   plot = organic_carbon_plot,
   device = cairo_pdf,
   width = 16, height = 9, dpi = 300
@@ -105,7 +101,7 @@ ggsave(
 
 # Save the Black Carbon Surface Mass Concentration plot
 ggsave(
-  filename = here::here("results", "figures", "black_carbon_plot.pdf"),
+  filename = here::here("results", "figures", "joint_plots", "black_carbon_plot.pdf"),
   plot = black_carbon_plot,
   device = cairo_pdf,
   width = 16, height = 9, dpi = 300
@@ -113,7 +109,7 @@ ggsave(
 
 # Save the Sea Salt Surface Mass Concentration plot
 ggsave(
-  filename = here::here("results", "figures", "sea_salt_plot.pdf"),
+  filename = here::here("results", "figures", "joint_plots", "sea_salt_plot.pdf"),
   plot = sea_salt_plot,
   device = cairo_pdf,
   width = 16, height = 9, dpi = 300
@@ -121,7 +117,7 @@ ggsave(
 
 # Save the SO4 Surface Mass Concentration plot
 ggsave(
-  filename = here::here("results", "figures", "sulfate_plot.pdf"),
+  filename = here::here("results", "figures", "joint_plots", "sulfate_plot.pdf"),
   plot = sulfate_plot,
   device = cairo_pdf,
   width = 16, height = 9, dpi = 300
@@ -129,7 +125,7 @@ ggsave(
 
 # Save the PM 2.5 plot
 ggsave(
-  filename = here::here("results", "figures", "pm_25_plot.pdf"),
+  filename = here::here("results", "figures", "joint_plots", "pm_25_plot.pdf"),
   plot = pm_25_plot,
   device = cairo_pdf,
   width = 16, height = 9, dpi = 300

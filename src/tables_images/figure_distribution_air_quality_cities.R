@@ -25,10 +25,10 @@ source(here::here("src", "config", "config_utils_plot_tables.R"))
 # I: Import data
 # ============================================================================================
 # Open panel data for each city
-bogota        <- read.csv(here::here("data", "processed", "bogota_pm25.csv"))
-ciudad_mexico <- read.csv(here::here("data", "processed", "ciudad_mexico_pm25.csv"))
-santiago      <- read.csv(here::here("data", "processed", "santiago_pm25.csv"))
-sao_paulo     <- read.csv(here::here("data", "processed", "sao_paulo_pm25.csv"))
+bogota        <- read.csv(here("data", "processed", "merra2_pm25", "bogota_pm25.csv"))
+ciudad_mexico <- read.csv(here("data", "processed", "merra2_pm25", "ciudad_mexico_pm25.csv"))
+santiago      <- read.csv(here("data", "processed", "merra2_pm25", "santiago_pm25.csv"))
+sao_paulo     <- read.csv(here("data", "processed", "merra2_pm25", "sao_paulo_pm25.csv"))
 
 # ============================================================================================
 # II: Process data
@@ -50,7 +50,7 @@ all_plot_lists <- list(
   Sao_Paulo = sao_paulo_distribution)
 
 # Define the output directory
-output_dir <- here::here("results", "figures")
+output_dir <- here::here("results", "figures", "cities_aerosols")
 
 # Save each list of plots into a separate PDF
 for (city_name in names(all_plot_lists)) {
