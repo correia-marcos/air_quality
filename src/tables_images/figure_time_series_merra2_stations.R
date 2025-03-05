@@ -125,8 +125,6 @@ sao_paulo_raw_series <- plot_pm25_timeseries_smooth(
   color_stations = "darkblue"
 )
 
-# Convert to an interactive plotly object
-# interactive_plot <- ggplotly(santiago_raw_series)
 # ============================================================================================
 # II: Save data
 # ============================================================================================
