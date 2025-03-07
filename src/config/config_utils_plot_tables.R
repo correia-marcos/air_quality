@@ -19,9 +19,11 @@ packages <- c(
   "ggridges",
   "here",
   "lubridate",
+  "rlang",
   "rnaturalearth",
   "rnaturalearthdata",
   "sf",
+  "showtext",
   "terra",
   "tidyr",
   "zoo")
@@ -43,6 +45,10 @@ for (pkg in packages) {
 
 # Clear objects on environment
 rm(list = ls())
+
+# Set a global theme with Palatino as the base font
+font_add("Palatino", regular = here::here("fonts", "texgyrepagella-regular.otf"))
+showtext_auto()
 
 # ############################################################################################
 # Functions
@@ -98,7 +104,7 @@ plot_merra2_grid_city <- function(shapefile, nc_file, city_name) {
     coord_sf() +
     scale_x_continuous(name = "Longitude", breaks = seq(-180, 180, by = 0.5)) +
     scale_y_continuous(name = "Latitude", breaks = seq(-90, 90, by = 0.5)) +
-    theme_minimal(base_size = 14) +
+    theme_set(theme_minimal(base_family = "Palatino", base_size = 14)) +
     theme(
       panel.background = element_rect(fill = "white", color = NA),
       panel.grid.major = element_blank(),
@@ -169,7 +175,7 @@ plot_variable_across_cities <- function(df_list,
     ) +
     scale_color_brewer(palette = "Set1") +
     scale_fill_brewer(palette = "Set1") +
-    theme_minimal(base_size = 14) +
+    theme_set(theme_minimal(base_family = "Palatino", base_size = 14)) +
     theme(
       legend.title = element_blank(),
       legend.position = "top",
@@ -297,7 +303,7 @@ plot_latin_america_map <- function(latin_america, regions, region_names, outline
       title = "Metropolitan Regions in Latin America",
       x = "Longitude", y = "Latitude", fill = "Regions"
     ) +
-    theme_minimal(base_size = 14) +
+    theme_set(theme_minimal(base_family = "Palatino", base_size = 14)) +
     theme(
       plot.title = element_text(face = "bold", hjust = 0.5, size = 18),
       plot.subtitle = element_text(hjust = 0.5, size = 14),
@@ -368,7 +374,7 @@ plot_city_distributions <- function(df, city_name) {
         title = paste(city_name, "-", variable_descriptions[[var]]),
         x = variable_descriptions[[var]],
         y = "Density") +
-      theme_minimal(base_size = 14) +
+      theme_set(theme_minimal(base_family = "Palatino", base_size = 14)) +
       theme(
         axis.title = element_text(color = "black", face = "bold"),
         axis.text = element_text(color = "black"),
@@ -512,7 +518,7 @@ plot_pm25_timeseries_smooth <- function(df,
         y     = "PM2.5 (µg/m³)",
         color = "Legend"
       ) +
-      theme_minimal(base_size = 14)
+      theme_set(theme_minimal(base_family = "Palatino", base_size = 14))
     
   } else {
     # Build plot with raw lines
@@ -526,7 +532,7 @@ plot_pm25_timeseries_smooth <- function(df,
         y     = "PM2.5 (µg/m³)",
         color = "Legend"
       ) +
-      theme_minimal(base_size = 14)
+      theme_set(theme_minimal(base_family = "Palatino", base_size = 14))
   }
   
   # Determine annotation placement using raw data limits
@@ -561,9 +567,13 @@ plot_pm25_timeseries_smooth <- function(df,
 # @Arg         : color_merra2_error is a string specifying the color for MERRA-2 error bars.
 # @Arg         : color_stations_error is a string specifying the color for station error bars.
 # @Output      : A ggplot object showing the average hourly PM2.5 (from MERRA-2 and stations),
-#                with optional error bars in matching/darker tones.
+#                with optional error bars in matching/darker tones, and with dashed vertical 
+#                lines indicating WHO Interim Targets: IT2 (25 µg/m³, orange) and IT1 (35 µg/m³,
+#                dark red). This is the IT1 and IT2 values for annual averages.
 # @Purpose     : To visualize and compare the hourly persistence of PM2.5 pollution, 
 #                facilitating an understanding of differences among cities/hours.
+#                The IT dashed lines help highlight when pollutant concentrations
+#                exceed WHO targets.
 # @Written_on  : 28/02/2025
 # @Written_by  : Marcos Paulo
 plot_hourly_avg_pollution <- function(df, 
@@ -629,12 +639,12 @@ plot_hourly_avg_pollution <- function(df,
              color    = "black") +
     scale_fill_manual(values = fill_values) +
     labs(
-      title = paste("Average Hourly PM2.5 in", region_name),
+      title = paste("Average Hourly PM2.5 in", region_name, "for 2023"),
       x     = "Average PM2.5 (µg/m³)",
       y     = "Hour of Day",
       fill  = "Data Source"
     ) +
-    theme_minimal(base_size = 14)
+    theme_set(theme_minimal(base_family = "Palatino", base_size = 14))
   
   # If error bars (CI) are requested, add them in a matching/darker color
   if (plot_ci) {
@@ -647,6 +657,16 @@ plot_hourly_avg_pollution <- function(df,
       guides(color = "none")  # Hide separate legend for error bars
   }
   
+  # Add Interim Target Lines (IT2 and IT1)
+  p <- p +
+    geom_vline(xintercept = 25, color = "orange", linetype = "dashed", linewidth = 0.5) +
+    geom_vline(xintercept = 35, color = "darkred", linetype = "dashed", linewidth = 0.5) +
+    annotate("text", x = 26, y = 23, label = "IT2", vjust = -0.5,
+             color = "orange", size = 3) +
+    annotate("text", x = 36, y = 23, label = "IT1", vjust = -0.5,
+             color = "darkred", size = 3)
+  
+  
   return(p)
 }
 
@@ -656,10 +676,11 @@ plot_hourly_avg_pollution <- function(df,
 #                (either "pm25_merra2" or "pm25_stations").
 # @Arg         : region_name is a string representing the region or city name.
 # @Arg         : pollution_var is a string specifying which column of PM2.5 data to visualize.
-# @Output      : A ggplot object showing the distribution of PM2.5 across 24 hours using
-#                "ridgeline" form.
+# @Output      : A ggplot object showing the distribution of PM2.5 across 24 hours in ridgeline 
+#                form, with dashed vertical lines indicating WHO Interim Targets: IT2 (50 µg/m³, 
+#                orange) and IT1 (75 µg/m³, dark red). IT1 and IT2 are the 24 hours average.
 # @Purpose     : To visualize the distribution (rather than just the mean) of pollutants by 
-#                hour of day,helping to spot patterns in how pollution accumulates over time.
+#                hour of day, helping to spot patterns in how pollution accumulates over time.
 # @Written_on  : 28/02/2025
 # @Written_by  : Marcos Paulo
 plot_hourly_ridgeline_pollution <- function(df, 
@@ -670,22 +691,232 @@ plot_hourly_ridgeline_pollution <- function(df,
   df <- df %>%
     filter(!is.na(.data[[pollution_var]]))
   
+  # Compute maximum hour value (as numeric) to position annotations above the top ridge
+  max_hour <- max(as.numeric(as.character(unique(df$Hour))))
+  
   # Build ridgeline plot
-  # Note: 'scale' adjusts vertical spacing, 'rel_min_height' helps separate the ridges
-  p <- ggplot(df, aes_string(x = pollution_var, y = "factor(Hour)")) +
+  p <- ggplot(df, aes(x = !!rlang::sym(pollution_var), y = as.factor(Hour))) +
     geom_density_ridges_gradient(
       aes(fill = after_stat(x)),
       scale = 8.5,
       rel_min_height = 0.000001, 
-      color = "black"
+      color = "black",
+      alpha = 0.3
     ) +
-    scale_fill_viridis_c(option = "plasma", name = "PM2.5 (µg/m³)") +
+    scale_fill_viridis_c(
+      option = "viridis",                # or "magma", "inferno", "viridis", etc.
+      name   = "PM2.5 (µg/m³)",         # legend title
+      # breaks = c(0, 25, 50, 75, 100),   # where the ticks will appear
+      # labels = c("0", "25", "50", "75", "100"),
+      guide  = guide_colorbar(
+        barheight   = unit(5, "cm"),    # increase the height for a smoother gradient
+        barwidth    = unit(0.8, "cm"),  # narrower or wider as you prefer
+        frame.colour = "black",         # add a frame around the color bar
+        ticks.colour = "black")         # color of the tick marks
+      ) +
     labs(
       title = paste("Hourly PM2.5 Distribution in", region_name, "using", pollution_var),
       x     = "PM2.5 (µg/m³)",
       y     = "Hour of Day"
     ) +
-    theme_minimal(base_size = 14)
+    theme_set(theme_minimal(base_family = "Palatino", base_size = 14))
+  
+  # Add dashed vertical lines for Interim Targets and annotations
+  p <- p +
+    geom_vline(xintercept = 50, color = "orange", linetype = "dashed", linewidth = 0.5) +
+    geom_vline(xintercept = 75, color = "darkred", linetype = "dashed", linewidth = 0.5) +
+    annotate("text", x = 53.5, y = max_hour + 2.5, label = "IT2", vjust = -0.5, 
+             color = "orange", size = 3) +
+    annotate("text", x = 78.5, y = max_hour + 2.5, label = "IT1", vjust = -.5, 
+             color = "darkred", size = 3)
+  
+  return(p)
+}
+
+
+# Function --------------------------------------------------------------------
+# @Arg         : df is a data frame with columns "Date", "Hour", and at least one
+#                PM2.5 column (e.g., "pm25_stations" or "pm25_merra2").
+# @Arg         : city_name is a string identifying the city/region (e.g., "Bogotá").
+# @Arg         : target is a string, either "IT1" or "IT2". 
+#                "IT1" => threshold = 75 µg/m³
+#                "IT2" => threshold = 50 µg/m³
+# @Arg         : pollution_var is a string specifying which PM2.5 column to check.
+# @Output      : A data frame listing each episode above the chosen threshold, 
+#                with columns: Date, Hour, time_span_above_target, city.
+# @Purpose     : To identify consecutive hours where PM2.5 is >= the chosen WHO interim target
+#                (IT1 or IT2), facilitating further analysis and plotting.
+# @Written_on  : 10/03/2025
+# @Written_by  : Marcos Paulo
+compute_time_spans_above_target <- function(df, 
+                                            city_name, 
+                                            target = c("IT1", "IT2"), 
+                                            pollution_var = "pm25_stations") {
+  
+  # 1) Determine threshold based on the chosen WHO Interim Target
+  threshold <- if (target == "IT1") {
+    75
+  } else if (target == "IT2") {
+    50
+  } else {
+    stop("Invalid target. Use 'IT1' or 'IT2'.")
+  }
+  
+  # 2) Create a datetime column and ensure data is in chronological order
+  df <- df %>%
+    mutate(
+      Datetime = as.POSIXct(
+        paste(Date, sprintf("%02d:00:00", Hour)), 
+        format = "%Y-%m-%d %H:%M:%S", 
+        tz = "UTC"
+      )
+    ) %>%
+    arrange(Datetime)
+  
+  # 3) Iterate through rows to find consecutive hours above threshold
+  result_list <- list()
+  
+  is_above <- FALSE
+  start_idx <- NA
+  count_hrs <- 0
+  
+  # Main loop of the function - must important part of calculation
+  for (i in seq_len(nrow(df))) {
+    current_value <- as.numeric(df[[pollution_var]][i])
+    
+    # Check if current_value is NA and handle it
+    if (is.na(current_value)) {
+      if (is_above) {
+        # End the current above-target episode if one is ongoing
+        result_list[[length(result_list) + 1]] <- data.frame(
+          Date                    = df$Date[start_idx],
+          Hour                    = df$Hour[start_idx],
+          time_span_above_target = count_hrs,
+          stringsAsFactors        = FALSE
+        )
+        is_above <- FALSE
+        start_idx <- NA
+        count_hrs <- 0
+      }
+      # Skip this iteration since there's no valid value
+      next
+    } else if (current_value >= threshold) {
+      # If current value is above the threshold
+      if (!is_above) {
+        is_above <- TRUE
+        start_idx <- i
+        count_hrs <- 1
+      } else {
+        count_hrs <- count_hrs + 1
+      }
+    } else {
+      # current_value < threshold
+      if (is_above) {
+        # End the current above-target episode
+        result_list[[length(result_list) + 1]] <- data.frame(
+          Date                    = df$Date[start_idx],
+          Hour                    = df$Hour[start_idx],
+          time_span_above_target = count_hrs,
+          stringsAsFactors        = FALSE
+        )
+        is_above <- FALSE
+        start_idx <- NA
+        count_hrs <- 0
+      }
+    }
+  }
+  
+  # 4) Check if the last row ended while still above threshold
+  if (is_above) {
+    result_list[[length(result_list) + 1]] <- data.frame(
+      Date                    = df$Date[start_idx],
+      Hour                    = df$Hour[start_idx],
+      time_span_above_target = count_hrs,
+      city                    = city_name,
+      stringsAsFactors        = FALSE
+    )
+  }
+  
+  # 5) Combine all episodes into a single data frame
+  if (length(result_list) > 0) {
+    final_df <- do.call(rbind, result_list)
+  } else {
+    # If no episodes found, return empty data frame with same structure
+    final_df <- data.frame(
+      Date                    = character(),
+      Hour                    = integer(),
+      time_span_above_target = integer(),
+      city                    = character(),
+      stringsAsFactors        = FALSE
+    )
+  }
+  
+  return(final_df)
+}
+
+
+# Function --------------------------------------------------------------------
+# @Arg         : list_of_dfs is a named list of data frames (e.g., 
+#                list("Bogotá" = bogota_pm25, "Santiago" = santiago_pm25, ...)).
+# @Arg         : target is a string, either "IT1" or "IT2".
+# @Arg         : pollution_var is a string specifying which PM2.5 column to check.
+# @Output      : A ggplot object showing the distribution of consecutive hours 
+#                above the chosen WHO Interim Target, faceted by city on the y-axis.
+# @Purpose     : To reveal how often and for how long each city experiences 
+#                pollution levels above a WHO interim target, using a ridgeline plot.
+# @Written_on  : 06/03/2025
+# @Written_by  : Marcos Paulo
+plot_time_spans_ridgeline <- function(list_of_dfs, 
+                                      target = c("IT1", "IT2"),
+                                      pollution_var = "pm25_stations") {
+
+  # 1) Combine time-span episodes for each city
+  #    list_of_dfs should be named: e.g., list("Bogotá" = bogota_pm25, ...)
+  all_episodes <- list()
+  
+  for (city_name in names(list_of_dfs)) {
+    city_df <- list_of_dfs[[city_name]]
+    
+    # Compute episodes for this city
+    city_episodes <- compute_time_spans_above_target(
+      df            = city_df,
+      city_name     = city_name,
+      target        = target,
+      pollution_var = pollution_var
+    )
+    
+    all_episodes[[city_name]] <- city_episodes
+  }
+  
+  # 2) Bind all city episodes into a single data frame
+  final_episodes <- bind_rows(all_episodes, .id = "city")
+  
+  # 3) Build a ridgeline plot: x = time_span_above_target, y = city
+  p <- ggplot(final_episodes, aes(x = time_span_above_target, y = city)) +
+    geom_density_ridges_gradient(
+      aes(fill = after_stat(x)),
+      scale          = 1.5,
+      rel_min_height = 0.01,
+      color          = "black",
+      alpha          = 0.8
+    ) +
+    scale_fill_viridis_c(
+      option = "viridis",
+      name   = "Consecutive Hours\nAbove Target",
+      guide  = guide_colorbar(
+        barheight   = unit(5, "cm"),
+        barwidth    = unit(0.8, "cm"),
+        frame.colour = "black",
+        ticks.colour = "black"
+      )
+    ) +
+    labs(
+      title = paste("Distribution of Consecutive Hours Above", target),
+      x     = "Consecutive Hours Above Target",
+      y     = "City"
+    ) +
+    theme_minimal(base_family = "Palatino", base_size = 14)
+  
   
   return(p)
 }

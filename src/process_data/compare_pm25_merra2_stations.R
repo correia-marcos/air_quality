@@ -65,9 +65,19 @@ sao_paulo_merra2        <- read.csv(here::here("data",
                                                "merra2_pm25",
                                                "sao_paulo_pm25.csv"))
 
+# Open shapefile with the location of ground-based monitoring stations in Sao Paulo metro area
+stations_in_sp_metro    <- sf::st_read(here::here("data",
+                                                  "raw",
+                                                  "cities",
+                                                  "Sao_Paulo_metro_stations")) 
+
 # ============================================================================================
 # II:Process data
 # ============================================================================================
+# Filter values in Sao Paulo station data frame that are inside metro area
+sao_paulo_stations <- sao_paulo_stations %>%
+  filter(station_code %in% stations_in_sp_metro$sttn_cd)
+
 # Apply function to combine MERRA-2 and ground station information of PM 2.5 levels
 bogota_pollution        <- combine_station_merra2_pm25(
   station_df            = bogota_stations,

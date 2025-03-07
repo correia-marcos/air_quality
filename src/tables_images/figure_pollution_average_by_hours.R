@@ -1,16 +1,19 @@
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-# @Goal: 
+# @Goal: Generate and save plots of hour-average PM 2.5 pollution level in four metro areas
 # 
-# @Description: 
+# @Description: This script aims o analyze each hour average (across the year) PM2.5 pollution 
+# data (from MERRA-2 and ground stations) in the 4 Latin American cities, examining both mean 
+# levels and the distribution of PM2.5 throughout the day.
 # 
 # @Summary: This program performs the following steps:
-#   I.   Import and Load the processed time series data for each city.
-#   II.  
+#   I.   Import and Load the processed time series data for each city from CSV files.
+#   II.  Create bar plots and ridgeline plots for PM2.5 data using the custom functions 
+#        'plot_hourly_avg_pollution' and 'plot_hourly_ridgeline_pollution'.
 #   III. Save the generated plots as PDF files.
 # 
-# @Date: Feb 2025
+# @Date: Mar 2025
 # @author: Marcos Paulo
 # ============================================================================================
 
@@ -115,28 +118,36 @@ ggsave(
 # Save Ridgeline plots
 ggsave(
   filename = here::here("results", "figures", "hour_average", "bogota_ridge_plot.pdf"),
-  plot     = bogota_ridge_plot,
+  plot     = bogota_ridge_plot
+  + labs(title = NULL)
+  + theme(plot.title = element_blank()),
   device   = cairo_pdf,
   width    = 16, height = 9, dpi = 300
 )
 
 ggsave(
   filename = here::here("results", "figures", "hour_average", "santiago_ridge_plot.pdf"),
-  plot     = santiago_ridge_plot,
+  plot     = santiago_ridge_plot
+  + labs(title = NULL)
+  + theme(plot.title = element_blank()),
   device   = cairo_pdf,
   width    = 16, height = 9, dpi = 300
 )
 
 ggsave(
   filename = here::here("results", "figures", "hour_average", "ciudad_mexico_ridge_plot.pdf"),
-  plot     = ciudad_mexico_ridge_plot,
+  plot     = ciudad_mexico_ridge_plot
+  + labs(title = NULL)
+  + theme(plot.title = element_blank()),
   device   = cairo_pdf,
   width    = 16, height = 9, dpi = 300
 )
 
 ggsave(
   filename = here::here("results", "figures", "hour_average", "sao_paulo_ridge_plot.pdf"),
-  plot     = sao_paulo_ridge_plot,
+  plot     = sao_paulo_ridge_plot
+  + labs(title = NULL)
+  + theme(plot.title = element_blank()),
   device   = cairo_pdf,
   width    = 16, height = 9, dpi = 300
 )
