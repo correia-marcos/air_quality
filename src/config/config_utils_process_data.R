@@ -42,7 +42,7 @@ for (pkg in packages) {
 }
 
 # Clear objects on environment
-rm(list = ls())
+rm(packages, pkg)
 
 
 # ############################################################################################

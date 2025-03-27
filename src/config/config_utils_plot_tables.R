@@ -44,7 +44,7 @@ for (pkg in packages) {
 }
 
 # Clear objects on environment
-rm(list = ls())
+rm(packages, pkg)
 
 # Set a global theme with Palatino as the base font
 font_add("Palatino", regular = here::here("fonts", "texgyrepagella-regular.otf"))
