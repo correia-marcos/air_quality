@@ -112,3 +112,6 @@ write.csv(countries_comparison,
                                  "comparisons",
                                  "countries_comparison_month_idb_nasa_merra2.csv"),
           row.names = FALSE)
+
+# Print a success message for when running inside Docker Container
+cat("Script from the IDB projected executed successfully in the Docker container!\n")

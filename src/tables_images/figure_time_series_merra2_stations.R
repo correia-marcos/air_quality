@@ -185,3 +185,6 @@ ggsave(
   device   = cairo_pdf,
   width    = 16, height = 9, dpi = 300
   )
+
+# Print a success message for when running inside Docker Container
+cat("Script from the IDB projected executed successfully in the Docker container!\n")

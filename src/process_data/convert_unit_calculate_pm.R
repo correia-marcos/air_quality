@@ -60,3 +60,6 @@ write.csv(santiago,
 write.csv(sao_paulo,
           file = here::here("data", "processed", "merra2_pm25", "sao_paulo_pm25.csv"), 
           row.names = FALSE)
+
+# Print a success message for when running inside Docker Container
+cat("Script from the IDB projected executed successfully in the Docker container!\n")

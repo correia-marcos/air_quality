@@ -547,3 +547,6 @@ compute_correlations_for_cities <- function(city_dfs,
   }
   return(results)
 }
+
+# Print a success message for when running inside Docker Container
+cat("Config script parsed successfully!\n")

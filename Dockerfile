@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y \
     libgdal-dev \
     libudunits2-dev \
     libpng-dev \
+    libfreetype6-dev \
     # Add more system dependencies if needed...
     && rm -rf /var/lib/apt/lists/*
 
@@ -47,6 +48,10 @@ RUN apt-get update && apt-get install -y \
     libxml2-dev \
     libssl-dev \
     libcurl4-openssl-dev \
+    libgdal-dev \
+    libudunits2-dev \
+    libpng-dev \
+    libfreetype6-dev \
     # Add more system dependencies if needed...
     && rm -rf /var/lib/apt/lists/*
 

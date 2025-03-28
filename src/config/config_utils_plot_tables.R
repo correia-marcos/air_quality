@@ -920,3 +920,6 @@ plot_time_spans_ridgeline <- function(list_of_dfs,
   
   return(p)
 }
+
+# Print a success message for when running inside Docker Container
+cat("Config script parsed successfully!\n")

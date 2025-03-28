@@ -56,3 +56,6 @@ output_dir <- here::here("results", "figures", "cities_aerosols")
 for (city_name in names(all_plot_lists)) {
   save_plot_list_to_pdf(all_plot_lists[[city_name]], city_name, output_dir)
 }
+
+# Print a success message for when running inside Docker Container
+cat("Script from the IDB projected executed successfully in the Docker container!\n")

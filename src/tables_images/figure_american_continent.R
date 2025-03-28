@@ -61,3 +61,6 @@ latin_america_map <- plot_latin_america_map(
 ggsave(here::here("results", "figures", "maps", "latin_america_cities.pdf"),
        latin_america_map,
        device = cairo_pdf, width = 16, height = 9, dpi = 300)
+
+# Print a success message for when running inside Docker Container
+cat("Script from the IDB projected executed successfully in the Docker container!\n")

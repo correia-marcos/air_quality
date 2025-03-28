@@ -55,3 +55,6 @@ ggsave(here::here("results", "figures", "maps", "santiago_grid.pdf"), santiago_p
        device = cairo_pdf, width = 16, height = 9, dpi = 300)
 ggsave(here::here("results", "figures", "maps", "sao_paulo_grid.pdf"), sao_paulo_plot,
        device = cairo_pdf, width = 16, height = 9, dpi = 300)
+
+# Print a success message for when running inside Docker Container
+cat("Script from the IDB projected executed successfully in the Docker container!\n")
