@@ -28,12 +28,12 @@ COPY renv/activate.R renv/activate.R
 RUN mkdir -p renv/.cache
 ENV RENV_PATHS_CACHE=renv/.cache
 
-# 1) Install the archived renv version from the URL you provided
+# Install the archived renv version from the URL you provided
 RUN R -e "options(repos = c(CRAN='https://cran.rstudio.com/')); \
           install.packages('https://cran.r-project.org/src/contrib/Archive/renv/renv_1.0.10.tar.gz', \
                            type='source')"
 
-# 2) Restore packages with CRAN = 'https://cran.rstudio.com/'
+# Restore packages with CRAN = 'https://cran.rstudio.com/'
 RUN R -e "options(repos = c(CRAN='https://cran.rstudio.com/')); renv::restore()"
 
 
@@ -59,5 +59,12 @@ COPY --from=base /air_monitoring /air_monitoring
 # Copy the rest of your project files that change frequently (R scripts, data, etc.)
 COPY . /air_monitoring
 
-# Default command: drop into a bash shell
-CMD ["/bin/bash"]
+# Copy the entrypoint script and make it executable
+COPY entrypoint.sh /air_monitoring/entrypoint.sh
+RUN chmod +x /air_monitoring/entrypoint.sh
+
+# Set the entrypoint
+ENTRYPOINT ["/air_monitoring/entrypoint.sh"]
+
+# Default command (if no arguments are provided)
+CMD ["bash"]
