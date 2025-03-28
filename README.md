@@ -62,6 +62,21 @@ Here is a brief outline of the key folders and files in this repository:
   - **process_data/**: Data cleaning, transformation, or analysis scripts.
   - **tables_images/**: Scripts to generate summary tables or figures.
 
+- ## Entrypoint Script
+
+This project uses an **entrypoint script** (`entrypoint.sh`) to provide flexibility when running the Docker container. The entrypoint script allows you to:
+
+- **Run specific R scripts automatically**: You can pass one or more R script paths as arguments, and the script will execute them in sequence using `Rscript`.
+- **Launch an interactive shell**: If no arguments are provided or if you explicitly request a shell, the container will start in interactive mode.
+- **Customize command execution**: The script checks for different commands (`run`, `bash`, etc.) to decide how to run the container.
+
+### How It Works
+
+- If you run the container without any arguments, it drops you into an interactive Bash shell.
+- To run one or multiple R scripts automatically, use the following command:
+  
+  ```bash
+  docker run -it my_project run scripts/script1.R scripts/script2.R
 ---
 
 ## 3. Getting Started
