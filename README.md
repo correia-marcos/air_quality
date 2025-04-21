@@ -1,161 +1,156 @@
 # IDB Project: Air Pollution Inequality
 
-**Goal**: The objective of this research project is to explore inequality in air pollution monitoring and exposure across different socioeconomic groups. It focuses on data management, processing, and analysis related to air quality in various Latin American metropolitan areas.
+**Objective:** Investigate disparities in air pollution exposure across socioeconomic groups in Latin American metropolitan areas, linking satellite and ground‑level data with demographic indicators to inform policy.
+
+---
+
+## Table of Contents
+
+1. [Project Overview](#project-overview)
+2. [Repository Structure](#repository-structure)
+3. [Prerequisites](#prerequisites)
+4. [Installation](#installation)
+   - [Docker (Recommended)](#docker-recommended)
+   - [Local Setup with renv](#local-setup-with-renv)
+5. [Usage](#usage)
+6. [Workflow](#workflow)
+7. [Contributing](#contributing)
+8. [License & Citation](#license--citation)
+9. [Contact](#contact)
 
 ---
 
 ## 1. Project Overview
 
-- **Motivation**: Many low- and middle-income regions face disproportionate burdens of air pollution. This project aims to identify patterns of inequality by linking socioeconomic indicators with air quality data.
-- **Main Tasks**:
-  1. Collect and process air pollution data (satellite-derived or ground-level monitoring).
-  2. Integrate socioeconomic variables (e.g., income levels, population density).
-  3. Generate reproducible analyses of inequalities in air pollution exposure.
-  4. Visualize results and produce tables/figures for publication or policy briefs.
+**Motivation:** Low‑ and middle‑income regions often bear disproportionate air pollution burdens. This analysis seeks to quantify inequalities by linking pollutant exposure data with socioeconomic metrics.
 
-This work is conducted in collaboration with the **Inter-American Development Bank (IDB)**.
+**Key Goals:**
+
+- Collect and preprocess air quality data (MERRA‑2, ground stations).
+- Merge pollution metrics with demographic and economic indicators.
+- Perform reproducible statistical analyses to uncover exposure disparities.
+- Generate publication‑quality figures and tables for top‑field journals and policy briefs.
+
+**Collaboration:** Inter‑American Development Bank (IDB) Research Team
 
 ---
 
 ## 2. Repository Structure
 
-Here is a brief outline of the key folders and files in this repository:
+```
+│-- .dockerignore           # Files to exclude from Docker build
+│-- .gitignore             # Files to ignore in Git
+│-- .Rprofile              # RStudio project configuration
+│-- Coding.Rproj           # RStudio project file
+│-- Dockerfile             # Defines Docker environment
+│-- entrypoint.sh          # Launch script for container
+│-- renv/                  # Local package library managed by renv
+│-- renv.lock              # Locked package versions
+│-- data/                  # Data directory
+│   ├── raw/               # Original, unmodified data (shapefiles, .nc4, .csv)
+│   └── processed/         # Cleaned/aggregated data ready for analysis
+│-- doc/                   # Documentation, references, methodology notes
+│-- src/                   # Analysis scripts
+│   ├── config/            # Configuration (environment variables, constants)
+│   ├── process_data/      # Data cleaning and transformation scripts
+│   └── tables_images/     # Scripts to generate tables and figures
+│-- results/               # Output artifacts
+│   ├── figures/           # Plots and visualizations
+│   └── tables/            # Summary tables and CSV exports
+└-- README.md              # Project overview and setup instructions
+```
 
-\`\`\`
-|-- .dockerignore
-|-- .git
-|-- .gitignore
-|-- .Rprofile
-|-- .Rproj.user/
-|-- Coding.Rproj
-|-- data/
-|   |-- (raw and processed data files)
-|-- doc/
-|   |-- (documentation, references, PDFs)
-|-- Dockerfile
-|-- renv/
-|   |-- (local project library managed by renv)
-|-- renv.lock
-|-- results/
-|   |-- figures/
-|   |-- tables/
-|-- src/
-|   |-- config/
-|   |-- process_data/
-|   |-- tables_images/
-\`\`\`
-
-**Brief Descriptions**:
-
-- **Coding.Rproj**: RStudio project file.  
-- **data/**:
-  - **raw/**: Original or unprocessed datasets (e.g., shapefiles, .nc4, .csv).
-  - **processed/**: Cleaned or aggregated data used in analysis.
-- **doc/**: Supporting documentation, references (could be methodology notes, PDFs, README files).
-- **Dockerfile**: Specifies the Docker image used for reproducible R environment.
-- **renv/** and **renv.lock**: R environment management (package versions).
-- **results/**:
-  - **figures/**: Plots and graphs produced by the analysis.
-  - **tables/**: Generated summary tables or CSV outputs.
-- **src/**:
-  - **config/**: Scripts for setting up configs or environment variables.
-  - **process_data/**: Data cleaning, transformation, or analysis scripts.
-  - **tables_images/**: Scripts to generate summary tables or figures.
-
-- ## Entrypoint Script
-
-This project uses an **entrypoint script** (`entrypoint.sh`) to provide flexibility when running the Docker container. The entrypoint script allows you to:
-
-- **Run specific R scripts automatically**: You can pass one or more R script paths as arguments, and the script will execute them in sequence using `Rscript`.
-- **Launch an interactive shell**: If no arguments are provided or if you explicitly request a shell, the container will start in interactive mode.
-- **Customize command execution**: The script checks for different commands (`run`, `bash`, etc.) to decide how to run the container.
-
-### How It Works
-
-- If you run the container without any arguments, it drops you into an interactive Bash shell.
-- To run one or multiple R scripts automatically, use the following command:
-  
-  ```bash
-  docker run -it my_project run scripts/script1.R scripts/script2.R
 ---
 
-## 3. Getting Started
+## 3. Prerequisites
 
-### 3.1. Cloning the Repository
+- **R** version ≥ 4.2.0
+- **Docker** (for containerized execution)
+- System libraries (e.g., `libcurl`, `libxml2`, `gdal`, `proj`) — see [Dockerfile](./Dockerfile)
 
-\`\`\`bash
-git clone https://github.com/<user>/<repo>.git
-cd <repo>
-\`\`\`
+---
 
-### 3.2. Dependencies
+## 4. Installation
 
-The project uses **R** (4.2+ recommended) with packages managed by **[renv](https://rstudio.github.io/renv/)**.  
-System-level dependencies (like \`libcurl\`, \`libxml2\`, etc.) can be found in the **Dockerfile** or installed manually.
+### Docker (Recommended)
 
-### 3.3. Using Docker (Recommended)
+1. Build the image:
+   ```bash
+   docker build -t idb-air-inequality:latest .
+   ```
+2. Run with a bind mount:
+   ```bash
+   docker run --rm -it \
+     -v $(pwd):/home/rstudio/project \
+     idb-air-inequality:latest
+   ```
+3. Inside container, use `entrypoint.sh` or start RStudio/server as configured.
 
-1. **Build** the Docker image:
-   \`\`\`bash
-   docker build -t air-inequality:latest .
-   \`\`\`
-2. **Run** the container with a local mount:
-   \`\`\`bash
-   docker run -it --rm -v \$(pwd):/home/rstudio/project air-inequality:latest
-   \`\`\`
-3. Inside the container, you can run scripts or launch R.
+### Local Setup with renv
 
-### 3.4. Using renv Locally (Without Docker)
-
-1. Ensure you have R installed.
-2. Install **renv**:
-   \`\`\`r
-   install.packages(\"renv\")
-   \`\`\`
-3. From the project root, run:
-   \`\`\`r
+1. Install `renv` if needed:
+   ```r
+   install.packages("renv")
+   ```
+2. Restore packages:
+   ```r
    renv::restore()
-   \`\`\`
-   This installs the packages needed in a local project library.
+   ```
+3. Launch RStudio from project root.
 
 ---
 
-## 4. Workflow
+## 5. Usage
 
-1. **Data Preparation**: Place raw files in \`data/raw/\`.
-2. **Run Scripts**:
-   - **\`src/config/\`**: Scripts for environment or config settings.
-   - **\`src/process_data/\`**: Steps to clean and merge data, e.g., \`compare_monthly_country_pm.R\`.
-   - **\`src/tables_images/\`**: Scripts generating final tables or figures.
-3. **Results**: Output (figures, tables) are stored in \`results/\`.
-
----
-
-## 5. Contributing
-
-- **Fork** the repository and create a new branch for your feature or fix.
-- Submit a **pull request** with a clear description of changes.
-- Follow the existing code style and folder structure.
-
----
-
-## 6. License & Citation
-
-- The code is provided under the [MIT License](LICENSE.md) (or specify whichever license you use).
-- If you use these methods or results in your work, please cite appropriately, referencing this repository or any related publications.
+- **Run individual scripts:**
+  ```bash
+  ./entrypoint.sh run src/process_data/clean_pollution_data.R
+  ```
+- **Interactive shell:**
+  ```bash
+  docker run --rm -it idb-air-inequality:latest bash
+  ```
+- **Generate all outputs:**
+  ```bash
+  ./entrypoint.sh run \
+    src/config/setup.R \
+    src/process_data/*.R \
+    src/tables_images/*.R
+  ```
 
 ---
 
-## 7. Contact
+## 6. Workflow
 
-- **Lead Researchers**: (Your name or team name)
-- **Institution**: IDB Project Team
-- **Email**: [username@example.com](mailto:username@example.com)
-
-For questions or further information, feel free to open an issue or contact the authors directly.
+1. **Data ingestion:** Drop raw files in `data/raw/`.
+2. **Preprocessing:** Scripts in `src/process_data/` clean and merge datasets.
+3. **Analysis & Visualization:** `src/tables_images/` generates figures in `results/figures/` and tables in `results/tables/`.
+4. **Review & Export:** Pull outputs for manuscript drafting or policy brief.
 
 ---
 
-**Last Update**: (Month Day, Year)
-"
+## 7. Contributing
+
+1. Fork the repository.
+2. Create a feature branch: `git checkout -b feature/your-feature`.
+3. Commit changes with descriptive messages.
+4. Push and open a Pull Request.
+5. Ensure code style consistency and add tests if applicable.
+
+---
+
+## 8. License & Citation
+
+- Licensed under MIT License. See [LICENSE.md](LICENSE.md).
+- Please cite this repository or related publications when reusing methods or results.
+
+---
+
+## 9. Contact
+
+- **Project Lead:** [Marcos Paulo Rodrigues Correia]
+- **Affiliation:** Inter‑American Development Bank
+- **Email:** [marcospaulorcorreia@gmail.com](marcospaulorcorreia@gmail.com)
+
+**Last Updated:** 2025‑04‑21 (YYYY-MM-DD)
 
