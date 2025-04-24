@@ -35,7 +35,22 @@
 
 ---
 
-## 2. Repository Structure
+## 2. Earthdata Credentials
+
+In order to download MERRA‑2 files, you must authenticate against NASA’s Earthdata portal.  
+Follow these steps once per user:
+
+1. **Create or edit** your R environment file `~/.Renviron`:
+
+   ```bash
+   # in your home project directory
+   cat <<EOF >> ~/.Renviron
+   EARTHDATA_USER=your_nasa_username
+   EARTHDATA_PASS=your_nasa_password
+   EOF
+
+
+## 3. Repository Structure
 
 ```
 │-- .dockerignore           # Files to exclude from Docker build
@@ -62,7 +77,7 @@
 
 ---
 
-## 3. Prerequisites
+## 4. Prerequisites
 
 - **R** version ≥ 4.2.0
 - **Docker** (for containerized execution)
@@ -70,47 +85,60 @@
 
 ---
 
-## 4. Installation
+## 5. Installation
 
 ### Docker (Recommended)
 
 1. Build the image:
+
    ```bash
    docker build -t idb-air-inequality:latest .
    ```
+
 2. Run with a bind mount:
+
    ```bash
    docker run --rm -it \
      -v $(pwd):/home/rstudio/project \
      idb-air-inequality:latest
    ```
+
 3. Inside container, use `entrypoint.sh` or start RStudio/server as configured.
 
 ### Local Setup with renv
 
 1. Install `renv` if needed:
+
    ```r
    install.packages("renv")
    ```
+
 2. Restore packages:
+
    ```r
    renv::restore()
    ```
+
 3. Launch RStudio from project root.
 
 ---
 
-## 5. Usage
+## 6. Usage
 
 - **Run individual scripts:**
+
   ```bash
   ./entrypoint.sh run src/process_data/clean_pollution_data.R
   ```
+
 - **Interactive shell:**
+
   ```bash
   docker run --rm -it idb-air-inequality:latest bash
   ```
+
 - **Generate all outputs:**
+
   ```bash
   ./entrypoint.sh run \
     src/config/setup.R \
@@ -120,7 +148,7 @@
 
 ---
 
-## 6. Workflow
+## 7. Workflow
 
 1. **Data ingestion:** Drop raw files in `data/raw/`.
 2. **Preprocessing:** Scripts in `src/process_data/` clean and merge datasets.
@@ -129,7 +157,7 @@
 
 ---
 
-## 7. Contributing
+## 8. Contributing
 
 1. Fork the repository.
 2. Create a feature branch: `git checkout -b feature/your-feature`.
@@ -139,18 +167,17 @@
 
 ---
 
-## 8. License & Citation
+## 9. License & Citation
 
 - Licensed under MIT License. See [LICENSE.md](LICENSE.md).
 - Please cite this repository or related publications when reusing methods or results.
 
 ---
 
-## 9. Contact
+## 10. Contact
 
 - **Project Lead:** [Marcos Paulo Rodrigues Correia]
 - **Affiliation:** Inter‑American Development Bank
 - **Email:** [marcospaulorcorreia@gmail.com](marcospaulorcorreia@gmail.com)
 
 **Last Updated:** 2025‑04‑21 (YYYY-MM-DD)
-
