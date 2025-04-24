@@ -4,11 +4,13 @@
 .RData
 .Ruserdata
 
-
 # Ignore Rproj user files
 .Rproj.user/
 *.Rproj
 
+# Ignore files related to credentials for data download
+.Renviron
+.netrc
 
 # Ignore entire raw data folder
 data/raw/
