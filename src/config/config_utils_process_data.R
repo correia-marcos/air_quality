@@ -299,7 +299,7 @@ convert_and_add_pm25 <- function(df, new_column_name = "pm25_estimate") {
     (df$SO4SMASS * 132.14 / 96.06)
   
   return(df)
-}
+} 
 
 
 # Function --------------------------------------------------------------------
