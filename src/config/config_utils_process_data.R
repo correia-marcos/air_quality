@@ -7,10 +7,10 @@
 # required packages and defining utility functions for all "process_data" scripts.
 # 
 # @Date: Nov 2024
-# @author: Marcos Paulo
+# @Author: Marcos Paulo
 # ============================================================================================
 
-# List of the necessary packages
+# List of required packages
 packages <- c(
   "dplyr",
   "doParallel",
@@ -29,7 +29,7 @@ packages <- c(
 # Define the default source library for packages installation - may have problems otherwise
 options(repos=c(CRAN="https://cran.rstudio.com/"))
 
-# Check if each package is installed; if not, install it and Then load them
+# Install (if needed) and load packages
 for (pkg in packages) {
   if (!requireNamespace(pkg, quietly = TRUE)) {
     renv::install(pkg, configure.args = c("--with-gdal",
@@ -44,12 +44,12 @@ for (pkg in packages) {
 # Clear objects on environment
 rm(packages, pkg)
 
-
 # ############################################################################################
 # Functions
 # ############################################################################################
 
-# Function --------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------
+# Function: process_merra2_region_hourly
 # @Arg         : shapefile is an 'sf' object representing the boundary of the region 
 #                (or any polygon collection for which grid‐level values are desired).
 # @Arg         : nc_files is a vector of file paths to the .nc4 files.
@@ -75,6 +75,7 @@ rm(packages, pkg)
 #               parallel or sequential processing based on user input and available system RAM.
 # @Written_on  : 02/12/2024
 # @Written_by  : Marcos Paulo
+# --------------------------------------------------------------------------------------------
 process_merra2_region_hourly <- function(shapefile,
                                          nc_files, 
                                          region_name, 
@@ -263,7 +264,8 @@ process_merra2_region_hourly <- function(shapefile,
 }
 
 
-# Function --------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------
+# Function: convert_and_add_pm25
 # @Arg         : df is a data frame containing columns "DUSMASS25", "OCSMASS", "BCSMASS", 
 #                "SSSMASS25", and "SO4SMASS" in kg m^-3.
 # @Arg         : new_column_name is a string representing the name of the new PM2.5 column.
@@ -276,6 +278,7 @@ process_merra2_region_hourly <- function(shapefile,
 #                The final PM2.5 column will also be in µg m^-3.
 # @Written_on  : 13/12/2024
 # @Written_by  : Marcos Paulo
+# --------------------------------------------------------------------------------------------
 convert_and_add_pm25 <- function(df, new_column_name = "pm25_estimate") {
   # Check if required columns exist
   required_cols <- c("DUSMASS25", "OCSMASS", "BCSMASS", "SSSMASS25", "SO4SMASS")
@@ -302,7 +305,8 @@ convert_and_add_pm25 <- function(df, new_column_name = "pm25_estimate") {
 } 
 
 
-# Function --------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------
+# Function: compare_pm25_to_nasa
 # @Arg         : user_pm_data (data frame of hourly data for one country, containing 
 #                columns "Date" (as a Date object) and "pm25_estimate" in µg/m^3).
 # @Arg         : nasa_monthly_data (data frame of monthly data from NASA, containing:
@@ -314,6 +318,7 @@ convert_and_add_pm25 <- function(df, new_column_name = "pm25_estimate") {
 #                with NASA's monthly PM2.5, producing a simple comparison table.
 # @Written_on  : 01/02/2025
 # @Written_by  : Marcos Paulo
+# --------------------------------------------------------------------------------------------
 compare_pm25_to_nasa <- function(user_pm_data,
                                  nasa_monthly_data, 
                                  country_name) {
@@ -351,7 +356,8 @@ compare_pm25_to_nasa <- function(user_pm_data,
 }
 
 
-# Function --------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------
+# Function: generate_region_comparison
 # @Arg         : shapefile is an 'sf' object containing boundaries for all regions.
 # @Arg         : filter_field is a string specifying the column name in the shapefile used 
 #                to identify a region (e.g., "sov_a3" or "admin").
@@ -379,6 +385,7 @@ compare_pm25_to_nasa <- function(user_pm_data,
 #                the result with NASA's PM2.5 data.
 # @Written_on  : 01/02/2025
 # @Written_by  : Marcos Paulo
+# --------------------------------------------------------------------------------------------
 generate_region_comparison <- function(shapefile, 
                                        filter_field = "sov_a3", 
                                        filter_value, 
@@ -416,7 +423,8 @@ generate_region_comparison <- function(shapefile,
 }
 
 
-# Function --------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------
+# Function: combine_station_merra2_pm25
 # @Arg         : station_df is a data frame containing ground station PM2.5 measurements
 # @Arg         : station_datetime_col is a string with the name of the column in station_df 
 #                that stores the date-time information (e.g., "datetime"). 
@@ -434,6 +442,7 @@ generate_region_comparison <- function(shapefile,
 #                each hour across all stations.
 # @Written_on  : 13/02/2025
 # @Written_by  : Marcos Paulo
+# --------------------------------------------------------------------------------------------
 combine_station_merra2_pm25 <- function(station_df,
                                         station_datetime_col = "datetime",
                                         station_pm25_col     = "pm25",
@@ -465,7 +474,8 @@ combine_station_merra2_pm25 <- function(station_df,
 }
 
 
-# Function --------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------
+# Function: aggregate_and_correlate
 # @Arg         : df is a data frame that results from combining ground station and 
 #                MERRA-2 data. It must contain at least the following columns:
 #                - "Date"          : Date (in YYYY-MM-DD format)
@@ -482,6 +492,7 @@ combine_station_merra2_pm25 <- function(station_df,
 #                the correlation between the MERRA-2 and ground station PM2.5 values.
 # @Written_on  : 14/02/2025
 # @Written_by  : Marcos Paulo
+# --------------------------------------------------------------------------------------------
 aggregate_and_correlate <- function(df, time_scale = "daily") {
 
   if (time_scale == "hourly") {
@@ -516,7 +527,8 @@ aggregate_and_correlate <- function(df, time_scale = "daily") {
 }
 
 
-# Function --------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------
+# Function: compute_correlations_for_cities
 # @Arg         : city_dfs is a named list of merged data frames (one per city) produced by
 #                combine_station_merra2_pm25(). Each data frame must contain the columns:
 #                "Date", "pm25_merra2", and "pm25_stations".
@@ -529,6 +541,7 @@ aggregate_and_correlate <- function(df, time_scale = "daily") {
 #                measurements at different time scales for a collection of cities.
 # @Written_on  : 14/02/2025
 # @Written_by  : Marcos Paulo
+# --------------------------------------------------------------------------------------------
 compute_correlations_for_cities <- function(city_dfs,
                                             timescales = c("hourly", "daily", "monthly")) {
   

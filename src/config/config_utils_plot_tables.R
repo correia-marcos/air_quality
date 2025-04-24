@@ -7,10 +7,10 @@
 # required packages and defining utility functions for all "plot_table" scripts.
 # 
 # @Date: Nov 2024
-# @author: Marcos Paulo
+# @Author: Marcos Paulo
 # ============================================================================================
 
-# List of necessary packages
+# List of required packages
 packages <- c(
   "cowplot",
   "dplyr",
@@ -31,7 +31,7 @@ packages <- c(
 # Define the default source library for packages installation - may have problems otherwise
 options(repos=c(CRAN="https://cran.rstudio.com/"))
 
-# Check if each package is installed; if not, install it and Then load them
+# Install (if needed) and load packages
 for (pkg in packages) {
   if (!requireNamespace(pkg, quietly = TRUE)) {
     renv::install(pkg, configure.args = c("--with-gdal",
@@ -54,11 +54,12 @@ showtext_auto()
 # Functions
 # ############################################################################################
 
-# Function --------------------------------------------------------------------
-# @Arg       : shapefile  is an 'sf' object representing the city boundary
-# @Arg       : nc_file    is a string containing the path to a single .nc4 file
+# --------------------------------------------------------------------------------------------
+# Function: plot_merra2_grid_city
+# @Arg       : shapefile is an 'sf' object representing the city boundary
+# @Arg       : nc_file is a string containing the path to a single .nc4 file
 #              from the MERRA-2 dataset
-# @Arg       : city_name  is a string with the name of the city
+# @Arg       : city_name is a string with the name of the city
 # @Output    : A ggplot object representing the map of the city boundary and 
 #              MERRA-2 grid cells
 # @Purpose   : Creates a spatial plot showing the city's boundary and the overlayed
@@ -67,6 +68,7 @@ showtext_auto()
 #              the city's area.
 # @Written_on: 10/12/2024
 # @Written_by: Marcos Paulo
+# --------------------------------------------------------------------------------------------
 plot_merra2_grid_city <- function(shapefile, nc_file, city_name) {
   
   # Load the MERRA-2 data
@@ -126,7 +128,8 @@ plot_merra2_grid_city <- function(shapefile, nc_file, city_name) {
 }
 
 
-# Function --------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------
+# Function: plot_variable_across_cities
 # @Arg       : df_list is a named list of dataframes, where each dataframe contains
 #              aerosol concentration and PM 2.5 data.
 # @Arg       : variable is a string specifying the variable to plot (e.g., "DUSMASS25",
@@ -139,6 +142,7 @@ plot_merra2_grid_city <- function(shapefile, nc_file, city_name) {
 #              across multiple cities, including WHO PM 2.5 guidelines if applicable.
 # @Written_on: 13/12/2024
 # @Written_by: Marcos Paulo
+# --------------------------------------------------------------------------------------------
 plot_variable_across_cities <- function(df_list,
                                         variable,
                                         var_label = NULL,
@@ -235,7 +239,8 @@ plot_variable_across_cities <- function(df_list,
 }
 
 
-# Function --------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------
+# Function: plot_latin_america_map
 # @Arg       : latin_america - An 'sf' object representing Latin America map.
 # @Arg       : regions       - A list of 'sf' objects for metropolitan areas 
 #                              (e.g., Bogota, ciudad_mexico, etc.).
@@ -246,6 +251,7 @@ plot_variable_across_cities <- function(df_list,
 #              over Latin America with optional outlines.
 # @Written_on: 15/12/2024
 # @Written_by: Marcos Paulo
+# --------------------------------------------------------------------------------------------
 plot_latin_america_map <- function(latin_america, regions, region_names, outline = TRUE) {
   # Check input validity
   if (length(regions) != length(region_names)) {
@@ -327,7 +333,8 @@ plot_latin_america_map <- function(latin_america, regions, region_names, outline
 }
 
 
-# Function --------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------
+# Function: plot_city_distributions
 # @Arg         : df is a data frame containing columns "Date", "Hour", 
 #                "DUSMASS25", "OCSMASS", "BCSMASS", "SSSMASS25", "SO4SMASS" and "pm25_estimate".
 # @Arg         : city_name is a string representing the city's name.
@@ -341,6 +348,7 @@ plot_latin_america_map <- function(latin_america, regions, region_names, outline
 #                Interim Target 2 (IT2): 25 µg/m³
 # @Written_on  : 13/12/2024
 # @Written_by  : Marcos Paulo
+# --------------------------------------------------------------------------------------------
 plot_city_distributions <- function(df, city_name) {
   
   # Associate variable names with descriptions
@@ -411,7 +419,8 @@ plot_city_distributions <- function(df, city_name) {
 }
 
 
-# Function --------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------
+# Function: save_plot_list_to_pdf
 # @Arg       : plot_list is a list of ggplot objects for a single city.
 # @Arg       : city_name is a string specifying the name of the city.
 # @Arg       : output_dir is a string specifying the directory to save the PDFs.
@@ -419,6 +428,7 @@ plot_city_distributions <- function(df, city_name) {
 # @Purpose   : Save each list of plots into a separate PDF efficiently.
 # @Written_on: 13/12/2024
 # @Written_by: Marcos Paulo
+# --------------------------------------------------------------------------------------------
 save_plot_list_to_pdf <- function(plot_list, city_name, output_dir) {
   # Ensure the output directory exists
   if (!dir.exists(output_dir)) {
@@ -444,7 +454,8 @@ save_plot_list_to_pdf <- function(plot_list, city_name, output_dir) {
 }
 
 
-# Function --------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------
+# Function: plot_pm25_timeseries_smooth
 # @Arg         : df is a data frame with columns "Date", "Hour", and PM 2.5 data.
 # @Arg         : region_name is a string representing the region or city name.
 # @Arg         : apply_rolling is a logical indicating whether to apply a rolling window.
@@ -458,6 +469,7 @@ save_plot_list_to_pdf <- function(plot_list, city_name, output_dir) {
 #                rolling average to reduce noise, and annotate the correlation of the raw data.
 # @Written_on  : 14/02/2025
 # @Written_by  : Marcos Paulo
+# --------------------------------------------------------------------------------------------
 plot_pm25_timeseries_smooth <- function(df, 
                                         region_name, 
                                         apply_rolling  = TRUE, 
@@ -556,7 +568,8 @@ plot_pm25_timeseries_smooth <- function(df,
 }
 
 
-# Function --------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------
+# Function: plot_hourly_avg_pollution
 # @Arg         : df is a data frame with columns "Date", "Hour", "pm25_merra2" 
 #                and "pm25_stations".
 # @Arg         : region_name is a string representing the region or city name.
@@ -576,6 +589,7 @@ plot_pm25_timeseries_smooth <- function(df,
 #                exceed WHO targets.
 # @Written_on  : 28/02/2025
 # @Written_by  : Marcos Paulo
+# --------------------------------------------------------------------------------------------
 plot_hourly_avg_pollution <- function(df, 
                                       region_name, 
                                       plot_ci             = FALSE, 
@@ -671,7 +685,8 @@ plot_hourly_avg_pollution <- function(df,
 }
 
 
-# Function --------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------
+# Function: plot_hourly_ridgeline_pollution
 # @Arg         : df is a data frame with columns "Date", "Hour", and PM2.5 data
 #                (either "pm25_merra2" or "pm25_stations").
 # @Arg         : region_name is a string representing the region or city name.
@@ -683,6 +698,7 @@ plot_hourly_avg_pollution <- function(df,
 #                hour of day, helping to spot patterns in how pollution accumulates over time.
 # @Written_on  : 28/02/2025
 # @Written_by  : Marcos Paulo
+# --------------------------------------------------------------------------------------------
 plot_hourly_ridgeline_pollution <- function(df, 
                                             region_name,
                                             pollution_var = "pm25_merra2") {
@@ -734,7 +750,8 @@ plot_hourly_ridgeline_pollution <- function(df,
 }
 
 
-# Function --------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------
+# Function: compute_time_spans_above_target
 # @Arg         : df is a data frame with columns "Date", "Hour", and at least one
 #                PM2.5 column (e.g., "pm25_stations" or "pm25_merra2").
 # @Arg         : city_name is a string identifying the city/region (e.g., "Bogotá").
@@ -748,6 +765,7 @@ plot_hourly_ridgeline_pollution <- function(df,
 #                (IT1 or IT2), facilitating further analysis and plotting.
 # @Written_on  : 10/03/2025
 # @Written_by  : Marcos Paulo
+# --------------------------------------------------------------------------------------------
 compute_time_spans_above_target <- function(df, 
                                             city_name, 
                                             target = c("IT1", "IT2"), 
@@ -855,7 +873,8 @@ compute_time_spans_above_target <- function(df,
 }
 
 
-# Function --------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------
+# Function: plot_time_spans_ridgeline
 # @Arg         : list_of_dfs is a named list of data frames (e.g., 
 #                list("Bogotá" = bogota_pm25, "Santiago" = santiago_pm25, ...)).
 # @Arg         : target is a string, either "IT1" or "IT2".
@@ -866,6 +885,7 @@ compute_time_spans_above_target <- function(df,
 #                pollution levels above a WHO interim target, using a ridgeline plot.
 # @Written_on  : 06/03/2025
 # @Written_by  : Marcos Paulo
+# --------------------------------------------------------------------------------------------
 plot_time_spans_ridgeline <- function(list_of_dfs, 
                                       target = c("IT1", "IT2"),
                                       pollution_var = "pm25_stations") {

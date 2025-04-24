@@ -20,7 +20,7 @@ packages <- c(
   "lubridate",
   "purrr")
 
-# Set CRAN mirror
+# Define the default source library for packages installation - may have problems otherwise
 options(repos = c(CRAN = "https://cran.rstudio.com/"))
 
 # Install (if needed) and load packages
@@ -41,12 +41,12 @@ rm(packages, pkg)
 # --------------------------------------------------------------------------------------------
 # Function: generate_merra2_urls
 # @Arg         : start_date is a Date or character (YYYY-MM-DD) referring to the beginning date
-# @Arg         : end_date   is a Date or character (YYYY-MM-DD) referring to the end date
+# @Arg         : end_date is a Date or character (YYYY-MM-DD) referring to the end date
 # @Arg         : dataset_version is a character (e.g. "M2T1NXAER.5.12.4") referring to the 
 #                MERRA2 version version and type of archive
-# @Arg         : tile_id    is a character (e.g. "400") referring to the processing stream/
+# @Arg         : tile_id is a character (e.g. "400") referring to the processing stream/
 #                version of the reanalysis output
-# @Arg         : var_name   is a character (e.g. "tavg1_2d_aer_Nx") referring to the variable 
+# @Arg         : var_name is a character (e.g. "tavg1_2d_aer_Nx") referring to the variable 
 #                collection
 # @Output      : A character vector containing the full URLs
 # @Purpose     : Build daily MERRA-2 .nc4 URLs for a given dataset, stream, and variable
