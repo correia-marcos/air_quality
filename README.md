@@ -52,29 +52,34 @@ Air pollution is the leading environmental health risk to physical health and ca
 ## 2. Repository Structure
 
 ```text
-│-- .dockerignore          # Files to ignore from Docker build
-│-- .gitignore             # Files to ignore in Git
-│-- .Rprofile              # RStudio project configuration (important for Renv)
-│-- Coding.Rproj           # RStudio project file
-│-- Dockerfile             # Defines Docker environment
-│-- entrypoint.sh          # Launch script for container
-│-- renv/                  # Local package library managed by renv
-│-- renv.lock              # Locked package versions
-│-- data/                  # Data directory 
-│   ├── raw/               # Original, unmodified data (shapefiles, .nc4, .csv)
-│   ├── interim/           # Cleaned/aggregated data that will be further processed
-│   └── processed/         # Cleaned/processed data ready for analysis
-│-- doc/                   # Documentation, references, methodology notes
-│-- src/                   # Analysis scripts
-│   ├── config/            # Configuration (environment variables, packages, functions)
-│   ├── process_data/      # Data cleaning and transformation scripts
-│   └── tables_images/     # Scripts to generate tables and figures
-│-- results/               # Output artifacts
-│   ├── figures/           # Plots and visualizations
-│   └── tables/            # Summary tables and CSV exports
-|-- fonts                  # Folder containing LaTeX like fonts for plots
-|-- LICENSE.md             # Project license / term of use 
-└-- README.md              # Project overview and setup instructions
+.
+├── .dockerignore              # Files to ignore from Docker build
+├── .gitignore                 # Files to ignore in Git
+├── .Rprofile                  # RStudio project configuration (for renv)
+├── Coding.Rproj               # RStudio project file
+├── Dockerfile                 # Defines Docker environment
+├── entrypoint.sh              # Launch script for container
+├── renv/                      # Local package library managed by renv
+├── renv.lock                  # Locked package versions
+├── data/                      # Data directory 
+│   ├── raw/                   # Original, unmodified data (shapefiles, .nc4, .csv)
+│   ├── interim/               # Cleaned/aggregated data for further processing
+│   └── processed/             # Cleaned/processed data ready for analysis
+├── doc/                       # Documentation, references, methodology notes
+├── src/                       # Utility functions & configs
+│   ├── config_utils_download_data.R
+│   ├── config_utils_plot_tables.R
+│   └── config_utils_process_data.R
+├── scripts/                   # “Glue” scripts that apply those utilities
+│   ├── download_data/         # Scripts to pull in raw data
+│   ├── process_data/          # Scripts to clean & transform data
+│   └── tables_images/         # Scripts to generate tables & figures
+├── results/                   # Output artifacts
+│   ├── figures/               # Plots and visualizations
+│   └── tables/                # Summary tables and CSV exports
+├── fonts/                     # LaTeX‐style fonts for plots
+├── LICENSE.md                 # Project license / terms of use 
+└── README.md                  # Project overview and setup instructions
 
 ```
 
@@ -171,7 +176,7 @@ With credentials in place, simply run our [download script](src/download_data/ru
    docker run --rm -it \
      -v "$(pwd)/data/raw:/air_monitoring/data/raw" \
      correiamarcos/air_monitoring:latest run \
-       src/download_data/run_download_merra2.R \
+       scripts/download_data/run_download_merra2.R \
        2023-01-01 2023-12-31 M2T1NXAER.5.12.4 data/raw/merra2
    ```
 
@@ -204,16 +209,16 @@ With credentials in place, simply run our [download script](src/download_data/ru
 - **Run a single script:**
 
   ```bash
-  ./entrypoint.sh run src/process_data/clean_pollution_data.R
+  ./entrypoint.sh run scripts/process_data/clean_pollution_data.R
   ```
 
 - **Generate all analyses and outputs:**
 
   ```bash
   ./entrypoint.sh run \
-    src/config/setup.R \
-    src/process_data/*.R \
-    src/tables_images/*.R
+    scripts/config/setup.R \
+    scripts/process_data/*.R \
+    scripts/tables_images/*.R
   ```
 
 - **Launch an interactive container shell** (advanced troubleshooting):
@@ -229,12 +234,12 @@ With credentials in place, simply run our [download script](src/download_data/ru
 Our project proceeds in four main stages:
 
 1. **Data ingestion:**
-   - For open datasets: run the `src/download_data/` scripts; raw files appear in `data/raw/`.
+   - For open datasets: run the `scripts/download_data/` scripts; raw files appear in `data/raw/`.
    - For restricted-access files: these are distributed internally.
 2. **Preprocessing:**
-   - Scripts in `src/process_data/` clean, transform and merge the raw data.
+   - Scripts in `scripts/process_data/` clean, transform and merge the raw data.
 3. **Analysis & Visualization:**
-   - Scripts in `src/tables_images/` produce publication-quality figures in `results/figures/` and tables in `results/tables/`.
+   - Scripts in `scripts/tables_images/` produce publication-quality figures in `results/figures/` and tables in `results/tables/`.
 4. **Review & Export:**
    - Retrieve the final outputs for manuscript drafting or policy briefs.
 
@@ -244,11 +249,11 @@ We also provide a visualization of scripts dependencies as following:
 
 ```mermaid
 flowchart TD
-  DL["src/download_data/download_merra2_data.R"]
-  GP["src/process_data/generate_panel_air_quality.R"]
-  CU["src/process_data/convert_unit_calculate_pm.R"]
-  CS["src/process_data/compare_pm25_merra2_stations.R"]
-  CM["src/process_data/compare_monthly_country_pm25_nasa.R"]
+  DL["scripts/download_data/download_merra2_data.R"]
+  GP["scripts/process_data/generate_panel_air_quality.R"]
+  CU["scripts/process_data/convert_unit_calculate_pm.R"]
+  CS["scripts/process_data/compare_pm25_merra2_stations.R"]
+  CM["scripts/process_data/compare_monthly_country_pm25_nasa.R"]
 
   DL --> GP --> CU
   DL --> GP --> CS
@@ -284,6 +289,6 @@ To be created.
 - **Affiliation:** Inter‑American Development Bank
 - **Email:** [bridgeth@iadb.org][bridget_email]
 
-**Last Updated:** 2025‑04‑21 (YYYY-MM-DD)
+**Last Updated:** 2025‑05‑14 (YYYY-MM-DD)
 
 [bridget_email]: bridgeth@iadb.org
