@@ -20,7 +20,7 @@
 # ============================================================================================
 
 # Get all libraries and functions
-source(here::here("src", "config", "config_utils_process_data.R"))
+source(here::here("src", "config_utils_process_data.R"))
 
 # ============================================================================================
 # I: Import data

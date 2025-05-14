@@ -17,7 +17,7 @@
 # ============================================================================================
 
 # Get all libraries and functions
-source(here::here("src", "config", "config_utils_plot_tables.R"))
+source(here::here("src", "config_utils_plot_tables.R"))
 
 # ============================================================================================
 # I: Import data
