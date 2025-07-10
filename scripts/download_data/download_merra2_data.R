@@ -56,7 +56,7 @@ urls    <- generate_merra2_urls(
             var_name         = var_name)
 
 # Download files
-results <- download_files(
+results <- download_merra2_files(
             urls     = urls,
             dest_dir = destination_dir,
             overwrite = TRUE)
