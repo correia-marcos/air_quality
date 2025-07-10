@@ -1,41 +1,38 @@
 ################################################################################
-# STAGE 1: Build base environment + install packages via renv
+# STAGE 1: Build base environment + install R packages via renv
 ################################################################################
 FROM rocker/r-ver:4.4.2 AS base
 
-# Install system libraries needed to compile certain R packages
+# system libraries for R packages + RSelenium dependencies
 RUN apt-get update && apt-get install -y \
-    libxml2-dev \
-    libssl-dev \
-    libcurl4-openssl-dev \
-    libgdal-dev \
-    libudunits2-dev \
-    libpng-dev \
-    libfreetype6-dev \
-    # Add more system dependencies if needed...
+    libxml2-dev libssl-dev libcurl4-openssl-dev \
+    libgdal-dev libudunits2-dev libpng-dev libfreetype6-dev \
+    wget unzip xvfb openjdk-11-jre-headless \
     && rm -rf /var/lib/apt/lists/*
 
-# Create the air_monitoring directory and set it as working directory
+# Install Google Chrome
+RUN wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add - && \
+    echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" \
+      > /etc/apt/sources.list.d/google-chrome.list && \
+    apt-get update && apt-get install -y google-chrome-stable && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install matching ChromeDriver
+ARG CHROME_DRIVER_VERSION=116.0.5845.96
+RUN wget -O /tmp/chromedriver.zip \
+       https://chromedriver.storage.googleapis.com/${CHROME_DRIVER_VERSION}/chromedriver_linux64.zip && \
+    unzip /tmp/chromedriver.zip -d /usr/local/bin/ && \
+    chmod +x /usr/local/bin/chromedriver && \
+    rm /tmp/chromedriver.zip
+
 WORKDIR /air_monitoring
 
-# Copy only the files required for renv::restore()
-COPY renv.lock renv.lock
-COPY .Rprofile .Rprofile
-COPY renv/activate.R renv/activate.R
-# COPY renv/settings.dcf renv/settings.dcf
+# renv setup
+COPY renv.lock .Rprofile renv/activate.R ./
+RUN mkdir -p renv/.cache && \
+    RENV_PATHS_CACHE=renv/.cache R -e "install.packages('https://cran.r-project.org/src/contrib/Archive/renv/renv_1.0.10.tar.gz', type='source')" && \
+    R -e "options(repos='https://cran.rstudio.com/'); renv::restore()"
 
-
-# (Optional) set a local renv cache inside the project
-RUN mkdir -p renv/.cache
-ENV RENV_PATHS_CACHE=renv/.cache
-
-# Install the archived renv version from the URL you provided
-RUN R -e "options(repos = c(CRAN='https://cran.rstudio.com/')); \
-          install.packages('https://cran.r-project.org/src/contrib/Archive/renv/renv_1.0.10.tar.gz', \
-                           type='source')"
-
-# Restore packages with CRAN = 'https://cran.rstudio.com/'
-RUN R -e "options(repos = c(CRAN='https://cran.rstudio.com/')); renv::restore()"
 
 
 ################################################################################
@@ -43,33 +40,39 @@ RUN R -e "options(repos = c(CRAN='https://cran.rstudio.com/')); renv::restore()"
 ################################################################################
 FROM rocker/r-ver:4.4.2
 
-# Reinstall system libraries so the final image has them available at runtime
+# same system libs + Chrome + ChromeDriver
 RUN apt-get update && apt-get install -y \
-    libxml2-dev \
-    libssl-dev \
-    libcurl4-openssl-dev \
-    libgdal-dev \
-    libudunits2-dev \
-    libpng-dev \
-    libfreetype6-dev \
-    # Add more system dependencies if needed...
+    libxml2-dev libssl-dev libcurl4-openssl-dev \
+    libgdal-dev libudunits2-dev libpng-dev libfreetype6-dev \
+    wget unzip xvfb openjdk-11-jre-headless \
     && rm -rf /var/lib/apt/lists/*
 
-# Create the air_monitoring directory and set it as working directory
+# Chrome
+RUN wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add - && \
+    echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" \
+      > /etc/apt/sources.list.d/google-chrome.list && \
+    apt-get update && apt-get install -y google-chrome-stable && \
+    rm -rf /var/lib/apt/lists/*
+
+# ChromeDriver
+ARG CHROME_DRIVER_VERSION=116.0.5845.96
+RUN wget -O /tmp/chromedriver.zip \
+       https://chromedriver.storage.googleapis.com/${CHROME_DRIVER_VERSION}/chromedriver_linux64.zip && \
+    unzip /tmp/chromedriver.zip -d /usr/local/bin/ && \
+    chmod +x /usr/local/bin/chromedriver && \
+    rm /tmp/chromedriver.zip
+
 WORKDIR /air_monitoring
 
-# Copy all files from Stage 1 (including installed R packages) into final image
+# copy renv + installed packages from base
 COPY --from=base /air_monitoring /air_monitoring
 
-# Copy the rest of your project files that change frequently (R scripts, data, etc.)
+# copy project files
 COPY . /air_monitoring
 
-# Copy the entrypoint script and make it executable
+# entrypoint
 COPY entrypoint.sh /air_monitoring/entrypoint.sh
 RUN chmod +x /air_monitoring/entrypoint.sh
 
-# Set the entrypoint
 ENTRYPOINT ["/air_monitoring/entrypoint.sh"]
-
-# Default command (if no arguments are provided)
 CMD ["bash"]
