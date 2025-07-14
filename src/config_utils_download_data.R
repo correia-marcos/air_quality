@@ -13,12 +13,20 @@
 # List of required packages
 packages <- c(
   "curl",
+  "dplyr",
   "fs",
   "glue",
   "here",
   "httr",
+  "jsonlite",
   "lubridate",
-  "purrr")
+  "purrr",
+  "rvest",
+  "readr",
+  "stringr",
+  "RSelenium",
+  "tidyr"
+  )
 
 # Define the default source library for packages installation - may have problems otherwise
 options(repos = c(CRAN = "https://cran.rstudio.com/"))
@@ -93,7 +101,7 @@ generate_merra2_urls <- function(start_date,
 
 
 # --------------------------------------------------------------------------------------------
-# Function: download_files
+# Function: download_merra2_files
 # @Arg       : urls      is a character vector of download URLs
 # @Arg       : dest_dir  is a directory path where files will be saved
 # @Arg       : user      is a character for the Earthdata username (character) 
@@ -107,11 +115,11 @@ generate_merra2_urls <- function(start_date,
 # @Written_on: 05/04/2025
 # @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
-download_files <- function(urls,
-                           dest_dir,
-                           user      = Sys.getenv("EARTHDATA_USER"),
-                           pass      = Sys.getenv("EARTHDATA_PASS"),
-                           overwrite = FALSE) {
+download_merra2_files <- function(urls,
+                                  dest_dir,
+                                  user      = Sys.getenv("EARTHDATA_USER"),
+                                  pass      = Sys.getenv("EARTHDATA_PASS"),
+                                  overwrite = FALSE) {
   # Prepare directory
   fs::dir_create(dest_dir)
   
@@ -170,3 +178,302 @@ download_files <- function(urls,
   # Return of the outer function (download_files)
   return(results)
 }
+
+
+# --------------------------------------------------------------------------------------------
+# Function: start_selenium
+# @Arg      : jar_path — path to your selenium-server JAR (e.g. from Sys.getenv("SELENIUM_JAR"))
+# @Arg      : port     — integer; port for the server to listen on (default 4444)
+# @Arg      : browser  — character; "chrome" or "firefox" (default "chrome")
+# @Output    : named list with
+#                • process: processx handle for chromedriver or selenium-server
+#                • client : open RSelenium remoteDriver
+# @Purpose   : Start Selenium 4 JAR, then open an RSelenium session, trying both the W3C root
+#              (“/”) and legacy “/wd/hub” paths.
+# @Written_on: 20/06/2025
+# @Written_by: Marcos Paulo
+# --------------------------------------------------------------------------------------------
+start_selenium <- function(
+    jar_path = Sys.getenv("SELENIUM_JAR"),
+    port     = 4444L,
+    browser  = "chrome"
+) {
+  # 1) decide ChromeDriver vs full Selenium JAR
+  use_chrome <- (
+    identical(tolower(browser), "chrome") &&
+      nzchar(Sys.which("chromedriver"))
+  )
+  if (use_chrome) {
+    message("✅ Launching ChromeDriver: ", Sys.which("chromedriver"))
+    px          <- processx::process$new(
+      Sys.which("chromedriver"),
+      args   = paste0("--port=", port),
+      stdout = "|", stderr = "|"
+    )
+    server_name  <- "ChromeDriver"
+    paths_to_try <- c("", "wd/hub")
+  } else {
+    # fallback to Selenium .jar
+    if (!nzchar(jar_path) || !file.exists(jar_path))
+      stop("🛑 SELENIUM_JAR not found or invalid.")
+    if (Sys.which("java") == "")
+      stop("🛑 `java` not on PATH.")
+    message("✅ Launching Selenium Server: ", jar_path)
+    px           <- processx::process$new(
+      "java",
+      c("-jar", jar_path, "-port", port),
+      stdout = "|", stderr = "|"
+    )
+    server_name  <- "Selenium Server"
+    paths_to_try <- c("wd/hub", "")
+  }
+  
+  # 2) Give it a moment to spin up and then print the server created
+  Sys.sleep(5)
+  if (!px$is_alive()) {
+    out <- px$read_all_output(); err <- px$read_all_error()
+    stop(server_name, " failed to start:\n", out, "\n", err)
+  }
+  message("✅ ", server_name, " running on port ", port, " (PID=", px$get_pid(), ")")  
+  
+  # 3) try each path until we get a real sessionId back
+  client     <- NULL
+  last_error <- NULL
+  for (p in paths_to_try) {
+    rd <- RSelenium::remoteDriver(
+      remoteServerAddr = "localhost",
+      port              = port,
+      browserName       = browser,
+      path              = p
+    )
+    attempt <- try({
+      rd$open(silent = TRUE)
+      sid <- rd$getSession()$sessionId
+      if (is.null(sid) || nchar(sid)==0) {
+        stop("no sessionId")
+      }
+      message("✅ WebDriver session @ path='", p, "'; sessionId=", sid)
+      client <- rd
+      break
+    }, silent = TRUE)
+    last_error <- attempt
+  }
+  
+  if (is.null(client)) {
+    px$kill()
+    stop("❌ Could not open a WebDriver session. Last error:\n",
+         last_error)
+  }
+  # 4) (Optional) set an implicit wait so findElement() polls up to 5s
+  client$setImplicitWaitTimeout(5000)
+  
+  # Return of the function
+  return(list(
+    process = px,
+    client  = remDr
+  ))
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: stop_selenium
+# @Arg   : ses — the list returned by start_selenium()
+# @Purpose: close the browser session and kill the local Selenium process (if any)
+# --------------------------------------------------------------------------------------------
+stop_selenium <- function(ses) {
+  ses$process$kill()
+  if (!is.null(ses$proc) && ses$proc$is_alive()) {
+    ses$proc$kill()
+  }
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: download_bogota_station_info
+# @Arg       : base_url      — string; URL of the station‐report form page
+# @Output    : tibble with columns:
+#                 • stationId   (chr)
+#                 • DisplayName (chr)
+#                 • monitors    (list‐col; each entry a list of monitor‐objects)
+# @Purpose   : scrape the page’s <script> blocks, extract *every*
+#              `all_stations = […]` assignment, take the *last* (full) JSON,
+#              parse it, and return station metadata.
+# @Written_on: 20/05/2025
+# @Written_by: Marcos Paulo
+# --------------------------------------------------------------------------------------------
+download_bogota_station_info <- function(base_url) {
+  # 1) grab all the embedded script text
+  all_js <- read_html(base_url) %>%
+    html_nodes("script") %>%
+    html_text() %>%
+    paste(collapse = "\n")
+  
+  # 2) find *every* `all_stations = [...] ;` and capture the [...]
+  pat     <- "(?s)all_stations\\s*=\\s*(\\[.*?\\])\\s*;"
+  matches <- str_match_all(all_js, pat)[[1]]
+  
+  # 3) must have at least two: an initial "empty" and the real payload
+  if (nrow(matches) < 2) {
+    stop("Couldn’t find a second `all_stations = […]` block. Has the site changed?")
+  }
+  
+  # 4) Pick the Last JSON block the true payload is in the last match, second column
+  json_txt <- matches[nrow(matches), 2]
+  
+  # 5) parse JSON → list of station‐objects
+  stations_list <- jsonlite::fromJSON(json_txt, simplifyDataFrame = FALSE)
+  
+  # 6) build and return a tibble
+  out <- tibble(
+    stationId   = map_chr(stations_list, ~ as.character(.x$stationId)),
+    DisplayName = map_chr(stations_list, ~ as.character(.x$DisplayName)),
+    monitors    = map(stations_list, "monitors"),
+    location    = map(stations_list, "location"),
+    owner       = map_chr(stations_list, ~ as.character(.x$owner))
+  )
+  
+  message("Found ", nrow(out), " stations: ", paste(out$DisplayName, collapse = ", "))
+  return(out)
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: download_bogota_station_slice
+# @Arg       : remDr          — RSelenium remoteDriver
+# @Arg       : base_url       — string; form page URL
+# @Arg       : station_uid    — string; one stationId from download_bogota_station_uids()
+# @Arg       : from_date      — Date; slice start, e.g. as.Date("2010-01-01")
+# @Arg       : to_date        — Date; slice end,   e.g. as.Date("2010-12-31")
+# @Arg       : report_type    — string; Spanish label, e.g. "Promedio"
+# @Arg       : tb_from, tb_to — string; dropdown labels, e.g. "1 Hora"
+# @Output    : tibble of that station’s grid for the slice
+# @Purpose   : drive the UI in “Personalizado” mode for one station + one year‐slice,
+#              click “Mostrar”, scrape the resulting Kendo grid, return as tibble
+# @Written_on: 10/07/2025
+# @Written_by: Marcos Paulo
+# --------------------------------------------------------------------------------------------
+download_bogota_station_slice <- function(
+    remDr,
+    base_url,
+    station_uid,
+    from_date,
+    to_date,
+    report_type = "Promedio",
+    tb_from     = "1 Hora",
+    tb_to       = "1 Hora"
+) {
+  remDr$navigate(base_url)
+  Sys.sleep(2)  # let page load
+  
+  # 1a) Ensure “Mostrar estaciones activas” is checked
+  active_cb <- remDr$findElement("css", "#ActiveStations")
+  
+  # 1) select station checkbox under #stationFilter
+  remDr$findElement("css", "#stationFilter .k-icon.k-i-expand")$clickElement()
+  Sys.sleep(0.5)
+  chk_xpath <- sprintf(
+    "//div[@id='stationFilter']//li[@data-uid='%s']//input[@type='checkbox']",
+    station_uid
+  )
+  remDr$findElement("xpath", chk_xpath)$clickElement()
+  
+  # 2) switch "Periódico" → "Personalizado"
+  remDr$findElement("xpath",
+                    "//div[@id='wrapper2']//button[contains(., 'Personalizado')]"
+  )$clickElement()
+  
+  # 3) set start/end date & time
+  remDr$findElement("css", "#wrapper2 input[name='startDate']")$clearElement()
+  remDr$findElement("css", "#wrapper2 input[name='startDate']")$
+    sendKeysToElement(list(format(from_date, "%d-%m-%Y")))
+  remDr$findElement("css", "#wrapper2 input[name='startTime']")$clearElement()
+  remDr$findElement("css", "#wrapper2 input[name='startTime']")$
+    sendKeysToElement(list("00:00"))
+  
+  remDr$findElement("css", "#wrapper2 input[name='endDate']")$clearElement()
+  remDr$findElement("css", "#wrapper2 input[name='endDate']")$
+    sendKeysToElement(list(format(to_date, "%d-%m-%Y")))
+  remDr$findElement("css", "#wrapper2 input[name='endTime']")$clearElement()
+  remDr$findElement("css", "#wrapper2 input[name='endTime']")$
+    sendKeysToElement(list("23:00"))
+  
+  # 4) select "Promedio" & time-bases
+  remDr$findElement("css", "#wrapper2 select[name='avtype']")$
+    sendKeysToElement(list(report_type))
+  remDr$findElement("css", "#wrapper2 select[name='from-base-time']")$
+    sendKeysToElement(list(tb_from))
+  remDr$findElement("css", "#wrapper2 select[name='to-base-time']")$
+    sendKeysToElement(list(tb_to))
+  
+  # 5) click Mostrar & wait for grid
+  remDr$findElement("xpath",
+                    "//div[@id='wrapper2']//button[contains(., 'Mostrar')]"
+  )$clickElement()
+  Sys.sleep(5)
+  
+  # 6) scrape the grid HTML & parse locked + main columns
+  raw <- remDr$getPageSource()[[1]] %>% xml2::read_html()
+  locked <- raw %>% 
+    rvest::html_node("#grid .k-grid-content-locked table") %>% 
+    rvest::html_table(fill = TRUE)
+  main   <- raw %>% 
+    rvest::html_node("#grid .k-grid-content table") %>% 
+    rvest::html_table(fill = TRUE)
+  
+  # 7) clean & bind
+  colnames(locked) <- locked[1, ]
+  locked <- locked[-1, , drop = FALSE]
+  colnames(main) <- main[1, ]
+  main   <- main[-1, , drop = FALSE]
+  df <- dplyr::bind_cols(locked, main)
+  df$stationId <- station_uid
+  
+  return(df)
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: download_bogota_stations_data
+# @Arg       : remDr      — RSelenium remoteDriver from start_selenium()
+# @Arg       : base_url   — string; station‐report form page URL
+# @Arg       : start_date — Date; first day to fetch, e.g. as.Date("2010-01-01")
+# @Arg       : end_date   — Date; last  day to fetch, e.g. as.Date("2010-12-31")
+# @Output    : tibble with all station readings over your period
+# @Purpose   : I) get station list II) slice into calendar years
+#              III) for each station & each slice, call download_bogota_station_slice
+#              IV) bind & return
+# @Written_on: 10/07/2025  by Marcos Paulo
+# --------------------------------------------------------------------------------------------
+download_bogota_stations_data <- function(remDr, base_url, start_date, end_date) {
+  # I) station metadata
+  meta    <- download_bogota_station_info(base_url)
+  uids    <- meta$stationId
+  
+  # II) calendar‐year slices
+  yrs     <- seq(lubridate::year(start_date), lubridate::year(end_date))
+  slices  <- purrr::map(yrs, ~ list(
+    from = max(as.Date(sprintf("%d-01-01", .x)), start_date),
+    to   = min(as.Date(sprintf("%d-12-31", .x)), end_date)
+  ))
+  
+  # III) loop & collect
+  out <- purrr::map_dfr(uids, function(st) {
+    purrr::map_dfr(slices, function(sl) {
+      message("Station ", st, ": ", sl$from, " → ", sl$to)
+      download_bogota_station_slice(
+        remDr       = remDr,
+        base_url    = base_url,
+        station_uid = st,
+        from_date   = sl$from,
+        to_date     = sl$to
+      )
+    })
+  })
+  
+  message("Completed download: ", nrow(out), " rows.")
+  return(out)
+}
+
+
+# Print a success message for when running inside Docker Container
+cat("Config script parsed successfully!\n")
