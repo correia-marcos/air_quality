@@ -29,7 +29,7 @@ nc_files      <- list.files(here::here("data", "raw", "merra2"), full.names = TR
 # Open city shapefiles
 bogota        <- sf::st_read(here::here("data", "raw", "cities", "Bogota_metro"))
 ciudad_mexico <- sf::st_read(here::here("data", "raw", "cities", "Mexico_city"))
-santiago      <- sf::st_read(here::here("data", "raw", "cities", "Santiago")) 
+santiago      <- sf::st_read(here::here("data", "raw", "cities", "Santiago"))
 sao_paulo     <- sf::st_read(here::here("data", "raw", "cities", "Sao_Paulo"))
 
 # ============================================================================================
