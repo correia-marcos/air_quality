@@ -41,7 +41,7 @@ RUN mkdir -p renv/.cache \
 ################################################################################
 # STAGE 2: Runtime with RStudio Server
 ################################################################################
-FROM rocker/rstudio:4.4.2
+FROM rocker/rstudio:4.4.2 AS final
 
 LABEL org.opencontainers.image.source="https://github.com/correia-marcos/air_quality" \
       org.opencontainers.image.version="v1.0.0" \
