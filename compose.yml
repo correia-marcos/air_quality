@@ -1,0 +1,31 @@
+# docker-compose.yml
+version: '3.8'
+services:
+  selenium:
+    image: selenium/standalone-chrome:latest
+    ports:
+      - "4444:4444"
+    shm_size: "2g"
+
+  analysis:
+    build:
+      context: .
+      target: final
+    volumes:
+      - .:/air_monitoring
+    working_dir: /air_monitoring
+    depends_on:
+      - selenium
+    ports:
+      - "8787:8787"    # RStudio Server
+    environment:
+      - PASSWORD=secret
+      - USER=RStudio
+      - REMOTE_DRIVER_URL=http://selenium:4444/wd/hub
+    entrypoint: ["/air_monitoring/entrypoint.sh"]
+    command: ["bash"]
+
+# Usage:
+#   docker-compose up --build
+#   # Visit http://localhost:8787 for RStudio
+#   # RStudio user: RStudio | passwd: secret
