@@ -1,20 +1,14 @@
-#!/bin/bash
+# entrypoint.sh (UPDATED)
+#!/usr/bin/env bash
 set -e
 
-# Check if an argument was provided
-if [ "$#" -eq 0 ]; then
-  # No arguments: drop into an interactive shell
-  exec /bin/bash
-fi
-
-# If the first argument is "run", shift it off and run the provided R script(s)
+# 1) If called as 'run', execute R scripts in order
 if [ "$1" = "run" ]; then
   shift
   if [ "$#" -eq 0 ]; then
     echo "Error: No R script specified after 'run'."
     exit 1
   fi
-  # Run each provided R script in order
   for script in "$@"; do
     echo "Running R script: ${script}"
     Rscript "${script}"
@@ -22,10 +16,15 @@ if [ "$1" = "run" ]; then
   exit 0
 fi
 
-# If the first argument is "bash", start an interactive shell
+# 2) If called as 'bash', drop to shell
 if [ "$1" = "bash" ]; then
-  exec /bin/bash
+  exec bash
 fi
 
-# Default: execute any command passed as arguments
+# 3) If no arguments (or 'rserver'), start RStudio Server
+if [ "$#" -eq 0 ] || [ "$1" = "rserver" ]; then
+  exec rserver --server-daemonize=0 --www-port=8787
+fi
+
+# 4) Otherwise, exec whatever was passed
 exec "$@"

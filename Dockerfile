@@ -64,4 +64,4 @@ USER rstudio
 
 # 6) Default entrypoint and command
 ENTRYPOINT ["/air_monitoring/entrypoint.sh"]
-CMD ["bash"]
+CMD ["rserver", "--server-daemonize=0", "--www-port=8787"]
