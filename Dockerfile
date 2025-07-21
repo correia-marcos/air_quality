@@ -45,22 +45,23 @@ RUN apt-get update && apt-get install -y \
     chromium chromium-chromedriver \
   && rm -rf /var/lib/apt/lists/*
 
-# 2) Copy /air_monitoring (code + renv cache) from builder
+# 2) Copy code + renv from builder
 COPY --from=builder /air_monitoring /air_monitoring
-
 WORKDIR /air_monitoring
 
-# 3) Expose RStudio Server and add a healthcheck
+# 3) Entrypoint setup (still root)
+COPY entrypoint.sh /air_monitoring/entrypoint.sh
+RUN chmod +x /air_monitoring/entrypoint.sh \
+ && chown rstudio:staff /air_monitoring/entrypoint.sh
+
+# 4) Expose RStudio Server and add a healthcheck
 EXPOSE 8787
 HEALTHCHECK --interval=30s --timeout=3s \
   CMD curl --fail http://localhost:8787/ || exit 1
 
-# 4) Use non-root user (rocker/rstudio uses 'rstudio' by default)
+# 5) Switch to non-root user
 USER rstudio
 
-# 5) Entrypoint + default command
-COPY entrypoint.sh /air_monitoring/entrypoint.sh
-RUN chmod +x /air_monitoring/entrypoint.sh
-
+# 6) Default entrypoint and command
 ENTRYPOINT ["/air_monitoring/entrypoint.sh"]
 CMD ["bash"]
