@@ -12,7 +12,7 @@ services:
       target: final
     volumes:
       - .:/air_monitoring/
-      - renv_lib:/air_monitoring/renv/library # builder’s installed packages
+      - .renv/renv_lib:/air_monitoring/renv/library # builder’s installed packages
     working_dir: /air_monitoring
     depends_on:
       - selenium
