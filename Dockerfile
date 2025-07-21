@@ -10,6 +10,7 @@ LABEL org.opencontainers.image.source="https://github.com/correia-marcos/air_qua
 # 1) System dependencies + Selenium prerequisites
 RUN apt-get update && apt-get install -y \
     git \
+    cmake libabsl-dev \
     libxml2-dev libssl-dev libcurl4-openssl-dev \
     libgdal-dev libudunits2-dev libpng-dev libfreetype6-dev \
     wget unzip xvfb openjdk-11-jre-headless \
@@ -39,6 +40,7 @@ LABEL org.opencontainers.image.source="https://github.com/correia-marcos/air_qua
 
 # 1) System dependencies (repeat to ensure libs available)
 RUN apt-get update && apt-get install -y \
+    cmake libabsl-dev \
     libxml2-dev libssl-dev libcurl4-openssl-dev \
     libgdal-dev libudunits2-dev libpng-dev libfreetype6-dev \
     wget unzip xvfb openjdk-11-jre-headless \
