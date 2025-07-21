@@ -11,7 +11,7 @@ services:
       context: .
       target: final
     volumes:
-      - .:/air_monitoring
+      - ./data:/air_monitoring/data
     working_dir: /air_monitoring
     depends_on:
       - selenium

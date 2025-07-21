@@ -49,10 +49,10 @@ RUN apt-get update && apt-get install -y \
 COPY --from=builder /air_monitoring /air_monitoring
 WORKDIR /air_monitoring
 
-# 3) Entrypoint setup (still root)
-COPY entrypoint.sh /air_monitoring/entrypoint.sh
-RUN chmod +x /air_monitoring/entrypoint.sh \
- && chown rstudio:staff /air_monitoring/entrypoint.sh
+# 3) Entrypoint setup: normalize line endings & set executable
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN sed -i 's/\r$//' /usr/local/bin/entrypoint.sh \
+ && chmod +x /usr/local/bin/entrypoint.sh
 
 # 4) Expose RStudio Server and add a healthcheck
 EXPOSE 8787
@@ -62,6 +62,7 @@ HEALTHCHECK --interval=30s --timeout=3s \
 # 5) Switch to non-root user
 USER rstudio
 
-# 6) Default entrypoint and command
-ENTRYPOINT ["/air_monitoring/entrypoint.sh"]
+# 6) Default entrypoint and command to launch RStudio Server
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["rserver", "--server-daemonize=0", "--www-port=8787"]
+

@@ -1,4 +1,3 @@
-# entrypoint.sh (UPDATED)
 #!/usr/bin/env bash
 set -e
 
