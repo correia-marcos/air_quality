@@ -19,10 +19,10 @@ services:
       - "8787:8787"    # RStudio Server
     environment:
       - PASSWORD=secret
-      - USER=RStudio
+      - USER=rstudio
       - REMOTE_DRIVER_URL=http://selenium:4444/wd/hub
 
 # Usage:
 #   docker-compose up --build
-#   # Visit http://localhost:8787 for RStudio
-#   # RStudio user: RStudio | passwd: secret
+#   # Visit http://localhost:8787 for rstudio
+#   # RStudio user: rstudio | passwd: secret
