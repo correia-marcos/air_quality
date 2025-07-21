@@ -47,6 +47,7 @@ RUN apt-get update && apt-get install -y \
 
 # 2) Copy code + renv from builder
 COPY --from=builder /air_monitoring /air_monitoring
+RUN chown -R rstudio:staff /air_monitoring          # Give studio ownership of the project
 WORKDIR /air_monitoring
 
 # 3) Entrypoint setup: normalize line endings & set executable
