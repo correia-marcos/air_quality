@@ -59,7 +59,8 @@ EXPOSE 8787
 HEALTHCHECK --interval=30s --timeout=3s \
   CMD curl --fail http://localhost:8787/ || exit 1
 
+# REMOVED PART:
 # 5) Default entrypoint and command to launch RStudio Server
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
-CMD ["rserver", "--server-daemonize=0", "--www-port=8787"]
+# ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+# CMD ["rserver", "--server-daemonize=0", "--www-port=8787"]
 

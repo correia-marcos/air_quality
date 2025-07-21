@@ -18,7 +18,7 @@ services:
     ports:
       - "8787:8787"    # RStudio Server
     environment:
-      - PASSWORD=secret
+      - PASSWORD=secret123
       - USER=rstudio
       - REMOTE_DRIVER_URL=http://selenium:4444/wd/hub
 
