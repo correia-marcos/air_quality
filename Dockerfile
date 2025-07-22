@@ -44,7 +44,7 @@ RUN apt-get update && apt-get install -y \
     libxml2-dev libssl-dev libcurl4-openssl-dev \
     libgdal-dev libudunits2-dev libpng-dev libfreetype6-dev \
     wget unzip xvfb openjdk-11-jre-headless \
-    chromium chromium-chromedriver \
+    chromium chromium-driver \
   && rm -rf /var/lib/apt/lists/*
 
 # 2) Copy code + renv from builder

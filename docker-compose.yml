@@ -9,9 +9,15 @@ services:
     build:
       context: .
       target: final
+    # 1) bind your entire project (so .netrc, .Renviron, .Rprofile, scripts, data, etc.)
     volumes:
       - .:/air_monitoring
-      - renv_lib:/air_monitoring/renv/library
+      # 2) then mount a named volume over renv/ so you keep the built libraries
+      - renv_data:/air_monitoring/renv
+      # 3) optionally mount your credentials read-only
+      - ~/.netrc:/home/rstudio/.netrc:ro
+      - ./.Renviron:/home/rstudio/.Renviron:ro
+      - ./.Rprofile:/home/rstudio/.Rprofile:ro
     working_dir: /air_monitoring
     depends_on:
       - selenium
@@ -22,5 +28,6 @@ services:
       - USER=rstudio
       - REMOTE_DRIVER_URL=http://selenium:4444/wd/hub
 
+# define the named volume that will be initialized from the image’s renv folder
 volumes:
-  renv_lib:
+  renv_data:
