@@ -105,11 +105,13 @@ countries_comparison <- rbind(brazil_comparison,
 # ============================================================================================
 # III: Save data
 # ============================================================================================
+# Ensure output folder exists
+outdir <- here("data", "processed", "comparisons")
+dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
+
 # Save processed dataframe
 write.csv(countries_comparison,
-          file      = here::here("data",
-                                 "processed",
-                                 "comparisons",
+          file      = here::here(outdir,
                                  "countries_comparison_month_idb_nasa_merra2.csv"),
           row.names = FALSE)
 

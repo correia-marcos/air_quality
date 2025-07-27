@@ -29,7 +29,7 @@ end_date                 <- as_date("2023-12-31")
 # II: Process data
 # ============================================================================================
 # Ensure output folder exists
-outdir <- here("data", "raw", "pollution_station_measure")
+outdir <- here("data", "raw", "pollution_ground_stations")
 dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
 
 ses <- start_selenium(
@@ -38,6 +38,23 @@ ses <- start_selenium(
   browser  = "chrome"
 )
 
+
+# make sure these match your docker-compose.yml
+Sys.setenv(
+  REMOTE_DRIVER_HOST = "selenium",
+  REMOTE_DRIVER_PORT = 4444
+)
+
+# connect:
+remDr <- start_selenium_docker(browser = "chrome")
+
+remDr <- RSelenium::remoteDriver(
+  remoteServerAddr = "selenium",
+  port             = 4444L,
+  browserName      = "chrome",
+  path             = "/wd/hub"
+)
+remDr$open()
 
 remDr <- ses$client
 

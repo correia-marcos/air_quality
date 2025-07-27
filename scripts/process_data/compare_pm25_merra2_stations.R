@@ -28,22 +28,22 @@ source(here::here("src", "config_utils_process_data.R"))
 # Open station measure pollution data created previously by the IDB team
 bogota_stations         <- readRDS(here::here("data",
                                               "raw",
-                                              "pollution_station_measure",
+                                              "pollution_ground_stations",
                                               "Bogota",
                                               "pollution_pm10_pm25_data_balanced_2023.rds"))
 ciudad_mexico_stations  <- readRDS(here::here("data",
                                               "raw",
-                                              "pollution_station_measure",
+                                              "pollution_ground_stations",
                                               "Mexico_city",
                                               "pollution_pm25_data_balanced_2023.rds"))
 santiago_stations       <- readRDS(here::here("data",
                                               "raw",
-                                              "pollution_station_measure",
+                                              "pollution_ground_stations",
                                               "Santiago",
                                               "pollution_data_balanced_2023_pm25.rds"))
 sao_paulo_stations      <- readRDS(here::here("data",
                                               "raw",
-                                              "pollution_station_measure",
+                                              "pollution_ground_stations",
                                               "Sao_paulo",
                                               "pollution_data_balanced_2023_pm25.rds"))
 
@@ -68,8 +68,8 @@ sao_paulo_merra2        <- read.csv(here::here("data",
 # Open shapefile with the location of ground-based monitoring stations in Sao Paulo metro area
 stations_in_sp_metro    <- sf::st_read(here::here("data",
                                                   "raw",
-                                                  "cities",
-                                                  "Sao_Paulo_metro_stations")) 
+                                                  "cities_shapefiles",
+                                                  "Sao_Paulo_metro_stations"))
 
 # ============================================================================================
 # II:Process data
@@ -116,30 +116,32 @@ correlation_results <- compute_correlations_for_cities(city_pollution_list)
 # ============================================================================================
 # II:Save data
 # ============================================================================================
+# Ensure output folder exists
+outdir_correlations <- here("data", "processed", "comparisons")
+outdir_m2_stations  <- here("data", "processed", "merra2_stations_pm25")
+
+dir.create(outdir_correlations, recursive = TRUE, showWarnings = FALSE)
+dir.create(outdir_m2_stations,  recursive = TRUE, showWarnings = FALSE)
+
 # Save processed dataframes
 write.csv(correlation_results,
-          file = here::here("data", "processed", "comparisons",
-                            "correlation_pm25_stations_merra2.csv"),
+          file = here::here(outdir_correlations, "correlation_pm25_stations_merra2.csv"),
           row.names = FALSE)
 
 write.csv(bogota_pollution,
-          file = here::here("data", "processed", "merra2_stations_pm25",
-                            "bogota_pm25_stations_merra2.csv"),
+          file = here::here(outdir_m2_stations, "bogota_pm25_stations_merra2.csv"),
           row.names = FALSE)
 
 write.csv(ciudad_mexico_pollution,
-          file = here::here("data", "processed",  "merra2_stations_pm25",
-                            "ciudad_mexico_pm25_stations_merra2.csv"),
+          file = here::here(outdir_m2_stations, "ciudad_mexico_pm25_stations_merra2.csv"),
           row.names = FALSE)
 
 write.csv(santiago_pollution,
-          file = here::here("data", "processed",  "merra2_stations_pm25",
-                            "santiago_pm25_stations_merra2.csv"),
+          file = here::here(outdir_m2_stations, "santiago_pm25_stations_merra2.csv"),
           row.names = FALSE)
 
 write.csv(sao_paulo_pollution,
-          file = here::here("data", "processed",  "merra2_stations_pm25",
-                            "sao_paulo_pm25_stations_merra2.csv"),
+          file = here::here(outdir_m2_stations, "sao_paulo_pm25_stations_merra2.csv"),
           row.names = FALSE)
 
 # Print a success message for when running inside Docker Container

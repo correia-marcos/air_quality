@@ -25,7 +25,7 @@ source(here::here("src", "config_utils_process_data.R"))
 # I: Import data
 # ============================================================================================
 # Create list of all raster files from MERRA2
-nc_files             <- list.files(here::here("data", "raw","merra2"), full.names = TRUE)
+nc_files             <- list.files(here::here("data", "raw", "merra2"), full.names = TRUE)
 
 # Open city shapefiles
 bogota               <- sf::st_read(here::here("data", "raw", "cities", "Bogota_metro"))
@@ -73,6 +73,10 @@ sao_paulo_results <- process_merra2_city_hourly_parallel(
 # ============================================================================================
 # III: Save data
 # ============================================================================================
+# Ensure output folder exists
+outdir <- here("data", "raw", "merra2_aerosol_products")
+dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
+
 # Save processed dataframes
 write.csv(bogota_results,
           file      = here::here("data", "interim", "bogota_panel.csv"),

@@ -22,13 +22,12 @@ source(here::here("src", "config_utils_download_data.R"))
 # ============================================================================================
 # I: Import (create) data
 # ============================================================================================
-
 # If we’re inside RStudio or other IDE (interactive format), supply sensible defaults:
 if (interactive()) {
   start_date      <- "2023-01-01"
   end_date        <- "2023-12-31"
   dataset_version <- "M2T1NXAER.5.12.4"
-  destination_dir <- "data/raw/merra2"
+  destination_dir <- "data/raw/merra2_aerosol_products"
   var_name        <- "tavg1_2d_aer_Nx"
   } else {
   # running via Rscript / Docker entrypoint
@@ -47,6 +46,10 @@ if (interactive()) {
 # ============================================================================================
 # II: Process and download data 
 # ============================================================================================
+# Ensure output folder exists
+outdir <- here("data", "raw", "merra2_aerosol_products")
+dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
+
 # Generate URLs
 urls    <- generate_merra2_urls(
             start_date      = start_date,
