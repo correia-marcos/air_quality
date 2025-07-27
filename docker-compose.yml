@@ -2,7 +2,7 @@ services:
   selenium:
     image: seleniarm/standalone-chromium:latest
     ports:
-      - "4444:4444"
+      - "4445:4444"
     shm_size: "2g"
 
   analysis:
@@ -10,10 +10,12 @@ services:
       context: .
       target: final
     volumes:
-      # 1) your entire project for code, data, .Renviron, .netrc, .Rprofile, etc.
-      - .:/air_monitoring
-      # 2) overlay only the renv library so builder-installed packages persist
-      - renv_lib:/air_monitoring/renv/library
+      - ./src:/air_monitoring/src
+      - ./scripts:/air_monitoring/scripts
+      - ./data:/air_monitoring/data
+      - renv_data:/air_monitoring/renv    # full renv from builder
+      - ./.Renviron       :/home/rstudio/.Renviron:ro
+      - ~/.netrc          :/home/rstudio/.netrc:ro
     working_dir: /air_monitoring
     depends_on:
       - selenium
@@ -22,7 +24,11 @@ services:
     environment:
       - PASSWORD=secret123
       - USER=rstudio
-      - REMOTE_DRIVER_URL=http://selenium:4444/wd/hub
-
+      - REMOTE_DRIVER_URL=http://selenium:4444
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://selenium:4444/wd/hub/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 volumes:
-  renv_lib:
+  renv_data:
