@@ -276,6 +276,55 @@ start_selenium <- function(
 
 
 # --------------------------------------------------------------------------------------------
+# Function: start_selenium_docker
+# @Arg      : host    — string; hostname of your Selenium container
+#                        (default Sys.getenv("REMOTE_DRIVER_HOST","selenium"))
+# @Arg      : port    — integer; port on which the Selenium container listens
+#                        (default Sys.getenv("REMOTE_DRIVER_PORT",4444))
+# @Arg      : browser — character; browser name, “chrome” or “firefox” (default "chrome")
+# @Output   : RSelenium remoteDriver client, already opened & with a 5 s implicit wait
+# @Purpose  : Connect to a standalone-container Selenium service rather than
+#             launching a local driver binary. Tries both “/” and “/wd/hub” paths.
+# @Written  : 18/07/2025
+# @Author   : Marcos Paulo
+# --------------------------------------------------------------------------------------------
+start_selenium_docker <- function(
+    host    = Sys.getenv("REMOTE_DRIVER_HOST", "selenium"),
+    port    = as.integer(Sys.getenv("REMOTE_DRIVER_PORT", 4444)),
+    browser = "chrome"
+) {
+  # 1) path candidates
+  paths_to_try <- c("", "wd/hub", "/wd/hub")
+
+  # 2) attempt each path
+  for (p in paths_to_try) {
+    message(sprintf("🔌 Trying Selenium at %s:%s (path = '%s') …", host, port, p))
+    
+    rd <- remoteDriver(
+      remoteServerAddr = host,
+      port             = port,
+      browserName      = browser,
+      path             = p
+    )
+    
+    tryCatch({
+      rd$open()
+      sid <- rd$getSession()[["sessionId"]]
+      if (is.null(sid) || nchar(sid) == 0) stop("No session ID received")
+      message("✅ Connected! Session ID:", sid)
+      rd$setImplicitWaitTimeout(5000L)
+      return(rd)
+    }, error = function(e) {
+      message("❌ Error connecting:", e$message)
+    })
+  }
+  
+  stop("All attempts to connect to Selenium failed.")
+  
+}
+
+
+# --------------------------------------------------------------------------------------------
 # Function: stop_selenium
 # @Arg   : ses — the list returned by start_selenium()
 # @Purpose: close the browser session and kill the local Selenium process (if any)
