@@ -23,6 +23,7 @@ packages <- c(
   "purrr",
   "rvest",
   "readr",
+  "remotes",
   "stringr",
   "tidyr"
   )
@@ -44,7 +45,7 @@ for (pkg in packages) {
 rm(packages, pkg, toy_protect)
 
 # Get special version of Selenium
-renv::install("ropensci/RSelenium")
+remotes::install_github("ropensci/RSelenium")
 library(RSelenium)
 # ############################################################################################
 # Functions
@@ -309,7 +310,7 @@ start_selenium_docker <- function(
     remoteServerAddr  = host,
     port              = port,
     browserName       = browser,
-    path              = "/wd/hub",
+    path              = "",
     extraCapabilities = caps
   )
   
