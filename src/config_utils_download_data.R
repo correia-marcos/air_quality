@@ -24,7 +24,6 @@ packages <- c(
   "rvest",
   "readr",
   "stringr",
-  "RSelenium",
   "tidyr"
   )
 
@@ -32,6 +31,8 @@ packages <- c(
 options(repos = c(CRAN = "https://cran.rstudio.com/"))
 
 # Install (if needed) and load packages
+toy_protect <- requireNamespace("renv", quietly = TRUE)
+if (!toy_protect) stop("Please ensure renv is installed before running this script.")
 for (pkg in packages) {
   if (!requireNamespace(pkg, quietly = TRUE)) {
     renv::install(pkg)
@@ -40,8 +41,11 @@ for (pkg in packages) {
 }
 
 # Clear objects on environment
-rm(packages, pkg)
+rm(packages, pkg, toy_protect)
 
+# Get special version of Selenium
+renv::install("ropensci/RSelenium")
+library(RSelenium)
 # ############################################################################################
 # Functions
 # ############################################################################################
@@ -281,7 +285,7 @@ start_selenium <- function(
 #                        (default Sys.getenv("REMOTE_DRIVER_HOST","selenium"))
 # @Arg      : port    — integer; port on which the Selenium container listens
 #                        (default Sys.getenv("REMOTE_DRIVER_PORT",4444))
-# @Arg      : browser — character; browser name, “chrome” or “firefox” (default "chrome")
+# @Arg      : browser — character; browser name, “chrome” or “firefox” (default "firefox")
 # @Output   : RSelenium remoteDriver client, already opened & with a 5 s implicit wait
 # @Purpose  : Connect to a standalone-container Selenium service rather than
 #             launching a local driver binary. Tries both “/” and “/wd/hub” paths.
@@ -291,35 +295,35 @@ start_selenium <- function(
 start_selenium_docker <- function(
     host    = Sys.getenv("REMOTE_DRIVER_HOST", "selenium"),
     port    = as.integer(Sys.getenv("REMOTE_DRIVER_PORT", 4444)),
-    browser = "chrome"
+    browser = "firefox"
 ) {
-  # 1) path candidates
-  paths_to_try <- c("", "wd/hub", "/wd/hub")
-
-  # 2) attempt each path
-  for (p in paths_to_try) {
-    message(sprintf("🔌 Trying Selenium at %s:%s (path = '%s') …", host, port, p))
-    
-    rd <- remoteDriver(
-      remoteServerAddr = host,
-      port             = port,
-      browserName      = browser,
-      path             = p
+  # Build a W3C capabilities payload
+  caps <- list(
+    alwaysMatch = list(
+      browserName  = browser,
+      platformName = "linux"
     )
-    
-    tryCatch({
-      rd$open()
-      sid <- rd$getSession()[["sessionId"]]
-      if (is.null(sid) || nchar(sid) == 0) stop("No session ID received")
-      message("✅ Connected! Session ID:", sid)
-      rd$setImplicitWaitTimeout(5000L)
-      return(rd)
-    }, error = function(e) {
-      message("❌ Error connecting:", e$message)
-    })
-  }
+  )
   
-  stop("All attempts to connect to Selenium failed.")
+  rd <- remoteDriver(
+    remoteServerAddr  = host,
+    port              = port,
+    browserName       = browser,
+    path              = "/wd/hub",
+    extraCapabilities = caps
+  )
+  
+  # Try opening a session
+  rd$open()
+  sid <- rd$getSession()[["sessionId"]]
+  if (is.null(sid) || nchar(sid) == 0) {
+    stop("❌ Selenium did not return a session ID.")
+  }
+  message("✅ Connected to Selenium! Session ID: ", sid)
+  
+  # Set a 5-second implicit wait for element lookups
+  rd$setImplicitWaitTimeout(5000L)
+  rd
   
 }
 

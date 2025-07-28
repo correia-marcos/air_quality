@@ -28,38 +28,20 @@ end_date                 <- as_date("2023-12-31")
 # ============================================================================================
 # II: Process data
 # ============================================================================================
-# Ensure output folder exists
-outdir <- here("data", "raw", "pollution_ground_stations")
-dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
-
-ses <- start_selenium(
-  jar_path = Sys.getenv("SELENIUM_JAR"),
-  port     = 4445,    # you can pick any free port
-  browser  = "chrome"
-)
-
-
-# make sure these match your docker-compose.yml
+# Set host & port before calling function
 Sys.setenv(
   REMOTE_DRIVER_HOST = "selenium",
-  REMOTE_DRIVER_PORT = 4444
+  REMOTE_DRIVER_PORT = 4444  # Use container port 4444, not host port 4445
 )
 
-# connect:
-remDr <- start_selenium_docker(browser = "chrome")
+# Apply function to start selenium - spin up remote driver
+remDr <- start_selenium_docker(browser = "firefox")
 
-remDr <- RSelenium::remoteDriver(
-  remoteServerAddr = "selenium",
-  port             = 4444L,
-  browserName      = "chrome",
-  path             = "/wd/hub"
-)
-remDr$open()
-
-remDr <- ses$client
-
+# Check Status
 remDr$getStatus()
+
 remDr$navigate(base_url)
+
 
 active_cb <- remDr$findElement("css", "#ActiveStations")
 
@@ -69,5 +51,9 @@ stop_selenium(ses)
 # ============================================================================================
 # III: Save data
 # ============================================================================================
+# Ensure output folder exists
+outdir <- here("data", "raw", "pollution_ground_stations")
+dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
+
 # Save table into a csv
 

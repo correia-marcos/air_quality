@@ -25,13 +25,18 @@ source(here::here("src", "config_utils_process_data.R"))
 # I: Import data
 # ============================================================================================
 # Create list of all raster files from MERRA2
-nc_files             <- list.files(here::here("data", "raw", "merra2"), full.names = TRUE)
+nc_files             <- list.files(here::here("data", "raw", "merra2_aerosol_products"), 
+                                   full.names = TRUE)
 
 # Open city shapefiles
-bogota               <- sf::st_read(here::here("data", "raw", "cities", "Bogota_metro"))
-ciudad_mexico        <- sf::st_read(here::here("data", "raw", "cities", "Mexico_city"))
-santiago             <- sf::st_read(here::here("data", "raw", "cities", "Santiago")) 
-sao_paulo            <- sf::st_read(here::here("data", "raw", "cities", "Sao_Paulo"))
+bogota               <- sf::st_read(here::here("data", "raw",
+                                               "cities_shapefiles", "Bogota_metro"))
+ciudad_mexico        <- sf::st_read(here::here("data", "raw",
+                                               "cities_shapefiles", "Mexico_city"))
+santiago             <- sf::st_read(here::here("data", "raw",
+                                               "cities_shapefiles", "Santiago")) 
+sao_paulo            <- sf::st_read(here::here("data", "raw",
+                                               "cities_shapefiles", "Sao_Paulo"))
 
 # ============================================================================================
 # II: Process data
@@ -74,7 +79,7 @@ sao_paulo_results <- process_merra2_city_hourly_parallel(
 # III: Save data
 # ============================================================================================
 # Ensure output folder exists
-outdir <- here("data", "raw", "merra2_aerosol_products")
+outdir <- here("data", "interim", "cities_m2_aerosols")
 dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
 
 # Save processed dataframes
