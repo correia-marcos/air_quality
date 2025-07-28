@@ -28,6 +28,8 @@ end_date                 <- as_date("2023-12-31")
 # ============================================================================================
 # II: Process data
 # ============================================================================================
+# Begin session on Selenium
+
 # Set host & port before calling function
 Sys.setenv(
   REMOTE_DRIVER_HOST = "selenium",
@@ -42,6 +44,24 @@ remDr$getStatus()
 
 remDr$navigate(base_url)
 
+
+
+
+
+
+
+rd <- remoteDriver(
+  remoteServerAddr = "selenium",
+  port             = 4444L,
+  path             = "/wd/hub",
+  capabilities     = list(
+    alwaysMatch = list(
+      browserName  = "firefox",
+      platformName = "linux"
+    )
+  )
+)
+rd$open()  # now returns a valid sessionId
 
 active_cb <- remDr$findElement("css", "#ActiveStations")
 

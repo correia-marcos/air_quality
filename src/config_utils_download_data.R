@@ -23,7 +23,6 @@ packages <- c(
   "purrr",
   "rvest",
   "readr",
-  "remotes",
   "stringr",
   "tidyr"
   )
