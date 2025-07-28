@@ -46,19 +46,28 @@ remDr$navigate(base_url)
 
 
 
+# 2. Point to the in-Docker Selenium service
+session <- SeleniumSession$new(
+  browser = "firefox",     # you want Firefox
+  host    = "selenium",    # Docker service name
+  port    = 4444L          # internal Selenium port
+)
 
 
+session$navigate(base_url)
 
+session1 <- session$find_element("css selector", "#stationFilter > div:nth-child(2)")
+session1$click()
 
-rd <- remoteDriver(
+remDr <- remoteDriver(
   remoteServerAddr = "selenium",
-  port             = 4444L,
-  path             = "/wd/hub",
-  capabilities     = list(
-    alwaysMatch = list(
-      browserName  = "firefox",
-      platformName = "linux"
-    )
+  port = 4444L,
+  browserName = "firefox",
+  path = "/wd/hub",
+  extraCapabilities = list(
+    browserName = "firefox",
+    platformName = "LINUX",
+    "moz:firefoxOptions" = list(binary = "/opt/firefox/firefox")
   )
 )
 rd$open()  # now returns a valid sessionId
