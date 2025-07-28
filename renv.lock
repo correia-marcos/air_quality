@@ -59,8 +59,13 @@
     "RSelenium": {
       "Package": "RSelenium",
       "Version": "1.7.9",
-      "Source": "Repository",
-      "Repository": "CRAN",
+      "Source": "GitHub",
+      "RemoteType": "github",
+      "RemoteHost": "api.github.com",
+      "RemoteUsername": "ropensci",
+      "RemoteRepo": "RSelenium",
+      "RemoteRef": "master",
+      "RemoteSha": "6071311243abe28f132e80097fd7ab3c89e27ae1",
       "Requirements": [
         "R",
         "caTools",
@@ -69,7 +74,7 @@
         "utils",
         "wdman"
       ],
-      "Hash": "220fcb4ef5aa02aecbeaf3d9617d361b"
+      "Hash": "094d2a1e8f73e3d000a89384e495880c"
     },
     "Rcpp": {
       "Package": "Rcpp",
