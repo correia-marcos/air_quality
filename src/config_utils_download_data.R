@@ -23,6 +23,7 @@ packages <- c(
   "purrr",
   "rvest",
   "readr",
+  "selenium",
   "stringr",
   "tidyr"
   )
@@ -44,8 +45,8 @@ for (pkg in packages) {
 rm(packages, pkg, toy_protect)
 
 # Get special version of Selenium
-remotes::install_github("ropensci/RSelenium")
-library(RSelenium)
+# remotes::install_github("ropensci/RSelenium")
+# library(RSelenium)
 # ############################################################################################
 # Functions
 # ############################################################################################
