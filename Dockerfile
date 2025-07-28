@@ -40,13 +40,23 @@ LABEL org.opencontainers.image.source="https://github.com/correia-marcos/air_qua
       maintainer="Marcos Paulo Rodrigues Correia <marcospaulorcorreia@gmail.com>"
 
 # 1) System deps + curl (for healthchecks / manual tests)
-RUN apt-get update && apt-get install -y \
-    curl \
-    cmake libabsl-dev \
-    libxml2-dev libssl-dev libcurl4-openssl-dev \
-    libgdal-dev libudunits2-dev libpng-dev libfreetype6-dev \
-    wget unzip xvfb openjdk-11-jre-headless \
-  && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+      curl \
+      cmake libabsl-dev \
+      libxml2-dev libssl-dev libcurl4-openssl-dev \
+      libgdal-dev libudunits2-dev libpng-dev libfreetype6-dev \
+      wget unzip xvfb openjdk-11-jre-headless \
+      firefox-esr               \
+      ca-certificates           \
+    && rm -rf /var/lib/apt/lists/* \
+    \
+    # Download & install Geckodriver (matches your Firefox version)
+    && GDRIVER_VERSION=0.33.0 \
+    && wget -qO- https://github.com/mozilla/geckodriver/releases/download/v${GDRIVER_VERSION}/geckodriver-v${GDRIVER_VERSION}-linux64.tar.gz \
+         | tar xz -C /usr/local/bin \
+    && chmod +x /usr/local/bin/geckodriver \
+    && rm -rf /var/lib/apt/lists/*
 
 # 2) Re-export renv paths so the autoloader picks them up at runtime
 ENV RENV_PATHS_CACHE=/air_monitoring/renv/.cache
