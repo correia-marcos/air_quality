@@ -1,6 +1,6 @@
 services:
   selenium:
-    image: selenium/standalone-firefox:4.27.0
+    image: selenium/standalone-firefox:latest
     ports:
       - "4445:4444"
     shm_size: "2g"
@@ -19,9 +19,9 @@ services:
       - ./src:/air_monitoring/src
       - ./scripts:/air_monitoring/scripts
       - ./data:/air_monitoring/data
-      - renv_data:/air_monitoring/renv    # full renv from builder
-      - ./.Renviron       :/home/rstudio/.Renviron:ro
-      - ~/.netrc          :/home/rstudio/.netrc:ro
+      - renv_data:/air_monitoring/renv
+      - ./.Renviron:/home/rstudio/.Renviron:ro
+      - ~/.netrc:/home/rstudio/.netrc:ro
     working_dir: /air_monitoring
     depends_on:
       selenium:
@@ -37,5 +37,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
 volumes:
   renv_data:

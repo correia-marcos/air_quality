@@ -39,7 +39,7 @@ LABEL org.opencontainers.image.source="https://github.com/correia-marcos/air_qua
       org.opencontainers.image.version="v1.0.0" \
       maintainer="Marcos Paulo Rodrigues Correia <marcospaulorcorreia@gmail.com>"
 
-# 1) System deps + curl (for healthchecks / manual tests)
+# 1) System deps + curl, Xvfb, Java headless, etc.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
       curl \
@@ -47,16 +47,11 @@ RUN apt-get update && \
       libxml2-dev libssl-dev libcurl4-openssl-dev \
       libgdal-dev libudunits2-dev libpng-dev libfreetype6-dev \
       wget unzip xvfb openjdk-11-jre-headless \
-      firefox-esr               \
-      ca-certificates           \
+      ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
-    \
-    # Download & install Geckodriver (matches your Firefox version)
-    && GDRIVER_VERSION=0.33.0 \
-    && wget -qO- https://github.com/mozilla/geckodriver/releases/download/v${GDRIVER_VERSION}/geckodriver-v${GDRIVER_VERSION}-linux64.tar.gz \
-         | tar xz -C /usr/local/bin \
-    && chmod +x /usr/local/bin/geckodriver \
-    && rm -rf /var/lib/apt/lists/*
+    && curl -L https://github.com/mozilla/geckodriver/releases/download/v0.30.0/geckodriver-v0.30.0-linux64.tar.gz -o geckodriver.tar.gz \
+    && tar xzf geckodriver.tar.gz -C /usr/local/bin \
+    && chmod +x /usr/local/bin/geckodriver
 
 # 2) Re-export renv paths so the autoloader picks them up at runtime
 ENV RENV_PATHS_CACHE=/air_monitoring/renv/.cache
@@ -75,18 +70,6 @@ HEALTHCHECK --interval=30s --timeout=3s \
   CMD curl --fail http://localhost:8787/ || exit 1
 
 # 5) Let entrypoint.sh to be used
-COPY entrypoint.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/entrypoint.sh
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
-
-WORKDIR /air_monitoring
-
-# 4) Expose & healthcheck
-EXPOSE 8787
-HEALTHCHECK --interval=30s --timeout=3s \
-  CMD curl --fail http://localhost:8787/ || exit 1
-
-# 6) Let entrypoint.sh to be used
 COPY entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/entrypoint.sh
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
