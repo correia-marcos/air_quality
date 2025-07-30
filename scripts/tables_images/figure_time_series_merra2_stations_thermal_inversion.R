@@ -2,14 +2,14 @@
 # IDB: Air monitoring
 # ============================================================================================
 # @Goal: Visualize and compare PM2.5 time series data from MERRA-2 and ground station 
-# measurements for selected Latin American cities.
+# measurements in Santiago for days without thermal inversion.
 # 
 # @Description: This script imports processed time series data for MERRA-2 and ground-based
-# PM2.5 measurements for four cities (Bogotá, Ciudad de México, Santiago,  and São Paulo). It
-# then generates two sets of visualizations: one set using a rolling window (smoothed data) and
-# another set with raw data. Each plot is annotated with the Pearson (or specified) correlation
-# between the MERRA-2 and station series. Finally, the plots are saved as PDF files in the
-# designated results folder.
+# PM2.5 measurements for Santiago. It then generates two sets of visualizations: one set using a
+# rolling window (smoothed data) and another set with raw data. Each plot is annotated with the 
+# Pearson (or specified) correlation between the MERRA-2 and station series. The plots measure 
+# the relation between both datasets when there is no Thermal Inversion in Santiago.
+# Finally, the plots are saved as PDF files in the designated results folder.
 # 
 # @Summary: This program performs the following steps:
 #   I.   Import and Load the processed time series data for each city.
@@ -77,14 +77,24 @@ santiago_raw_series <- plot_pm25_timeseries_smooth(
   color_stations = "darkblue"
 )
 
-# ====================================================================================
-santiago_original_raw_series <- plot_pm25_timeseries_smooth(
-  df             = santiago_pm25,
-  region_name    = "Santiago",
-  apply_rolling  = FALSE,
-  window_hours   = 24,
-  corr_method    = "pearson",
-  color_merra2   = "darkred",
-  color_stations = "darkblue"
+# ============================================================================================
+# III: Save data
+# ============================================================================================
+# Ensure output folder exists
+outdir <- here("results", "figures", "m2_stations_removed_ti_days")
+dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
+
+# Save the plots
+ggsave(
+  filename = here::here(outdir, "santiago_24_hrs_ma_m2_stations_thermal_inversion.pdf"),
+  plot = santiago_plot_series,
+  device = cairo_pdf,
+  width = 16, height = 9, dpi = 300
 )
 
+ggsave(
+  filename = here::here(outdir, "santiago_raw_m2_stations_thermal_inversion.pdf"),
+  plot = santiago_plot_series,
+  device = cairo_pdf,
+  width = 16, height = 9, dpi = 300
+)

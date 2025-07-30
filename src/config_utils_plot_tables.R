@@ -49,7 +49,7 @@ rm(packages, pkg)
 # Set a global theme with Palatino as the base font
 font_add("Palatino", regular = here::here("fonts", "texgyrepagella-regular.otf"))
 showtext_auto()
-
+theme_set(theme_minimal(base_family = "Palatino", base_size = 14))
 # ############################################################################################
 # Functions
 # ############################################################################################
@@ -79,7 +79,7 @@ plot_merra2_grid_city <- function(shapefile, nc_file, city_name) {
   # shapefile_buffered <- st_buffer(shapefile, dist = buffer_distance)
   
   # Transform shapefile to match MERRA-2 CRS if necessary
-  crs(nc_data) <- "EPSG:4326"
+  # crs(nc_data) <- "EPSG:4326"
   shapefile_proj <- st_transform(shapefile, crs = crs(nc_data))
   
   # Crop MERRA-2 data to the city's extent for visualization
@@ -177,9 +177,9 @@ plot_variable_across_cities <- function(df_list,
       x = var_label,
       y = "Density"
     ) +
+    theme_minimal(base_family = "Palatino", base_size = 14) +
     scale_color_brewer(palette = "Set1") +
     scale_fill_brewer(palette = "Set1") +
-    theme_set(theme_minimal(base_family = "Palatino", base_size = 14)) +
     theme(
       legend.title = element_blank(),
       legend.position = "top",
@@ -235,7 +235,7 @@ plot_variable_across_cities <- function(df_list,
   }
   
   print(p)
-  return(p)
+  invisible(p)
 }
 
 
@@ -382,7 +382,7 @@ plot_city_distributions <- function(df, city_name) {
         title = paste(city_name, "-", variable_descriptions[[var]]),
         x = variable_descriptions[[var]],
         y = "Density") +
-      theme_set(theme_minimal(base_family = "Palatino", base_size = 14)) +
+      theme_minimal(base_family = "Palatino", base_size = 14) +
       theme(
         axis.title = element_text(color = "black", face = "bold"),
         axis.text = element_text(color = "black"),
@@ -413,7 +413,7 @@ plot_city_distributions <- function(df, city_name) {
     plot_list[[var]] <- p
   }
   
-  # print(plot_list)
+  print(plot_list)
   
   return(plot_list)
 }
@@ -564,6 +564,7 @@ plot_pm25_timeseries_smooth <- function(df,
     hjust = 1, vjust = 1, size = 3, color = "black"
   )
   
+  print(p)
   return(p)
 }
 
@@ -680,7 +681,7 @@ plot_hourly_avg_pollution <- function(df,
     annotate("text", x = 36, y = 23, label = "IT1", vjust = -0.5,
              color = "darkred", size = 3)
   
-  
+  print(p)
   return(p)
 }
 
@@ -746,6 +747,7 @@ plot_hourly_ridgeline_pollution <- function(df,
     annotate("text", x = 78.5, y = max_hour + 2.5, label = "IT1", vjust = -.5, 
              color = "darkred", size = 3)
   
+  print(p)
   return(p)
 }
 

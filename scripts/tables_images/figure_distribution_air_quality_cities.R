@@ -49,8 +49,9 @@ all_plot_lists <- list(
   Santiago = santiago_distribution,
   Sao_Paulo = sao_paulo_distribution)
 
-# Define the output directory
+# Define the output directory and ensure it exists
 output_dir <- here::here("results", "figures", "cities_aerosols")
+dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
 # Save each list of plots into a separate PDF
 for (city_name in names(all_plot_lists)) {

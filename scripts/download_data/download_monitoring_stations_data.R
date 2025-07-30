@@ -47,7 +47,7 @@ remDr$navigate(base_url)
 
 
 # 2. Point to the in-Docker Selenium service
-session <- SeleniumSession$new(
+session <- selenium::SeleniumSession$new(
   browser = "firefox",     # you want Firefox
   host    = "selenium",    # Docker service name
   port    = 4444L          # internal Selenium port

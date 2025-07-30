@@ -93,11 +93,12 @@ plot_time_spans_it1
 # ============================================================================================
 # II: Save data
 # ============================================================================================
+# Ensure output folder exists
+outdir <- here("results", "figures", "hour_above_iterim_target")
+dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
+
 # Save plot of time span distribution of high pollution episodes
-ggsave(filename = here("results",
-                       "figures",
-                       "hour_above_iterim_target",
-                       "distribution_hours_above_IT1.pdf"),
+ggsave(filename = here(outdir, "distribution_hours_above_IT1.pdf"),
        plot     = plot_time_spans_it1 +
          labs(title = NULL) +
          theme(plot.title = element_blank()),
@@ -106,10 +107,7 @@ ggsave(filename = here("results",
        height   = 9,
        dpi      = 300)
 
-ggsave(filename = here("results",
-                       "figures",
-                       "hour_above_iterim_target",
-                       "distribution_hours_above_IT2.pdf"),
+ggsave(filename = here(outdir, "distribution_hours_above_IT2.pdf"),
        plot     = plot_time_spans_it2 +
          labs(title = NULL) +
          theme(plot.title = element_blank()),

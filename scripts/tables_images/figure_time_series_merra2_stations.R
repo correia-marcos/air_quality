@@ -128,30 +128,34 @@ sao_paulo_raw_series <- plot_pm25_timeseries_smooth(
 # ============================================================================================
 # II: Save data
 # ============================================================================================
+# Ensure output folder exists
+outdir <- here("results", "figures", "time_series")
+dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
+
 # Save rolling window plots
 ggsave(
-  filename = here("results", "figures", "time_series", "bogota_moving_average_pm25.pdf"),
+  filename = here(outdir, "bogota_moving_average_pm25.pdf"),
   plot     = bogota_plot_series,
   device   = cairo_pdf, 
   width    = 16, height = 9, dpi = 300
   )
 
 ggsave(
-  filename = here("results", "figures", "time_series", "ciudad_mexico_moving_average_pm25.pdf"),
+  filename = here(outdir, "ciudad_mexico_moving_average_pm25.pdf"),
   plot     = ciudad_mexico_plot_series,
   device   = cairo_pdf, 
   width    = 16, height = 9, dpi = 300
   )
 
 ggsave(
-  filename = here("results", "figures", "time_series", "santiago_moving_average_pm25.pdf"),
+  filename = here(outdir, "santiago_moving_average_pm25.pdf"),
   plot     = santiago_plot_series,
   device   = cairo_pdf, 
   width    = 16, height = 9, dpi = 300
   )
 
 ggsave(
-  filename = here("results", "figures", "time_series", "sao_paulo_moving_average_pm25.pdf"), 
+  filename = here(outdir, "sao_paulo_moving_average_pm25.pdf"), 
   plot     = sao_paulo_plot_series,
   device   = cairo_pdf, 
   width    = 16, height = 9, dpi = 300
@@ -159,28 +163,28 @@ ggsave(
 
 # Save raw plots
 ggsave(
-  filename = here("results", "figures", "time_series", "bogota_time_series_pm25.pdf"),
+  filename = here(outdir, "bogota_time_series_pm25.pdf"),
   plot     = bogota_raw_series,
   device   = cairo_pdf,
   width    = 16, height = 9, dpi = 300
   )
 
 ggsave(
-  filename = here("results", "figures", "time_series", "ciudad_mexico_time_series_pm25.pdf"),
+  filename = here(outdir, "ciudad_mexico_time_series_pm25.pdf"),
   plot     = ciudad_mexico_raw_series,
   device   = cairo_pdf,
   width    = 16, height = 9, dpi = 300
   )
 
 ggsave(
-  filename = here("results", "figures", "time_series", "santiago_time_series_pm25.pdf"),
+  filename = here(outdir, "santiago_time_series_pm25.pdf"),
   plot     = santiago_raw_series,
   device   = cairo_pdf,
   width    = 16, height = 9, dpi = 300
   )
 
 ggsave(
-  filename = here("results", "figures", "time_series", "sao_paulo_time_series_pm25.pdf"),
+  filename = here(outdir, "sao_paulo_time_series_pm25.pdf"),
   plot     = sao_paulo_raw_series,
   device   = cairo_pdf,
   width    = 16, height = 9, dpi = 300

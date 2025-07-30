@@ -24,10 +24,10 @@ source(here::here("src", "config_utils_plot_tables.R"))
 # I: Import data
 # ============================================================================================
 # Open city shapefiles and convert their CRS
-bogota        <- sf::st_read(here::here("data", "raw", "cities", "Bogota_metro"))
-ciudad_mexico <- sf::st_read(here::here("data", "raw", "cities", "Mexico_city"))
-santiago      <- sf::st_read(here::here("data", "raw", "cities", "Santiago"))
-sao_paulo     <- sf::st_read(here::here("data", "raw", "cities", "Sao_Paulo"))
+bogota        <- sf::st_read(here::here("data", "raw", "cities_shapefiles", "Bogota_metro"))
+ciudad_mexico <- sf::st_read(here::here("data", "raw", "cities_shapefiles", "Mexico_city"))
+santiago      <- sf::st_read(here::here("data", "raw", "cities_shapefiles", "Santiago"))
+sao_paulo     <- sf::st_read(here::here("data", "raw", "cities_shapefiles", "Sao_Paulo"))
 
 # Open Countries and continent shapefiles
 north_america <- ne_countries(continent = "North America", returnclass = "sf")
@@ -57,6 +57,10 @@ latin_america_map <- plot_latin_america_map(
 # ============================================================================================
 # II: Save data
 # ============================================================================================
+# Ensure output folder exists
+outdir <- here("results", "figures", "maps")
+dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
+
 # Save plot
 ggsave(here::here("results", "figures", "maps", "latin_america_cities.pdf"),
        latin_america_map,

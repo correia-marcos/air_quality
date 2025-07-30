@@ -25,15 +25,19 @@ source(here::here("src", "config_utils_process_data.R"))
 # Open panel data for each city
 bogota        <- read.csv(here::here("data",
                                      "interim",
+                                     "cities_m2_aerosols",
                                      "bogota_panel.csv"))
 ciudad_mexico <- read.csv(here::here("data",
                                      "interim",
+                                     "cities_m2_aerosols",
                                      "ciudad_mexico_panel.csv"))
 santiago      <- read.csv(here::here("data",
                                      "interim",
+                                     "cities_m2_aerosols",
                                      "santiago_panel.csv"))
 sao_paulo     <- read.csv(here::here("data",
                                      "interim",
+                                     "cities_m2_aerosols",
                                      "sao_paulo_panel.csv"))
 # ============================================================================================
 # II: Process data
@@ -47,18 +51,22 @@ sao_paulo     <- convert_and_add_pm25(sao_paulo)
 # ============================================================================================
 # III: Save data
 # ============================================================================================
+# Ensure output folder exists
+outdir <- here("data", "processed", "merra2_pm25")
+dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
+
 # Save processed dataframes
 write.csv(bogota,
-          file = here::here("data", "processed", "merra2_pm25", "bogota_pm25.csv"),
+          file = here::here(outdir, "bogota_pm25.csv"),
           row.names = FALSE)
 write.csv(ciudad_mexico,
-          file = here::here("data", "processed", "merra2_pm25", "ciudad_mexico_pm25.csv"), 
+          file = here::here(outdir, "ciudad_mexico_pm25.csv"), 
           row.names = FALSE)
 write.csv(santiago,
-          file = here::here("data", "processed", "merra2_pm25", "santiago_pm25.csv"),
+          file = here::here(outdir, "santiago_pm25.csv"),
           row.names = FALSE)
 write.csv(sao_paulo,
-          file = here::here("data", "processed", "merra2_pm25", "sao_paulo_pm25.csv"), 
+          file = here::here(outdir, "sao_paulo_pm25.csv"), 
           row.names = FALSE)
 
 # Print a success message for when running inside Docker Container

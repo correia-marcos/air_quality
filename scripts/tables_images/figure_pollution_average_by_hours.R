@@ -85,31 +85,34 @@ sao_paulo_ridge_plot     <- plot_hourly_ridgeline_pollution(df = sao_paulo_pm25,
 # ============================================================================================
 # II: Save data
 # ============================================================================================
+# Ensure output folder exists
+outdir <- here("results", "figures", "hour_average")
+dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
 
 # Save bar plots
 ggsave(
-  filename = here::here("results", "figures", "hour_average", "bogota_bar_plot.pdf"),
+  filename = here::here(outdir, "bogota_bar_plot.pdf"),
   plot     = bogota_bar,
   device   = cairo_pdf,
   width    = 16, height = 9, dpi = 300
 )
 
 ggsave(
-  filename = here::here("results", "figures", "hour_average", "santiago_bar_plot.pdf"),
+  filename = here::here(outdir, "santiago_bar_plot.pdf"),
   plot     = santiago_bar,
   device   = cairo_pdf,
   width    = 16, height = 9, dpi = 300
 )
 
 ggsave(
-  filename = here::here("results", "figures", "hour_average", "ciudad_mexico_bar_plot.pdf"),
+  filename = here::here(outdir, "ciudad_mexico_bar_plot.pdf"),
   plot     = ciudad_mexico_bar,
   device   = cairo_pdf,
   width    = 16, height = 9, dpi = 300
 )
 
 ggsave(
-  filename = here::here("results", "figures", "hour_average", "sao_paulo_bar_plot.pdf"),
+  filename = here::here(outdir, "sao_paulo_bar_plot.pdf"),
   plot     = sao_paulo_bar,
   device   = cairo_pdf,
   width    = 16, height = 9, dpi = 300
@@ -117,7 +120,7 @@ ggsave(
 
 # Save Ridgeline plots
 ggsave(
-  filename = here::here("results", "figures", "hour_average", "bogota_ridge_plot.pdf"),
+  filename = here::here(outdir, "bogota_ridge_plot.pdf"),
   plot     = bogota_ridge_plot
   + labs(title = NULL)
   + theme(plot.title = element_blank()),
@@ -126,7 +129,7 @@ ggsave(
 )
 
 ggsave(
-  filename = here::here("results", "figures", "hour_average", "santiago_ridge_plot.pdf"),
+  filename = here::here(outdir, "santiago_ridge_plot.pdf"),
   plot     = santiago_ridge_plot
   + labs(title = NULL)
   + theme(plot.title = element_blank()),
@@ -135,7 +138,7 @@ ggsave(
 )
 
 ggsave(
-  filename = here::here("results", "figures", "hour_average", "ciudad_mexico_ridge_plot.pdf"),
+  filename = here::here(outdir, "ciudad_mexico_ridge_plot.pdf"),
   plot     = ciudad_mexico_ridge_plot
   + labs(title = NULL)
   + theme(plot.title = element_blank()),
@@ -144,7 +147,7 @@ ggsave(
 )
 
 ggsave(
-  filename = here::here("results", "figures", "hour_average", "sao_paulo_ridge_plot.pdf"),
+  filename = here::here(outdir, "sao_paulo_ridge_plot.pdf"),
   plot     = sao_paulo_ridge_plot
   + labs(title = NULL)
   + theme(plot.title = element_blank()),

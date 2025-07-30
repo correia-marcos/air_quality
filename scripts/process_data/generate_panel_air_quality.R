@@ -51,7 +51,7 @@ bogota_results <- process_merra2_region_hourly(
   extraction_fun = "mean",
   parallel       = TRUE)
 
-ciudad_mexico_results <- process_merra2_city_hourly_parallel(
+ciudad_mexico_results <- process_merra2_region_hourly(
   shapefile      = ciudad_mexico,
   nc_files       = nc_files,
   region_name    = "Ciudad de México",
@@ -59,7 +59,7 @@ ciudad_mexico_results <- process_merra2_city_hourly_parallel(
   extraction_fun = "mean",
   parallel       = TRUE)
 
-santiago_results <- process_merra2_city_hourly_parallel(
+santiago_results <- process_merra2_region_hourly(
   shapefile      = santiago,
   nc_files       = nc_files,
   region_name    = "Santiago",
@@ -67,7 +67,7 @@ santiago_results <- process_merra2_city_hourly_parallel(
   extraction_fun = "mean",
   parallel       = TRUE)
 
-sao_paulo_results <- process_merra2_city_hourly_parallel(
+sao_paulo_results <- process_merra2_region_hourly(
   shapefile      = sao_paulo,
   nc_files       = nc_files,
   region_name    = "São Paulo",
@@ -84,16 +84,16 @@ dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
 
 # Save processed dataframes
 write.csv(bogota_results,
-          file      = here::here("data", "interim", "bogota_panel.csv"),
+          file      = here::here(outdir, "bogota_panel.csv"),
           row.names = FALSE)
 write.csv(ciudad_mexico_results,
-          file      = here::here("data", "interim", "ciudad_mexico_panel.csv"), 
+          file      = here::here(outdir, "ciudad_mexico_panel.csv"), 
           row.names = FALSE)
 write.csv(santiago_results,
-          file      = here::here("data", "interim", "santiago_panel.csv"),
+          file      = here::here(outdir, "santiago_panel.csv"),
           row.names = FALSE)
 write.csv(sao_paulo_results,
-          file      = here::here("data", "interim", "sao_paulo_panel.csv"), 
+          file      = here::here(outdir, "sao_paulo_panel.csv"), 
           row.names = FALSE)
 
 # Print a success message for when running inside Docker Container

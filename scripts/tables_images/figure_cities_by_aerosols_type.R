@@ -80,12 +80,15 @@ pm_25_plot    <- plot_variable_across_cities(
   max_x_limit = 90)
 
 # ============================================================================================
-# III: Save data - we need to apply a function to save the lists of plots
+# III: Save data
 # ============================================================================================
+# Ensure output folder exists
+outdir <- here("results", "figures", "joint_plots")
+dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
 
 # Save the Dust Surface Mass concentration plot
 ggsave(
-  filename = here::here("results", "figures", "joint_plots", "dust_plot.pdf"),
+  filename = here::here(outdir, "dust_plot.pdf"),
   plot = dust_plot,
   device = cairo_pdf,
   width = 16, height = 9, dpi = 300
@@ -93,7 +96,7 @@ ggsave(
 
 # Save the Organic Carbon Surface Mass Concentration plot
 ggsave(
-  filename = here::here("results", "figures", "joint_plots", "organic_carbon_plot.pdf"),
+  filename = here::here(outdir, "organic_carbon_plot.pdf"),
   plot = organic_carbon_plot,
   device = cairo_pdf,
   width = 16, height = 9, dpi = 300
@@ -101,7 +104,7 @@ ggsave(
 
 # Save the Black Carbon Surface Mass Concentration plot
 ggsave(
-  filename = here::here("results", "figures", "joint_plots", "black_carbon_plot.pdf"),
+  filename = here::here(outdir, "black_carbon_plot.pdf"),
   plot = black_carbon_plot,
   device = cairo_pdf,
   width = 16, height = 9, dpi = 300
@@ -109,7 +112,7 @@ ggsave(
 
 # Save the Sea Salt Surface Mass Concentration plot
 ggsave(
-  filename = here::here("results", "figures", "joint_plots", "sea_salt_plot.pdf"),
+  filename = here::here(outdir, "sea_salt_plot.pdf"),
   plot = sea_salt_plot,
   device = cairo_pdf,
   width = 16, height = 9, dpi = 300
@@ -117,7 +120,7 @@ ggsave(
 
 # Save the SO4 Surface Mass Concentration plot
 ggsave(
-  filename = here::here("results", "figures", "joint_plots", "sulfate_plot.pdf"),
+  filename = here::here(outdir, "sulfate_plot.pdf"),
   plot = sulfate_plot,
   device = cairo_pdf,
   width = 16, height = 9, dpi = 300
@@ -125,7 +128,7 @@ ggsave(
 
 # Save the PM 2.5 plot
 ggsave(
-  filename = here::here("results", "figures", "joint_plots", "pm_25_plot.pdf"),
+  filename = here::here(outdir, "pm_25_plot.pdf"),
   plot = pm_25_plot,
   device = cairo_pdf,
   width = 16, height = 9, dpi = 300

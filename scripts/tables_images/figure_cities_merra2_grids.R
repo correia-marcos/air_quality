@@ -24,13 +24,14 @@ source(here::here("src", "config_utils_plot_tables.R"))
 # I: Import data
 # ============================================================================================
 # Create list of all raster files from MERRA2
-nc_files      <- list.files(here::here("data", "raw", "merra2"), full.names = TRUE)
+nc_files      <- list.files(here::here("data", "raw", "merra2_aerosol_products"),
+                            full.names = TRUE)
 
 # Open city shapefiles
-bogota        <- sf::st_read(here::here("data", "raw", "cities", "Bogota_metro"))
-ciudad_mexico <- sf::st_read(here::here("data", "raw", "cities", "Mexico_city"))
-santiago      <- sf::st_read(here::here("data", "raw", "cities", "Santiago"))
-sao_paulo     <- sf::st_read(here::here("data", "raw", "cities", "Sao_Paulo"))
+bogota        <- sf::st_read(here::here("data", "raw", "cities_shapefiles", "Bogota_metro"))
+ciudad_mexico <- sf::st_read(here::here("data", "raw", "cities_shapefiles", "Mexico_city"))
+santiago      <- sf::st_read(here::here("data", "raw", "cities_shapefiles", "Santiago"))
+sao_paulo     <- sf::st_read(here::here("data", "raw", "cities_shapefiles", "Sao_Paulo"))
 
 # ============================================================================================
 # II: Process data
@@ -47,13 +48,17 @@ sao_paulo_plot     <- plot_merra2_grid_city(sao_paulo, merra_raster, "Sao Paulo"
 # ============================================================================================
 # III: Save data
 # ============================================================================================
-ggsave(here::here("results", "figures", "maps", "bogota_grid.pdf"), bogota_plot,
+# Ensure output folder exists
+outdir <- here("results", "figures", "maps")
+dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
+
+ggsave(here::here(outdir, "bogota_grid.pdf"), bogota_plot,
        device = cairo_pdf, width = 16, height = 9, dpi = 300)
-ggsave(here::here("results", "figures", "maps", "ciudad_mexico_grid.pdf"), ciudad_mexico_plot,
+ggsave(here::here(outdir, "ciudad_mexico_grid.pdf"), ciudad_mexico_plot,
        device = cairo_pdf, width = 16, height = 9, dpi = 300)
-ggsave(here::here("results", "figures", "maps", "santiago_grid.pdf"), santiago_plot,
+ggsave(here::here(outdir, "santiago_grid.pdf"), santiago_plot,
        device = cairo_pdf, width = 16, height = 9, dpi = 300)
-ggsave(here::here("results", "figures", "maps", "sao_paulo_grid.pdf"), sao_paulo_plot,
+ggsave(here::here(outdir, "sao_paulo_grid.pdf"), sao_paulo_plot,
        device = cairo_pdf, width = 16, height = 9, dpi = 300)
 
 # Print a success message for when running inside Docker Container
