@@ -36,15 +36,6 @@ Sys.setenv(
   REMOTE_DRIVER_PORT = 4444  # Use container port 4444, not host port 4445
 )
 
-# Apply function to start selenium - spin up remote driver
-remDr <- start_selenium_docker(browser = "firefox")
-
-# Check Status
-remDr$getStatus()
-
-remDr$navigate(base_url)
-
-
 
 # 2. Point to the in-Docker Selenium service
 session <- selenium::SeleniumSession$new(

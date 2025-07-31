@@ -44,9 +44,6 @@ for (pkg in packages) {
 # Clear objects on environment
 rm(packages, pkg, toy_protect)
 
-# Get special version of Selenium
-# remotes::install_github("ropensci/RSelenium")
-# library(RSelenium)
 # ############################################################################################
 # Functions
 # ############################################################################################
@@ -526,6 +523,118 @@ download_bogota_stations_data <- function(remDr, base_url, start_date, end_date)
   
   message("Completed download: ", nrow(out), " rows.")
   return(out)
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: download_bogota_station_data
+# @Arg      : base_url     — string; URL of the station-report form page
+# @Arg      : start_date   — string; start date in "dd-mm-yyyy" format
+# @Output   : Saves Excel files to local disk (./data/downloads/)
+# @Purpose  : For each station, select it, set custom date range, and download data
+# @Written_on: 2025-07-28
+# @Written_by: Marcos Paulo
+# --------------------------------------------------------------------------------------------
+download_bogota_station_data <- function(base_url, start_date) {
+
+  # Create download directory if it doesn't exist
+  dir.create(here::here("data", "downloads"), showWarnings = FALSE)
+  
+  # Initialize session
+  session <- selenium::SeleniumSession$new(
+    browser = "firefox",     # Firefox browser works in all OS
+    host    = "selenium",    # Docker service name
+    port    = 4444L          # internal Selenium port
+  )
+  
+  # Navigate to base URL
+  session$navigate(base_url)
+  message("Navigated to:", base_url)
+
+  # Set implicit wait timeout
+  Sys.sleep(5)
+  
+  tryCatch({
+    # 1. Click all stations in the list
+    station_list <- session$find_element("css selector",
+                                         "#StationsMonitorsList > ul")
+    station_items <- station_list$find_elements("css selector",
+                                                "li.k-item")
+    
+    for (item in station_items) {
+      # Extract station name for file naming
+      station_name <- item$get_text()
+      message("Processing station: ", station_name)
+      
+      # Click station item
+      item$click()
+      
+      # 2. Select "Personalizado" report period
+      custom_button <- session$find_element("css selector",
+                                            "#select-reportperiod > li:nth-child(6)")
+      custom_button$get_text()
+      custom_button$click()
+      
+      # 3. Set start and end dates
+      end_date <- as.Date(as.Date(start_date, format = "%d-%m-%Y")) + years(1) - days(1)
+      start_date_formatted <- format(as.Date(start_date, format = "%d-%m-%Y"), "%d/%m/%Y")
+      end_date_formatted <- format(end_date, "%d/%m/%Y")
+      
+      # Set "De la fecha" input
+      start_date_input <- session$find_element("css selector", "#startDate")
+      start_date_input$clear()
+      start_date_input$send_keys(start_date_formatted)
+      
+      # Set "A la fecha" input
+      end_date_input <- session$find_element("css selector", "#endDate")
+      end_date_input$clear()
+      end_date_input$send_keys(end_date_formatted)
+      
+      # 4. Set time fields (00:00 and 23:59)
+      start_time <- session$find_element("css selector", "#startTime")
+      start_time$clear()
+      start_time$send_keys("00:00")
+      
+      end_time <- session$find_element("css selector", "#endTime")
+      end_time$clear()
+      end_time$send_keys("23:00")
+      
+      # 5. Click "Mostrar" button
+      show_button <- session$find_element("css selector",
+                                          "#buttonsWrapper > input[type='button']:nth-child(2)")
+      show_button$click()
+      
+      # 5. Wait for data table to load (adjust timeout as needed)
+      message("Waiting for data table to load...")
+      Sys.sleep(5)  # Replace with explicit wait if possible
+      
+      # 6. Execute ExportExcel() directly via JavaScript
+      session$execute_script("ExportExcel();")
+      message("ExportExcel function executed.")
+      
+      # 7. Wait for download to complete
+      Sys.sleep(10)  # Adjust based on your internet speed
+      
+      # 8. Save file with station name
+      download_dir <- here("data", "downloads")
+      files <- list.files(download_dir, pattern = "\\.xlsx$", full.names = FALSE)
+      if (length(files) > 0) {
+        new_file <- paste0(station_name, "_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".xlsx")
+        file.rename(file.path(download_dir, files), file.path(download_dir, new_file))
+        message("Saved file:", new_file)
+      } else {
+        warning("No file downloaded for station:", station_name)
+      }
+      
+      # Reset for next station
+      session$navigate(base_url)
+    }
+  }, error = function(e) {
+    message("Error processing station:", e$message)
+  })
+  
+  session$close()
+  message("Download completed.")
 }
 
 
