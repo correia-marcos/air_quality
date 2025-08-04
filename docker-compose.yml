@@ -18,6 +18,7 @@ services:
       target: final
     volumes:
       - ./src:/air_monitoring/src
+      - ./results:/air_monitoring/results
       - ./scripts:/air_monitoring/scripts
       - ./data:/air_monitoring/data
       - renv_data:/air_monitoring/renv
