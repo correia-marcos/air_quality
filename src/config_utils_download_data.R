@@ -540,11 +540,27 @@ download_bogota_station_data <- function(base_url, start_date) {
   # Create download directory if it doesn't exist
   dir.create(here::here("data", "downloads"), showWarnings = FALSE)
   
+  # Define the capabilities of the selenium server
+  caps <- list(
+    browserName = "firefox",
+    platformName = "LINUX",
+    "moz:firefoxOptions" = list(
+      binary = "/usr/bin/firefox",
+      prefs = list(
+        "browser.download.folderList" = 2,                     # Use custom download directory
+        "browser.download.dir" = "/air_monitoring/data/downloads",  # Path inside container
+        "browser.download.useDownloadDir" = TRUE,              # Force use of download dir
+        "browser.helperApps.neverAsk.saveToDisk" = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      )
+    )
+  )
+  
   # Initialize session
   session <- selenium::SeleniumSession$new(
     browser = "firefox",     # Firefox browser works in all OS
     host    = "selenium",    # Docker service name
-    port    = 4444L          # internal Selenium port
+    port    = 4444L,        # internal Selenium port
+    capabilities = caps
   )
   
   # Navigate to base URL
@@ -560,14 +576,31 @@ download_bogota_station_data <- function(base_url, start_date) {
                                          "#StationsMonitorsList > ul")
     station_items <- station_list$find_elements("css selector",
                                                 "li.k-item")
-    
+    # item = station_items[[1]]
     for (item in station_items) {
-      # Extract station name for file naming
+      # Find and click the checkbox wrapper (not the station name)
       station_name <- item$get_text()
       message("Processing station: ", station_name)
       
-      # Click station item
-      item$click()
+      try = session$execute_script("arguments[0].setAttribute('aria-checked', 'true')", item1)
+      
+      # 1. Scroll the station list container into view
+      station_list_container <- tryCatch(
+        session$find_element("css selector", "#StationsMonitorsList"),
+        error = function(e) NULL
+      )
+      
+      if (is.null(station_list_container)) {
+        warning("Station list container not found. Using default scroll.")
+        session$execute_script("window.scrollBy(0, 500);")
+      } else {
+        station_list_container$execute_script("arguments[0].scrollIntoView(true);", args = list(station_list_container))
+      }
+      
+      # 2. Set aria-selected to true (no need to click)
+      item$execute_script("arguments[0].setAttribute('aria-selected', 'true');", args = list(item))
+      
+      
       
       # 2. Select "Personalizado" report period
       custom_button <- session$find_element("css selector",
@@ -604,18 +637,18 @@ download_bogota_station_data <- function(base_url, start_date) {
                                           "#buttonsWrapper > input[type='button']:nth-child(2)")
       show_button$click()
       
-      # 5. Wait for data table to load (adjust timeout as needed)
+      # 6. Wait for data table to load (adjust timeout as needed)
       message("Waiting for data table to load...")
       Sys.sleep(5)  # Replace with explicit wait if possible
       
-      # 6. Execute ExportExcel() directly via JavaScript
+      # 7. Execute ExportExcel() directly via JavaScript
       session$execute_script("ExportExcel();")
       message("ExportExcel function executed.")
       
-      # 7. Wait for download to complete
+      # 8. Wait for download to complete
       Sys.sleep(10)  # Adjust based on your internet speed
       
-      # 8. Save file with station name
+      # 9. Save file with station name
       download_dir <- here("data", "downloads")
       files <- list.files(download_dir, pattern = "\\.xlsx$", full.names = FALSE)
       if (length(files) > 0) {
