@@ -11,7 +11,7 @@ LABEL org.opencontainers.image.source="https://github.com/correia-marcos/air_qua
 RUN apt-get update && apt-get install -y \
     git \
     cmake libabsl-dev \
-    libxml2-dev libssl-dev libcurl4-openssl-dev \
+    libx11-dev libxml2-dev libssl-dev libcurl4-openssl-dev \
     libgdal-dev libudunits2-dev libpng-dev libfreetype6-dev \
     wget unzip xvfb openjdk-11-jre-headless \
   && rm -rf /var/lib/apt/lists/*
@@ -44,7 +44,7 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
       curl \
       cmake libabsl-dev \
-      libxml2-dev libssl-dev libcurl4-openssl-dev \
+      libx11-dev libxml2-dev libssl-dev libcurl4-openssl-dev \
       libgdal-dev libudunits2-dev libpng-dev libfreetype6-dev \
       wget unzip xvfb openjdk-11-jre-headless \
       ca-certificates \
