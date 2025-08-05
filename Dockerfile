@@ -25,7 +25,9 @@ ENV RENV_PATHS_CACHE=/air_monitoring/renv/.cache
 ENV RENV_PATHS_LIBRARY=/air_monitoring/renv/library
 
 WORKDIR /air_monitoring
-COPY renv.lock .Rprofile renv/activate.R renv/settings.json ./renv/
+COPY renv.lock      renv/settings.json  ./ 
+COPY .Rprofile                             ./
+COPY renv/activate.R                      renv/
 RUN mkdir -p renv/.cache renv/library \
  && R -e "install.packages('https://cran.r-project.org/src/contrib/Archive/renv/renv_1.0.10.tar.gz', type='source')" \
  && R -e "options(repos='https://cran.rstudio.com/'); renv::restore()"
