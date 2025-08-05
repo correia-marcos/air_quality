@@ -59,7 +59,7 @@ ENV RENV_PATHS_LIBRARY=/air_monitoring/renv/library
 
 # 3) copy in your baked project + default.Rprofile
 COPY --from=builder /air_monitoring /air_monitoring
-COPY default.Rprofile /home/rstudio/.Rprofile
+COPY .Rprofile /home/rstudio/.Rprofile
 RUN chown -R rstudio:staff /air_monitoring \
  && chown rstudio:rstudio /home/rstudio/.Rprofile \
  && echo 'rstudio:secret123' | chpasswd
