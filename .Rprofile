@@ -2,10 +2,8 @@
 source("renv/activate.R")
 
 if (interactive()) {
-  # switch us into the project folder in RStudio
-  setwd("/air_monitoring")
-
-  # double‐activate renv (harmless if already active)
+  setwd("/air_monitoring")                  # ← first switch into your project
+  source("renv/activate.R")                 # ← then source the project’s activate script
   if (requireNamespace("renv", quietly = TRUE))
-    renv::activate("/air_monitoring")
+    renv::activate()                        # ← finally hook up renv
 }

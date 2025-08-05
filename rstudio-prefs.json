@@ -1,0 +1,13 @@
+{
+  "save_workspace": "never",
+  "always_save_history": false,
+  "load_workspace": false,
+  "initial_working_directory": "/air_monitoring",
+  "reuse_sessions_for_project_links": true,
+  "console_double_click_select": true,
+  "rmd_chunk_output_inline": false,
+  "hide_console_on_chunk_execute": false,
+  "posix_terminal_shell": "bash",
+  "editor_theme": "Merbivore Soft",
+  "real_time_spellchecking": false
+}

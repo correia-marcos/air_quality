@@ -2,45 +2,52 @@ services:
   selenium:
     image: selenium/standalone-firefox:4.34.0-20250717
     ports:
-      - "4445:4444"
-      - "7900:7900"  # VNC port
+      - "4445:4444"  # alternate host port
+      - "7900:7900"
     shm_size: "2g"
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:4444/wd/hub/status || exit 1"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
-      start_period: 10s
+      interval: 10s; timeout: 3s; retries: 5; start_period: 10s
+    volumes:
+      # Firefox will drop into its Downloads; we share that with R
+      - selenium_downloads:/home/seluser/Downloads
 
   analysis:
     build:
       context: .
       target: final
-    volumes:
-      - ./src:/air_monitoring/src
-      - ./results:/air_monitoring/results
-      - ./scripts:/air_monitoring/scripts
-      - ./data:/air_monitoring/data
-
-      - renv_data:/air_monitoring/renv/.cache
-
-      - ./.Renviron:/home/rstudio/.Renviron:ro
-      - ~/.netrc:/home/rstudio/.netrc:ro
-    working_dir: /air_monitoring
     depends_on:
       selenium:
         condition: service_healthy
     ports:
       - "8787:8787"
+    working_dir: /air_monitoring
     environment:
       - PASSWORD=secret123
       - USER=rstudio
       - REMOTE_DRIVER_URL=http://selenium:4444
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://selenium:4444/wd/hub/status"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      test: ["CMD","curl","-f","http://selenium:4444/wd/hub/status"]
+      interval: 10s; timeout: 5s; retries: 5
+    volumes:
+      # Your code & data
+      - ./src:/air_monitoring/src
+      - ./scripts:/air_monitoring/scripts
+      - ./results:/air_monitoring/results
+
+      # share host’s renv cache
+      - renv_cache:/usr/local/lib/R/renv-cache
+
+      # share Selenium’s Downloads as our raw data folder
+      - selenium_downloads:/air_monitoring/data/raw/pollution_ground_stations/Bogota
+
+      # project data (other subfolders)
+      - ./data:/air_monitoring/data
+
+      # creds
+      - ./.Renviron:/home/rstudio/.Renviron:ro
+      - ~/.netrc:/home/rstudio/.netrc:ro
 
 volumes:
-  renv_data:
+  renv_cache:
+  selenium_downloads:
