@@ -7,7 +7,6 @@ services:
     shm_size: "2g"
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:4444/wd/hub/status || exit 1"]
-      interval: 10s; timeout: 3s; retries: 5; start_period: 10s
     volumes:
       # Firefox will drop into its Downloads; we share that with R
       - selenium_downloads:/home/seluser/Downloads
@@ -28,7 +27,6 @@ services:
       - REMOTE_DRIVER_URL=http://selenium:4444
     healthcheck:
       test: ["CMD","curl","-f","http://selenium:4444/wd/hub/status"]
-      interval: 10s; timeout: 5s; retries: 5
     volumes:
       # Your code & data
       - ./src:/air_monitoring/src

@@ -54,6 +54,7 @@ geckodriver-v0.30.0-linux64.tar.gz -o /tmp/geckodriver.tar.gz \
   && chmod +x /usr/local/bin/geckodriver
 
 # 2) Point renv at a global cache, so we can mount it
+RUN mkdir -p /usr/local/lib/R/renv-cache
 RUN echo "RENV_PATHS_CACHE=/usr/local/lib/R/renv-cache" \
      >> /usr/local/lib/R/etc/Renviron.site
 

@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -e
 
+# --- ensure renv cache dir exists and is writable ---
+mkdir -p /usr/local/lib/R/renv-cache
+chown -R rstudio:staff /usr/local/lib/R/renv-cache
+
 echo "Entrypoint script started with args: $@"
 
 # 1) If called as 'run', execute R scripts in order
