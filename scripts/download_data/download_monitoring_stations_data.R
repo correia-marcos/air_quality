@@ -22,7 +22,7 @@ source(here::here("src", "config_utils_download_data.R"))
 # ============================================================================================
 # Define parameters
 base_url                 <- "http://rmcab.ambientebogota.gov.co/Report/stationreport"
-start_date               <- as_date("2010-01-01")
+start_date               <- as_date("2000-01-01")
 end_date                 <- as_date("2023-12-31")
 
 # ============================================================================================
