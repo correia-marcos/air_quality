@@ -21,7 +21,9 @@ services:
       - ./results:/air_monitoring/results
       - ./scripts:/air_monitoring/scripts
       - ./data:/air_monitoring/data
-      - renv_data:/air_monitoring/renv
+
+      - renv_data:/air_monitoring/renv/.cache
+
       - ./.Renviron:/home/rstudio/.Renviron:ro
       - ~/.netrc:/home/rstudio/.netrc:ro
     working_dir: /air_monitoring

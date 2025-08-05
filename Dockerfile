@@ -53,14 +53,16 @@ RUN apt-get update && \
     && tar xzf geckodriver.tar.gz -C /usr/local/bin \
     && chmod +x /usr/local/bin/geckodriver
 
-# 2) Re-export renv paths so the autoloader picks them up at runtime
+# 2) re‐export renv paths
 ENV RENV_PATHS_CACHE=/air_monitoring/renv/.cache
 ENV RENV_PATHS_LIBRARY=/air_monitoring/renv/library
 
-# 3) Copy in your baked project (including renv/)
+# 3) copy in your baked project + default.Rprofile
 COPY --from=builder /air_monitoring /air_monitoring
-RUN chown -R rstudio:staff /air_monitoring && \
-    echo 'rstudio:secret123' | chpasswd
+COPY default.Rprofile /home/rstudio/.Rprofile
+RUN chown -R rstudio:staff /air_monitoring \
+ && chown rstudio:rstudio /home/rstudio/.Rprofile \
+ && echo 'rstudio:secret123' | chpasswd
 
 WORKDIR /air_monitoring
 
