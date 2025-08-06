@@ -231,159 +231,167 @@ get_bogota_station_info <- function(base_url) {
 }
 
 
-
-
 # --------------------------------------------------------------------------------------------
 # Function: download_bogota_station_data
-# @Arg      : base_url     — string; URL of the station-report form page
-# @Arg      : start_date   — string; start date in "dd-mm-yyyy" format
-# @Output   : Saves Excel files to local disk (./data/downloads/)
-# @Purpose  : For each station, select it, set custom date range, and download data
-# @Written_on: 2025-07-28
-# @Written_by: Marcos Paulo
+# @Arg         : base_url    — string; URL of the station‐report form page
+# @Arg         : start_year  — integer; first year to download (e.g. 2000)
+# @Arg         : end_year    — integer; last year to download (e.g. 2022)
+# @Arg         : container   — logical; TRUE if running inside your Docker/Selenium setup
+# @Output      : writes XLSX files into "data/raw/pollution_ground_stations/Bogota"
+# @Purpose     : for each station and each year, set the date range in the form,
+#                trigger “Mostrar” & the Excel export, then rename the downloaded file.
+# @Written_on  : 05/08/2025
+# @Written_by  : Marcos Paulo
 # --------------------------------------------------------------------------------------------
-download_bogota_station_data <- function(base_url, start_date) {
-
-  # Create download directory if it doesn't exist
-  dir.create(here::here("data", "downloads"), showWarnings = FALSE)
+download_bogota_station_data <- function(base_url,
+                                         start_year,
+                                         end_year,
+                                         container = TRUE) {
+  # 0) ensure our target folder exists
+  downloads_dir <- here("data", "raw", "pollution_ground_stations", "Bogota")
+  dir.create(downloads_dir, recursive = TRUE, showWarnings = FALSE)
+  message("✔️ Downloads will go to: ", downloads_dir)
   
-  # Define the capabilities of the selenium server
+  # 1) if not in Docker, spin up a local Selenium container
+  if (!container) {
+    message("🚀 Starting local Selenium on 4445 …")
+    system("docker run -d -p 4445:4444 selenium/standalone-firefox:4.34.0-20250717",
+           intern = TRUE)
+    Sys.sleep(6)
+    selenium_host <- "localhost"
+    selenium_port <- 4445L
+  } else {
+    selenium_host <- "selenium"
+    selenium_port <- 4444L
+  }
+  
+  # 2) pick the correct download path inside the browser
+  download_dir_container <- if (container) {
+    # inside the selenium container
+    "/home/seluser/Downloads"
+    } else {
+      downloads_dir
+    }
+  
   caps <- list(
     browserName = "firefox",
     platformName = "LINUX",
     "moz:firefoxOptions" = list(
-      binary = "/usr/bin/firefox",
       prefs = list(
-        "browser.download.folderList" = 2,                     # Use custom download directory
-        "browser.download.dir" = "/air_monitoring/data/raw",  # Path inside container
-        "browser.download.useDownloadDir" = TRUE,              # Force use of download dir
-        "browser.helperApps.neverAsk.saveToDisk" = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        "browser.download.folderList"     = 2L,
+        "browser.download.dir"            = download_dir_container,
+        "browser.download.useDownloadDir" = TRUE,
+        "browser.helperApps.neverAsk.saveToDisk" =
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
       )
     )
   )
   
-  # Initialize session
+  # 3) launch the session
   session <- selenium::SeleniumSession$new(
-    browser = "firefox",     # Firefox browser works in all OS
-    host    = "selenium",    # Docker service name
-    port    = 4444L,        # internal Selenium port
+    browser      = "firefox",
+    host         = selenium_host,
+    port         = selenium_port,
     capabilities = caps
   )
+  on.exit(session$close(), add = TRUE)
   
-  # Navigate to base URL
+  # 4) load the page once to get station count
   session$navigate(base_url)
-  message("Navigated to:", base_url)
-
-  # Set implicit wait timeout
-  Sys.sleep(2)
+  ul <- session$find_element("css selector", "#StationsMonitorsList > ul")
+  count  <- length(ul$find_elements("css selector","li.k-item"))
+  message("🔎 Found ", count, " stations in the list.")
   
-  tryCatch({
-    # 1. Click all stations in the list
-    station_list <- session$find_element("css selector",
-                                         "#StationsMonitorsList > ul")
-    station_items <- station_list$find_elements("css selector",
-                                                "li.k-item")
-    # item = station_items[[2]]
-    for (item in station_items) {
-      # Find and click the checkbox wrapper (not the station name)
-      station_name <- item$get_text()
-      message("Processing station: ", station_name)
-      
-      # 2. pull out its ID
-      chk <- item$find_element("xpath", ".//input[contains(@class,'k-checkbox')]")
-      id  <- chk$get_attribute("id")
-      
-      # 2. raw JS: scroll it into view, toggle its checked state, and fire the change event
-      js <- sprintf("
+  # 5) loop by index (so we can re-find the element fresh after each navigation)
+  for (i in seq_len(count)) {
+    # re-find the station <li> each time
+    session$navigate(base_url)
+    Sys.sleep(1)
+    lis <- session$find_element("css selector", "#StationsMonitorsList > ul") %>%
+      {.$find_elements("css selector","li.k-item")}
+    item <- lis[[i]]
+    
+    station_name <- item$get_text()[[1]]
+    safe_name    <- gsub("[^A-Za-z0-9]", "_", station_name)
+    message("\n🏷  Station [", i, "/", count, "]: ", station_name)
+    
+    # prepare the JS toggle once for this station
+    chk    <- item$find_element("xpath", ".//input[contains(@class,'k-checkbox')]")
+    cb_id  <- chk$get_attribute("id")[[1]]
+    js_toggle <- sprintf("
       var cb = document.getElementById('%s');
       cb.scrollIntoView({block:'center'});
       cb.checked = !cb.checked;
-      cb.dispatchEvent(new Event('change', { bubbles: true }));", id)
+      cb.dispatchEvent(new Event('change',{bubbles:true}));
+    ", cb_id)
+    
+    for (yr in seq(start_year, end_year)) {
+      message("   📥 Year ", yr, " …")
       
-      session$execute_script(js)
-      session$execute_script(js)
-
+      # 5.1) select “Personalizado”
+      # session$execute_script(js_toggle)      # turn it ON
+      Sys.sleep(0.5)
+      custom <- session$find_element("css selector",
+                                     "#select-reportperiod > li:nth-child(6)")
+      custom$click()
       
-      # 2. Select "Personalizado" report period
-      custom_button <- session$find_element("css selector",
-                                            "#select-reportperiod > li:nth-child(6)")
-      custom_button$get_text()
-      custom_button$click()
-      
-      # 3. Set start and end dates
-      end_date <- as.Date(as.Date(start_date, format = "%d-%m-%Y")) + years(1) - days(1)
-      start_date_formatted <- format(as.Date(start_date, format = "%d-%m-%Y"), "%d-%m-%Y")
-      end_date_formatted <- format(end_date, "%d-%m-%Y")
-      
-      # Set "De la fecha" input
-      start_date_input <- session$find_element("css selector", "#startDate")
-      start_date_input$click()
-      start_date_input$send_keys(key_chord(keys$shift, keys$home, keys$control),
-                                 key_chord(keys$backspace))
-      start_date_input$send_keys(start_date_formatted)
-      
-      # Set "A la fecha" input
-      end_date_input <- session$find_element("css selector", "#endDate")
-      end_date_input$click()
-      end_date_input$send_keys(key_chord(keys$shift, keys$home, keys$control),
-                                key_chord(keys$backspace))
-      end_date_input$send_keys(end_date_formatted)
-      
-      # 4. Set time fields (00:00 and 23:00)
-      start_time <- session$find_element("css selector", "#startTime")
-      start_time$click()
-      start_time$send_keys(key_chord(keys$shift, keys$home, keys$control),
-                               key_chord(keys$backspace))
-      start_time$send_keys("00:00")
-      
-      
-      end_time <- session$find_element("css selector", "#endTime")
-      end_time$click()
-      end_time$send_keys(key_chord(keys$shift, keys$home, keys$control),
-                           key_chord(keys$backspace))
-      end_time$send_keys("23:00")
-      
-      # 5. Click "Mostrar" button
-      show_button <- session$find_element("xpath",
-                                          '//*[@id="buttonsWrapper"]/input[2]')
-      session$execute_script(js)
-      show_button$click()
-      
-      # 6. Wait for data table to load (adjust timeout as needed)
-      message("Waiting for data table to load...")
-      Sys.sleep(2)  # Replace with explicit wait if possible
-      
-      # 7. Execute ExportExcel() directly via JavaScript
-      excel_btn <- session$find_element("css selector", "div.LinksReport.Excel")
-      excel_btn$click()
-      
-      # session$execute_script("ExportExcel();")
-      message("ExportExcel function executed.")
-      # NAME OF THE GROUND STATION AND THE YEAR!
-      
-      # 8. Wait for download to complete
-      Sys.sleep(10)  # Adjust based on your internet speed
-      
-      # 9. Save file with station name
-      download_dir <- here("data", "raw")
-      files <- list.files(download_dir, pattern = "\\.xlsx$", full.names = FALSE)
-      if (length(files) > 0) {
-        new_file <- paste0(station_name, "_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".xlsx")
-        file.rename(file.path(download_dir, files), file.path(download_dir, new_file))
-        message("Saved file:", new_file)
-      } else {
-        warning("No file downloaded for station:", station_name)
+      # 5.2) fill dates
+      start_str <- sprintf("01-01-%04d", yr)
+      end_str   <- sprintf("31-12-%04d", yr)
+      for (field in c("startDate","endDate")) {
+        el <- session$find_element("css selector", paste0("#", field))
+        el$click()
+        el$send_keys(key_chord(keys$control, keys$shift, keys$home),
+                     key_chord(keys$backspace))
+        el$send_keys(
+          if (field=="startDate") start_str else end_str
+        )
       }
+      # times
+      st <- session$find_element("css selector", "#startTime")
+      et <- session$find_element("css selector", "#endTime")
+      st$click() 
+      st$send_keys(key_chord(keys$control, keys$shift, keys$home),
+                key_chord(keys$backspace))
+      st$send_keys("00:00")
       
-      # Reset for next station
-      session$navigate(base_url)
+      et$click()
+      et$send_keys(key_chord(keys$control, keys$shift, keys$home),
+                   key_chord(keys$backspace))
+      et$send_keys("23:00")
+      
+      # 5.3) click “Mostrar” (with an extra toggle to avoid the page bug)
+      session$execute_script(js_toggle)
+      show_btn <- session$find_element("xpath",'//*[@id="buttonsWrapper"]/input[2]')
+      show_btn$click()
+      Sys.sleep(3)
+      
+      # 5.4) export → Excel
+      excel_btn <- session$find_element("css selector","div.LinksReport.Excel")
+      excel_btn$click()
+      Sys.sleep(5)
+      
+      # 5.5) rename the newest .xlsx in our host folder
+      files <- list.files(downloads_dir, pattern="\\.xlsx$", full.names=TRUE)
+      if (length(files)) {
+        newest <- files[which.max(file.info(files)$ctime)]
+        target <- file.path(
+          downloads_dir,
+          sprintf("%s_%04d.xlsx", safe_name, yr)
+        )
+        file.rename(newest, target)
+        message("      ✔️ Saved → ", basename(target))
+      } else {
+        warning("      ⚠️ No .xlsx found for ", station_name, " ", yr)
+      }
     }
-  }, error = function(e) {
-    message("Error processing station:", e$message)
-  })
+    
+    # 5.6) finally uncheck so next station starts fresh
+    session$execute_script(js_toggle)
+    Sys.sleep(0.5)
+  }
   
-  session$close()
-  message("Download completed.")
+  message("\n✅ All done—your files live in:\n  ", downloads_dir)
 }
 
 
