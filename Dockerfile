@@ -8,7 +8,7 @@ LABEL \
     org.opencontainers.image.version="v1.0.0" \
     maintainer="Marcos Correia <marcospaulorcorreia@gmail.com>"
 
-# 1) Install build tools and system dependencies
+# 1) Install build tools and system dependencies (including textshaping prerequisites)
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       git \
@@ -17,6 +17,8 @@ RUN apt-get update \
       libgdal-dev libudunits2-dev libpng-dev libfreetype6-dev \
       wget unzip xvfb openjdk-11-jre-headless pkg-config \
       libfontconfig1-dev \
+      libharfbuzz-dev \
+      libfribidi-dev \
  && rm -rf /var/lib/apt/lists/*
 
 # 2) Clone repository
@@ -37,9 +39,8 @@ COPY .Rprofile       ./
 # 5) Bootstrap renv & restore packages
 RUN mkdir -p renv/.cache renv/library \
  && R -e "install.packages('https://cran.r-project.org/src/contrib/Archive/renv/renv_1.0.10.tar.gz', type='source')" \
- && R -e "options(repos='https://cran.rstudio.com/'); renv::restore()" \
+ && R -e "options(repos='https://cran.rstudio.com/'); renv::restore(prompt = FALSE)" \
  && R -e "renv::snapshot(confirm = FALSE)"
-
 
 
 ################################################################################
@@ -61,6 +62,8 @@ RUN apt-get update \
       libx11-dev libxml2-dev libssl-dev libcurl4-openssl-dev \
       libgdal-dev libudunits2-dev libpng-dev libfreetype6-dev \
       libfontconfig1-dev pkg-config \
+      libharfbuzz-dev \
+      libfribidi-dev \
       wget unzip xvfb openjdk-11-jre-headless \
  && rm -rf /var/lib/apt/lists/* \
  && curl -L https://github.com/mozilla/geckodriver/releases/download/v0.30.0/geckodriver-v0.30.0-linux64.tar.gz \
