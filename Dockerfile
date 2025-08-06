@@ -30,7 +30,7 @@ COPY .Rprofile        .Rprofile
 RUN mkdir -p renv/.cache renv/library \
  && R -e "install.packages('https://cran.r-project.org/src/contrib/Archive/renv/renv_1.0.10.tar.gz', type='source')" \
  && R -e "options(repos='https://cran.rstudio.com/'); renv::restore()"
-
+RUN R -e "renv::snapshot(confirm = FALSE)"
 ################################################################################
 # STAGE 2: Runtime with RStudio Server
 ################################################################################
