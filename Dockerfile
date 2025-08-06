@@ -45,7 +45,7 @@ LABEL \
 
 # 1) System deps + geckodriver + fontconfig for systemfonts
 RUN apt-get update && apt-get install -y \
-    curl \                             # ← add curl here!
+    curl \
     git \
     cmake libabsl-dev \
     libx11-dev libxml2-dev libssl-dev libcurl4-openssl-dev \
