@@ -51,8 +51,8 @@ RUN apt-get update && apt-get install -y \
     libfontconfig1-dev pkg-config \
     wget unzip xvfb openjdk-11-jre-headless \
   && rm -rf /var/lib/apt/lists/*
-  && curl -L https://github.com/mozilla/geckodriver/releases/download/v0.30.0/\
-geckodriver-v0.30.0-linux64.tar.gz -o /tmp/geckodriver.tar.gz \
+  && curl -L https://github.com/mozilla/geckodriver/releases/download/v0.30.0/geckodriver-v0.30.0-linux64.tar.gz \
+     -o /tmp/geckodriver.tar.gz \
   && tar xzf /tmp/geckodriver.tar.gz -C /usr/local/bin \
   && chmod +x /usr/local/bin/geckodriver
 
