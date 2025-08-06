@@ -12,7 +12,7 @@ services:
       timeout: 3s
     volumes:
       # bind your entire raw‐data folder into Firefox’s Downloads
-      - ./data/raw:/home/seluser/Downloads
+      - ./data/downloads:/home/seluser/Downloads
 
   analysis:
     build:
