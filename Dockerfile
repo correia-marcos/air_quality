@@ -15,7 +15,7 @@ RUN apt-get update && apt-get install -y \
     libfreetype6-dev wget unzip xvfb openjdk-11-jre-headless \
   && rm -rf /var/lib/apt/lists/*
 
-# 2) Clone & renv‐restore
+# 2) Clone & renv-restore
 ARG REPO_URL=https://github.com/correia-marcos/air_quality.git
 RUN git clone ${REPO_URL} /air_monitoring
 
@@ -23,14 +23,16 @@ ENV RENV_PATHS_CACHE=/air_monitoring/renv/.cache
 ENV RENV_PATHS_LIBRARY=/air_monitoring/renv/library
 
 WORKDIR /air_monitoring
+
 COPY renv.lock   renv/settings.json  ./
 COPY renv/activate.R  renv/activate.R
 COPY .Rprofile        .Rprofile
 
 RUN mkdir -p renv/.cache renv/library \
  && R -e "install.packages('https://cran.r-project.org/src/contrib/Archive/renv/renv_1.0.10.tar.gz', type='source')" \
- && R -e "options(repos='https://cran.rstudio.com/'); renv::restore()"
-RUN R -e "renv::snapshot(confirm = FALSE)"
+ && R -e "options(repos='https://cran.rstudio.com/'); renv::restore()" \
+ && R -e "renv::snapshot(confirm = FALSE)"
+
 ################################################################################
 # STAGE 2: Runtime with RStudio Server
 ################################################################################
@@ -41,24 +43,23 @@ LABEL \
   org.opencontainers.image.version="v1.0.0" \
   maintainer="Marcos Correia <marcospaulorcorreia@gmail.com>"
 
-# 1) System deps + geckodriver
+# 1) System deps + geckodriver + fontconfig for systemfonts
 RUN apt-get update && apt-get install -y \
     git \
     cmake libabsl-dev \
     libx11-dev libxml2-dev libssl-dev libcurl4-openssl-dev \
     libgdal-dev libudunits2-dev libpng-dev libfreetype6-dev \
-    # for systemfonts:
     libfontconfig1-dev pkg-config \
     wget unzip xvfb openjdk-11-jre-headless \
-  && rm -rf /var/lib/apt/lists/*
+  && rm -rf /var/lib/apt/lists/* \
   && curl -L https://github.com/mozilla/geckodriver/releases/download/v0.30.0/geckodriver-v0.30.0-linux64.tar.gz \
-     -o /tmp/geckodriver.tar.gz \
+       -o /tmp/geckodriver.tar.gz \
   && tar xzf /tmp/geckodriver.tar.gz -C /usr/local/bin \
   && chmod +x /usr/local/bin/geckodriver
 
 # 2) Point renv at a global cache, so we can mount it
-RUN mkdir -p /usr/local/lib/R/renv-cache
-RUN echo "RENV_PATHS_CACHE=/usr/local/lib/R/renv-cache" \
+RUN mkdir -p /usr/local/lib/R/renv-cache \
+  && echo "RENV_PATHS_CACHE=/usr/local/lib/R/renv-cache" \
      >> /usr/local/lib/R/etc/Renviron.site
 
 # 3) Copy project & RStudio prefs
