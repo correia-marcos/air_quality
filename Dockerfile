@@ -42,13 +42,15 @@ LABEL \
   maintainer="Marcos Correia <marcospaulorcorreia@gmail.com>"
 
 # 1) System deps + geckodriver
-RUN apt-get update && apt-get install -y --no-install-recommends \
-      curl cmake libabsl-dev libx11-dev libxml2-dev libssl-dev \
-      libcurl4-openssl-dev libgdal-dev libudunits2-dev libpng-dev \
-      libfontconfig1-dev pkg-config \
-      libfreetype6-dev wget unzip xvfb openjdk-11-jre-headless \
-      ca-certificates \
-  && rm -rf /var/lib/apt/lists/* \
+RUN apt-get update && apt-get install -y \
+    git \
+    cmake libabsl-dev \
+    libx11-dev libxml2-dev libssl-dev libcurl4-openssl-dev \
+    libgdal-dev libudunits2-dev libpng-dev libfreetype6-dev \
+    # for systemfonts:
+    libfontconfig1-dev pkg-config \
+    wget unzip xvfb openjdk-11-jre-headless \
+  && rm -rf /var/lib/apt/lists/*
   && curl -L https://github.com/mozilla/geckodriver/releases/download/v0.30.0/\
 geckodriver-v0.30.0-linux64.tar.gz -o /tmp/geckodriver.tar.gz \
   && tar xzf /tmp/geckodriver.tar.gz -C /usr/local/bin \
