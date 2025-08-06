@@ -10,7 +10,6 @@ services:
     volumes:
       # Firefox will drop into its Downloads; we share that with R
       - selenium_downloads:/home/seluser/Downloads
-      - ./data:/air_monitoring/data
 
   analysis:
     build:
