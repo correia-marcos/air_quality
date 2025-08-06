@@ -21,8 +21,8 @@ packages <- c(
   "jsonlite",
   "lubridate",
   "purrr",
-  "rvest",
   "readr",
+  "rvest",
   "selenium",
   "stringr",
   "tidyr"
@@ -251,9 +251,9 @@ download_bogota_station_data <- function(base_url,
   downloads_folder <- here("data", "downloads")
   dir.create(downloads_folder, recursive = TRUE, showWarnings = FALSE)
   
-  downloads_dir <- here("data", "raw", "pollution_ground_stations", "Bogota")
-  dir.create(downloads_dir, recursive = TRUE, showWarnings = FALSE)
-  message("✔️ Downloads will go to: ", downloads_dir)
+  #downloads_dir <- here("data", "raw", "pollution_ground_stations", "Bogota")
+  #dir.create(downloads_dir, recursive = TRUE, showWarnings = FALSE)
+  message("✔️ Downloads will go to: ", downloads_folder)
   
   # 1) if not in Docker, spin up a local Selenium container
   if (!container) {
@@ -272,9 +272,9 @@ download_bogota_station_data <- function(base_url,
   download_dir_container <- if (container) {
     # inside the selenium container
     "/home/seluser/Downloads"
-    } else {
-      downloads_dir
-    }
+  } else {
+    downloads_folder
+  }
   
   caps <- list(
     browserName = "firefox",
@@ -316,7 +316,7 @@ download_bogota_station_data <- function(base_url,
     
     station_name <- item$get_text()[[1]]
     safe_name    <- gsub("[^A-Za-z0-9]", "_", station_name)
-    message("\n🏷  Station [", i, "/", count, "]: ", station_name)
+    message("\n  Station [", i, "/", count, "]: ", station_name)
     
     # prepare the JS toggle once for this station
     chk    <- item$find_element("xpath", ".//input[contains(@class,'k-checkbox')]")
@@ -362,7 +362,7 @@ download_bogota_station_data <- function(base_url,
       et <- session$find_element("css selector", "#endTime")
       st$click() 
       st$send_keys(key_chord(keys$control, keys$shift, keys$home),
-                key_chord(keys$backspace))
+                   key_chord(keys$backspace))
       st$send_keys("00:00")
       
       et$click()
@@ -391,6 +391,57 @@ download_bogota_station_data <- function(base_url,
   message("\n✅ All done—your files live in:\n  ", downloads_dir)
 }
 
+
+# --------------------------------------------------------------------------------------------
+# Function: merge_bogota_downloads
+# @Arg        : downloads_folder — path where download_bogota_station_data() wrote its .xlsx
+# @Arg        : output_csv       — path to write combined CSV
+# @Arg        : output_rds       — path to write combined RDS
+# @Arg        : cleanup          — logical; TRUE will delete the .xlsx after merging
+# @Output     : returns (invisibly) the combined tibble
+# @Purpose    : read every STATION_YEAR.xlsx, stack them, write out CSV + RDS, and optionally remove XLSX.
+# @Written_on : 05/08/2025
+# @Written_by : Marcos Paulo
+# --------------------------------------------------------------------------------------------
+merge_bogota_downloads <- function(downloads_folder,
+                                   output_csv,
+                                   output_rds,
+                                   cleanup = TRUE) {
+
+  files <- list.files(downloads_folder, "\\.xlsx$", full.names = TRUE)
+  if (length(files) == 0) {
+    stop("No .xlsx files found in ", downloads_folder)
+  }
+  
+  big_tbl <- map_dfr(files, \(path) {
+    fname <- basename(path)
+    info  <- str_match(fname, "^(.*?)_(\\d{4})\\.xlsx$")
+    station <- info[2]
+    year    <- as.integer(info[3])
+    
+    read_excel(path) %>%
+      mutate(
+        station = station,
+        year    = year
+      )
+  })
+  
+  # ensure parent dirs exist
+  dir.create(dirname(output_csv), recursive = TRUE, showWarnings = FALSE)
+  dir.create(dirname(output_rds), recursive = TRUE, showWarnings = FALSE)
+  
+  write_csv(big_tbl, output_csv)
+  saveRDS(big_tbl, output_rds)
+  message("📝 Wrote CSV → ", output_csv)
+  message("💾 Wrote RDS → ", output_rds)
+  
+  if (cleanup) {
+    file.remove(files)
+    message("🗑️  Removed original .xlsx files.")
+  }
+  
+  invisible(big_tbl)
+}
 
 # Print a success message for when running inside Docker Container
 cat("Config script parsed successfully!\n")
