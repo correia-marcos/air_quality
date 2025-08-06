@@ -407,7 +407,7 @@ download_bogota_station_data <- function(base_url,
                                          end_year,
                                          container = TRUE) {
   # 0) prepare download directory
-  downloads_dir <- here::here("data", "raw", "pollution_ground_stations", "Bogota", "downloads")
+  downloads_dir <- here::here("data", "raw", "pollution_ground_stations", "Bogota")
   dir.create(downloads_dir, recursive = TRUE, showWarnings = FALSE)
   
   # 1) decide Selenium host/port, possibly start local container
@@ -465,7 +465,7 @@ download_bogota_station_data <- function(base_url,
     safe_name    <- gsub("[^A-Za-z0-9]", "_", station_name)
     
     for (yr in seq(start_year, end_year)) {
-      message("📥 Downloading ", station_name, " for year ", yr, " …")
+      message("📥 Downloading ", station_name, " station for year ", yr, " …")
       
       # -- toggle the station’s checkbox via JS injection
       chk <- item$find_element(
