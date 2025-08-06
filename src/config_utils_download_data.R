@@ -44,6 +44,13 @@ for (pkg in packages) {
 # Clear objects on environment
 rm(packages, pkg, toy_protect)
 
+# Try installing tidyverse in different cran
+options(repos = c(CRAN = "https://cloud.r-project.org"))
+if (!requireNamespace("tidyverse", quietly = TRUE)) {
+  renv::install("tidyverse")
+  library(readxl)
+  }
+
 # ############################################################################################
 # Functions
 # ############################################################################################
