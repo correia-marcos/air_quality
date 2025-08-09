@@ -45,7 +45,10 @@ services:
 
       # share renv cache to avoid broken symlinks
       - renv_cache:/usr/local/lib/R/renv-cache
-
+      
+      # Mount the same host downloads dir so R can read the files
+      - ./data/downloads:/air_monitoring/data/downloads
+      
       # credentials
       - ./.Renviron:/home/rstudio/.Renviron:ro
       - ~/.netrc:/home/rstudio/.netrc:ro
