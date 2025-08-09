@@ -355,15 +355,6 @@ download_bogota_station_data <- function(base_url,
                       key_chord(keys$backspace))
       sd_in$send_keys(start_str)
       
-      # -- fill “A la fecha”
-      ed_in <- session$find_element("css selector", "#endDate")
-      ed_in$click()
-      ed_in$send_keys(key_chord(keys$control, keys$shift, keys$home),
-                      key_chord(keys$backspace))
-      ed_in$send_keys(end_str)
-      ed_in$send_keys(keys$tab)
-      ed_in$send_keys(keys$tab)
-      
       # -- fill times
       st <- session$find_element("css selector", "#startTime")
       et <- session$find_element("css selector", "#endTime")
@@ -376,6 +367,14 @@ download_bogota_station_data <- function(base_url,
       et$send_keys(key_chord(keys$control, keys$shift, keys$home),
                    key_chord(keys$backspace))
       et$send_keys("23:00")
+      
+      # -- fill “A la fecha”
+      Sys.sleep(3.5)
+      ed_in <- session$find_element("css selector", "#endDate")
+      ed_in$click()
+      ed_in$send_keys(key_chord(keys$control, keys$shift, keys$home),
+                      key_chord(keys$backspace))
+      ed_in$send_keys(end_str)
       
       # 5.3) click “Mostrar” (with an extra toggle to avoid the page bug)
       session$execute_script(js_toggle)
