@@ -14,6 +14,7 @@
 
 # Ignore entire raw data folder
 data/raw/
+data/downloads/
 
 
 # Ignore MERRA-2 data folder
