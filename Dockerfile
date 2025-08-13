@@ -23,11 +23,12 @@ ENV RENV_CONFIG_PPM_ENABLED=TRUE \
     RENV_CONFIG_PPM_URL="https://packagemanager.posit.co/cran/__linux__/bookworm/latest" \
     RENV_CONFIG_REPOS_OVERRIDE="https://packagemanager.posit.co/cran/__linux__/bookworm/latest"
 
-# Required UA so PPM serves binaries (Arrow docs recommend this)
-RUN bash -lc 'cat >> /usr/local/lib/R/etc/Rprofile.site <<EOF
-options(repos = c(CRAN = "https://packagemanager.posit.co/cran/__linux__/bookworm/latest"))
-options(HTTPUserAgent = sprintf("R/%s R (%s)", getRversion(), paste(R.version[["platform"]], R.version[["arch"]], R.version[["os"]])))
-EOF'
+# Builder stage: set PPM repo + User-Agent for binary installs
+RUN mkdir -p /usr/local/lib/R/etc && \
+    printf '%s\n' \
+      'options(repos = c(CRAN = "https://packagemanager.posit.co/cran/__linux__/bookworm/latest"))' \
+      'options(HTTPUserAgent = sprintf("R/%s R (%s)", getRversion(), paste(R.version[["platform"]], R.version[["arch"]], R.version[["os"]])) )' \
+    >> /usr/local/lib/R/etc/Rprofile.site
 
 # 2) Project checkout
 ARG REPO_URL=https://github.com/correia-marcos/air_quality.git
@@ -77,11 +78,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 ENV LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 TZ=America/Sao_Paulo
 
-# 1) Keep using PPM in runtime too (for any interactive installs)
-RUN bash -lc 'cat >> /usr/local/lib/R/etc/Rprofile.site <<EOF
-options(repos = c(CRAN = "https://packagemanager.posit.co/cran/__linux__/bookworm/latest"))
-options(HTTPUserAgent = sprintf("R/%s R (%s)", getRversion(), paste(R.version[["platform"]], R.version[["arch"]], R.version[["os"]])))
-EOF'
+# Final stage: keep same repo + UA for any interactive installs in runtime
+RUN mkdir -p /usr/local/lib/R/etc && \
+    printf '%s\n' \
+      'options(repos = c(CRAN = "https://packagemanager.posit.co/cran/__linux__/bookworm/latest"))' \
+      'options(HTTPUserAgent = sprintf("R/%s R (%s)", getRversion(), paste(R.version[["platform"]], R.version[["arch"]], R.version[["os"]])) )' \
+    >> /usr/local/lib/R/etc/Rprofile.site
 
 # 2) Shared global renv cache (mount this as a named volume in compose)
 ENV RENV_PATHS_CACHE=/usr/local/lib/R/renv-cache \
