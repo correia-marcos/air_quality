@@ -17,6 +17,7 @@ packages <- c(
   "ggplot2",
   "ggspatial",
   "ggridges",
+  "haven",
   "here",
   "lubridate",
   "rlang",
@@ -26,6 +27,7 @@ packages <- c(
   "showtext",
   "terra",
   "tidyr",
+  "viridisLite",
   "zoo")
 
 # Define the default source library for packages installation - may have problems otherwise
@@ -939,6 +941,167 @@ plot_time_spans_ridgeline <- function(list_of_dfs,
     ) +
     theme_minimal(base_family = "Palatino", base_size = 14)
   
+  
+  return(p)
+}
+
+# ------------------------------------------------------------------------------------------------
+# Function: summarize_hourly_by_station
+# @Arg         : df           a data frame with columns for station code, datetime, and value.
+# @Arg         : station_col  name of the station code column (default "station_code").
+# @Arg         : datetime_col name of the datetime column (default "date2_hour").
+# @Arg         : value_col    name of the pollutant column to average (default "pm25_validated").
+# @Arg         : filter_type  one of "none", "gt_it1", or "gt_it2" for threshold filtering.
+# @Arg         : it1, it2     numeric thresholds (defaults reflect WHO annual PM2.5 IT1/IT2).
+# @Arg         : tz           timezone for parsing if needed (kept for signature parity).
+# @Arg         : station_lookup data.frame with columns Station (char) and StationName (char).
+# @Output      : A data frame with columns Station, Hour, mean_value, n and an attribute
+#                "station_levels" giving a fixed station order across hours.
+# @Purpose     : Build hourly means per station, optionally filtering by WHO interim targets,
+#                and attach a stable station ordering for consistent stacked plots.
+# @Written_on  : 12/08/2025
+# @Written_by  : Marcos Paulo
+# ------------------------------------------------------------------------------------------------
+summarize_hourly_by_station <- function(df,
+                                        station_col    = "station_code",
+                                        datetime_col   = "date2_hour",
+                                        value_col      = "pm25_validated",
+                                        filter_type    = c("none", "gt_it1", "gt_it2"),
+                                        it1            = 35,
+                                        it2            = 25,
+                                        tz             = "UTC",
+                                        station_lookup = SANTIAGO_STATION_LOOKUP) {
+  filter_type <- match.arg(filter_type)
+  
+  # 1) Parse time + prepare core fields
+  df2 <- df %>%
+    mutate(
+      .dt     = as.POSIXct(.data[[datetime_col]]),   # keep your original choice (no tz)
+      Date    = as.Date(.dt),
+      Hour    = lubridate::hour(.dt),
+      .val    = as.numeric(.data[[value_col]]),
+      Station = as.character(.data[[station_col]])
+    )
+  
+  # 2) Apply IT filters
+  df2 <- switch(
+    filter_type,
+    "none"   = df2,
+    "gt_it1" = dplyr::filter(df2, .val > it1),
+    "gt_it2" = dplyr::filter(df2, .val > it2)
+  )
+  
+  # 3) Join station names; fall back to "Station <code>" when missing
+  df2 <- df2 %>%
+    dplyr::left_join(
+      station_lookup %>% dplyr::mutate(Station = as.character(Station)),
+      by = "Station"
+    ) %>%
+    dplyr::mutate(
+      Station = dplyr::coalesce(StationName, paste0("Station ", Station))
+    )
+  
+  # 4) Compute hourly means per (station, hour)
+  hourly <- df2 %>%
+    dplyr::group_by(Station, Hour) %>%
+    dplyr::summarise(
+      mean_value = mean(.val, na.rm = TRUE),
+      n          = sum(!is.na(.val)),
+      .groups    = "drop"
+    )
+  
+  # 5) Fix a single station order across hours (descending overall mean)
+  station_levels <- hourly %>%
+    dplyr::group_by(Station) %>%
+    dplyr::summarise(overall_mean = mean(mean_value, na.rm = TRUE), .groups = "drop") %>%
+    dplyr::arrange(dplyr::desc(overall_mean)) %>%
+    dplyr::pull(Station)
+  
+  hourly$Station <- factor(hourly$Station, levels = station_levels)
+  attr(hourly, "station_levels") <- station_levels
+  hourly
+}
+
+# ------------------------------------------------------------------------------------------------
+# Function: plot_hourly_stacked_stations
+# @Arg         : hourly_df      output of summarize_hourly_by_station().
+# @Arg         : region_name    string for the plot title (e.g., "Santiago").
+# @Arg         : pollutant_label label to show (e.g., "PM2.5" or "PM10").
+# @Arg         : filter_label   subtitle (e.g., "All values", "Values > IT1 (35 µg/m³)").
+# @Arg         : normalize      if TRUE, 100% stacks by hour (shares); else stacks absolute means.
+# @Arg         : show_it_lines  if TRUE and not normalized, add IT2/IT1 vertical lines.
+# @Arg         : year           integer shown in title (default 2012L for signature parity).
+# @Arg         : it1, it2       numeric WHO lines if show_it_lines = TRUE.
+# @Arg         : base_family    font family for theme.
+# @Output      : A ggplot object (horizontal stacked bars; one bar per hour; segment = station).
+# @Purpose     : Visualize composition and level (or share) of hourly averages by station with a
+#                fixed station order across all hours to ease comparisons.
+# @Written_on  : 12/08/2025
+# @Written_by  : Marcos Paulo
+# ------------------------------------------------------------------------------------------------
+plot_hourly_stacked_stations <- function(hourly_df,
+                                         region_name     = "Santiago",
+                                         pollutant_label = "PM2.5",
+                                         filter_label    = "All values",
+                                         normalize       = FALSE,
+                                         show_it_lines   = FALSE,
+                                         year            = 2012L,
+                                         it1             = 35,
+                                         it2             = 25,
+                                         base_family     = "Palatino") {
+  
+  dfp <- hourly_df
+  
+  # 1) Optionally convert to shares within hour (100% stacks)
+  if (normalize) {
+    dfp <- dfp %>%
+      dplyr::group_by(Hour) %>%
+      dplyr::mutate(
+        total_hour = sum(mean_value, na.rm = TRUE),
+        share      = dplyr::if_else(total_hour > 0, mean_value / total_hour, NA_real_)
+      ) %>%
+      dplyr::ungroup()
+  }
+  
+  # 2) Choose palette length from the fixed station order
+  n_stations <- length(attr(dfp, "station_levels") %||% levels(dfp$Station))
+  pal        <- viridisLite::viridis(n_stations, option = "D", direction = 1)
+  
+  # 3) Build stacked horizontal bars (order = factor levels, fixed across hours)
+  p <- ggplot(
+    dfp,
+    aes(
+      x   = if (normalize) share else mean_value,
+      y   = factor(Hour),
+      fill = Station
+    )
+  ) +
+    geom_bar(stat = "identity", width = 0.7, color = "black") +
+    scale_fill_manual(values = pal, drop = FALSE) +
+    labs(
+      title    = paste0("Hourly ", pollutant_label, " by Station — ", region_name, " (", year, ")"),
+      subtitle = filter_label,
+      x        = if (normalize) "Share of hourly mean (100% stacked)"
+      else paste0("Average ", pollutant_label, " (µg/m³)"),
+      y        = "Hour of Day",
+      fill     = "Station"
+    ) +
+    theme_minimal(base_family = base_family, base_size = 14) +
+    theme(
+      panel.grid.major.y = element_blank(),
+      legend.position    = "right"
+    )
+  
+  # 4) Optional WHO lines (only meaningful on absolute scale)
+  if (show_it_lines && !normalize) {
+    p <- p +
+      geom_vline(xintercept = it2, color = "orange",  linetype = "dashed", linewidth = 0.5) +
+      geom_vline(xintercept = it1, color = "darkred", linetype = "dashed", linewidth = 0.5) +
+      annotate("text", x = it2 + 1, y = max(as.numeric(factor(dfp$Hour))), label = "IT2",
+               vjust = -0.4, color = "orange",  size = 3) +
+      annotate("text", x = it1 + 1, y = max(as.numeric(factor(dfp$Hour))), label = "IT1",
+               vjust = -0.4, color = "darkred", size = 3)
+  }
   
   return(p)
 }
