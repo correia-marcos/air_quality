@@ -1,9 +1,20 @@
 #!/usr/bin/env bash
 set -e
 
+# --- ensure 'rstudio' user exists and set password from env ---
+USER_NAME="${USER:-rstudio}"
+PASS="${PASSWORD:-secret123}"
+
+if ! id -u "$USER_NAME" >/dev/null 2>&1; then
+  useradd -m -s /bin/bash "$USER_NAME"
+  usermod -aG staff "$USER_NAME" || true
+fi
+
+echo "${USER_NAME}:${PASS}" | chpasswd
+
 # --- ensure renv cache dir exists and is writable ---
 mkdir -p /usr/local/lib/R/renv-cache
-chown -R rstudio:staff /usr/local/lib/R/renv-cache
+chown -R "${USER_NAME}":staff /usr/local/lib/R/renv-cache
 
 echo "Entrypoint script started with args: $@"
 
@@ -32,7 +43,7 @@ if [ "$#" -eq 0 ] || [ "$1" = "rserver" ]; then
   echo "Starting RStudio Server in foreground..."
   exec rserver \
     --www-port=8787 \
-    --server-user=rstudio \
+    --server-user="${USER_NAME}" \
     --auth-none=0 \
     --auth-timeout-minutes=5 \
     --rsession-which-r=/usr/local/bin/R \
