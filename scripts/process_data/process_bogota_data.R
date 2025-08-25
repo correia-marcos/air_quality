@@ -14,33 +14,6 @@
 # @Author: Marcos
 # ============================================================================================
 
-# Get all libraries and functions
-source(here::here("src", "config_utils_download_data.R"))
-
-# ============================================================================================
-# I: Import data
-# ============================================================================================
-# Define parameters
-base_url                 <- "http://rmcab.ambientebogota.gov.co/Report/stationreport"
-start_year               <- 2000L
-end_year                 <- 2023L
-downloads_folder         <- here::here("data","downloads")
-# ============================================================================================
-# II: Process and save data
-# ============================================================================================
-# Apply function to create Selenium server and download the data for Bogota
-bogota_download_station_data(
-  base_url   = base_url,
-  start_year = start_year,
-  end_year   = end_year,
-  container     = TRUE,
-  stations_idx  = NULL,
-  max_attempts  = 3,
-  timeout_page  = 30,
-  timeout_btn   = 30,
-  timeout_dl    = 240
-)
-
 # Ensure output folder exists
 outdir <- here::here("data", "raw", "pollution_ground_stations", "Bogota")
 dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
