@@ -16,11 +16,38 @@
 data/raw/
 data/downloads/
 
-
 # Ignore MERRA-2 data folder
 data/raw/merra2/
 Data/raw/merra2_test/
 
+# legacy raw assets kept only for one-off validations
+data/_legacy/
+tests/_cache/
+tests/_out/
+# Ignore Git folder
+.git
+
+# Ignore local OS files
+.DS_Store
+
+# R project info (as in .gitignore)
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+
+# Possibly ignore Rproj files if you don't want them in the image
+*.Rproj
+
+# Ignore your raw data folders
+data/raw/
+data/raw/merra2/
+data/*
+
+# Ignore the results of validation on replication package
+results/validation_rep_package/
+
+# MacOS files
 .DS_Store
 /data/.DS_Store
 */.DS_Store
