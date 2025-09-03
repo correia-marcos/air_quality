@@ -98,7 +98,7 @@ plot_merra2_grid_city <- function(shapefile, nc_file, city_name) {
   # Create a ggplot
   p <- ggplot() +
     geom_sf(data = grid_cells_sf, fill = NA, color = "navy", size = 0.3) +
-    geom_sf(data = shapefile_proj, fill = "grey50", color = "grey10", size = 0.001) +
+    geom_sf(data = shapefile_proj, fill = "tan4", color = "grey10", size = 0.001) +
     geom_sf(data = grid_centroids, shape = 3, fill = "navy", color = "navy", size = 1.5) +
     labs(
       title = paste("MERRA-2 Grid Cells over", city_name),

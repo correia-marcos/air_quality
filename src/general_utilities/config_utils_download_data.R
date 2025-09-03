@@ -19,14 +19,20 @@ packages <- c(
   "glue",
   "here",
   "httr",
+  "janitor",
   "jsonlite",
   "lubridate",
   "purrr",
   "readr",
   "rvest",
   "selenium",
+  "sf",
   "stringr",
-  "tidyr"
+  "tibble",
+  "tools",
+  "tidyr",
+  "xml2",
+  "zip"
   )
 
 # Define the default source library for packages installation - may have problems otherwise

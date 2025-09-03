@@ -12,6 +12,7 @@
 
 # List of required packages
 packages <- c(
+  "arrow",
   "dplyr",
   "doParallel",
   "exactextractr",
@@ -47,6 +48,98 @@ rm(packages, pkg)
 # ############################################################################################
 # Functions
 # ############################################################################################
+
+# --------------------------------------------------------------------------------------------
+# Function: save_raw_data_tidy_formatted
+# @Arg       : data            — data.frame / tibble to write
+# @Arg       : out_dir         — string; directory to write outputs (created if missing)
+# @Arg       : out_name        — string|NULL; base filename *without* extension
+#                                 If NULL, inferred from available columns:
+#                                   • if 'city' + 'year': "<city>_<minyear>_<maxyear>"
+#                                   • if 'year' only   : "dataset_<minyear>_<maxyear>"
+#                                   • else             : "dataset"
+# @Arg       : write_rds       — logical; write .rds (default TRUE)
+# @Arg       : write_parquet   — logical; write .parquet via {arrow} (default TRUE)
+# @Arg       : write_csv_gz    — logical; write .csv.gz (default FALSE)
+# @Arg       : rds_compress    — string; RDS compress method (default "xz")
+# @Arg       : parquet_comp    — string; Parquet compression codec (default "zstd")
+# @Arg       : quiet           — logical; suppress messages (default FALSE)
+# @Output    : (invisible) list with paths written (rds, parquet, csv)
+# @Purpose   : Materialize a dataframe to standard artifacts with a consistent base name.
+# @Written_on: 27/08/2025
+# @Written_by: Marcos Paulo
+# --------------------------------------------------------------------------------------------
+save_raw_data_tidy_formatted <- function(
+    data,
+    out_dir,
+    out_name        = NULL,
+    write_rds       = TRUE,
+    write_parquet   = TRUE,
+    write_csv_gz    = FALSE,
+    rds_compress    = "xz",
+    parquet_comp    = "zstd",
+    quiet           = FALSE
+) {
+  stopifnot(is.data.frame(data))
+
+  # 1) ensure output dir exists
+  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+
+  # 2) infer default output name if not provided
+  infer_stub <- function(df) {
+    has_city <- "city" %in% names(df)
+    has_year <- "year" %in% names(df)
+    if (has_city && has_year) {
+      city <- as.character(df$city[which(!is.na(df$city))[1]])
+      ymin <- suppressWarnings(min(df$year, na.rm = TRUE))
+      ymax <- suppressWarnings(max(df$year, na.rm = TRUE))
+      if (is.finite(ymin) && is.finite(ymax) && nzchar(city)) {
+        return(sprintf("%s_%d_%d", gsub("\\s+", "", city), ymin, ymax))
+      }
+    }
+    if (has_year) {
+      ymin <- suppressWarnings(min(data$year, na.rm = TRUE))
+      ymax <- suppressWarnings(max(data$year, na.rm = TRUE))
+      if (is.finite(ymin) && is.finite(ymax)) return(sprintf("dataset_%d_%d", ymin, ymax))
+    }
+    "dataset"
+  }
+  if (is.null(out_name) || !nzchar(out_name)) out_name <- infer_stub(data)
+  
+  # 3) write artifacts as requested
+  paths <- list(rds = NA_character_, parquet = NA_character_, csv = NA_character_)
+
+  if (isTRUE(write_rds)) {
+    rds_path <- file.path(out_dir, paste0(out_name, ".rds"))
+    saveRDS(data, rds_path, compress = rds_compress)
+    paths$rds <- normalizePath(rds_path, winslash = "/", mustWork = FALSE)
+    if (!quiet) message("💾 Wrote RDS → ", paths$rds)
+  }
+
+  if (isTRUE(write_parquet)) {
+    if (!requireNamespace("arrow", quietly = TRUE)) {
+      stop("Package 'arrow' is required for Parquet output.
+           Install it (e.g., renv::install('arrow')).")
+    }
+    pq_path <- file.path(out_dir, paste0(out_name, ".parquet"))
+    arrow::write_parquet(data, pq_path, compression = parquet_comp)
+    paths$parquet <- normalizePath(pq_path, winslash = "/", mustWork = FALSE)
+    if (!quiet) message("🧱 Wrote Parquet → ", paths$parquet)
+  }
+
+  if (isTRUE(write_csv_gz)) {
+    csv_path <- file.path(out_dir, paste0(out_name, ".csv.gz"))
+    con <- gzfile(csv_path, open = "wt")
+    on.exit(try(close(con), silent = TRUE), add = TRUE)
+    readr::write_csv(data, con)
+    paths$csv <- normalizePath(csv_path, winslash = "/", mustWork = FALSE)
+    if (!quiet) message("📝 Wrote CSV.GZ → ", paths$csv)
+  }
+  
+  # 4) return the paths invisibly
+  invisible(paths)
+}
+
 
 # --------------------------------------------------------------------------------------------
 # Function: process_merra2_region_hourly
