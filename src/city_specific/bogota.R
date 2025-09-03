@@ -8,22 +8,410 @@
 #   - src/config_utils_download_data.R  (selenium helpers, waits, clicking helpers, etc.)
 #   - src/config_utils_process_data.R   (merge, tidy, QA, parquet writing, etc.)
 #   - src/cities/registry.R
+# 
+# Others obs:
+# Definition of the metropolitan area comes from SDP (2022):
+# — Secretaría Distrital de Planeacion (2022). Bogotá región: Un solo territorio. Dirección de 
+# Integración Regional, Nacional e Internacional.
 # ============================================================================================
 
 # Parameters (single source)
 bogota_cfg <- list(
   id              = "bogota",
   tz              = "America/Bogota",
+  url_station_shp = "https://www.ambientebogota.gov.co/estaciones-rmcab",
+  base_url_shp    = "https://www.dane.gov.co/files/geoportal-provisional",
   base_url_rmcab  = "http://rmcab.ambientebogota.gov.co/Report/stationreport",
-  base_url_census = "https://microdatos.dane.gov.co/index.php/catalog/421",
+  base_url_census = "https://microdatos.dane.gov.co/index.php/catalog/421/get-microdata",
   years           = 2000L:2023L,
   dl_dir          = here::here("data", "downloads", "Bogota"),
-  out_dir         = here::here("data", "raw",       "Bogota")
+  out_dir         = here::here("data", "raw"),
+  cities_in_metro = c("Bogotá DC", "Bojacá", "Cajicá", "Chía", "Cota", "El Rosal", "Facatativá",
+                      "Funza", "Fusagasugá", "Gachancipá", "La Calera", "Madrid", "Mosquera",
+                      "Sibaté", "Soacha", "Sopó", "Subachoque", "Tabio", "Tenjo", "Tocancipá",
+                      "Zipaquirá"),
+  station_nme_map = c("Centro de alto rendimiento" = "Centro de Alto Rendimiento",
+                      "Las Ferias"                 = "Las Ferias",
+                      "Carvajal-Sevillana"         = "Carvajal-Sevillana")
 )
 
 # ============================================================================================
 #  Bogotá-specific functions - downloading and its helpers
 # ============================================================================================
+
+# --------------------------------------------------------------------------------------------
+# Function: bogota_download_metro_area
+# @Arg       : level             — "mpio" (default) or "depto"
+# @Arg       : base_url          — base URL of DANE provisional geoportal files
+# @Arg       : keep_municipality — character vector of municipality names to keep
+#                                  (e.g., bogota_cfg$cities_in_metro)
+# @Arg       : download_dir      — where to save the ZIP 
+#                                  (default: data/downloads/Administrative/Colombia)
+# @Arg       : out_file          — where to write the cropped GeoPackage
+# @Arg       : overwrite_zip     — logical; re-download if ZIP exists (default FALSE)
+# @Arg       : overwrite_gpkg    — logical; overwrite output GeoPackage if exists 
+#                                  (default TRUE)
+# @Arg       : quiet             — logical; suppress progress (default FALSE)
+# @Output    : Writes a GeoPackage with Bogotá metro municipalities; returns (invisibly) the 
+#              sf object.
+# @Purpose   : Download MGN2018 admin boundaries and crop to the Bogotá metro area 
+# municipalities.
+# @Written_on: 20/08/2025
+# @Written_by: Marcos Paulo
+# --------------------------------------------------------------------------------------------
+bogota_download_metro_area <- function(
+    level             = c("mpio", "depto"),
+    base_url          = bogota_cfg$base_url_shp,
+    keep_municipality = bogota_cfg$cities_in_metro,
+    download_dir      = here::here("data", "downloads", "Administrative", "Colombia"),
+    out_file          = here::here("data", "raw", "admin", "Colombia", "bogota_metro.gpkg"),
+    overwrite_zip     = FALSE,
+    overwrite_gpkg    = TRUE,
+    quiet             = FALSE
+) {
+  level <- match.arg(tolower(level), c("mpio","depto"))
+  
+  # 0) Bogotá metro municipalities (canonical names) from config
+  bogota_metro_names <- bogota_cfg$cities_in_metro
+  
+  # Small helper: normalize Spanish names → ASCII, upper, strip non-alphanumeric
+  norm_key <- function(x) {
+    x <- as.character(x)
+    x <- stringi::stri_trans_general(x, "Latin-ASCII")
+    x <- toupper(x)
+    gsub("[^A-Z0-9]", "", x)
+  }
+  bogota_key <- norm_key(bogota_metro_names)
+  # Treat BOGOTA D.C. variants
+  bogota_key <- unique(c(bogota_key, norm_key("Bogota D.C."), norm_key("Bogota DC")))
+  
+  # 1) Choose ZIP by level
+  zip_name <- if (level == "mpio"){
+    "SHP_MGN2018_INTGRD_MPIO.zip"
+  } else {
+      "SHP_MGN2018_INTGRD_DEPTO.zip"
+    }
+  zip_url  <- file.path(base_url, zip_name)
+  
+  # 2) Ensure folders
+  dir.create(download_dir, recursive = TRUE, showWarnings = FALSE)
+  out_dir <- dirname(out_file)
+  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+  
+  zip_path <- file.path(download_dir, zip_name)
+  
+  # 3) Download (robust)
+  if (!file.exists(zip_path) || isTRUE(overwrite_zip)) {
+    if (!quiet) message("⬇️  Downloading ", zip_name, " …")
+    ua <- httr::user_agent(
+      sprintf("R (%s) / IDB-AirMonitoring",
+              paste(R.version$platform, R.version$version.string))
+    )
+    req <- httr::RETRY(
+      "GET", zip_url, ua,
+      httr::write_disk(zip_path, overwrite = TRUE),
+      httr::progress(type = if (quiet) "none" else "down"),
+      times = 5, terminate_on = c(200L), quiet = quiet, httr::timeout(60*30)
+    )
+    if (httr::status_code(req) != 200L) {
+      stop("HTTP ", httr::status_code(req), " downloading: ", zip_url)
+    }
+    if (!quiet) message("✅ Saved: ", zip_path)
+  } else if (!quiet) {
+    message("↪︎ ZIP already present (skip): ", zip_path)
+  }
+  
+  # 4) Extract to a temp folder and locate the SHP
+  exdir <- file.path(tempdir(), tools::file_path_sans_ext(zip_name))
+  if (dir.exists(exdir)) unlink(exdir, recursive = TRUE, force = TRUE)
+  dir.create(exdir, recursive = TRUE, showWarnings = FALSE)
+  utils::unzip(zipfile = zip_path, exdir = exdir, overwrite = TRUE)
+  shp <- list.files(exdir, pattern = "\\.shp$", recursive = TRUE, full.names = TRUE)
+  if (length(shp) == 0) stop("No .shp found inside ZIP: ", zip_path)
+  shp <- shp[1]
+  
+  # 5) Read with sf
+  suppressMessages({
+    g <- sf::st_read(shp, quiet = TRUE, stringsAsFactors = FALSE)
+  })
+  if (!quiet) message("🗺️  Loaded layer: ", basename(shp), "  (", nrow(g), " features)")
+
+  # ---- CHANGED: fixed name column + code-based prefilter to resolve duplicates ----
+  # Prefer the known fields if present
+  has_name  <- "MPIO_CNMBR"   %in% names(g)
+  has_dpto  <- "DPTO_CCDGO"   %in% names(g)
+  
+  # 6) Municipio-level selection
+  if (level == "mpio") {
+    if (!has_name) {
+      stop("Expected column 'MPIO_CNMBR' not found in the municipio layer.")
+    }
+    
+    # Coerce department code to integer safely (for filtering)
+    if (!has_dpto) {
+      stop("Expected column 'DPTO_CCDGO' not found; cannot disambiguate duplicate names.")
+    }
+    dpto_code <- suppressWarnings(as.integer(g[["DPTO_CCDGO"]]))
+    
+    # Keep only Bogotá D.C. (11) + Cundinamarca (25) to avoid name collisions like MOSQUERA (52)
+    keep <- !is.na(dpto_code) & dpto_code %in% c(11L, 25L)
+    g2 <- g[keep, , drop = FALSE]
+    
+    # Normalize names and match
+    nm_values <- iconv(g2[["MPIO_CNMBR"]], from = "", to = "UTF-8")
+    key_col   <- norm_key(nm_values)
+    
+    sel <- key_col %in% bogota_key
+    g_sel <- g2[sel, , drop = FALSE]
+    
+    if (nrow(g_sel) == 0) {
+      stop(
+        "No municipalities matched within DPTO 11/25. ",
+        "Examples: ", paste(utils::head(unique(nm_values), 8), collapse = " | "),
+        "\nCheck accents/punctuation or update bogota_cfg$cities_in_metro."
+      )
+    }
+    if (!quiet) {
+      message("🔎 Matched ",
+              nrow(g_sel),
+              " / ",
+              nrow(g),
+              " features (post-filter to DPTO 11/25).")
+    }
+    
+  } else {
+    # 7) Departamento-level: just return Bogotá D.C. (11) + Cundinamarca (25)
+    if (!has_dpto) {
+      stop("Expected column 'DPTO_CCDGO' not found in the department layer.")
+    }
+    dpto_code <- suppressWarnings(as.integer(g[["DPTO_CCDGO"]]))
+    sel <- !is.na(dpto_code) & dpto_code %in% c(11L, 25L)
+    g_sel <- g[sel, , drop = FALSE]
+    if (nrow(g_sel) == 0) {
+      stop("Departamento match failed for codes 11 and 25.")
+    }
+    if (!quiet) {
+      message("🔎 Selected departamentos by code: 11 (Bogotá D.C.) + 25 (Cundinamarca).")
+    }
+  }
+  
+  # 8) (Optional) dissolve to single polygon if desired
+  # g_out <- sf::st_union(g_sel)  # <- uncomment if you want one multipart feature
+  g_out <- g_sel
+  
+  # 9) Write GeoPackage
+  if (file.exists(out_file) && !overwrite_gpkg) {
+    if (!quiet) message("↪︎ Output exists and overwrite_gpkg=FALSE: ", out_file)
+  } else {
+    if (!quiet) message("💾 Writing GeoPackage → ", out_file)
+    if (file.exists(out_file) && overwrite_gpkg) unlink(out_file, force = TRUE)
+    sf::st_write(g_out, out_file, quiet = TRUE)
+  }
+  
+  invisible(g_out)
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: bogota_scrape_rmcab_station_table
+# @Arg       : page_url        — string; the url of the page to scrape
+# @Arg       : parse_coords    — logical; parse DMS lat/lon to decimal degrees
+#                                (default TRUE)
+# @Arg       : harmonize_map   — named chr vec (optional) to rename station display names
+# @Arg       : dedupe          — logical; drop duplicate rows across repeated tables
+#                                (default TRUE)
+# @Arg       : verbose         — logical; print progress
+#                                (default TRUE)
+# @Arg       : out_dir         — string; directory to write outputs (created if missing)
+# @Arg       : out_name        — string; base filename *without* extension
+# @Arg       : write_rds       — logical; write .rds (default FALSE)
+# @Arg       : write_parquet   — logical; write .parquet via {arrow} (default TRUE)
+# @Arg       : write_csv       — logical; write .csv (default FALSE)
+# @Output    : tibble with columns:
+#                station, code, latitude_dms, longitude_dms, lat, lon,
+#                altitude_m, height_m, locality, zone_type, station_type, address
+# @Purpose   : Scrape RMCAB station directory robustly (nested tables, repeated headers),
+#              and return clean metadata with decimal coords. Also save the table in the
+#              required formats and location. 
+# @Written_on: 29/08/2025
+# @Written_by: Marcos Paulo
+# --------------------------------------------------------------------------------------------
+bogota_scrape_rmcab_station_table <- function(
+    page_url,
+    parse_coords  = TRUE,
+    harmonize_map = c(),
+    dedupe        = TRUE,
+    verbose       = TRUE,
+    out_dir,
+    out_name,
+    write_rds     = FALSE,
+    write_parquet = TRUE,
+    write_csv     = FALSE
+) {
+  # Ensure output folder exists
+  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+  
+  # ---- helpers -----------------------------------------------------------------
+  .clean_txt <- function(x) {
+    x %>%
+      stringr::str_replace_all("\u00A0", " ") %>%      # nbsp → space
+      stringr::str_replace_all("[’′]", "'") %>%        # curly/prime apostrophes → '
+      stringr::str_replace_all("[“”]", "\"") %>%       # fancy quotes → "
+      stringr::str_squish() %>%
+      trimws()
+  }
+  
+  .parse_dms_vec <- function(x) {
+    x <- .clean_txt(x)
+    # e.g., 4°47'01.5"N | 74° 5'36.46"W | 4°44'13.9"N (seconds optional)
+    re <- "^\\s*(\\d{1,3})\\D+(\\d{1,2})\\D*(\\d{1,2}(?:[\\.,]\\d+)?)?\\D*([NSEWnsew])\\s*$"
+    m  <- stringr::str_match(x, re)
+    out <- rep(NA_real_, length(x))
+    ok  <- !is.na(m[,1])
+    if (any(ok)) {
+      deg <- as.numeric(m[ok,2])
+      min <- as.numeric(m[ok,3])
+      sec <- suppressWarnings(as.numeric(stringr::str_replace(m[ok,4], ",",".")))
+      sec[is.na(sec)] <- 0
+      dec <- deg + min/60 + sec/3600
+      sign <- ifelse(m[ok,5] %in% c("S","s","W","w"), -1, 1)
+      out[ok] <- sign * dec
+    }
+    out
+  }
+  
+  .is_header_row <- function(vals10) {
+    # second header row has exactly these labels (case/accents vary)
+    labs <- tolower(paste(vals10, collapse = " | "))
+    any(
+      stringr::str_detect(labs, "caracter") &&
+        stringr::str_detect(labs, "sigla")     &&
+        stringr::str_detect(labs, "latitud")   &&
+        stringr::str_detect(labs, "longitud")
+    )
+  }
+  
+  # ---- scrape ------------------------------------------------------------------
+  if (isTRUE(verbose)) message("Fetching: ", page_url)
+  # 1) Read the html
+  doc <- xml2::read_html(page_url)
+  
+  # 2) Find tables whose text mentions the title
+  tbls <- rvest::html_elements(doc, "table")
+  has_title <- purrr::map_lgl(tbls, ~ stringr::str_detect(
+    tolower(rvest::html_text(.x)), "ubicaci[oó]n\\s+estaciones\\s+rmcab"))
+  candidates <- tbls[has_title]
+  if (!length(candidates)) stop("No matching table found on the page.")
+  
+  if (isTRUE(verbose)) message("Found ", length(candidates), " candidate table(s). Parsing…")
+  
+  # 3) Map candidates of the information we want in the url
+  rows_all <- purrr::map(candidates, function(tbl) {
+    # Take only DIRECT child tds to avoid nested tables
+    trs <- rvest::html_elements(tbl, xpath = ".//tr")
+    purrr::map(trs, function(tr) {
+      tds <- rvest::html_elements(tr, xpath = "./td")
+      vals <- rvest::html_text2(tds)
+      vals <- .clean_txt(vals)
+      # Keep only data rows with exactly 10 direct cells
+      if (length(vals) != 10) return(NULL)
+      if (.is_header_row(vals)) return(NULL)   # skip label header
+      # Also skip the single-cell title row handled above (won't pass length==10 anyway)
+      vals
+    }) %>% purrr::compact()
+  }) %>% purrr::list_flatten()
+  
+  if (!length(rows_all)) stop("Parsed 0 data rows — the site may have changed.")
+  
+  # 4) Generate a table with the information collected
+  df <- purrr::map_dfr(rows_all, function(vals) {
+    tibble::tibble(
+      station       = vals[[1]],
+      code          = vals[[2]],
+      latitude_dms  = vals[[3]],
+      longitude_dms = vals[[4]],
+      altitude_m    = vals[[5]],
+      height_m      = vals[[6]],
+      locality      = vals[[7]],
+      zone_type     = vals[[8]],
+      station_type  = vals[[9]],
+      address       = vals[[10]]
+    )
+  })
+  
+  # 5) Clean/convert numbers from the table
+  df <- df %>%
+    dplyr::mutate(
+      altitude_m = readr::parse_number(altitude_m),
+      height_m   = readr::parse_number(height_m)
+    )
+  
+  # 6) Harmonize names if requested
+  if (length(harmonize_map)) {
+    df$station <- dplyr::recode(df$station, !!!harmonize_map, .default = df$station)
+  }
+  
+  # 7) Generate new columns with Coordinates in better units
+  if (isTRUE(parse_coords)) {
+    df <- df %>% dplyr::mutate(lat = .parse_dms_vec(latitude_dms),
+                               lon = .parse_dms_vec(longitude_dms))
+    bad <- which(is.na(df$lat) | is.na(df$lon))
+    if (length(bad) && isTRUE(verbose)) {
+      message("⚠️  Could not parse coords for rows: ",
+              paste(bad, collapse = ", "),
+              " (station(s): ", paste(df$station[bad], collapse = "; "), ")")
+    }
+  } else {
+    df <- df %>% dplyr::mutate(lat = NA_real_, lon = NA_real_)
+  }
+  
+  # 8) De-duplicate duplicate tables
+  if (isTRUE(dedupe)) {
+    df <- df %>%
+      dplyr::distinct(station, code, latitude_dms, longitude_dms, .keep_all = TRUE)
+  }
+  
+  # 9) Select and arrange the table with the needed information
+  df %>%
+    dplyr::select(station, code, latitude_dms, longitude_dms, lat, lon,
+                  altitude_m, height_m, locality, zone_type, station_type, address) %>%
+    dplyr::arrange(station) %>%
+    { if (isTRUE(verbose))
+      message("Rows: ", nrow(.), " | Unique stations: ",
+              dplyr::n_distinct(.$station), " | With coords: ",
+              sum(!is.na(.$lat) & !is.na(.$lon))); .
+    }
+  # 10) Save table in the requested formats - first, write paths
+  paths <- list(rds = NA_character_, parquet = NA_character_, csv = NA_character_)
+  
+  if (isTRUE(write_rds)) {
+    rds_path <- file.path(out_dir, paste0(out_name, ".rds"))
+    saveRDS(df, rds_path, compress = "xz")
+    paths$rds <- normalizePath(rds_path, winslash = "/", mustWork = FALSE)
+    if (verbose) message("💾 Wrote RDS → ", paths$rds)
+  }
+  
+  if (isTRUE(write_parquet)) {
+    if (!requireNamespace("arrow", quietly = TRUE)) {
+      stop("Package 'arrow' is required for Parquet output.
+           Install it (e.g., renv::install('arrow')).")
+    }
+    pq_path <- file.path(out_dir, paste0(out_name, ".parquet"))
+    arrow::write_parquet(df, pq_path, compression = "zstd")
+    paths$parquet <- normalizePath(pq_path, winslash = "/", mustWork = FALSE)
+    if (verbose) message("🧱 Wrote Parquet → ", paths$parquet)
+  }
+  
+  if (isTRUE(write_csv)) {
+    csv_path <- file.path(out_dir, paste0(out_name, ".csv"))
+    write.csv(df, file = csv_path, row.names = FALSE)
+    paths$csv <- normalizePath(csv_path, winslash = "/", mustWork = FALSE)
+    if (verbose) message("📝 Wrote CSV.GZ → ", paths$csv)
+  }
+  
+  return(df)
+}
+
 
 # --------------------------------------------------------------------------------------------
 # Function: bogota_get_station_info
@@ -388,86 +776,108 @@ bogota_download_station_data <- function(base_url,
 
 # --------------------------------------------------------------------------------------------
 # Function: bogota_find_resource_census
-# @Arg       : url    — string; DANE catalog page
-# @Arg       : type   — string; one of c("BASICO","AMPLIADO")
+# @Arg       : url    — string; DANE catalog page. Works with either:
+#                        "https://microdatos.dane.gov.co/index.php/catalog/421/get-microdata"
+#                        or "https://microdatos.dane.gov.co/index.php/catalog/421"
+# @Arg       : type   — "BASICO" or "AMPLIADO"
 # @Output    : list(label, filename, href) for the requested resource
 # @Purpose   : Extract the 'mostrarModal("FILE.zip","https://.../download/ID")' link.
-# @Written_on: 05/08/2025
-# @Written_by: Marcos Paulo
+#              We resolve relative → absolute URLs and trim whitespace.
+# @Written_on: 21/08/2025
 # --------------------------------------------------------------------------------------------
 bogota_find_resource_census <- function(url, type = c("BASICO","AMPLIADO")) {
   type <- match.arg(toupper(type), c("BASICO","AMPLIADO"))
   
-  pg   <- rvest::read_html(url)
-  # Pull every onclick="mostrarModal('CG2005_*.zip','https://.../download/NNN')"
-  onclicks <- pg |>
-    rvest::html_elements(
-      xpath = "//input[@type='image' and contains(@onclick,'mostrarModal')]"
-      ) |>
-    rvest::html_attr("onclick")
+  # Try the provided URL; if it ends with /get-microdata, also try the base catalog
+  base_try <- sub("/get-microdata/?$", "", url)
+  candidates <- unique(c(url, base_try))
   
-  if (length(onclicks) == 0L) {
-    stop("No download inputs found; page markup may have changed or requires login.")
+  # Helper to parse one page for the onclick() links
+  parse_one <- function(u) {
+    pg <- rvest::read_html(u)
+    onclicks <- pg |>
+      rvest::html_elements(
+        xpath = "//input[@type='image' and contains(@onclick,'mostrarModal')]"
+      ) |>
+      rvest::html_attr("onclick")
+    
+    if (!length(onclicks)) return(NULL)
+    
+    # Regex: group 1 = filename.zip, group 2 = /index.php/catalog/421/download/ID (or absolute)
+    m <- stringr::str_match(
+      onclicks,
+      "mostrarModal\\('\\s*([^']+?\\.zip)\\s*'\\s*,\\s*'\\s*([^']+?/download/\\d+)\\s*'"
+    )
+    m <- m[stats::complete.cases(m), , drop = FALSE]
+    if (!nrow(m)) return(NULL)
+    
+    df <- tibble::tibble(
+      filename = trimws(m[,2]),
+      href_raw = trimws(m[,3])
+    )
+    # Ensure absolute URL against this page
+    df$href <- vapply(df$href_raw, function(h) {
+      # xml2::url_absolute handles absolute+relative properly
+      xml2::url_absolute(h, u)
+    }, character(1))
+    df$label <- tools::file_path_sans_ext(df$filename)
+    df
   }
   
-  # Regex: grab filename (group 1) and download URL (group 2)
-  m <- stringr::str_match(
-    onclicks,
-    "mostrarModal\\('([^']+\\.zip)'\\s*,\\s*'([^']+?/download/\\d+)"
-  )
-  
-  # Keep rows with a match
-  m <- m[stats::complete.cases(m), , drop = FALSE]
-  if (nrow(m) == 0L) stop("Could not extract any 'download/<id>' links.")
-  
-  df <- tibble::tibble(
-    filename = m[, 2],
-    href     = m[, 3],
-    label    = tools::file_path_sans_ext(m[, 2])
-  )
+  # Parse until we find entries
+  all_df <- NULL
+  for (u in candidates) {
+    all_df <- try(parse_one(u), silent = TRUE)
+    if (inherits(all_df, "try-error")) next
+    if (!is.null(all_df) && nrow(all_df)) break
+  }
+  if (is.null(all_df) || !nrow(all_df)) {
+    stop("No download inputs found; page markup may have changed or requires login/captcha.")
+  }
   
   wanted <- paste0("CG2005_", type)
-  cand   <- df[stringr::str_detect(df$label, stringr::fixed(wanted)), ]
-  
+  cand   <- all_df[stringr::str_detect(all_df$label,
+                                       stringr::fixed(wanted, ignore_case = TRUE)), ]
   if (!nrow(cand)) {
     stop("Could not find resource labeled ", wanted,
-         ". Available: ", paste(df$label, collapse = ", "))
+         ". Available: ", paste(all_df$label, collapse = ", "))
   }
   
-  # If multiple, keep the first visible occurrence.
-  cand[1, c("label","filename","href")] |> as.list()
+  cand <- cand[1, ]
+  list(label = cand$label, filename = cand$filename, href = cand$href)
 }
 
 
 # --------------------------------------------------------------------------------------------
 # Function: bogota_download_census_data
 # @Arg       : type            — "BASICO" or "AMPLIADO"
-# @Arg       : url             — catalog page
+# @Arg       : url             — catalog page (default: get-microdata version)
 # @Arg       : download_folder — where to save ZIP (e.g., here('data','downloads','Census'))
 # @Arg       : overwrite       — logical; re-download if file exists (default FALSE)
 # @Arg       : retries         — integer; max HTTP retries (default 5)
 # @Arg       : quiet           — logical; suppress progress (default FALSE)
 # @Output    : tibble with columns: type, file_path, bytes, status
-# @Purpose   : Resolve the link and download CG2005 microdata ZIP robustly.
-# @Written_on: 05/08/2025
-# @Written_by: Marcos Paulo
+# @Purpose   : Resolve the direct download link and fetch CG2005 microdata ZIP robustly.
+#              If server enforces reCAPTCHA (HTTP 401/403), returns status 'captcha_required'.
+# @Written_on: 21/08/2025
 # --------------------------------------------------------------------------------------------
 bogota_download_census_data <- function(
     type,
-    url = "https://microdatos.dane.gov.co/index.php/catalog/421",
-    download_folder = here::here('data','downloads','Census'),
-    overwrite = FALSE,
-    retries = 5,
-    quiet = FALSE) {
+    url             = "https://microdatos.dane.gov.co/index.php/catalog/421/get-microdata",
+    download_folder = here::here('data', 'downloads', 'Census'),
+    overwrite       = FALSE,
+    retries         = 5,
+    quiet           = FALSE
+) {
   dir.create(download_folder, recursive = TRUE, showWarnings = FALSE)
   
   # I) Resolve which resource to fetch
-  res <- bogota_find_resource_census(url = url, type = type)
+  res  <- bogota_find_resource_census(url = url, type = type)
   dest <- file.path(download_folder, res$filename)
   
   if (file.exists(dest) && !isTRUE(overwrite)) {
-    message("↪︎ Already present: ", basename(dest), " (skip).")
-    sz <- tryCatch(file.size(dest), error = function(e) NA_real_)
+    if (!quiet) message("↪︎ Already present: ", basename(dest), " (skip).")
+    sz <- suppressWarnings(file.size(dest))
     return(tibble::tibble(
       type      = toupper(type),
       file_path = normalizePath(dest),
@@ -476,25 +886,40 @@ bogota_download_census_data <- function(
     ))
   }
   
-  # II) Robust download
+  # II) Robust download (direct GET to the /download/<id> link)
   ua <- httr::user_agent(
     sprintf("R (%s) / IDB-AirMonitoring", paste(R.version$platform, R.version$version.string))
   )
-  # Allow very large files; set long timeout
   rq <- httr::RETRY(
     verb = "GET",
     url  = res$href,
     ua,
+    httr::add_headers(Referer = url),
     httr::write_disk(path = dest, overwrite = TRUE),
     httr::progress(type = if (quiet) "none" else "down"),
     times = as.integer(retries),
     terminate_on = c(200L),
     quiet = quiet,
-    timeout(60 * 60)  # up to 1h wall time (adjust as needed)
+    httr::timeout(60 * 120)  # up to 2h wall time; BASICO is ~2.4 GB
   )
   
   code <- httr::status_code(rq)
+  
+  # III) Handle captcha/authorization scenarios gracefully
+  if (code %in% c(401L, 403L)) {
+    if (file.exists(dest)) unlink(dest)
+    warning("Server returned ", code, " (likely requires reCAPTCHA). ",
+            "Open the page in a browser and use the 'Descargar' button, then try again.")
+    return(tibble::tibble(
+      type      = toupper(type),
+      file_path = NA_character_,
+      bytes     = NA_real_,
+      status    = "captcha_required"
+    ))
+  }
+  
   if (code != 200L) {
+    if (file.exists(dest)) unlink(dest)
     warning("Download failed with HTTP ", code, " for ", res$href)
     return(tibble::tibble(
       type      = toupper(type),
@@ -504,14 +929,16 @@ bogota_download_census_data <- function(
     ))
   }
   
-  # III) Basic validation
-  bytes <- tryCatch(file.size(dest), error = function(e) NA_real_)
+  # IV) Basic validation
+  bytes <- suppressWarnings(file.size(dest))
   if (is.na(bytes) || bytes < 1e6) {
     warning("Downloaded file seems too small: ", dest, " (", bytes, " bytes)")
   }
   
-  message("✅ Downloaded ", basename(dest),
-          " (", format(structure(bytes, class="object_size")), ")")
+  if (!quiet) {
+    message("✅ Downloaded ", basename(dest),
+            " (", format(structure(bytes, class = "object_size")), ")")
+  }
   
   tibble::tibble(
     type      = toupper(type),
@@ -520,6 +947,7 @@ bogota_download_census_data <- function(
     status    = "ok"
   )
 }
+
 
 # ============================================================================================
 #  Bogotá-specific functions - processing data ans its helpers
@@ -655,35 +1083,23 @@ bogota_read_one_xlsx <- function(path, tz = "America/Bogota", verbose = FALSE) {
 # --------------------------------------------------------------------------------------------
 # Function: bogota_merge_downloads
 # @Arg       : downloads_folder — string; directory containing *.xlsx exports
-# @Arg       : out_dir          — string; directory to write outputs (created if missing)
-# @Arg       : out_name         — string|NULL; base filename *without* extension.
-#                                 If NULL, will use "bogota_stations_<minyear>_<maxyear>"
-# @Arg       : write_rds        — logical; write .rds (default TRUE)
-# @Arg       : write_parquet    — logical; write .parquet via {arrow} (default TRUE)
-# @Arg       : write_csv_gz     — logical; write .csv.gz (default FALSE)
 # @Arg       : cleanup          — logical; TRUE deletes the .xlsx after merging (default TRUE)
 # @Arg       : tz               — string; Olson timezone for datetime parsing (default
 #                                 "America/Bogota")
-# @Output    : (invisible) tibble; all files row-bound, sorted and de-duplicated by
-#              (station, datetime). Side-effects: writes selected artifacts to `out_dir`.
-# @Purpose   : Read every XLSX via bogota_read_one_xlsx(), stack, sort, de-dup, and persist
-#              to disk as RDS / Parquet / CSV.GZ with a consistent base filename.
-# @Written_on: 05/08/2025
+# @Output    : tibble; all files row-bound, sorted and de-duplicated by (station, datetime).
+# @Purpose   : Read every XLSX via bogota_read_one_xlsx(), stack, sort, de-dup, and return the
+#              combined table. Side-effect (optional): deletes the source .xlsx files.
+# @Written_on: 27/08/2025
 # @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
-bogota_merge_downloads <- function(downloads_folder,
-                                   out_dir,
-                                   out_name = NULL,
-                                   write_rds = TRUE,
-                                   write_parquet = TRUE,
-                                   write_csv_gz = FALSE,
-                                   cleanup = TRUE,
-                                   tz = "America/Bogota") {
+bogota_merge_stations_downloads <- function(downloads_folder,
+                                            cleanup = TRUE,
+                                            tz = "America/Bogota") {
   # 1) enumerate target files
   files <- list.files(downloads_folder, pattern = "\\.xlsx$", full.names = TRUE)
   if (length(files) == 0L) stop("No .xlsx files found in ", downloads_folder)
   
-  # 2) read + stack
+  # 2) read + stack (robust reader defined elsewhere)
   big_tbl <- purrr::map_dfr(files, function(p) bogota_read_one_xlsx(p, tz = tz))
   
   # 3) sort + de-dup (safety for overlapping or re-downloaded years)
@@ -691,53 +1107,19 @@ bogota_merge_downloads <- function(downloads_folder,
     dplyr::arrange(.data$station, .data$datetime) |>
     dplyr::distinct(.data$station, .data$datetime, .keep_all = TRUE)
   
-  # 4) infer default output name if not provided
-  yr_min <- suppressWarnings(min(big_tbl$year, na.rm = TRUE))
-  yr_max <- suppressWarnings(max(big_tbl$year, na.rm = TRUE))
-  if (is.null(out_name) || !nzchar(out_name)) {
-    if (is.finite(yr_min) && is.finite(yr_max)) {
-      out_name <- sprintf("bogota_stations_%d_%d", yr_min, yr_max)
-    } else {
-      out_name <- "bogota_stations"
-    }
-  }
-  
-  # 5) ensure output dir exists
-  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
-  
-  # 6) materialize artifacts as requested
-  if (isTRUE(write_rds)) {
-    rds_path <- file.path(out_dir, paste0(out_name, ".rds"))
-    saveRDS(big_tbl, rds_path, compress = "xz")
-    message("💾 Wrote RDS → ", rds_path)
-  }
-  
-  if (isTRUE(write_parquet)) {
-    if (!requireNamespace("arrow", quietly = TRUE)) {
-      stop("Package 'arrow' is required for Parquet output. Install it
-           (e.g., renv::install('arrow')).")
-    }
-    pq_path <- file.path(out_dir, paste0(out_name, ".parquet"))
-    arrow::write_parquet(big_tbl, pq_path, compression = "zstd")
-    message("🧱 Wrote Parquet → ", pq_path)
-  }
-  
-  if (isTRUE(write_csv_gz)) {
-    csv_path <- file.path(out_dir, paste0(out_name, ".csv.gz"))
-    con <- gzfile(csv_path, open = "wt")
-    on.exit(try(close(con), silent = TRUE), add = TRUE)
-    readr::write_csv(big_tbl, con)
-    message("📝 Wrote CSV.GZ → ", csv_path)
-  }
-  
-  # 7) optional cleanup of raw XLSX
+  # 4) optional cleanup of raw XLSX
   if (isTRUE(cleanup)) {
-    file.remove(files)
-    message("🗑️  Removed original .xlsx files.")
+    ok <- try(file.remove(files), silent = TRUE)
+    if (inherits(ok, "try-error")) {
+      warning("Failed to remove some .xlsx files in ", downloads_folder)
+    } else {
+      message("🗑️  Removed original .xlsx files (",
+              sum(ok, na.rm = TRUE), "/", length(files), ").")
+    }
   }
   
-  # 8) return invisibly
-  return(invisible(big_tbl))
+  # 5) return combined table
+  big_tbl
 }
 
 
@@ -848,7 +1230,7 @@ bogota_process <- function(cfg = bogota_cfg) {
 
 # ------------------------------- Register this city in the registry --------------------------
 register_city(
-  id       = "bogota",
+  id       = bogota_cfg$id,
   cfg      = bogota_cfg,
   download = bogota_download,
   process  = bogota_process
