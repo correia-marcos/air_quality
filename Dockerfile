@@ -16,6 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # plotting/text shaping
     libpng-dev libfreetype6-dev libfontconfig1-dev libharfbuzz-dev libfribidi-dev \
     cmake pkg-config \
+  && update-ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
 # 1) Use Posit Package Manager (PPM) for Linux binaries (Debian bookworm)
@@ -48,10 +49,6 @@ COPY .Rprofile       ./
 # 5) Install renv (binary via PPM) and restore packages from lockfile
 RUN R -q -e "install.packages('renv'); renv::restore(prompt = FALSE)"
 
-# NOTE: Do NOT snapshot in builds (keeps builds pure & deterministic)
-# RUN R -q -e "renv::snapshot(confirm = FALSE)"   # ← intentionally omitted
-
-
 ################################################################################
 # STAGE 2: Runtime — slim RStudio Server with runtime libs only
 ################################################################################
@@ -62,21 +59,28 @@ LABEL \
   org.opencontainers.image.version="v1.0.0" \
   maintainer="Marcos Correia <marcospaulorcorreia@gmail.com>"
 
-# 0) Runtime dependencies only (no browsers, no geckodriver, no JRE)
+# 0) Runtime dependencies (now includes ca-certificates)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl git \
+    curl git ca-certificates \
     # locales & tz for reproducible dates/strings
     locales tzdata \
     # shared object libs needed at runtime
     libgdal-dev libudunits2-dev libxml2 libssl3 libcurl4 \
     libpng16-16 libfreetype6 libfontconfig1 libharfbuzz0b libfribidi0 \
     fonts-dejavu fonts-liberation \
+  && update-ca-certificates \
   && rm -rf /var/lib/apt/lists/* \
   && sed -i 's/# en_US.UTF-8/en_US.UTF-8/' /etc/locale.gen \
   && sed -i 's/# pt_BR.UTF-8/pt_BR.UTF-8/' /etc/locale.gen \
   && locale-gen
 
-ENV LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 TZ=America/Sao_Paulo
+# Make sure everything (R/libcurl/Git) sees the CA bundle
+ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \
+    CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt \
+    GIT_SSL_CAINFO=/etc/ssl/certs/ca-certificates.crt \
+    LANG=en_US.UTF-8 \
+    LC_ALL=en_US.UTF-8 \
+    TZ=America/Sao_Paulo
 
 # Final stage: keep same repo + UA for any interactive installs in runtime
 RUN mkdir -p /usr/local/lib/R/etc && \
@@ -99,7 +103,7 @@ COPY --from=builder /air_monitoring /air_monitoring
 COPY rstudio-prefs.json /home/rstudio/.config/rstudio/rstudio-prefs.json
 COPY .Rprofile           /home/rstudio/.Rprofile
 
-# 5) Permissions (use compose env to set PASSWORD; avoid baking secrets)
+# 5) Permissions
 RUN chown -R rstudio:staff /air_monitoring \
  && chown -R rstudio:rstudio /home/rstudio/.config/rstudio \
  && chown rstudio:rstudio /home/rstudio/.Rprofile
