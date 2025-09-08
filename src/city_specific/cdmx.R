@@ -249,6 +249,9 @@ cdmx_download_metro_area <- function(
 # @Arg       : timeout_param_ready — seconds to wait parameter list to (re)populate
 # @Arg       : timeout_year_ready  — seconds to wait year list to (re)populate
 # @Arg       : timeout_est_ready   — seconds to wait station list to (re)populate
+# @Arg       : wd_request_timeout_ms — HTTP timeout per WebDriver call (best effort)
+# @Arg       : settle_first_year_sec      — small wait before first-year fetch
+# @Arg       : settle_before_csv_click_sec— small wait after results, before CSV click
 # @Arg       : subdir        — optional subfolder under DOWNLOADS_DIR for final files
 # @Output    : writes CSVs; returns (invisibly) a tibble log:
 #              smca, red, parametro, year, status, file
@@ -256,20 +259,25 @@ cdmx_download_metro_area <- function(
 # @Written_on: 06/09/2025
 # @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
-cdmx_download_sinaica_data <- function(base_url      = cdmx_cfg$base_url_sinaica,
-                                       years         = cdmx_cfg$years,
-                                       container     = TRUE,
-                                       max_attempts  = 5,
-                                       timeout_page  = 50,
-                                       timeout_ctrl  = 50,
-                                       timeout_modal = 50,
-                                       timeout_csv   = 5,     # keeping your value
-                                       timeout_dl    = 600,
-                                       timeout_param_ready = 180,
-                                       timeout_year_ready  = 180,
-                                       timeout_est_ready   = 60,  # ← NEW: wait for stations
-                                       subdir        = "Ground_stations/Mexico/SINAICA") {
-  # 0) Define the year cap
+cdmx_download_sinaica_data <- function(
+    base_url      = cdmx_cfg$base_url_sinaica,
+    years         = cdmx_cfg$years,
+    container     = TRUE,
+    max_attempts  = 5,
+    timeout_page  = 50,
+    timeout_ctrl  = 50,
+    timeout_modal = 50,
+    timeout_csv   = 5,
+    timeout_dl    = 600,
+    timeout_param_ready = 180,
+    timeout_year_ready  = 180,
+    timeout_est_ready   = 60,
+    wd_request_timeout_ms        = 60000L,  # NEW: best effort (if supported)
+    settle_first_year_sec        = 5,       # NEW: was 15; now shorter & tunable
+    settle_before_csv_click_sec  = 2,       # NEW: was 20; now wait-for + 2s
+    subdir        = "Ground_stations/Mexico/SINAICA"
+) {
+  # 0) Define the year cap (max requested year)
   end_year_cap <- max(years)
   
   # 1) Guarantee folders exist
@@ -311,6 +319,7 @@ cdmx_download_sinaica_data <- function(base_url      = cdmx_cfg$base_url_sinaica
     sel_host <- "selenium";  sel_port <- 4444L
   }
   dl_dir_container <- if (container) "/home/seluser/Downloads" else downloads_root
+  
   caps <- list(
     browserName = "firefox",
     "moz:firefoxOptions" = list(
@@ -329,12 +338,28 @@ cdmx_download_sinaica_data <- function(base_url      = cdmx_cfg$base_url_sinaica
     ),
     timeouts = list(implicit = 0L, pageLoad = 120000L, script = 60000L)
   )
-  session <- selenium::SeleniumSession$new(
+  
+  # Best-effort: pass a driver HTTP timeout only if your build supports it
+  ses_args <- list(
     browser      = "firefox",
     host         = sel_host,
     port         = sel_port,
     capabilities = caps
   )
+  add_timeout_if_supported <- function(args) {
+    fml <- try(names(formals(selenium::SeleniumSession$new)), silent = TRUE)
+    if (!inherits(fml, "try-error")) {
+      if ("request_timeout" %in% fml) {
+        args$request_timeout <- as.integer(wd_request_timeout_ms)
+      } else if ("http_timeout_ms" %in% fml) {
+        args$http_timeout_ms <- as.integer(wd_request_timeout_ms)
+      }
+    }
+    args
+  }
+  ses_args <- add_timeout_if_supported(ses_args)
+  
+  session <- do.call(selenium::SeleniumSession$new, ses_args)
   on.exit(session$close(), add = TRUE)
   
   # 4) JS helpers
@@ -450,14 +475,16 @@ cdmx_download_sinaica_data <- function(base_url      = cdmx_cfg$base_url_sinaica
     el <- try(session$find_element("css selector", "#yInitDesc"), silent = TRUE)
     if (!inherits(el, "try-error")) return(el)
     session$find_element("xpath",
-                         "//*[normalize-space()='Elige un año:']/following::select")
+                         "//*[normalize-space()='Elige un año:']/following::select"
+    )
   }
   find_btn_buscar <- function() {
     el <- try(session$find_element("xpath", '//*[@id="buscIndDesc"]'),
               silent = TRUE)
     if (!inherits(el, "try-error")) return(el)
-    session$find_element("xpath",
-                         "//input[( @type='button' or @type='submit') and @value='Buscar']"
+    session$find_element(
+      "xpath",
+      "//input[( @type='button' or @type='submit') and @value='Buscar']"
     )
   }
   find_btn_csv <- function() {
@@ -475,9 +502,10 @@ cdmx_download_sinaica_data <- function(base_url      = cdmx_cfg$base_url_sinaica
     for (e in els) if (!inherits(e, "try-error")) return(e)
     stop("CSV control not found after results.")
   }
+  
+  # Adaptive CSV wait (CDMX is slow; ensure >=45s there)
   wait_results_or_modal <- function(timeout = timeout_csv) {
-    t0 <- Sys.time()
-    accepted <- FALSE
+    t0 <- Sys.time(); accepted <- FALSE
     repeat {
       b <- try(session$find_element("css selector", "#btnMDAceptar"),
                silent = TRUE)
@@ -489,7 +517,7 @@ cdmx_download_sinaica_data <- function(base_url      = cdmx_cfg$base_url_sinaica
           )
         }
         accepted <- TRUE
-        Sys.sleep(1.0)
+        Sys.sleep(0.8)
       }
       csv_btn <- try(find_btn_csv(), silent = TRUE)
       if (!inherits(csv_btn, "try-error")) return(csv_btn)
@@ -497,22 +525,47 @@ cdmx_download_sinaica_data <- function(base_url      = cdmx_cfg$base_url_sinaica
         stop("Timeout waiting for results (CSV) after ",
              if (accepted) "accepting modal" else "clicking Buscar", ".")
       }
-      Sys.sleep(0.6)
+      Sys.sleep(0.5)
     }
   }
   
   # 7) SMCA targets
   smca_targets <- list(
-    # list(value = "43", text = "EDOMEX : México"),
+    list(value = "43", text = "EDOMEX : México"),
     list(value = "40", text = "HGO : Hidalgo"),
     list(value = "61", text = "CDMX : Ciudad de México")
   )
   
+  # Mapping for filename prefix
+  smca_slug_map <- c(
+    "EDOMEX : México"         = "mexico_state",
+    "HGO : Hidalgo"           = "hidalgo",
+    "CDMX : Ciudad de México" = "cmdx"
+  )
+  slugify <- function(x) {
+    x <- iconv(x, from = "", to = "ASCII//TRANSLIT")
+    x <- tolower(gsub("[^a-zA-Z0-9]+", "_", x))
+    x <- gsub("^_+|_+$", "", x)
+    x <- gsub("_+", "_", x)
+    x
+  }
+  next_nonconflicting <- function(path) {
+    if (!file.exists(path)) return(path)
+    base <- tools::file_path_sans_ext(basename(path))
+    ext  <- tools::file_ext(path)
+    dirn <- dirname(path)
+    k <- 2L
+    repeat {
+      cand <- file.path(dirn, sprintf("%s_%02d.%s", base, k, ext))
+      if (!file.exists(cand)) return(cand)
+      k <- k + 1L
+    }
+  }
+  
   # 8) Logging
   log <- list()
   
-  # --- New helpers (keep your sleeps; only add robustness) ----------------------
-  # Full re-hydration: SMCA → red → all stations → parámetro
+  # --- Helpers that (re)hydrate the form --------------------------------------
   # Returns TRUE if stations exist and parámetro set; FALSE if no stations.
   rehydrate_form <- function(smca, red_val, par_val, long_pause = TRUE) {
     open_descargas()
@@ -522,20 +575,19 @@ cdmx_download_sinaica_data <- function(base_url      = cdmx_cfg$base_url_sinaica
       res <- js_set_select("redSelDesc", value = red_val, text = NULL)
       if (!identical(res, "ok")) stop("Red select failed after reload.")
     }
-    
-    # Wait for stations; if none, skip this red
+    # Stations present?
     find_est_select()
     st_df <- wait_options("estSelDesc", min_n = 1, timeout = timeout_est_ready)
     if (nrow(st_df) == 0) {
       message("      🚫 No stations in this red — skipping.")
       return(FALSE)
     }
-    
+    # Add all stations
     try(session$find_element("css selector", "#delLstEstDat")$click(),
         silent = TRUE)
     wait_for(session, "css selector", "#addTodasEstDesc", timeout_ctrl)$click()
-    Sys.sleep(1.5)
     
+    # Parámetro
     res <- js_set_select("paramSelDesc", value = par_val, text = NULL)
     if (!identical(res, "ok")) {
       ok <- js_click_text(
@@ -546,7 +598,8 @@ cdmx_download_sinaica_data <- function(base_url      = cdmx_cfg$base_url_sinaica
       )
       if (!ok) stop("Failed to select parámetro after reload.")
     }
-    if (isTRUE(long_pause)) Sys.sleep(45)
+    # Long pause is only used on hard reloads; otherwise we keep it short.
+    if (isTRUE(long_pause)) Sys.sleep(45) else Sys.sleep(1.0)
     TRUE
   }
   
@@ -561,13 +614,13 @@ cdmx_download_sinaica_data <- function(base_url      = cdmx_cfg$base_url_sinaica
       tries <- tries + 1L
       if (tries %% poke_every == 0L) {
         js_set_select("paramSelDesc", value = par_val, text = NULL)
-        Sys.sleep(1.0)
+        Sys.sleep(0.8)
       }
       if (as.numeric(difftime(Sys.time(), t0, units = "secs")) > timeout) {
         return(data.frame(text = character(0), value = character(0),
                           stringsAsFactors = FALSE))
       }
-      Sys.sleep(1.0)
+      Sys.sleep(0.8)
     }
   }
   # ---------------------------------------------------------------------------
@@ -576,7 +629,7 @@ cdmx_download_sinaica_data <- function(base_url      = cdmx_cfg$base_url_sinaica
   for (smca in smca_targets) {
     message("\n🏷️  SMCA: ", smca$text)
     
-    # Discover redes once per SMCA (on a fresh page)
+    # Discover redes once per SMCA
     open_descargas()
     res <- js_set_select("SMCASelDesc", value = smca$value, text = smca$text)
     if (!identical(res, "ok")) stop("Failed to select SMCA: ", smca$text)
@@ -586,17 +639,19 @@ cdmx_download_sinaica_data <- function(base_url      = cdmx_cfg$base_url_sinaica
       redes_df <- data.frame(text = "Única", value = "", stringsAsFactors = FALSE)
     }
     
+    # CDMX tends to be slower → ensure CSV wait >= 45s here
+    csv_wait_this_smca <- if (grepl("^CDMX", smca$text)) max(timeout_csv, 45) else timeout_csv
+    
     for (ri in seq_len(nrow(redes_df))) {
       red_name <- redes_df$text[ri]
       red_val  <- redes_df$value[ri]
       message("   🌐 Red: ", red_name)
       
-      # Read parámetro catalog once (fresh page)
+      # Fresh page; set SMCA/red; verify stations exist
       open_descargas()
       js_set_select("SMCASelDesc", value = smca$value, text = smca$text)
       if (nzchar(red_val)) js_set_select("redSelDesc", value = red_val, text = NULL)
       
-      # ⬇️ NEW: check stations before doing anything else
       find_est_select()
       st_df <- wait_options("estSelDesc", min_n = 1, timeout = timeout_est_ready)
       if (nrow(st_df) == 0) {
@@ -604,6 +659,7 @@ cdmx_download_sinaica_data <- function(base_url      = cdmx_cfg$base_url_sinaica
         next
       }
       
+      # Add all stations and read available parámetros
       try(session$find_element("css selector", "#delLstEstDat")$click(),
           silent = TRUE)
       wait_for(session, "css selector", "#addTodasEstDesc", timeout_ctrl)$click()
@@ -620,7 +676,6 @@ cdmx_download_sinaica_data <- function(base_url      = cdmx_cfg$base_url_sinaica
         par_name <- iconv(par_name, from = "", to = "UTF-8", sub = "byte")
         message("      🧪 Parámetro: ", par_name)
         
-        # Fresh page per parámetro + stations re-check
         ok_form <- rehydrate_form(smca, red_val, par_val, long_pause = FALSE)
         if (!isTRUE(ok_form)) {
           message("      ⏭️  Skip parámetro due to no stations.")
@@ -654,7 +709,6 @@ cdmx_download_sinaica_data <- function(base_url      = cdmx_cfg$base_url_sinaica
           message("      ⚠️ No matching years after cap — skipping parámetro.")
           next
         }
-        
         message(sprintf("         ↳ Years available here: %s",
                         paste(years_iter, collapse = ", ")))
         
@@ -666,10 +720,12 @@ cdmx_download_sinaica_data <- function(base_url      = cdmx_cfg$base_url_sinaica
             message(sprintf("         📥 Año %d (attempt %d/%d)…",
                             yr, attempt, max_attempts))
             newest_path <- NA_character_
-            Sys.sleep(2.0)
             
             res_try <- try({
-              if (yr == min(years_iter)) Sys.sleep(15)
+              # Short settle on first year of this parámetro
+              if (yr == min(years_iter) && settle_first_year_sec > 0) {
+                Sys.sleep(settle_first_year_sec)
+              }
               
               invisible(get_year_select())
               resy <- js_set_select("yInitDesc",
@@ -681,14 +737,16 @@ cdmx_download_sinaica_data <- function(base_url      = cdmx_cfg$base_url_sinaica
                                    full.names = TRUE)
               find_btn_buscar()$click()
               
-              Sys.sleep(4)
+              # Wait for either modal or CSV readiness
               try({
                 wait_for(session, "css selector", "#btnMDAceptar",
                          timeout_modal)$click()
               }, silent = TRUE)
-              csv_btn <- wait_results_or_modal(timeout = timeout_csv)
+              csv_btn <- wait_results_or_modal(timeout = csv_wait_this_smca)
               
-              Sys.sleep(20)
+              # Small settle then click CSV
+              if (settle_before_csv_click_sec > 0)
+                Sys.sleep(settle_before_csv_click_sec)
               ok_click <- try(csv_btn$click(), silent = TRUE)
               if (inherits(ok_click, "try-error")) {
                 session$execute_script(
@@ -698,6 +756,7 @@ cdmx_download_sinaica_data <- function(base_url      = cdmx_cfg$base_url_sinaica
                 )
               }
               
+              # Wait a new CSV to appear in the downloads folder
               src <- wait_for_new_download(
                 dir       = downloads_root,
                 before    = before,
@@ -705,17 +764,24 @@ cdmx_download_sinaica_data <- function(base_url      = cdmx_cfg$base_url_sinaica
                 quiet_sec = 2,
                 timeout   = timeout_dl
               )
-              if (!is.null(target_dir)) {
-                dest <- file.path(target_dir, basename(src))
-                ok_mv <- try(file.rename(src, dest), silent = TRUE)
-                if (inherits(ok_mv, "try-error") || !isTRUE(ok_mv)) {
-                  file.copy(src, dest, overwrite = TRUE); unlink(src)
-                }
-                newest_path <- dest
-              } else {
-                newest_path <- src
-              }
               
+              # ----- Rename to conflict-free, informative name -----------------
+              smca_slug <- smca_slug_map[[smca$text]] %||% slugify(smca$text)
+              red_slug  <- slugify(red_name)
+              par_slug  <- slugify(par_name)
+              new_base  <- sprintf("%s__%s__%s__%d.csv",
+                                   smca_slug, red_slug, par_slug, yr)
+              dest0     <- if (!is.null(target_dir))
+                file.path(target_dir, new_base) else
+                  file.path(dirname(src), new_base)
+              dest      <- next_nonconflicting(dest0)
+              
+              # Move/rename
+              ok_mv <- try(file.rename(src, dest), silent = TRUE)
+              if (inherits(ok_mv, "try-error") || !isTRUE(ok_mv)) {
+                file.copy(src, dest, overwrite = TRUE); unlink(src)
+              }
+              newest_path <- dest
               message("            ✅ ", basename(newest_path))
             }, silent = TRUE)
             
@@ -757,238 +823,4 @@ cdmx_download_sinaica_data <- function(base_url      = cdmx_cfg$base_url_sinaica
   
   out <- dplyr::bind_rows(log)
   invisible(out)
-}
-
-
-# --------------------------------------------------------------------------------------------
-# Function: cdmx_scrape_station_catalog
-# @Arg       : page_url      — string; page that contains the "Catálogo estaciones" link
-# @Arg       : harmonize_map — named chr vec (optional) to rename station display names
-# @Arg       : verbose       — logical; print progress (default TRUE)
-# @Arg       : out_dir       — string; directory to write outputs (created if missing)
-# @Arg       : out_name      — string; base filename *without* extension
-# @Arg       : write_rds     — logical; write .rds (default FALSE)
-# @Arg       : write_parquet — logical; write .parquet via {arrow} (default TRUE)
-# @Arg       : write_csv     — logical; write .csv (default FALSE)
-# @Output    : tibble with columns:
-#              entity, station, code, lon, lat, altitude_m, notes, id_station, source_url
-# @Purpose   : Scrape the "Catálogo estaciones" for CDMX, read the CSV safely (Latin-1 → UTF-8),
-# and return a clean tibble with station metadata (code, name, lat/lon, etc.).
-# @Written_on: 2025-09-04
-# --------------------------------------------------------------------------------------------
-cdmx_scrape_station_catalog <- function(
-    page_url,
-    harmonize_map = c(),
-    verbose       = TRUE,
-    out_dir,
-    out_name,
-    write_rds     = FALSE,
-    write_parquet = TRUE,
-    write_csv     = FALSE
-) {
-  # -- 0) Small helpers ---------------------------------------------------------
-  
-  `%||%` <- function(a, b) if (!is.null(a)) a else b
-  
-  .clean_txt <- function(x) {
-    x %>%
-      stringr::str_replace_all("\u00A0", " ") %>%  # nbsp → space
-      stringr::str_squish() %>%
-      trimws()
-  }
-  
-  # Build absolute URL and percent-encode spaces.
-  .fix_url <- function(u, base) {
-    u <- .clean_txt(u)
-    if (!grepl("^https?://", u, ignore.case = TRUE)) {
-      u <- xml2::url_absolute(u, base)
-    }
-    utils::URLencode(u, reserved = FALSE)
-  }
-  
-  .ua <- httr::user_agent(
-    sprintf("R/%s (%s) IDB-AirMonitoring",
-            getRversion(), R.version$platform)
-  )
-  
-  .to_num <- function(x) {
-    readr::parse_number(
-      x,
-      locale = readr::locale(decimal_mark = ".", grouping_mark = ",")
-    )
-  }
-  
-  # Convert specific character columns from Latin-1 → UTF-8 safely.
-  .to_utf8_cols <- function(df, cols) {
-    for (cc in cols) {
-      if (cc %in% names(df)) {
-        df[[cc]] <- iconv(df[[cc]], from = "latin1", to = "UTF-8")
-        df[[cc]][is.na(df[[cc]])] <- ""
-        df[[cc]] <- .clean_txt(df[[cc]])
-      }
-    }
-    df
-  }
-  
-  # -- 1) Fetch page and locate the CSV link -----------------------------------
-  
-  if (isTRUE(verbose)) message("Fetching page: ", page_url)
-  
-  doc    <- xml2::read_html(page_url)
-  a_tags <- rvest::html_elements(doc, "a")
-  a_txt  <- tolower(rvest::html_text2(a_tags))
-  a_href <- rvest::html_attr(a_tags, "href")
-  
-  hit <- which(
-    stringr::str_detect(a_txt, "cat[aá]logo\\s+estaciones") &
-      stringr::str_detect(tolower(a_href %||% ""), "\\.csv\\b")
-  )
-  if (!length(hit)) {
-    stop("Could not find the 'Catálogo estaciones' CSV link on the page.")
-  }
-  
-  csv_url <- .fix_url(a_href[hit[1]], base = page_url)
-  if (isTRUE(verbose)) message("CSV link: ", csv_url)
-  
-  # -- 2) Download CSV robustly -------------------------------------------------
-  
-  tmp_csv <- tempfile(fileext = ".csv")
-  req <- try(
-    httr::RETRY(
-      "GET", csv_url, .ua,
-      httr::write_disk(tmp_csv, overwrite = TRUE),
-      times = 5, pause_min = 1, pause_cap = 10,
-      terminate_on = c(200),
-      quiet = !isTRUE(verbose),
-      httr::timeout(60)
-    ),
-    silent = TRUE
-  )
-  if (inherits(req, "try-error") || httr::status_code(req) != 200L) {
-    sc <- if (inherits(req, "try-error")) "error" else httr::status_code(req)
-    stop("HTTP ", sc, " while downloading: ", csv_url)
-  }
-  
-  # -- 3) Find the header line number (tolerant to encoding) -------------------
-  # Read raw lines without assuming UTF-8; use CP1252/Latin1 which matches site.
-  # We only need the header index; warnings about bytes are acceptable here.
-  
-  lines_guess <- try(
-    readLines(tmp_csv, encoding = "CP1252", warn = FALSE),
-    silent = TRUE
-  )
-  if (inherits(lines_guess, "try-error") || !length(lines_guess)) {
-    lines_guess <- try(
-      readLines(tmp_csv, encoding = "latin1", warn = FALSE),
-      silent = TRUE
-    )
-  }
-  if (inherits(lines_guess, "try-error") || !length(lines_guess)) {
-    stop("Failed to read the CSV to locate the header line.")
-  }
-  
-  # Locate "cve_estac,nom_estac," ignoring case and leading spaces.
-  hdr_idx <- suppressWarnings(
-    grep("^\\s*cve_estac\\s*,\\s*nom_estac\\s*,",
-         lines_guess, ignore.case = TRUE)
-  )
-  if (!length(hdr_idx)) {
-    stop("Could not find the CSV header line.")
-  }
-  hdr_idx <- hdr_idx[1L]
-  
-  # -- 4) Parse the CSV directly from file (no string building) ----------------
-  # Critical change: readr parses the file with the correct encoding and we
-  # skip any preface lines. This avoids building a giant UTF-8 string.
-  
-  raw_df <- readr::read_csv(
-    file = tmp_csv,
-    skip = hdr_idx - 1L,
-    show_col_types = FALSE,
-    locale = readr::locale(encoding = "Latin1",
-                           decimal_mark = ".", grouping_mark = ",")
-  )
-  
-  # -- 5) Normalize and ensure expected fields ---------------------------------
-  names(raw_df) <- tolower(names(raw_df))
-  need <- c("cve_estac","nom_estac","longitud","latitud",
-            "alt","obs_estac","id_station")
-  for (k in need) if (!k %in% names(raw_df)) raw_df[[k]] <- NA
-  
-  # Normalize character fields to UTF-8 for consistent outputs if needed
-  chr_coding <- unique(Encoding(raw_df$nom_estac))
-  if ("latin1" %in% chr_coding){
-    raw_df <- .to_utf8_cols(raw_df, c("cve_estac","nom_estac","obs_estac",
-                                      "id_station"))
-  }
-  
-  df <- raw_df[, need]
-  
-  # -- 6) Clean values and standardize units -----------------------------------
-  
-  df <- df %>%
-    dplyr::transmute(
-      entity     = "CDMX",
-      code       = .clean_txt(cve_estac),
-      station    = .clean_txt(nom_estac),
-      lon        = longitud,
-      lat        = latitud,
-      altitude_m = alt,
-      notes      = .clean_txt(obs_estac),
-      id_station = .clean_txt(id_station),
-      source_url = csv_url
-    ) %>%
-    dplyr::mutate(
-      # Mexico: lon negative (W), lat positive (N)
-      lon = dplyr::case_when(!is.na(lon) & lon > 0 ~ -abs(lon), TRUE ~ lon),
-      lat = dplyr::case_when(!is.na(lat) & lat < 0 ~  abs(lat), TRUE ~ lat)
-    ) %>%
-    dplyr::distinct(code, station, lat, lon, .keep_all = TRUE) %>%
-    dplyr::arrange(station)
-  
-  # -- 7) Optional harmonization of names --------------------------------------
-  
-  if (length(harmonize_map)) {
-    df$station <- dplyr::recode(df$station, !!!harmonize_map,
-                                .default = df$station)
-  }
-  
-  # -- 8) Summary ---------------------------------------------------------------
-  
-  if (isTRUE(verbose)) {
-    message("Rows: ", nrow(df),
-            " | Unique stations: ", dplyr::n_distinct(df$station),
-            " | With coords: ", sum(!is.na(df$lat) & !is.na(df$lon)))
-  }
-  
-  # -- 9) Optional outputs ------------------------------------------------------
-  
-  if (!missing(out_dir) && !missing(out_name)) {
-    dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
-    
-    if (isTRUE(write_rds)) {
-      rds <- file.path(out_dir, paste0(out_name, ".rds"))
-      saveRDS(df, rds, compress = "xz")
-      if (verbose) message("💾 Wrote RDS → ", rds)
-    }
-    
-    if (isTRUE(write_parquet)) {
-      if (!requireNamespace("arrow", quietly = TRUE)) {
-        stop("Package 'arrow' is required for Parquet output.")
-      }
-      pq <- file.path(out_dir, paste0(out_name, ".parquet"))
-      arrow::write_parquet(df, pq, compression = "zstd")
-      if (verbose) message("🧱 Wrote Parquet → ", pq)
-    }
-    
-    if (isTRUE(write_csv)) {
-      csv <- file.path(out_dir, paste0(out_name, ".csv"))
-      readr::write_csv(df, csv)
-      if (verbose) message("📝 Wrote CSV → ", csv)
-    }
-  } else if (isTRUE(verbose)) {
-    message("No out_dir/out_name provided → returning tibble only.")
-  }
-  
-  return(df)
 }
