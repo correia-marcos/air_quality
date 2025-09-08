@@ -88,6 +88,11 @@ differences       <- res$diffs_long
 differences_no_na <- differences %>%
   filter(within_tol == FALSE)
 
+# Quick check on the missing data from before
+new_only <- res$only_new %>%
+  distinct(station, year, month, day, hour) %>%
+  arrange(station, year, month, day, hour)
+
 # Check the rows that exist only on the old data
 old_only <- res$only_old
 # ============================================================================================
@@ -105,6 +110,9 @@ saveRDS(object   = differences_no_na,
 arrow::write_parquet(x   = differences_no_na,
                     sink = file.path(outdir, "differences_raw_ground_stations.parquet"),
                     compression = "zstd")
+
+write.csv(x = new_only,
+          file = file.path(outdir, "missing_data.csv"))
 
 # Print a success message for when running inside Docker Container
 cat("Script from the IDB projected executed successfully in the Docker container!\n")

@@ -29,7 +29,6 @@ source(here::here("src","city_specific", "cdmx.R"))
 # I: Download data
 # ============================================================================================
 # Show parameters imported on src/city_specific_cdmx.R
-print(cdmx_cfg$base_url_shp)
 print(cdmx_cfg$id)
 print(cdmx_cfg$years)
 print(cdmx_cfg$dl_dir)
@@ -37,41 +36,37 @@ print(cdmx_cfg$out_dir)
 
 # Apply function to download shapefiles for Bogotá metro area
 metro_area <- cdmx_download_metro_area(
-  base_url              = cdmx_cfg$base_url_shp,
-  keep_municipality     = cdmx_cfg$cities_in_metro,
-  download_dir          = here::here(cdmx_cfg$dl_dir, "metro_area"),
-  out_file              = here::here(cdmx_cfg$out_dir, "cities_shapefiles", "cdmx_metro.gpkg"),
-  overwrite_zip         = FALSE,
-  overwrite_gpkg        = TRUE,
-  quiet                 = FALSE
+  base_url          = cdmx_cfg$base_url_shp,
+  keep_municipality = cdmx_cfg$cities_in_metro,
+  download_dir      = here::here(cdmx_cfg$dl_dir, "metro_area"),
+  out_file          = here::here(cdmx_cfg$out_dir, "cities_shapefiles", "cdmx_metro.gpkg"),
+  overwrite_zip     = FALSE,
+  overwrite_gpkg    = TRUE,
+  quiet             = FALSE
 )
 
 # Apply function to generate and save dataframe with stations and their location
-rmcab_dir <- bogota_scrape_rmcab_station_table(
-  page_url      = bogota_cfg$url_station_shp,
-  parse_coords  = TRUE,
-  harmonize_map = bogota_cfg$station_nme_map,
-  dedupe        = TRUE,
-  verbose       = TRUE,
-  out_dir       = here::here(bogota_cfg$out_dir, "pollution_ground_stations", "Bogota"),
-  out_name      = "stations_location_info",
-  write_rds     = FALSE,
-  write_csv     = TRUE
+station_in_cdmx <- cdmx_scrape_station_catalog(
+  page_url      = cdmx_cfg$url_loc_stations_cdmx,
+  out_dir       = here::here(cdmx_cfg$out_dir, "pollution_ground_stations", "Mexico_city"),
+  out_name      = "cdmx_station_location",
+  write_parquet = FALSE,   # or FALSE if you don’t want a file
+  write_csv     = TRUE,
+  write_rds     = FALSE
 )
 
 # Apply function to create Selenium server and download the data for Bogota
-bogota_download_station_data(
-  base_url      = bogota_cfg$base_url_rmcab,
-  start_year    = min(bogota_cfg$years),
-  end_year      = max(bogota_cfg$years),
+cdmx_download_sinaica_data(
+  base_url      = cdmx_cfg$base_url_sinaica,
+  years         = cdmx_cfg$years,
   container     = TRUE,
-  stations_idx  = NULL,
-  max_attempts  = 3,
-  timeout_page  = 30,
-  timeout_btn   = 30,
-  timeout_dl    = 400,
-  subdir        = file.path("Bogota", "Ground_stations")
+  max_attempts  = 5,
+  timeout_page  = 300,
+  timeout_dl    = 600,
+  subdir        = here::here(cdmx_cfg$dl_dir, "Ground_stations")
 )
+
+
 
 # Apply function to download Census data for the metro area
 census <- bogota_download_census_data(
