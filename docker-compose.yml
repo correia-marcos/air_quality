@@ -1,17 +1,25 @@
 services:
-  
   selenium:
     image: selenium/standalone-firefox:4.34.0-20250717
     ports:
-      - "4445:4444"  # alternative host port → container’s 4444
-      - "7900:7900"  # VNC port
+      - "4445:4444"
+      - "7900:7900"   # VNC, optional
     shm_size: "2g"
+    restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    environment:
+      # These are conservative; Selenium ignores unknown vars harmlessly.
+      SE_NODE_MAX_SESSIONS: "1"
+      SE_NODE_SESSION_TIMEOUT: "600"      # seconds
+      SE_SESSION_REQUEST_TIMEOUT: "120"   # seconds
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:4444/wd/hub/status || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://localhost:4444/wd/hub/status || exit 1"]
       interval: 10s
       timeout: 3s
     volumes:
-      # bind your entire raw‐data folder into Firefox’s Downloads
       - ./data/downloads:/home/seluser/Downloads
 
   analysis:
@@ -23,6 +31,7 @@ services:
         condition: service_healthy
     ports:
       - "8787:8787"
+    restart: unless-stopped
     working_dir: /air_monitoring
     environment:
       - PASSWORD=secret123
@@ -35,21 +44,12 @@ services:
       timeout: 5s
       retries: 5
     volumes:
-      # your code & scripts
       - ./src:/air_monitoring/src
       - ./scripts:/air_monitoring/scripts
       - ./results:/air_monitoring/results
-
-      # bind the same host raw‐data tree so your R process sees whatever Firefox drops
       - ./data/raw:/air_monitoring/data/raw
-
-      # share renv cache to avoid broken symlinks
-      - renv_cache:/usr/local/lib/R/renv-cache
-      
-      # Mount the same host downloads dir so R can read the files
       - ./data/downloads:/air_monitoring/data/downloads
-      
-      # credentials
+      - renv_cache:/usr/local/lib/R/renv-cache
       - ./.Renviron:/home/rstudio/.Renviron:ro
       - ~/.netrc:/home/rstudio/.netrc:ro
 
