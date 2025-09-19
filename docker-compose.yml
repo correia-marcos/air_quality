@@ -3,18 +3,18 @@ services:
     image: selenium/standalone-firefox:4.34.0-20250717
     ports:
       - "4445:4444"
-      - "7900:7900"   # VNC, optional
+      - "7900:7900"        # VNC, optional
     shm_size: "2g"
     restart: unless-stopped
+    init: true
     ulimits:
       nofile:
         soft: 65535
         hard: 65535
     environment:
-      # These are conservative; Selenium ignores unknown vars harmlessly.
       SE_NODE_MAX_SESSIONS: "1"
-      SE_NODE_SESSION_TIMEOUT: "600"      # seconds
-      SE_SESSION_REQUEST_TIMEOUT: "120"   # seconds
+      SE_NODE_SESSION_TIMEOUT: "600"
+      SE_SESSION_REQUEST_TIMEOUT: "120"
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:4444/wd/hub/status || exit 1"]
       interval: 10s
@@ -26,23 +26,29 @@ services:
     build:
       context: .
       target: final
+      args:
+        PPM_DATE: "2025-09-01"
     depends_on:
       selenium:
         condition: service_healthy
     ports:
       - "8787:8787"
     restart: unless-stopped
+    init: true
     working_dir: /air_monitoring
     environment:
       - PASSWORD=secret123
       - USER=rstudio
       - REMOTE_DRIVER_URL=http://selenium:4444
       - IN_DOCKER=true
+      # Arrow/DuckDB predictable tmp (optional)
+      - ARROW_TMPDIR=/tmp
+      - DUCKDB_TMPDIR=/tmp
     healthcheck:
-      test: ["CMD","curl","-f","http://selenium:4444/wd/hub/status"]
-      interval: 10s
+      test: ["CMD","curl","-fsS","http://localhost:8787/"]
+      interval: 15s
       timeout: 5s
-      retries: 5
+      retries: 10
     volumes:
       - ./src:/air_monitoring/src
       - ./scripts:/air_monitoring/scripts
@@ -52,6 +58,8 @@ services:
       - renv_cache:/usr/local/lib/R/renv-cache
       - ./.Renviron:/home/rstudio/.Renviron:ro
       - ~/.netrc:/home/rstudio/.netrc:ro
+      # Optional: persist a duckdb workspace or parquet datasets
+      # - ./warehouse:/air_monitoring/warehouse
 
 volumes:
   renv_cache:
