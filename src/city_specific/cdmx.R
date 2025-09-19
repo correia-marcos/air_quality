@@ -15,8 +15,6 @@
 cdmx_cfg <- list(
   id               = "Mexico City",
   tz               = "America/Mexico_City",
-  base_url_shp     = "https://www.inegi.org.mx/app/biblioteca/ficha.html?upc=794551132173",
-  base_url_sinaica = "https://sinaica.inecc.gob.mx/scica/",
   years            = 2000L:2023L,
   dl_dir           = here::here("data", "downloads", "CDMX"),
   out_dir          = here::here("data", "raw"),
@@ -27,12 +25,1286 @@ cdmx_cfg <- list(
                        15059, 15060, 15069, 15070, 15075, 15081, 15083, 15084, 15089, 15091,
                        15092, 15093, 15095, 15099, 15100, 15103, 15104, 15108, 15109, 15120, 
                        15121, 15122, 15125),
-  url_loc_stations_cdmx = 
+  base_url_shp     = "https://www.inegi.org.mx/app/biblioteca/ficha.html?upc=794551132173",
+  base_url_sinaica = "https://sinaica.inecc.gob.mx/scica/",
+  base_url_census  = "https://www.inegi.org.mx/programas/ccpv/2020/#microdatos",
+  url_loc_stations_others =
+    "https://sinaica.inecc.gob.mx/index.php",
+  url_loc_stations_cdmx   = 
     "https://www.aire.cdmx.gob.mx/default.php?opc=%27aKBhnmI=%27&opcion=Zg=="
   )
 
 # ============================================================================================
-#  CDMX-specific functions - downloading and its helpers
+# CDMX-specific helpers function (most for downloading pollution data from stations)
+# ============================================================================================
+# ------------------------------------------------------------------------------------------
+# Function : .http_retry_get_robust
+# @Arg     : url                 — target URL
+# @Arg     : ua                  — httr::user_agent(...) object
+# @Arg     : timeout_sec         — per-attempt timeout
+# @Arg     : verbose             — print progress (TRUE/FALSE)
+# @Arg     : allow_insecure_fallback — one last attempt with verify OFF if SSL chain fails
+# @Output  : httr response (status 200) or stop() with a helpful message
+# @Purpose : Robust GET for Docker + OpenSSL 3:
+#            - strict TLS over IPv4
+#            - retry with OpenSSL security level 1 (verification ON)
+#            - optional insecure try
+#            - http:// fallback
+# Notes    : The curl/httr option name is **ssl_cipher_list** (not 'ciphers').
+#            The OpenSSL string is "DEFAULT@SECLEVEL=1".
+# ------------------------------------------------------------------------------------------
+.http_retry_get_robust <- function(url, ua, timeout_sec = 30,
+                                   verbose = TRUE,
+                                   allow_insecure_fallback = TRUE) {
+  is_sslish <- function(msg) {
+    grepl("SSL|certificate|verify|peer|issuer|CA|handshake|dh key too small",
+          msg, ignore.case = TRUE)
+  }
+
+  # A) Strict TLS over IPv4 (some gov hosts have flaky IPv6)
+  resp <- try(
+    httr::RETRY(
+      "GET", url, ua,
+      httr::config(ipresolve = 1),
+      httr::timeout(timeout_sec),
+      times = 4, pause_min = 1, pause_cap = 4, terminate_on = c(200),
+      quiet = !isTRUE(verbose)
+    ),
+    silent = TRUE
+  )
+  if (!inherits(resp, "try-error") && httr::status_code(resp) == 200L) return(resp)
+  
+  last_msg <- if (inherits(resp, "try-error")) {
+    conditionMessage(attr(resp, "condition"))
+  } else {
+    paste("HTTP", httr::status_code(resp))
+  }
+  
+  # B) OpenSSL 3 policy: lower security level for this request (keep verification ON)
+  if (is_sslish(last_msg)) {
+    if (isTRUE(verbose)) message("⚠️ SSL policy error (OpenSSL 3). Retrying @SECLEVEL=1…")
+    resp2 <- try(
+      httr::RETRY(
+        "GET", url, ua,
+        # IMPORTANT: use 'ssl_cipher_list' (curl option CURLOPT_SSL_CIPHER_LIST)
+        httr::config(ipresolve = 1, ssl_cipher_list = "DEFAULT@SECLEVEL=1"),
+        httr::timeout(timeout_sec),
+        times = 3, pause_min = 1, pause_cap = 3, terminate_on = c(200),
+        quiet = !isTRUE(verbose)
+      ),
+      silent = TRUE
+    )
+    if (!inherits(resp2, "try-error") && httr::status_code(resp2) == 200L) return(resp2)
+    last_msg <- if (inherits(resp2, "try-error")) {
+      conditionMessage(attr(resp2, "condition"))
+    } else {
+      paste("HTTP", httr::status_code(resp2))
+    }
+  }
+  
+  # C) Optional: single insecure try (verification OFF) as a last resort
+  if (allow_insecure_fallback && is_sslish(last_msg)) {
+    if (isTRUE(verbose)) message("⚠️ SSL chain error. Retrying once without verification…")
+    resp3 <- try(
+      httr::RETRY(
+        "GET", url, ua,
+        httr::config(ipresolve = 1, ssl_verifypeer = 0L, ssl_verifyhost = 0L),
+        httr::timeout(timeout_sec),
+        times = 1, terminate_on = c(200), quiet = !isTRUE(verbose)
+      ),
+      silent = TRUE
+    )
+    if (!inherits(resp3, "try-error") && httr::status_code(resp3) == 200L) return(resp3)
+    last_msg <- if (inherits(resp3, "try-error")) {
+      conditionMessage(attr(resp3, "condition"))
+    } else {
+      paste("HTTP", httr::status_code(resp3))
+    }
+  }
+  
+  # D) http:// fallback (warn loudly)
+  if (grepl("^https://", url, ignore.case = TRUE)) {
+    url_http <- sub("^https://", "http://", url, ignore.case = TRUE)
+    resp4 <- try(
+      httr::RETRY(
+        "GET", url_http, ua,
+        httr::config(ipresolve = 1),
+        httr::timeout(timeout_sec),
+        times = 2, pause_min = 1, pause_cap = 2, terminate_on = c(200),
+        quiet = !isTRUE(verbose)
+      ),
+      silent = TRUE
+    )
+    if (!inherits(resp4, "try-error") && httr::status_code(resp4) == 200L) {
+      warning("Fell back to plain HTTP (no TLS).")
+      return(resp4)
+    }
+    last_msg <- if (inherits(resp4, "try-error")) {
+      conditionMessage(attr(resp4, "condition"))
+    } else {
+      paste("HTTP", httr::status_code(resp4))
+    }
+  }
+  
+  stop("HTTP/TLS error while fetching: ", url, "\nLast error: ", last_msg)
+}
+# ------------------------------------------------------------------------------------------
+# Function: selenium_start_session_flat_first
+# @Arg       : container             — logical; TRUE when using docker-compose service
+# @Arg       : wd_request_timeout_ms — integer; per-request HTTP timeout to the driver
+# @Output    : selenium::SeleniumSession
+# @Purpose   : Start Selenium with flat (W3C) capabilities only — avoids the
+#              "Illegal key values seen in w3c capabilities" 500 error.
+# ------------------------------------------------------------------------------------------
+selenium_start_session_flat_first <- function(container = TRUE,
+                                              wd_request_timeout_ms = 60000L) {
+  sel_host <- if (container) "selenium" else "localhost"
+  sel_port <- if (container) 4444L      else 4445L
+  
+  flat_caps <- list(
+    browserName = "firefox",
+    acceptInsecureCerts = TRUE,
+    "moz:firefoxOptions" = list(args = list(), prefs = list()),
+    timeouts = list(implicit = 0L, pageLoad = 120000L, script = 60000L)
+  )
+  
+  ses_args <- list(
+    browser      = "firefox",
+    host         = sel_host,
+    port         = sel_port,
+    capabilities = flat_caps
+  )
+  fml <- try(names(formals(selenium::SeleniumSession$new)), silent = TRUE)
+  if (!inherits(fml, "try-error")) {
+    if ("request_timeout" %in% fml) {
+      ses_args$request_timeout <- as.integer(wd_request_timeout_ms)
+    } else if ("http_timeout_ms" %in% fml) {
+      ses_args$http_timeout_ms <- as.integer(wd_request_timeout_ms)
+    }
+  }
+  do.call(selenium::SeleniumSession$new, ses_args)
+}
+# --------------------------------------------------------------------------------------------
+# Function: sinaica_scroll_into_view_sel
+# @Arg       : session — SeleniumSession
+# @Arg       : sel     — CSS selector to bring into view
+# @Output    : invisible(TRUE)
+# @Purpose   : Scroll the first match of `sel` into view (best-effort).
+# --------------------------------------------------------------------------------------------
+sinaica_scroll_into_view_sel <- function(session, sel) {
+  js <- paste0(
+    "var s=", jsonlite::toJSON(sel, auto_unbox = TRUE), ";",
+    "var e=document.querySelector(s);",
+    "if(e && e.scrollIntoView){",
+    "  try{e.scrollIntoView({block:'start'});}catch(_){e.scrollIntoView();}",
+    "}"
+  )
+  try(session$execute_script(js), silent = TRUE)
+  invisible(TRUE)
+}
+# --------------------------------------------------------------------------------------------
+# Function: sinaica_wait_state_table
+# @Arg       : session  — SeleniumSession
+# @Arg       : timeout  — seconds to wait (default 30)
+# @Arg       : min_rows — minimal station rows required (default 1)
+# @Output    : TRUE if table rows are present; FALSE otherwise
+# @Purpose   : After picking a state, wait until the stations table exists. The table can be
+#              lazy-rendered near the bottom, so we close overlays, scroll, and re-check.
+# --------------------------------------------------------------------------------------------
+sinaica_wait_state_table <- function(session, timeout = 30, min_rows = 1) {
+  t0 <- Sys.time()
+  repeat {
+    # Close any lingering dropdown/modal focus
+    try(session$execute_script("try{document.activeElement.blur();}catch(_){}"),
+        silent = TRUE)
+    
+    # Count Estación cells (what we actually need to click)
+    n <- try(
+      session$execute_script(
+        paste(
+          "var r=document.querySelectorAll(",
+          "'table.table.table-striped tbody tr td.tdEst[id^=\"est_\"]');",
+          "return r ? r.length : 0;"
+        )
+      )[[1]],
+      silent = TRUE
+    )
+    n_ok <- !inherits(n, "try-error") && is.finite(n) &&
+      suppressWarnings(as.integer(n)) >= min_rows
+    if (n_ok) {
+      # Bring the first table into view for reliable clicks
+      sinaica_scroll_into_view_sel(
+        session, "table.table.table-striped tbody tr td.tdEst[id^='est_']"
+      )
+      return(TRUE)
+    }
+    
+    # Nudge page to trigger lazy rendering
+    try(session$execute_script(
+      "try{window.scrollBy(0, Math.max(200, window.innerHeight/2));}catch(_){}"
+    ), silent = TRUE)
+    
+    if (as.numeric(difftime(Sys.time(), t0, units = "secs")) > timeout) break
+    Sys.sleep(0.35)
+  }
+  FALSE
+}
+# ------------------------------------------------------------------------------------------
+# Function: sinaica_clean_text
+# @Arg       : x — character
+# @Output    : trimmed UTF-8 string with collapsed whitespace
+# @Purpose   : Normalize text captured from pages for stable comparisons.
+# ------------------------------------------------------------------------------------------
+sinaica_clean_text <- function(x) {
+  x <- iconv(x %||% "", from = "", to = "UTF-8")
+  x <- gsub("\u00A0", " ", x, fixed = TRUE)
+  x <- gsub("\\s+", " ", x)
+  trimws(x)
+}
+# ------------------------------------------------------------------------------------------
+# Function: sinaica_parse_coords
+# @Arg       : txt — like "20.06 N, 99.22 O"
+# @Output    : c(lat=..., lon=...)
+# @Purpose   : Parse N/S/E/O coordinates to signed decimal degrees.
+# ------------------------------------------------------------------------------------------
+sinaica_parse_coords <- function(txt) {
+  txt <- tolower(sinaica_clean_text(txt))
+  m <- regmatches(
+    txt,
+    regexec("(-?\\d+(?:[\\.,]\\d+)?)\\s*([ns])[^\\d-]*(-?\\d+(?:[\\.,]\\d+)?)\\s*([eow])",
+            txt, perl = TRUE)
+  )[[1]]
+  if (length(m) < 5) return(c(lat = NA_real_, lon = NA_real_))
+  lat  <- as.numeric(sub(",", ".", m[2], fixed = TRUE))
+  lon  <- as.numeric(sub(",", ".", m[4], fixed = TRUE))
+  if (!is.na(lat) && m[3] == "s") lat <- -abs(lat)
+  if (!is.na(lon) && m[5] %in% c("o","w")) lon <- -abs(lon)
+  c(lat = lat, lon = lon)
+}
+# ------------------------------------------------------------------------------------------
+# Function: sinaica_parse_alt
+# @Arg       : txt — like "2240 msnm"
+# @Output    : numeric altitude (meters) or NA
+# @Purpose   : Extract altitude number from free text.
+# ------------------------------------------------------------------------------------------
+sinaica_parse_alt <- function(txt) {
+  x <- gsub("[^0-9\\.,-]", "", tolower(txt %||% ""))
+  x <- sub(",", ".", x, fixed = TRUE)
+  suppressWarnings(as.numeric(x))
+}
+# --------------------------------------------------------------------------------------------
+# Function: sinaica_open_state_dropdown
+# @Arg       : session  — SeleniumSession
+# @Arg       : timeout  — integer; max seconds to wait for items (default 10)
+# @Output    : TRUE if the menu is open and items are present; error on timeout
+# @Purpose   : Open the “Seleccionar estado” dropdown and wait until <p.selSMCA> items exist.
+# --------------------------------------------------------------------------------------------
+sinaica_open_state_dropdown <- function(session, timeout = 10) {
+  btn <- wait_for(
+    session,
+    "xpath",
+    paste0(
+      "//button[contains(@class,'dropdown-toggle') and ",
+      "contains(normalize-space(.),'Seleccionar estado')]"
+    ),
+    timeout = timeout
+  )
+  try(btn$click(), silent = TRUE)
+  
+  t0 <- Sys.time()
+  repeat {
+    n <- try(
+      session$execute_script(
+        "return document.querySelectorAll('p.selSMCA').length;"
+      )[[1]],
+      silent = TRUE
+    )
+    if (!inherits(n, "try-error") && is.finite(n) && n >= 5) return(TRUE)
+    if (as.numeric(difftime(Sys.time(), t0, units = "secs")) > timeout)
+      stop("Timed out opening the 'Seleccionar estado' dropdown.")
+    Sys.sleep(0.25)
+  }
+}
+# --------------------------------------------------------------------------------------------
+# Function: sinaica_select_state
+# @Arg       : session     — SeleniumSession
+# @Arg       : state_name  — visible text ("Hidalgo", "México", …)
+# @Output    : TRUE if clicked; FALSE otherwise
+# @Purpose   : Click a state row inside the dropdown (accent/space-insensitive; robust).
+# @Written_on: 14/09/2025
+# @Written_by: Marcos Paulo
+# --------------------------------------------------------------------------------------------
+sinaica_select_state <- function(session, state_name) {
+  js <- paste0(
+    "var want=", jsonlite::toJSON(state_name, auto_unbox = TRUE), ";",
+    "if(Array.isArray(want)) want = want[0];",
+    "if(want==null) return false;",
+    # normalize input: trim, collapse spaces, remove diacritics, lowercase
+    "function norm(s){",
+    "s=(s||'').toString().normalize('NFD')",
+    ".replace(/\\p{Diacritic}/gu,'');",
+    "s=s.replace(/\\s+/g,' ').trim().toLowerCase();",
+    "return s;",
+    "}",
+    "want = norm(want);",
+    # best-effort: ensure menu is open
+    "(function(){",
+    "var b=document.querySelector(",
+    "\"button.dropdown-toggle.btn-verde-index\"",
+    ");",
+    "if(b){ try{b.click();}catch(_){}}",
+    "})();",
+    # search across all duplicated containers
+    "var opts=[].slice.call(document.querySelectorAll('p.selSMCA'));",
+    "function findBy(pred){",
+    "for(var i=0;i<opts.length;i++){",
+    "var t=norm(opts[i].textContent);",
+    "if(pred(t)){ return opts[i]; }",
+    "}",
+    "return null;",
+    "}",
+    "var el = findBy(function(t){ return t===want; });",
+    "if(!el) el = findBy(function(t){ return t.startsWith(want); });",
+    "if(!el) el = findBy(function(t){ return t.indexOf(want)!==-1; });",
+    "if(!el) return false;",
+    "try{el.scrollIntoView({block:'center'});}catch(_){ }",
+    "try{el.click(); return true;}catch(_){ return false; }"
+  )
+  isTRUE(session$execute_script(js)[[1]])
+}
+# ------------------------------------------------------------------------------------------
+# Function: sinaica_read_state_table
+# @Arg       : session — SeleniumSession
+# @Output    : data.frame(est_id, station, red)
+# @Purpose   : Read the “Red / Estación” table into a compact data frame.
+# ------------------------------------------------------------------------------------------
+sinaica_read_state_table <- function(session) {
+  js <- "
+    var rows=[].slice.call(document.querySelectorAll(
+      'table.table.table-striped tbody tr'
+    ));
+    var out=[];
+    for(var i=0;i<rows.length;i++){
+      var tdR=rows[i].querySelector('td.tdRed');
+      var tdE=rows[i].querySelector('td.tdEst[id^=\"est_\"]');
+      if(tdR && tdE){
+        out.push([tdE.id.replace('est_',''), tdE.textContent.trim(),
+                  tdR.textContent.trim()]);
+      }
+    }
+    return JSON.stringify(out);
+  "
+  raw <- session$execute_script(js)[[1]]
+  arr <- try(jsonlite::fromJSON(raw), silent = TRUE)
+  if (inherits(arr, "try-error") || !length(arr)) {
+    return(data.frame(est_id=character(0), station=character(0), red=character(0)))
+  }
+  df <- as.data.frame(arr, stringsAsFactors = FALSE)
+  names(df) <- c("est_id","station","red")
+  df
+}
+# ------------------------------------------------------------------------------------------
+# Function: sinaica_read_station_detail
+# @Arg       : session — SeleniumSession
+# @Output    : list with elements kv (named list), url (string), h3 (string)
+# @Purpose   : Pull key/value rows, current URL, and the <h3> title from a station page.
+# @Notes     : 
+# - Restrict to 'table.tbl-est' (ignores the "Red/Estación" list table).
+# - Normalize keys: trim, collapse spaces, remove diacritics, lowercase,
+#   strip trailing colons. Return JSON to avoid Selenium's object coercion.
+# ------------------------------------------------------------------------------------------
+sinaica_read_station_detail <- function(session) {
+  js <- paste(
+    "function norm(s){",
+    "  s=(s||'').toString().normalize('NFD')",
+    "     .replace(/\\p{Diacritic}/gu,'');",
+    "  s=s.replace(/\\s+/g,' ').replace(/[:\\s]+$/,'').trim().toLowerCase();",
+    "  return s;",
+    "}",
+    "var rows=[].slice.call(",
+    "  document.querySelectorAll('table.tbl-est tbody tr')",
+    ");",
+    "var out=[];",
+    "for(var i=0;i<rows.length;i++){",
+    "  var th=rows[i].querySelector('th');",
+    "  var td=rows[i].querySelector('td');",
+    "  if(!th||!td) continue;",
+    "  var k=norm(th.textContent||'');",
+    "  var v=(td.textContent||'').replace(/\\s+/g,' ').trim();",
+    "  if(k){ out.push([k, v]); }",
+    "}",
+    "return JSON.stringify(out);",
+    sep = "\n"
+  )
+  raw_pairs <- session$execute_script(js)[[1]]
+  pairs <- try(jsonlite::fromJSON(raw_pairs), silent = TRUE)
+  
+  # Build named list 'kv' even if duplicates or empty.
+  kv <- list()
+  if (!inherits(pairs, "try-error") && length(pairs)) {
+    # 'pairs' is a 2-col matrix/data.frame: [,1]=key, [,2]=value
+    ks <- as.character(pairs[, 1])
+    vs <- as.character(pairs[, 2])
+    for (i in seq_along(ks)) kv[[ks[i]]] <- vs[i]
+  }
+  
+  url <- session$execute_script("return location.href")[[1]]
+  h3  <- session$execute_script(
+    "var h=document.querySelector('h3'); return h?(h.textContent||''):'';"
+  )[[1]]
+  
+  list(kv = kv, url = url, h3 = h3)
+}
+# ------------------------------------------------------------------------------------------
+# Function: sinaica_wait_station_detail
+# @Arg       : session — SeleniumSession
+# @Arg       : timeout — integer; max seconds to wait for items (default 25)
+# @Output    : FALSE
+# @Purpose   : Stronger wait for the station detail panel
+# - Waits for the specific details table to be present and visible.
+# - Also checks that at least one of 'coordenadas' or 'altitud' exists.
+# ------------------------------------------------------------------------------------------
+sinaica_wait_station_detail <- function(session, timeout = 25) {
+  t0 <- Sys.time()
+  repeat {
+    ok_tbl <- try(
+      session$execute_script(
+        paste(
+          "var t=document.querySelector('table.tbl-est');",
+          "if(!t) return false;",
+          "var s=window.getComputedStyle(t);",
+          "return s && s.display!=='none' && s.visibility!=='hidden';"
+        )
+      )[[1]],
+      silent = TRUE
+    )
+    if (!inherits(ok_tbl, "try-error") && isTRUE(ok_tbl)) {
+      # Peek keys quickly to ensure meaningful rows are there
+      js_has <- paste(
+        "function has(k){",
+        "  var rows=document.querySelectorAll('table.tbl-est tbody tr');",
+        "  for(var i=0;i<rows.length;i++){",
+        "    var th=rows[i].querySelector('th');",
+        "    if(!th) continue;",
+        "    var s=(th.textContent||'').toString().normalize('NFD')",
+        "      .replace(/\\p{Diacritic}/gu,'').toLowerCase();",
+        "    s=s.replace(/\\s+/g,' ').replace(/[:\\s]+$/,'').trim();",
+        "    if(s===k) return true;",
+        "  }",
+        "  return false;",
+        "}",
+        "return has('coordenadas') || has('altitud');",
+        sep = "\n"
+      )
+      has_any <- try(session$execute_script(js_has)[[1]], silent = TRUE)
+      if (!inherits(has_any, "try-error") && isTRUE(has_any)) return(TRUE)
+    }
+    
+    if (as.numeric(difftime(Sys.time(), t0, units = "secs")) > timeout) break
+    Sys.sleep(0.25)
+  }
+  FALSE
+}
+# ------------------------------------------------------------------------------------------
+# Function: sinaica_extract_name_code_from_h3
+# @Arg       : h3_txt — e.g., "Estación: Centro de Salud (ATI)"
+# @Output    : list(name=<station name>, code=<3–6 letters> or NA)
+# @Purpose   : Extract final station display name and CODE from the title.
+# ------------------------------------------------------------------------------------------
+sinaica_extract_name_code_from_h3 <- function(h3_txt) {
+  x <- sinaica_clean_text(h3_txt)
+  m <- regmatches(
+    x, regexec("(?i)estaci[oó]n:\\s*(.+?)\\s*\\((\\w{2,6})\\)", x, perl = TRUE)
+  )[[1]]
+  if (length(m) >= 3) {
+    return(list(name = sinaica_clean_text(m[2]), code = toupper(sinaica_clean_text(m[3]))))
+  }
+  list(name = NA_character_, code = NA_character_)
+}
+# --------------------------------------------------------------------------------------------
+# Function : sinaica_slugify
+# @Arg     : x — character; any label to convert to a safe file-friendly slug
+# @Output  : slug (lowercase, ASCII, underscores, no dup underscores)
+# @Purpose : Build safe filenames from SMCA/red/param names.
+# --------------------------------------------------------------------------------------------
+sinaica_slugify <- function(x) {
+  x <- iconv(x, from = "", to = "ASCII//TRANSLIT")
+  x <- tolower(gsub("[^a-zA-Z0-9]+", "_", x))
+  x <- gsub("^_+|_+$", "", x)
+  gsub("_+", "_", x)
+}
+# --------------------------------------------------------------------------------------------
+# Function : sinaica_next_nonconflicting
+# @Arg     : path — full path to a file that may already exist
+# @Output  : path itself if free, otherwise "name_02.ext", "name_03.ext", ...
+# @Purpose : Prevent accidental overwrites on repeated downloads.
+# --------------------------------------------------------------------------------------------
+sinaica_next_nonconflicting <- function(path) {
+  if (!file.exists(path)) return(path)
+  base <- tools::file_path_sans_ext(basename(path))
+  ext  <- tools::file_ext(path)
+  dirn <- dirname(path)
+  k <- 2L
+  repeat {
+    cand <- file.path(dirn, sprintf("%s_%02d.%s", base, k, ext))
+    if (!file.exists(cand)) return(cand)
+    k <- k + 1L
+  }
+}
+# --------------------------------------------------------------------------------------------
+# Function : sinaica_open_descargas
+# @Arg     : session      — SeleniumSession
+# @Arg     : base_url     — SINAICA base
+# @Arg     : timeout_page — seconds to wait for on-load readiness
+# @Arg     : timeout_ctrl — seconds to wait for the Descargas tab controls
+# @Output  : TRUE (or error)
+# @Purpose : Navigate to page and activate the "Descargas" tab.
+# Note     : Relies on your existing wait_ready() and wait_for() utilities.
+# --------------------------------------------------------------------------------------------
+sinaica_open_descargas <- function(session, base_url, timeout_page, timeout_ctrl) {
+  session$navigate(base_url)
+  wait_ready(session, timeout_page)
+  ok_tab <- FALSE
+  tab_try <- try(wait_for(session, "css selector", "#ui-id-3", timeout_ctrl),
+                 silent = TRUE)
+  if (!inherits(tab_try, "try-error")) { tab_try$click(); ok_tab <- TRUE } else {
+    ok_tab <- sinaica_js_click_text(
+      session,
+      "//a[@href='#descargas' and normalize-space(.)='Descargas']"
+    )
+  }
+  if (!ok_tab) stop("Could not activate 'Descargas' tab.")
+  wait_for(session, "css selector", "#SMCASelDesc", timeout_ctrl)
+  TRUE
+}
+# --------------------------------------------------------------------------------------------
+# Function : sinaica_js_set_select
+# @Arg     : session — SeleniumSession
+# @Arg     : id      — select id
+# @Arg     : value   — exact option value to set (preferred)
+# @Arg     : text    — fallback exact visible text to match
+# @Output  : "ok" | "not-found" | "no-sel"
+# @Purpose : Robustly set a <select> value and fire change event.
+# --------------------------------------------------------------------------------------------
+sinaica_js_set_select <- function(session, id, value = NULL, text = NULL) {
+  val <- if (is.null(value)) "null" else sprintf("'%s'", value)
+  txt <- if (is.null(text))  "null" else jsonlite::toJSON(text)
+  script <- paste(
+    "var sel=document.getElementById('", id, "');",
+    "if(!sel) return 'no-sel'; var i=-1;",
+    "if(", val, "!==null){",
+    " for(var k=0;k<sel.options.length;k++){",
+    "  if(sel.options[k].value===", val, "){i=k;break;}",
+    " }",
+    "} else if(", txt, "!==null){",
+    " var want=", txt, ";",
+    " for(var k=0;k<sel.options.length;k++){",
+    "  if(sel.options[k].text.trim()===want.trim()){i=k;break;}",
+    " }",
+    "}",
+    "if(i<0) return 'not-found';",
+    "sel.selectedIndex=i;",
+    "sel.dispatchEvent(new Event('input',{bubbles:true}));",
+    "sel.dispatchEvent(new Event('change',{bubbles:true}));",
+    "sel.scrollIntoView({block:'center'});",
+    "return 'ok';",
+    sep = ""
+  )
+  session$execute_script(script)[[1]]
+}
+# --------------------------------------------------------------------------------------------
+# Function : sinaica_js_click_text
+# @Arg     : session — SeleniumSession
+# @Arg     : xpath   — xpath expression to locate element
+# @Output  : TRUE if clicked; FALSE otherwise
+# @Purpose : Click an element found by XPath (scrolls into view first).
+# --------------------------------------------------------------------------------------------
+sinaica_js_click_text <- function(session, xpath) {
+  sc <- sprintf(
+    "var x=document.evaluate(%s,document,null," %s%
+      "XPathResult.FIRST_ORDERED_NODE_TYPE,null);",
+    jsonlite::toJSON(xpath), ""
+  )
+  sc <- paste0(
+    sc,
+    "var el=x.singleNodeValue; if(!el) return false;",
+    "el.scrollIntoView({block:'center'}); el.click(); return true;"
+  )
+  isTRUE(session$execute_script(sc)[[1]])
+}
+# --------------------------------------------------------------------------------------------
+# Function : sinaica_read_select_df_by_id
+# @Arg     : session — SeleniumSession
+# @Arg     : id      — select id
+# @Output  : data.frame(text, value)
+# @Purpose : Read <select> options (skip the dashed placeholder).
+# --------------------------------------------------------------------------------------------
+sinaica_read_select_df_by_id <- function(session, id) {
+  js <- paste0(
+    "var s=document.getElementById('", id, "');",
+    "if(!s){return '[]';} var out=[];",
+    "for(var i=0;i<s.options.length;i++){",
+    " var t=s.options[i].text; var v=s.options[i].value;",
+    " if(v && t && t.indexOf('- - -')===-1){ out.push([t,v]); }",
+    "}",
+    "return JSON.stringify(out);"
+  )
+  raw <- session$execute_script(js)
+  if (is.list(raw)) raw <- raw[[1]]
+  if (is.null(raw) || identical(raw, "")) {
+    return(data.frame(text = character(0), value = character(0)))
+  }
+  arr <- jsonlite::fromJSON(raw)
+  if (!length(arr)) return(data.frame(text = character(0), value = character(0)))
+  df <- as.data.frame(arr, stringsAsFactors = FALSE)
+  names(df) <- c("text","value")
+  df
+}
+# --------------------------------------------------------------------------------------------
+# Function : sinaica_wait_options
+# @Arg     : session — SeleniumSession
+# @Arg     : id      — select id
+# @Arg     : min_n   — minimum options needed (excludes placeholder)
+# @Arg     : timeout — seconds to wait
+# @Output  : data.frame(text, value)
+# @Purpose : Wait until a <select> has at least min_n options, then return them.
+# --------------------------------------------------------------------------------------------
+sinaica_wait_options <- function(session, id, min_n = 1, timeout = 20) {
+  t0 <- Sys.time()
+  repeat {
+    js_n <- paste0(
+      "var s=document.getElementById('", id, "');",
+      "if(!s) return 0;",
+      "var n=s.options.length;",
+      "if(n>0 && s.options[0].value==='') n--;",
+      "return n;"
+    )
+    n <- session$execute_script(js_n)[[1]]
+    n <- suppressWarnings(as.integer(n %||% 0L))
+    if (n >= min_n) break
+    if (as.numeric(difftime(Sys.time(), t0, units = "secs")) > timeout) break
+    Sys.sleep(1.0)
+  }
+  sinaica_read_select_df_by_id(session, id)
+}
+# --------------------------------------------------------------------------------------------
+# Function : sinaica_wait_years_ready
+# @Arg     : session  — SeleniumSession
+# @Arg     : par_val  — value selected in parámetro <select>
+# @Arg     : timeout  — seconds to wait for the year list to appear
+# @Arg     : poke_every — re-select parámetro every k tries
+# @Output  : data.frame(text, value) of years (possibly empty)
+# @Purpose : Wait until "Elige un año:" is populated; gently poke parámetro if stuck.
+# --------------------------------------------------------------------------------------------
+sinaica_wait_years_ready <- function(session, par_val,
+                                     timeout = 180, poke_every = 8) {
+  t0 <- Sys.time(); tries <- 0L
+  repeat {
+    years_df <- sinaica_wait_options(session, "yInitDesc", min_n = 1, timeout = 2)
+    if (nrow(years_df)) return(years_df)
+    tries <- tries + 1L
+    if (tries %% poke_every == 0L) {
+      sinaica_js_set_select(session, "paramSelDesc", value = par_val)
+      Sys.sleep(0.8)
+    }
+    if (as.numeric(difftime(Sys.time(), t0, units = "secs")) > timeout) {
+      return(data.frame(text = character(0), value = character(0)))
+    }
+    Sys.sleep(0.8)
+  }
+}
+# --------------------------------------------------------------------------------------------
+# Function : sinaica_click_el
+# @Arg     : session     — SeleniumSession
+# @Arg     : el          — element to click
+# @Output  : TRUE or error on timeout
+# @Purpose : Tries a native click. It doesn't work, make a click in a real object
+# --------------------------------------------------------------------------------------------
+sinaica_click_el <- function(session, el) {
+  # Tries native click, then JS click using the real element object.
+  ok <- try(el$click(), silent = TRUE)
+  if (!inherits(ok, "try-error")) return(invisible(TRUE))
+  session$execute_script(
+    "var e = arguments[0];
+     if (e && e.scrollIntoView) e.scrollIntoView({block:'center'});
+     if (e && e.click) e.click();",
+    list(el)  # IMPORTANT: pass the element, NOT el$elementId
+  )
+  invisible(TRUE)
+}
+# --------------------------------------------------------------------------------------------
+# Function : sinaica_get_select_value
+# @Arg     : session — SeleniumSession
+# @Arg     : id      — select id
+# @Output  : list(value, text) for the current selection (or NULLs)
+# @Purpose : Read back which option is selected now.
+# --------------------------------------------------------------------------------------------
+sinaica_get_select_value <- function(session, id) {
+  sc <- paste0(
+    "var s=document.getElementById('", id, "');",
+    "if(!s) return JSON.stringify({value:null,text:null});",
+    "var i=s.selectedIndex; if(i<0) i=0;",
+    "var v=s.options[i] ? s.options[i].value : null;",
+    "var t=s.options[i] ? s.options[i].text  : null;",
+    "return JSON.stringify({value:v,text:t});"
+  )
+  out <- session$execute_script(sc)[[1]]
+  jsonlite::fromJSON(out)
+}
+# --------------------------------------------------------------------------------------------
+# Function : sinaica_force_select_value
+# @Arg     : session — SeleniumSession
+# @Arg     : id      — select id
+# @Arg     : value   — target value (string)
+# @Output  : "ok" | "not-found" | "no-sel"
+# @Purpose : If target is already selected, flip to a different option first to
+#            ensure the change event fires, then set back to target.
+# --------------------------------------------------------------------------------------------
+sinaica_force_select_value <- function(session, id, value) {
+  js <- paste0(
+    "var s = document.getElementById('", id, "');",
+    "if (!s) return 'no-sel';",
+    # // ensure enabled
+    "try { s.disabled = false; } catch(e) {}",
+    "function fire(el){",
+    "  el.dispatchEvent(new Event('input',{bubbles:true}));",
+    "  el.dispatchEvent(new Event('change',{bubbles:true}));",
+    "}",
+    # // pick an alternate option first to guarantee a real change event
+    "var target = '", value, "';",
+    "var cur = s.value || null;",
+    "if (cur === target) {",
+    "  for (var k=0;k<s.options.length;k++){",
+    "    var v=s.options[k].value;",
+    "    if (v && v !== target){ s.selectedIndex=k; fire(s); break; }",
+    "  }",
+    "}",
+    # // now set the real target
+    "var ok = false;",
+    "for (var k=0;k<s.options.length;k++){",
+    "  if (s.options[k].value === target){ s.selectedIndex=k; fire(s); ok=true; break; }",
+    "}",
+    "return ok ? 'ok' : 'not-found';"
+  )
+  session$execute_script(js)[[1]]
+}
+# --------------------------------------------------------------------------------------------
+# Function : sinaica_set_year_robust
+# @Arg     : session  — SeleniumSession
+# @Arg     : yr       — numeric/integer year to select
+# @Arg     : par_val  — parámetro value (used when re-poking the list)
+# @Arg     : timeout_year_ready — seconds to wait for the year list to load
+# @Output  : TRUE (or error)
+# @Purpose : Reliable "Elige un año:" selection with verification.
+# --------------------------------------------------------------------------------------------
+sinaica_set_year_robust <- function(session, yr, par_val, timeout_year_ready = 180) {
+  years_df <- sinaica_wait_years_ready(
+    session, par_val, timeout = timeout_year_ready
+  )
+  if (!nrow(years_df)) stop("Year list did not populate.")
+  yr_chr <- as.character(yr)
+  if (!any(years_df$value == yr_chr)) {
+    stop("Target year ", yr_chr, " not listed for this parámetro/red/SMCA.")
+  }
+  # main attempt
+  res <- sinaica_force_select_value(session, "yInitDesc", yr_chr)
+  if (!identical(res, "ok")) {
+    # as a fallback, click the <option> node and then fire change on the select
+    ok <- sinaica_js_click_text(
+      session, sprintf("//select[@id='yInitDesc']/option[@value='%s']", yr_chr)
+    )
+    if (isTRUE(ok)) {
+      session$execute_script(
+        "var s=document.getElementById('yInitDesc');
+         if(s){
+           s.dispatchEvent(new Event('input',{bubbles:true}));
+           s.dispatchEvent(new Event('change',{bubbles:true}));
+         }"
+      )
+    } else {
+      stop("Could not set year (neither force nor option click worked): ", yr_chr)
+    }
+  }
+  # verify it stuck
+  sel <- sinaica_get_select_value(session, "yInitDesc")
+  if (!identical(sel$value, yr_chr)) {
+    stop("Year did not stick (wanted ", yr_chr, ", got ", sel$value %||% "NULL", ").")
+  }
+  invisible(TRUE)
+}
+# --------------------------------------------------------------------------------------------
+# Function : sinaica_find_btns
+# @Arg     : session — SeleniumSession
+# @Output  : list(buscar = el, csv = el or NULL)
+# @Purpose : Locate "Buscar" button and any visible CSV download button(s).
+# --------------------------------------------------------------------------------------------
+sinaica_find_btns <- function(session) {
+  # Buscar: try id first, then generic <input value="Buscar">, both guarded.
+  buscar <- NULL
+  e1 <- try(session$find_element("css selector", "#buscIndDesc"), silent = TRUE)
+  if (!inherits(e1, "try-error")) buscar <- e1 else {
+    e2 <- try(
+      session$find_element(
+        "xpath",
+        paste0("//input[( @type='button' or @type='submit') and ",
+               "normalize-space(@value)='Buscar']")
+      ),
+      silent = TRUE
+    )
+    if (!inherits(e2, "try-error")) buscar <- e2
+  }
+  
+  # CSV candidates (same as before)
+  csv_candidates <- list(
+    try(session$find_element("css selector", "#descargarDesc_CSV"), silent = TRUE),
+    try(session$find_element("css selector", "#btnCSV"),            silent = TRUE),
+    try(session$find_element("xpath",
+                             "//a[contains(normalize-space(.),'CSV')]"),
+        silent = TRUE),
+    try(session$find_element("xpath",
+                             "//button[contains(normalize-space(.),'CSV')]"),
+        silent = TRUE)
+  )
+  csv <- NULL
+  for (e in csv_candidates) if (!inherits(e, "try-error")) { csv <- e; break }
+  
+  # Best-effort href (optional)
+  csv_href <- NULL
+  if (!is.null(csv)) {
+    csv_href <- try(
+      session$execute_script(
+        "return arguments[0] && arguments[0].getAttribute
+         ? arguments[0].getAttribute('href') : null;", list(csv)
+      )[[1]],
+      silent = TRUE
+    )
+    if (inherits(csv_href, "try-error")) csv_href <- NULL
+  }
+  
+  list(buscar = buscar, csv = csv, href = csv_href)
+}
+# --------------------------------------------------------------------------------------------
+# Function : sinaica_accept_modal_if_any
+# @Arg     : session — SeleniumSession
+# @Output  : TRUE
+# @Purpose : Click the "Aceptar" modal button if it is present right now.
+# --------------------------------------------------------------------------------------------
+sinaica_accept_modal_if_any <- function(session) {
+  try({
+    b <- session$find_element("css selector", "#btnMDAceptar")
+    if (!inherits(b, "try-error")) {
+      try(b$click(), silent = TRUE)
+      if (inherits(try(b$click(), silent = TRUE), "try-error")) {
+        session$execute_script(
+          "var x=document.querySelector('#btnMDAceptar'); if(x){x.click();}"
+        )
+      }
+      Sys.sleep(0.6)
+    }
+  }, silent = TRUE)
+  invisible(TRUE)
+}
+# --------------------------------------------------------------------------------------------
+# Function : sinaica_wait_results_or_modal
+# @Arg     : session — SeleniumSession
+# @Arg     : timeout — seconds to wait for CSV controls after Buscar
+# @Output  : WebElement of the CSV button (or error on timeout)
+# @Purpose : Wait for results; auto-accept modal if it appears.
+# --------------------------------------------------------------------------------------------
+sinaica_wait_results_or_modal <- function(session, timeout = 5) {
+  t0 <- Sys.time()
+  repeat {
+    sinaica_accept_modal_if_any(session)
+    btns <- sinaica_find_btns(session)
+    if (!is.null(btns$csv)) return(btns$csv)
+    if (as.numeric(difftime(Sys.time(), t0, units = "secs")) > timeout) {
+      stop("Timeout waiting for results (CSV).")
+    }
+    Sys.sleep(0.5)
+  }
+}
+# --------------------------------------------------------------------------------------------
+# Function : sinaica_wait_csv_or_nodata
+# @Arg     : session  — SeleniumSession
+# @Arg     : timeout  — seconds to wait overall (modal or CSV)
+# @Output  : list(type = "csv"/"nodata", btn = <WebElement or NULL>)
+# @Purpose : After "Buscar", wait until either the CSV button is visible or a definitive
+#            "No hay datos" modal shows up. Uses only selector-based JS (no :visible, no
+#            element handles passed into JS) to avoid stale-element and style() errors.
+# --------------------------------------------------------------------------------------------
+sinaica_wait_csv_or_nodata <- function(session, timeout = 30) {
+  t0 <- Sys.time()
+  
+  # --- tiny utilities (selector-based; robust in headless/remote) -------------------------
+  
+  js_is_visible <- function(sel) {
+    out <- try({
+      session$execute_script(
+        "var sel=arguments[0];
+         var e=document.querySelector(sel);
+         if(!e) return false;
+         var s=window.getComputedStyle(e);
+         if(!s) return false;
+         var r=e.getBoundingClientRect();
+         return s.display!=='none' && s.visibility!=='hidden' &&
+                s.opacity!=='0' && r.width>0 && r.height>0;", list(sel)
+      )[[1]]
+    }, silent = TRUE)
+    isTRUE(out)
+  }
+  
+  js_click_if_visible <- function(sel) {
+    ok <- try({
+      session$execute_script(
+        "var sel=arguments[0];
+         var e=document.querySelector(sel);
+         if(!e) return false;
+         var s=window.getComputedStyle(e);
+         if(!s) return false;
+         var r=e.getBoundingClientRect();
+         var vis = s.display!=='none' && s.visibility!=='hidden' &&
+                   s.opacity!=='0' && r.width>0 && r.height>0;
+         if(!vis) return false;
+         try{ if(e.scrollIntoView) e.scrollIntoView({block:'center'}); }catch(_){}
+         try{ e.click(); return true; }catch(_){}
+         return false;", list(sel)
+      )[[1]]
+    }, silent = TRUE)
+    isTRUE(ok)
+  }
+  
+  js_modal_text_near <- function(trigger_sel) {
+    out <- try({
+      session$execute_script(
+        "var sel=arguments[0];
+         var b=document.querySelector(sel);
+         if(!b) return '';
+         var root=b.closest('.modal,.ui-dialog,.ui-widget,.modal-dialog')||b;
+         var t=(root && root.textContent) ? root.textContent : '';
+         return t;", list(trigger_sel)
+      )[[1]]
+    }, silent = TRUE)
+    tolower(paste(out %||% "", collapse = " "))
+  }
+  
+  # CSV candidates we accept as “results ready”
+  csv_sels <- c("#descargarDesc_CSV", "#btnCSV",
+                "a:contains('CSV')", "button:contains('CSV')")
+  # Note: the :contains() is not real CSS. We’ll handle the text search via XPath below.
+  
+  # --- main wait loop ---------------------------------------------------------------------
+  
+  repeat {
+    # 1) Long-wait modal → click “Aceptar” (may appear before any data/no-data state)
+    if (js_is_visible("#btnMDAceptar")) {
+      js_click_if_visible("#btnMDAceptar")
+      Sys.sleep(0.25)  # small settle, then loop again
+    }
+    
+    # 2) “No hay datos” modal → click and return fast
+    if (js_is_visible("#envOkModal")) {
+      txt <- js_modal_text_near("#envOkModal")
+      if (grepl("\\bno\\s*hay\\s*datos\\b|\\bsin\\s*datos\\b", txt, perl = TRUE)) {
+        js_click_if_visible("#envOkModal")
+        Sys.sleep(0.2)
+        return(list(type = "nodata", btn = NULL))
+      } else {
+        # some other alert → accept and continue
+        js_click_if_visible("#envOkModal")
+        Sys.sleep(0.2)
+      }
+    }
+    
+    # 3) CSV button present? Try strict IDs first (fast path)
+    if (js_is_visible("#descargarDesc_CSV") || js_is_visible("#btnCSV")) {
+      # Return a *real* WebElement for the caller
+      btn <- try(session$find_element("css selector", "#descargarDesc_CSV"),
+                 silent = TRUE)
+      if (inherits(btn, "try-error"))
+        btn <- try(session$find_element("css selector", "#btnCSV"),
+                   silent = TRUE)
+      if (!inherits(btn, "try-error")) return(list(type = "csv", btn = btn))
+    }
+    
+    # 4) Fallback: look for any visible element containing “CSV” text
+    #    (use XPath contains(text()) to avoid jQuery-only selectors)
+    #    Try <a> and <button>.
+    btn <- try(session$find_element(
+      "xpath", "//a[contains(normalize-space(.),'CSV') or contains(@id,'CSV')]"
+    ), silent = TRUE)
+    if (inherits(btn, "try-error")) {
+      btn <- try(session$find_element(
+        "xpath", "//button[contains(normalize-space(.),'CSV') or contains(@id,'CSV')]"
+      ), silent = TRUE)
+    }
+    if (!inherits(btn, "try-error")) {
+      # We can’t check visibility in JS with this element (stale risk). Instead, click
+      # via Selenium (will no-op if hidden), and if it’s truly there, next stage will
+      # observe the download. If you prefer, you can attempt a quick JS visibility
+      # check by re-querying with a selector rather than passing the element.
+      return(list(type = "csv", btn = btn))
+    }
+    
+    # 5) Timeout guard
+    if (as.numeric(difftime(Sys.time(), t0, units = "secs")) > timeout) {
+      stop("Timeout waiting for CSV or a definitive 'No hay datos' alert.")
+    }
+    Sys.sleep(0.35)
+  }
+}
+# --------------------------------------------------------------------------------------------
+# Function : sinaica_quick_csv_download
+# @Arg     : session     — SeleniumSession
+# @Arg     : downloads_root — path to watch for new .csv
+# @Arg     : before      — vector of files that existed before
+# @Arg     : settle_sec  — small pause before clicking CSV (default 2s)
+# @Arg     : timeout_dl  — seconds to wait for the actual download
+# @Output  : path to the downloaded file, or NULL if not available quickly
+# @Purpose : If a retry left results visible, finish immediately without full
+#            re-hydration. Non-blocking probe with a short wait budget.
+# --------------------------------------------------------------------------------------------
+sinaica_quick_csv_download <- function(session, downloads_root, before,
+                                       settle_sec = 1.0,
+                                       timeout_dl_quick = 25) {
+  btns <- sinaica_find_btns(session)
+  if (is.null(btns$csv)) return(NULL)
+  
+  if (settle_sec > 0) Sys.sleep(settle_sec)
+  sinaica_download_via_btn(session, btns$csv)
+  
+  # SHORT wait only; do not burn the whole attempt here.
+  src <- try(
+    wait_for_new_download(
+      dir       = downloads_root,
+      before    = before,
+      pattern   = "\\.csv$",
+      quiet_sec = 2,
+      timeout   = timeout_dl_quick
+    ),
+    silent = TRUE
+  )
+  if (inherits(src, "try-error")) return(NULL)
+  src
+}
+# --------------------------------------------------------------------------------------------
+# Function : sinaica_rehydrate_form
+# @Arg     : session        — SeleniumSession
+# @Arg     : base_url       — SINAICA base
+# @Arg     : smca           — list(value, text) for the SMCA select
+# @Arg     : red_val        — selected red value (may be "")
+# @Arg     : par_val        — parámetro value
+# @Arg     : timeout_page   — seconds for page ready
+# @Arg     : timeout_ctrl   — seconds for controls visible
+# @Arg     : timeout_est    — seconds for stations list to populate
+# @Arg     : long_pause     — if TRUE add a long settle pause at the end
+# @Output  : TRUE if stations exist and parámetro set; FALSE if no stations
+# @Purpose : Open Descargas, set SMCA/red, add all stations, set parámetro.
+# --------------------------------------------------------------------------------------------
+sinaica_rehydrate_form <- function(session, base_url,
+                                   smca, red_val, par_val,
+                                   timeout_page, timeout_ctrl, timeout_est,
+                                   long_pause = TRUE) {
+  sinaica_open_descargas(session, base_url, timeout_page, timeout_ctrl)
+  res <- sinaica_js_set_select(session, "SMCASelDesc",
+                               value = smca$value, text = smca$text)
+  if (!identical(res, "ok")) stop("SMCA select failed after reload.")
+  if (nzchar(red_val)) {
+    res <- sinaica_js_set_select(session, "redSelDesc", value = red_val)
+    if (!identical(res, "ok")) stop("Red select failed after reload.")
+  }
+  wait_for(session, "css selector", "#estSelDesc", timeout_ctrl)
+  st_df <- sinaica_wait_options(session, "estSelDesc", min_n = 1,
+                                timeout = timeout_est)
+  if (!nrow(st_df)) {
+    message("      🚫 No stations in this red — skipping.")
+    return(FALSE)
+  }
+  try(session$find_element("css selector", "#delLstEstDat")$click(),
+      silent = TRUE)
+  wait_for(session, "css selector", "#addTodasEstDesc", timeout_ctrl)$click()
+  res <- sinaica_js_set_select(session, "paramSelDesc", value = par_val)
+  if (!identical(res, "ok")) {
+    ok <- sinaica_js_click_text(
+      session,
+      paste0("//th[normalize-space()='Selecciona un parámetro:']",
+             "/following::select[1]/option[@value=",
+             jsonlite::toJSON(par_val), "]")
+    )
+    if (!ok) stop("Failed to select parámetro after reload.")
+  }
+  if (isTRUE(long_pause)) Sys.sleep(45) else Sys.sleep(1.0)
+  TRUE
+}
+# --------------------------------------------------------------------------------------------
+# Function : sinaica_download_via_btn
+# @Arg     : session         — SeleniumSession
+# @Arg     : btn         — Button to click on the url
+# @Output  : TRUE if succeeded - None otherwise
+# @Purpose : Download data through the href if present; otherwise click the element.
+# --------------------------------------------------------------------------------------------
+sinaica_download_via_btn <- function(session, btn) {
+  href <- NULL
+  try({
+    href <- session$execute_script(
+      paste0("return arguments[0] && arguments[0].getAttribute",
+             " ? arguments[0].getAttribute('href') : null;"),
+      list(btn)
+    )[[1]]
+  }, silent = TRUE)
+  
+  if (is.character(href) && nzchar(href)) {
+    # Direct navigation triggers the file immediately if server sends Content-Disposition.
+    session$navigate(href)
+  } else {
+    # Fall back to a robust click on the real element object.
+    sinaica_click_el(session, btn)
+  }
+  invisible(TRUE)
+}
+# --------------------------------------------------------------------------------------------
+# Function : sinaica_download_with_reclick
+# @Arg     : session        — SeleniumSession
+# @Arg     : downloads_root — directory we are watching for the CSV
+# @Arg     : before         — vector of files that existed before clicking
+# @Arg     : timeout_total  — hard cap in seconds (e.g., 60–90)
+# @Arg     : click_every    — seconds between retries
+# @Output  : path to the downloaded file (string)
+# @Purpose : Keep (re)clicking the CSV button until a new file appears, or time out.
+# --------------------------------------------------------------------------------------------
+sinaica_download_with_reclick <- function(session, downloads_root, before,
+                                          timeout_total = 75, click_every = 4) {
+  t_end <- Sys.time() + timeout_total
+  attempt <- 0L
+  repeat {
+    attempt <- attempt + 1L
+    # (Re)locate the CSV button each attempt to avoid stale references
+    btns <- sinaica_find_btns(session)
+    if (is.null(btns$csv)) {
+      # sometimes the modal is back—accept if present and try again
+      sinaica_accept_modal_if_any(session)
+      btns <- sinaica_find_btns(session)
+    }
+    if (is.null(btns$csv)) {
+      # If we still can't see it, give the page a tiny chance and try again.
+      if (Sys.time() > t_end) stop("CSV button not present before timeout.")
+      Sys.sleep(1.0)
+      next
+    }
+    
+    msg <- sprintf("            …Clicking CSV (attempt %d)", attempt)
+    message(msg)
+    ok_click <- try(btns$csv$click(), silent = TRUE)
+    if (inherits(ok_click, "try-error")) {
+      # fall back to JS click on the real element
+      sinaica_click_el(session, btns$csv)
+    }
+    
+    # Short polling window after each click (don’t block for long)
+    got <- try(
+      wait_for_new_download(
+        dir       = downloads_root,
+        before    = before,
+        pattern   = "\\.csv$",
+        quiet_sec = 2,
+        timeout   = min(6, as.numeric(difftime(t_end, Sys.time(), units = "secs")))
+      ),
+      silent = TRUE
+    )
+    if (!inherits(got, "try-error")) return(got)
+    
+    # Not yet — wait a bit then re-click
+    if (Sys.time() > t_end) stop("No download detected before timeout.")
+    Sys.sleep(click_every)
+  }
+}
+# --------------------------------------------------------------------------------------------
+# Function : sinaica_cleanup_downloads
+# @Arg     : dir       — directory to tidy (e.g., downloads_root)
+# @Arg     : grace_sec — only delete files older than this many seconds
+# @Arg     : patterns  — filename regex patterns to remove
+# @Output  : integer number of files deleted
+# @Purpose : Remove stale CSVs and temporary browser artifacts left by failed clicks.
+# Note     : Non-recursive on purpose: we do NOT touch subdirectories (e.g., your subdir).
+# --------------------------------------------------------------------------------------------
+sinaica_cleanup_downloads <- function(
+    dir,
+    grace_sec = 120,
+    patterns = c("\\.csv$", "\\.csv\\.part$", "\\.part$", "\\.tmp$",
+                 "\\.crdownload$", "\\.download$")
+) {
+  now <- Sys.time()
+  # list only top-level files inside downloads_root (no recursion!)
+  paths <- list.files(dir, all.files = FALSE, full.names = TRUE, recursive = FALSE)
+  if (!length(paths)) return(0L)
+  
+  # union of patterns, case-insensitive
+  pat_union <- paste0("(", paste(patterns, collapse = ")|("), ")")
+  match_idx <- grep(pat_union, basename(paths), ignore.case = TRUE)
+  if (!length(match_idx)) return(0L)
+  
+  info <- file.info(paths[match_idx])
+  old  <- which(!is.na(info$mtime) & difftime(now, info$mtime, "secs") > grace_sec)
+  if (!length(old)) return(0L)
+  
+  unlink(paths[match_idx][old], force = TRUE)
+  length(old)
+}
+# --------------------------------------------------------------------------------------------
+# Function: inegi_census_2020_ampliado_links
+# @Output    : tibble(area, slug, filename, href) for the 3 requested areas
+# @Purpose   : Hardcode the official CSV ZIP paths (relative → absolute).
+# --------------------------------------------------------------------------------------------
+inegi_census_2020_ampliado_links <- function() {
+  base <- "https://www.inegi.org.mx"
+  paths <- c(
+    "Ciudad de México" = paste0("/contenidos/programas/ccpv/2020/microdatos/",
+    "Censo2020_CA_cdmx_csv.zip"),
+    "Hidalgo"          = paste0("/contenidos/programas/ccpv/2020/microdatos/",
+    "Censo2020_CA_hgo_csv.zip"),
+    "México"           = paste0("/contenidos/programas/ccpv/2020/microdatos/",
+    "Censo2020_CA_mex_csv.zip")
+  )
+  slug <- c("Ciudad de México" = "cdmx", "Hidalgo" = "hgo", "México" = "mex")
+  tibble::tibble(
+    area     = names(paths),
+    slug     = unname(slug[names(paths)]),
+    filename = basename(paths),
+    href     = paste0(base, unname(paths))
+  )
+}
+# --------------------------------------------------------------------------------------------
+# Function: .http_retry_get_zip
+# @Arg       : url, dest, retries, quiet, referer
+# @Output    : list(code=<http code>, bytes=<file size or NA>)
+# @Purpose   : Robust GET with retries and disk write (httr::RETRY).
+# --------------------------------------------------------------------------------------------
+.http_retry_get_zip <- function(url, dest, retries = 5, quiet = FALSE,
+                                referer = NULL) {
+  dir.create(dirname(dest), recursive = TRUE, showWarnings = FALSE)
+  ua <- httr::user_agent(
+    sprintf("R/%s (%s) IDB-AirMonitoring",
+            getRversion(), R.version$platform)
+  )
+  hdrs <- if (is.null(referer)) NULL else httr::add_headers(Referer = referer)
+  rq <- httr::RETRY(
+    verb        = "GET",
+    url         = url,
+    ua,
+    hdrs,
+    httr::write_disk(path = dest, overwrite = TRUE),
+    httr::progress(type = if (quiet) "none" else "down"),
+    times       = as.integer(retries),
+    terminate_on = c(200L),
+    quiet       = quiet,
+    httr::timeout(60 * 60)  # up to 60 min
+  )
+  code  <- httr::status_code(rq)
+  bytes <- suppressWarnings(file.size(dest))
+  list(code = code, bytes = bytes)
+}
+
+# ============================================================================================
+#  CDMX-specific functions - downloading main function and tiny helpers
 # ============================================================================================
 
 # --------------------------------------------------------------------------------------------
@@ -236,262 +1508,656 @@ cdmx_download_metro_area <- function(
 
 
 # --------------------------------------------------------------------------------------------
-# Function: cdmx_download_sinaica_data
-# @Arg       : base_url      — URL of SINAICA form ("https://sinaica.inecc.gob.mx/scica/")
-# @Arg       : years         — integer vector of years to loop (default cdmx_cfg$years)
-# @Arg       : container     — logical; TRUE if using docker-compose Selenium
-# @Arg       : max_attempts  — retries per (smca, red, param, year)
-# @Arg       : timeout_page  — seconds to wait page ready
-# @Arg       : timeout_ctrl  — seconds to wait controls visible
-# @Arg       : timeout_modal — seconds to wait the first "Aceptar" modal sniff
-# @Arg       : timeout_csv   — max seconds waiting results (modal→CSV) after Buscar
-# @Arg       : timeout_dl    — seconds to wait each CSV download
-# @Arg       : timeout_param_ready — seconds to wait parameter list to (re)populate
-# @Arg       : timeout_year_ready  — seconds to wait year list to (re)populate
-# @Arg       : timeout_est_ready   — seconds to wait station list to (re)populate
-# @Arg       : wd_request_timeout_ms — HTTP timeout per WebDriver call (best effort)
-# @Arg       : settle_first_year_sec      — small wait before first-year fetch
-# @Arg       : settle_before_csv_click_sec— small wait after results, before CSV click
-# @Arg       : subdir        — optional subfolder under DOWNLOADS_DIR for final files
-# @Output    : writes CSVs; returns (invisibly) a tibble log:
-#              smca, red, parametro, year, status, file
-# @Purpose   : SINAICA "Descargas" downloader for CDMX metro area (SMCA→red→param→año).
-# @Written_on: 06/09/2025
-# @Written_by: Marcos Paulo
+# Function: cdmx_scrape_station_catalog
+# @Arg       : page_url      — string; page that contains the "Catálogo estaciones" link
+# @Arg       : harmonize_map — named chr vec (optional) to rename station display names
+# @Arg       : verbose       — logical; print progress (default TRUE)
+# @Arg       : out_dir       — string; directory to write outputs (created if missing)
+# @Arg       : out_name      — string; base filename *without* extension
+# @Arg       : write_rds     — logical; write .rds (default FALSE)
+# @Arg       : write_parquet — logical; write .parquet via {arrow} (default TRUE)
+# @Arg       : write_csv     — logical; write .csv (default FALSE)
+# @Output    : tibble with columns:
+#              entity, station, code, lon, lat, altitude_m, notes, id_station, source_url
+# @Purpose   : Scrape the "Catálogo estaciones" for CDMX, read the CSV safely (Latin-1 → UTF-8),
+#              and return a clean tibble with station metadata (code, name, lat/lon, etc.).
+# @Written_on: 2025-09-04
+# --------------------------------------------------------------------------------------------
+cdmx_scrape_station_catalog <- function(
+    page_url,
+    harmonize_map = c(),
+    verbose       = TRUE,
+    out_dir,
+    out_name,
+    write_rds     = FALSE,
+    write_parquet = TRUE,
+    write_csv     = FALSE
+) {
+  # -- 0) Small helpers ---------------------------------------------------------
+  
+  `%||%`    <- function(a, b) if (!is.null(a)) a else b
+  msg       <- function(...) if (isTRUE(verbose)) message(...)
+
+  .clean_txt <- function(x) {
+    x %>%
+      stringr::str_replace_all("\u00A0", " ") %>%  # nbsp → space
+      stringr::str_squish() %>%
+      trimws()
+  }
+  
+  # Build absolute URL and percent-encode spaces.
+  .fix_url <- function(u, base) {
+    u <- .clean_txt(u)
+    if (!grepl("^https?://", u, ignore.case = TRUE)) {
+      u <- xml2::url_absolute(u, base)
+    }
+    utils::URLencode(u, reserved = FALSE)
+  }
+  
+  .ua <- httr::user_agent(
+    sprintf("R/%s (%s) IDB-AirMonitoring",
+            getRversion(), R.version$platform)
+  )
+  
+  .to_num <- function(x) {
+    readr::parse_number(
+      x,
+      locale = readr::locale(decimal_mark = ".", grouping_mark = ",")
+    )
+  }
+  
+  # Convert specific character columns from Latin-1 → UTF-8 safely.
+  .to_utf8_cols <- function(df, cols) {
+    for (cc in cols) {
+      if (cc %in% names(df)) {
+        df[[cc]] <- iconv(df[[cc]], from = "latin1", to = "UTF-8")
+        df[[cc]][is.na(df[[cc]])] <- ""
+        df[[cc]] <- .clean_txt(df[[cc]])
+      }
+    }
+    df
+  }
+  
+  # Heuristic: is this error one of the SSL chain/cert issues curl emits?
+  .is_ssl_chain_err <- function(e) {
+    msg <- tolower(paste0(conditionMessage(e), collapse = " "))
+    any(grepl("ssl.*(certificate|cert).*unable.*issuer|",
+              "peer certificate|certificate verify failed|",
+              "self[- ]signed|unknown ca|unable to get local issuer",
+              msg, perl = TRUE))
+  }
+  
+  # ---- 0.1) Early exit: if requested outputs already exist, load and return ----------------
+  if (!missing(out_dir) && !missing(out_name) &&
+      isTRUE(write_rds || write_parquet || write_csv)) {
+    
+    file_name <- basename(out_name)
+    dir_path  <- file.path(out_dir, file_name)
+    
+    want <- c(
+      if (isTRUE(write_parquet)) paste0(dir_path, ".parquet") else NULL,
+      if (isTRUE(write_rds))     paste0(dir_path, ".rds")     else NULL,
+      if (isTRUE(write_csv))     paste0(dir_path, ".csv")     else NULL
+    )
+    have_all <- length(want) > 0 && all(file.exists(want))
+    
+    if (have_all) {
+      msg("↪︎ Outputs already exist — loading and returning without scraping.")
+      # Prefer Parquet → RDS → CSV
+      fpq <- paste0(dir_path, ".parquet")
+      frd <- paste0(dir_path, ".rds")
+      fcs <- paste0(dir_path, ".csv")
+      
+      if (file.exists(fpq) && requireNamespace("arrow", quietly = TRUE)) {
+        df <- arrow::read_parquet(fpq)
+        return(tibble::as_tibble(df))
+      } else if (file.exists(frd)) {
+        df <- readRDS(frd)
+        return(tibble::as_tibble(df))
+      } else if (file.exists(fcs)) {
+        df <- readr::read_csv(fcs, show_col_types = FALSE, progress = FALSE)
+        return(tibble::as_tibble(df))
+      }
+      # If we somehow couldn't load, fall through to scraping.
+      msg("⚠️  Existing files found but could not be read; proceeding to scrape.")
+    }
+  }
+  
+  # -- 1) Fetch page and locate the CSV link -----------------------------------
+  
+  if (isTRUE(verbose)) message("Fetching page: ", page_url)
+  
+  # Robust fetch (httr only), then parse raw → HTML. This is from the helper functions
+  # Works in Docker & local.
+  resp_page <- suppressWarnings(.http_retry_get_robust(
+    page_url, .ua, timeout_sec = 45, verbose = verbose, allow_insecure_fallback = TRUE
+  ))
+  doc <- xml2::read_html(httr::content(resp_page, as = "raw"))
+  
+  # Get the necessary elements
+  a_tags <- rvest::html_elements(doc, "a")
+  a_txt  <- tolower(rvest::html_text2(a_tags))
+  a_href <- rvest::html_attr(a_tags, "href")
+  
+  hit <- which(
+    stringr::str_detect(a_txt, "cat[aá]logo\\s+estaciones") &
+      stringr::str_detect(tolower(a_href %||% ""), "\\.csv\\b")
+  )
+  if (!length(hit)) {
+    stop("Could not find the 'Catálogo estaciones' CSV link on the page.")
+  }
+  
+  csv_url <- .fix_url(a_href[hit[1]], base = page_url)
+  if (isTRUE(verbose)) message("CSV link: ", csv_url)
+  
+  # -- 2) Download CSV robustly -------------------------------------------------
+  
+  # Same robust pattern for the CSV (scoped insecure fallback if needed)
+  resp_csv <- suppressWarnings(.http_retry_get_robust(
+    csv_url, .ua, timeout_sec = 60, verbose = verbose, allow_insecure_fallback = TRUE
+  ))
+  tmp_csv <- tempfile(fileext = ".csv")
+  writeBin(httr::content(resp_csv, as = "raw"), tmp_csv)
+  
+  # -- 3) Find the header line number (tolerant to encoding) -------------------
+  # Read raw lines without assuming UTF-8; use CP1252/Latin1 which matches site.
+  # We only need the header index; warnings about bytes are acceptable here.
+  
+  lines_guess <- try(
+    readLines(tmp_csv, encoding = "CP1252", warn = FALSE),
+    silent = TRUE
+  )
+  if (inherits(lines_guess, "try-error") || !length(lines_guess)) {
+    lines_guess <- try(
+      readLines(tmp_csv, encoding = "latin1", warn = FALSE),
+      silent = TRUE
+    )
+  }
+  if (inherits(lines_guess, "try-error") || !length(lines_guess)) {
+    stop("Failed to read the CSV to locate the header line.")
+  }
+  
+  # Locate "cve_estac,nom_estac," ignoring case and leading spaces.
+  hdr_idx <- suppressWarnings(
+    grep("^\\s*cve_estac\\s*,\\s*nom_estac\\s*,",
+         lines_guess, ignore.case = TRUE)
+  )
+  if (!length(hdr_idx)) {
+    stop("Could not find the CSV header line.")
+  }
+  hdr_idx <- hdr_idx[1L]
+  
+  # -- 4) Parse the CSV directly from file (no string building) ----------------
+  # Critical change: readr parses the file with the correct encoding and we
+  # skip any preface lines. This avoids building a giant UTF-8 string.
+  
+  raw_df <- readr::read_csv(
+    file = tmp_csv,
+    skip = hdr_idx - 1L,
+    show_col_types = FALSE,
+    locale = readr::locale(encoding = "Latin1",
+                           decimal_mark = ".", grouping_mark = ",")
+  )
+  
+  # -- 5) Normalize and ensure expected fields ---------------------------------
+  names(raw_df) <- tolower(names(raw_df))
+  need <- c("cve_estac","nom_estac","longitud","latitud",
+            "alt","obs_estac","id_station")
+  for (k in need) if (!k %in% names(raw_df)) raw_df[[k]] <- NA
+  
+  # Normalize character fields to UTF-8 for consistent outputs if needed
+  chr_coding <- unique(Encoding(raw_df$nom_estac))
+  if ("latin1" %in% chr_coding){
+    raw_df <- .to_utf8_cols(raw_df, c("cve_estac","nom_estac","obs_estac",
+                                      "id_station"))
+  }
+  
+  df <- raw_df[, need]
+  
+  # -- 6) Clean values and standardize units -----------------------------------
+  
+  df <- df %>%
+    dplyr::transmute(
+      entity     = "CDMX",
+      code       = .clean_txt(cve_estac),
+      station    = .clean_txt(nom_estac),
+      lon        = longitud,
+      lat        = latitud,
+      altitude_m = alt,
+      notes      = .clean_txt(obs_estac),
+      id_station = .clean_txt(id_station),
+      source_url = csv_url
+    ) %>%
+    dplyr::mutate(
+      # Mexico: lon negative (W), lat positive (N)
+      lon = dplyr::case_when(!is.na(lon) & lon > 0 ~ -abs(lon), TRUE ~ lon),
+      lat = dplyr::case_when(!is.na(lat) & lat < 0 ~  abs(lat), TRUE ~ lat)
+    ) %>%
+    dplyr::distinct(code, station, lat, lon, .keep_all = TRUE) %>%
+    dplyr::arrange(station)
+  
+  # -- 7) Optional harmonization of names --------------------------------------
+  
+  if (length(harmonize_map)) {
+    df$station <- dplyr::recode(df$station, !!!harmonize_map,
+                                .default = df$station)
+  }
+  
+  # -- 8) Summary ---------------------------------------------------------------
+  
+  if (isTRUE(verbose)) {
+    message("===================================================================",
+            "\n", "\n",
+            "Rows: ", nrow(df),
+            " | Unique stations: ", dplyr::n_distinct(df$station),
+            " | With coords: ", sum(!is.na(df$lat) & !is.na(df$lon)))
+  }
+  
+  # -- 9) Optional outputs ------------------------------------------------------
+  if (!missing(out_dir) && !missing(out_name)) {
+    dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+    
+    if (isTRUE(write_rds)) {
+      rds <- file.path(out_dir, paste0(out_name, ".rds"))
+      saveRDS(df, rds, compress = "xz")
+      if (verbose) message("💾 Wrote RDS → ", rds)
+    }
+    
+    if (isTRUE(write_parquet)) {
+      if (!requireNamespace("arrow", quietly = TRUE)) {
+        stop("Package 'arrow' is required for Parquet output.")
+      }
+      pq <- file.path(out_dir, paste0(out_name, ".parquet"))
+      arrow::write_parquet(df, pq, compression = "zstd")
+      if (verbose) message("🧱 Wrote Parquet → ", pq)
+    }
+    
+    if (isTRUE(write_csv)) {
+      csv <- file.path(out_dir, paste0(out_name, ".csv"))
+      readr::write_csv(df, csv)
+      if (verbose) message("📝 Wrote CSV → ", csv)
+    }
+  } else if (isTRUE(verbose)) {
+    message("No out_dir/out_name provided → returning tibble only.")
+  }
+  
+  return(df)
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: cdmx_scrape_states_merge
+# @Arg       : station_in_cdmx — tibble; pre-scraped CDMX stations
+# @Arg       : base_url        — string; landing with the state dropdown
+# @Arg       : states          — character; state names to scrape
+# @Arg       : container       — TRUE if using docker-compose Selenium service
+# @Arg       : session         — optional SeleniumSession (reuse if provided)
+# @Arg       : timeout_page    — seconds to wait for page load
+# @Arg       : timeout_ctrl    — seconds to wait for controls/table
+# @Arg       : wd_request_timeout_ms — per-request driver timeout
+# @Arg       : out_dir         — string; directory to write outputs (created if missing)
+# @Arg       : out_name        — string; base filename *without* extension
+# @Arg       : write_rds       — logical; write .rds (default FALSE)
+# @Arg       : write_parquet   — logical; write .parquet via {arrow} (default TRUE)
+# @Arg       : write_csv       — logical; write .csv (default FALSE)
+# @Arg       : verbose         — logical; print progress (default TRUE)
+# @Output    : tibble merged (CDMX + selected states)
+# @Purpose   : Open dropdown → click state → wait table (scroll-aware) → iterate stations.
+# --------------------------------------------------------------------------------------------
+cdmx_scrape_states_merge <- function(
+    station_in_cdmx,
+    base_url  = cdmx_cfg$url_station_info,
+    states    = c("Hidalgo", "México"),
+    container = TRUE,
+    session   = NULL,
+    timeout_page = 25,
+    timeout_ctrl = 25,
+    wd_request_timeout_ms = 60000L,
+    out_dir,
+    out_name,
+    write_rds       = FALSE,
+    write_parquet   = TRUE,
+    write_csv       = FALSE,
+    verbose         = TRUE
+) {
+  `%||%`    <- function(a, b) if (!is.null(a)) a else b
+  isTRUEtry <- function(x) isTRUE(try(x, silent = TRUE))
+  msg       <- function(...) if (isTRUE(verbose)) message(...)
+  
+  # ---- 0) Early exit: if requested outputs already exist, load and return ----------------
+  if (!missing(out_dir) && !missing(out_name) &&
+      isTRUE(write_rds || write_parquet || write_csv)) {
+    
+    file_name <- basename(out_name)
+    dir_path  <- file.path(out_dir, file_name)
+    
+    want <- c(
+      if (isTRUE(write_parquet)) paste0(dir_path, ".parquet") else NULL,
+      if (isTRUE(write_rds))     paste0(dir_path, ".rds")     else NULL,
+      if (isTRUE(write_csv))     paste0(dir_path, ".csv")     else NULL
+    )
+    have_all <- length(want) > 0 && all(file.exists(want))
+    
+    if (have_all) {
+      msg("↪︎ Outputs already exist — loading and returning without scraping.")
+      # Prefer Parquet → RDS → CSV
+      fpq <- paste0(dir_path, ".parquet")
+      frd <- paste0(dir_path, ".rds")
+      fcs <- paste0(dir_path, ".csv")
+      
+      if (file.exists(fpq) && requireNamespace("arrow", quietly = TRUE)) {
+        df <- arrow::read_parquet(fpq)
+        return(tibble::as_tibble(df))
+      } else if (file.exists(frd)) {
+        df <- readRDS(frd)
+        return(tibble::as_tibble(df))
+      } else if (file.exists(fcs)) {
+        df <- readr::read_csv(fcs, show_col_types = FALSE, progress = FALSE)
+        return(tibble::as_tibble(df))
+      }
+      # If we somehow couldn't load, fall through to scraping.
+      msg("⚠️  Existing files found but could not be read; proceeding to scrape.")
+    }
+  }
+  
+  # ---- 1) Start / reuse Selenium ---------------------------------------------------------
+  close_on_exit <- FALSE
+  if (is.null(session)) {
+    close_on_exit <- TRUE
+    if (!container) {
+      msg("🚀 Starting local Selenium on 4445…")
+      cid <- system(
+        paste0(
+          "docker run -d -p 4445:4444 --shm-size=2g ",
+          "selenium/standalone-firefox:4.34.0-20250717"
+        ),
+        intern = TRUE
+      )
+      on.exit(try(system(sprintf("docker rm -f %s", cid), intern = TRUE),
+                  silent = TRUE), add = TRUE)
+      sel_host <- "localhost"; sel_port <- 4445L
+    } else {
+      sel_host <- "selenium";  sel_port <- 4444L
+    }
+    
+    dl_dir_container <- if (container) "/home/seluser/Downloads" else
+      Sys.getenv("DOWNLOADS_DIR", here::here("data", "downloads"))
+    
+    caps <- list(
+      browserName = "firefox",
+      "moz:firefoxOptions" = list(
+        prefs = list(
+          "browser.download.folderList"     = 2L,
+          "browser.download.dir"            = dl_dir_container,
+          "browser.download.useDownloadDir" = TRUE,
+          "browser.helperApps.neverAsk.saveToDisk" = paste(
+            "text/csv", "application/csv", "application/vnd.ms-excel",
+            "application/octet-stream", sep = ","
+          ),
+          "browser.download.manager.showWhenStarting" = FALSE,
+          "browser.download.alwaysOpenPanel"         = FALSE,
+          "pdfjs.disabled"                           = TRUE
+        )
+      ),
+      timeouts = list(implicit = 0L, pageLoad = 120000L, script = 60000L)
+    )
+    
+    ses_args <- list(
+      browser      = "firefox",
+      host         = sel_host,
+      port         = sel_port,
+      capabilities = caps
+    )
+    fml <- try(names(formals(selenium::SeleniumSession$new)), silent = TRUE)
+    if (!inherits(fml, "try-error")) {
+      if ("request_timeout" %in% fml) {
+        ses_args$request_timeout <- as.integer(wd_request_timeout_ms)
+      } else if ("http_timeout_ms" %in% fml) {
+        ses_args$http_timeout_ms <- as.integer(wd_request_timeout_ms)
+      }
+    }
+    session <- do.call(selenium::SeleniumSession$new, ses_args)
+  }
+  if (isTRUE(close_on_exit)) on.exit(session$close(), add = TRUE)
+  
+  # ---- 2) Navigate to landing ------------------------------------------------------------
+  session$navigate(base_url)
+  wait_ready(session, timeout_page)
+  
+  out_rows <- list()
+  
+  # ---- 3) Loop for states ---------------------------------------------------------------
+  for (state_name in states) {
+    msg("🗺️  State: ", state_name)
+    
+    # Fresh page each time (avoids residual overlays).
+    session$navigate(base_url)
+    wait_ready(session, timeout_page)
+    
+    ok_dd <- isTRUEtry(
+      sinaica_open_state_dropdown(session, timeout = timeout_ctrl)
+    )
+    if (!ok_dd) {
+      isTRUEtry(
+        session$find_element(
+          "css selector", "button.dropdown-toggle.btn-verde-index"
+        )$click()
+      )
+      Sys.sleep(0.3)
+      ok_dd <- isTRUEtry(
+        sinaica_open_state_dropdown(session, timeout = timeout_ctrl)
+      )
+    }
+    if (!ok_dd) stop("Could not open the 'Seleccionar estado' dropdown.")
+    
+    ok_sel <- isTRUEtry(sinaica_select_state(session, state_name))
+    if (!ok_sel) {
+      isTRUEtry(
+        session$find_element(
+          "css selector", "button.dropdown-toggle.btn-verde-index"
+        )$click()
+      )
+      Sys.sleep(0.3)
+      ok_sel <- isTRUEtry(sinaica_select_state(session, state_name))
+    }
+    if (!ok_sel) stop("Could not select state: ", state_name)
+    
+    # ---- 4) Wait stations table (scroll-aware) ------------------------------------------
+    if (!sinaica_wait_state_table(session, timeout = timeout_ctrl + 20,
+                                  min_rows = 1)) {
+      stop("State table did not appear for: ", state_name)
+    }
+    
+    # ---- 5) Read table and iterate Estación cells ---------------------------------------
+    st_tbl <- sinaica_read_state_table(session)
+    if (!nrow(st_tbl)) {
+      msg("   ⚠️ No station table found for ", state_name, " — skipping.")
+      next
+    }
+    msg(sprintf("   ↳ %d stations listed", nrow(st_tbl)))
+    
+    # ---- 6) For each station: open detail → wait detail → parse → append row ------------
+    for (i in seq_len(nrow(st_tbl))) {
+      est_id   <- st_tbl$est_id[i]
+      st_name0 <- sinaica_clean_text(st_tbl$station[i])
+      red_name <- sinaica_clean_text(st_tbl$red[i])
+      
+      msg(sprintf("      🏷️  %s — %s (id=%s)", red_name, st_name0, est_id))
+      
+      css_cell <- sprintf("td.tdEst#est_%s", est_id)
+      sinaica_scroll_into_view_sel(session, css_cell)
+      el <- try(session$find_element("css selector", css_cell), silent = TRUE)
+      if (inherits(el, "try-error")) {
+        msg("         ⚠️  Station cell not found; skipping.")
+        next
+      }
+      sinaica_click_el(session, el)
+      
+      if (!sinaica_wait_station_detail(session, timeout = timeout_ctrl)) {
+        msg("         ⚠️  Detail table not visible; skipping.")
+        isTRUEtry(session$execute_script("history.back();"))
+        isTRUEtry(wait_for(
+          session, "css selector", "td.tdEst[id^='est_']",
+          timeout = timeout_ctrl
+        ))
+        next
+      }
+      
+      det <- sinaica_read_station_detail(session)
+      kv  <- det$kv %||% list()
+      url <- det$url %||% session$execute_script("return location.href")[[1]]
+      h3  <- det$h3 %||% ""
+      
+      nm <- sinaica_extract_name_code_from_h3(h3)
+      st_name <- ifelse(is.na(nm$name) || !nzchar(nm$name), st_name0, nm$name)
+      st_code <- ifelse(is.na(nm$code) || !nzchar(nm$code),
+                        NA_character_, nm$code)
+      
+      coords <- sinaica_parse_coords(kv[["coordenadas"]] %||% "")
+      alt_m  <- sinaica_parse_alt(kv[["altitud"]] %||% "")
+      
+      sys_txt  <- sinaica_clean_text(kv[["sistema de monitoreo"]] %||% "")
+      ent_abbr <- sub(".*\\(([^\\)]+)\\).*", "\\1", sys_txt)
+      ent_abbr <- if (identical(ent_abbr, sys_txt) || !nzchar(ent_abbr))
+        toupper(substr(state_name, 1, 3)) else toupper(ent_abbr)
+      
+      out_rows[[length(out_rows) + 1L]] <- tibble::tibble(
+        entity     = ent_abbr,
+        code       = st_code,
+        station    = st_name,
+        lon        = coords[["lon"]],
+        lat        = coords[["lat"]],
+        altitude_m = alt_m,
+        notes      = NA_character_,
+        id_station = as.double(est_id),
+        source_url = url
+      )
+      
+      isTRUEtry(session$execute_script("history.back();"))
+      isTRUEtry(wait_for(
+        session, "css selector", "td.tdEst[id^='est_']",
+        timeout = timeout_ctrl
+      ))
+      Sys.sleep(0.2)
+    }
+  }
+  
+  # ---- 7) Build merged tibble ------------------------------------------------------------
+  new_df <- if (length(out_rows)) dplyr::bind_rows(out_rows) else
+    tibble::tibble(
+      entity=character(), code=character(), station=character(),
+      lon=double(), lat=double(), altitude_m=double(), notes=character(),
+      id_station=character(), source_url=character()
+    )
+  
+  df <- dplyr::bind_rows(station_in_cdmx, new_df) %>%
+    dplyr::distinct(entity, station, .keep_all = TRUE)
+  
+  # ---- 8) Summary -----------------------------------------------------------------------
+  if (isTRUE(verbose)) {
+    msg("===================================================================")
+    msg(paste0(
+      "Rows: ", nrow(df),
+      " | Unique stations: ", dplyr::n_distinct(df$station),
+      " | With coords: ", sum(!is.na(df$lat) & !is.na(df$lon))
+    ))
+  }
+  
+  # ---- 9) Optional outputs ---------------------------------------------------------------
+  if (!missing(out_dir) && !missing(out_name)) {
+    dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+    
+    if (isTRUE(write_rds)) {
+      rds <- file.path(out_dir, paste0(out_name, ".rds"))
+      saveRDS(df, rds, compress = "xz")
+      msg("💾 Wrote RDS → ", rds)
+    }
+    
+    if (isTRUE(write_parquet)) {
+      if (!requireNamespace("arrow", quietly = TRUE)) {
+        stop("Package 'arrow' is required for Parquet output.")
+      }
+      pq <- file.path(out_dir, paste0(out_name, ".parquet"))
+      arrow::write_parquet(df, pq, compression = "zstd")
+      msg("🧱 Wrote Parquet → ", pq)
+    }
+    
+    if (isTRUE(write_csv)) {
+      csv <- file.path(out_dir, paste0(out_name, ".csv"))
+      readr::write_csv(df, csv)
+      msg("📝 Wrote CSV → ", csv)
+    }
+  } else if (isTRUE(verbose)) {
+    msg("No out_dir/out_name provided → returning tibble only.")
+  }
+  
+  # ---- 10) Return -----------------------------------------------------------------------
+  return(df)
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function : cdmx_download_sinaica_data
+# @Arg     : base_url      — SINAICA form URL ("https://sinaica.inecc.gob.mx/scica/")
+# @Arg     : years         — integer vector (e.g., 2000:2023)
+# @Arg     : container     — TRUE if using docker-compose Selenium service
+# @Arg     : session       — optional SeleniumSession (reuse if provided)
+# @Arg     : max_attempts  — retries per (smca, red, parámetro, year)
+# @Arg     : timeout_page  — seconds for page load readiness
+# @Arg     : timeout_ctrl  — seconds for controls to appear
+# @Arg     : timeout_modal — seconds to see the first "Aceptar" modal
+# @Arg     : timeout_csv   — seconds to wait results → CSV after Buscar
+# @Arg     : timeout_dl    — seconds to wait for each CSV file to download
+# @Arg     : timeout_param_ready — seconds to wait parámetro list
+# @Arg     : timeout_year_ready  — seconds to wait year list
+# @Arg     : timeout_est_ready   — seconds to wait station list
+# @Arg     : wd_request_timeout_ms — per-request driver timeout (if supported)
+# @Arg     : settle_first_year_sec — pause before first year of a parámetro
+# @Arg     : settle_before_csv_click_sec — pause after results before CSV click
+# @Arg     : subdir        — folder under DOWNLOADS_DIR to move files to
+# @Output  : invisible tibble log: smca, red, parametro, year, status, file
+# @Purpose : Drive SINAICA "Descargas" reliably. Same as before, but with adaptive waits
+#            for the slow CDMX group and a safer Buscar lookup.
 # --------------------------------------------------------------------------------------------
 cdmx_download_sinaica_data <- function(
     base_url      = cdmx_cfg$base_url_sinaica,
     years         = cdmx_cfg$years,
     container     = TRUE,
+    session       = NULL,
     max_attempts  = 5,
-    timeout_page  = 50,
-    timeout_ctrl  = 50,
-    timeout_modal = 50,
+    timeout_page  = 5,
+    timeout_ctrl  = 5,
+    timeout_modal = 5,
     timeout_csv   = 5,
-    timeout_dl    = 600,
-    timeout_param_ready = 180,
-    timeout_year_ready  = 180,
-    timeout_est_ready   = 60,
-    wd_request_timeout_ms        = 60000L,  # NEW: best effort (if supported)
-    settle_first_year_sec        = 5,       # NEW: was 15; now shorter & tunable
-    settle_before_csv_click_sec  = 2,       # NEW: was 20; now wait-for + 2s
+    timeout_dl    = 60,
+    timeout_param_ready = 10,
+    timeout_year_ready  = 10,
+    timeout_est_ready   = 10,
+    wd_request_timeout_ms       = 60000L,
+    settle_first_year_sec       = 5,
+    settle_before_csv_click_sec = 2,
     subdir        = "Ground_stations/Mexico/SINAICA"
 ) {
-  # 0) Define the year cap (max requested year)
-  end_year_cap <- max(years)
+  `%||%` <- function(a, b) if (!is.null(a)) a else b
   
-  # 1) Guarantee folders exist
-  downloads_root <- Sys.getenv("DOWNLOADS_DIR",
-                               here::here("data","downloads"))
-  dir.create(downloads_root, recursive = TRUE, showWarnings = FALSE)
-  message("✔️ Downloads dir: ", downloads_root)
-  
-  # 2) Resolve target folder (no duplicate top folder)
-  is_abs <- function(p) grepl("^(/|[A-Za-z]:[/\\\\])", p)
-  normalize_safe <- function(p) {
-    out <- try(normalizePath(p, winslash = "/", mustWork = FALSE),
-               silent = TRUE)
-    if (inherits(out, "try-error")) p else out
-  }
-  target_dir <- NULL
-  if (!is.null(subdir)) {
-    subdir_norm <- normalize_safe(subdir)
-    if (is_abs(subdir)) target_dir <- subdir_norm
-    else                target_dir <- file.path(downloads_root, subdir)
-    if (!dir.exists(target_dir)) {
-      dir.create(target_dir, recursive = TRUE, showWarnings = FALSE)
-    }
-    message("📂 Target subdir : ", target_dir)
-  }
-  
-  # 3) Start / connect Selenium (CSV auto-download)
-  if (!container) {
-    message("🚀 Starting local Selenium on 4445…")
-    cid <- system(
-      "docker run -d -p 4445:4444 --shm-size=2g "
-      %+% "selenium/standalone-firefox:4.34.0-20250717",
-      intern = TRUE
-    )
-    on.exit(try(system(sprintf("docker rm -f %s", cid), intern = TRUE),
-                silent = TRUE), add = TRUE)
-    sel_host <- "localhost"; sel_port <- 4445L
-  } else {
-    sel_host <- "selenium";  sel_port <- 4444L
-  }
-  dl_dir_container <- if (container) "/home/seluser/Downloads" else downloads_root
-  
-  caps <- list(
-    browserName = "firefox",
-    "moz:firefoxOptions" = list(
-      prefs = list(
-        "browser.download.folderList"     = 2L,
-        "browser.download.dir"            = dl_dir_container,
-        "browser.download.useDownloadDir" = TRUE,
-        "browser.helperApps.neverAsk.saveToDisk" = paste(
-          "text/csv",
-          "application/csv",
-          "application/vnd.ms-excel",
-          "application/octet-stream",
-          sep = ","
-        )
+  # -- local: safer Buscar/CSV discovery (avoids throwing when missing) ---------------------
+  robust_find_btns <- function(session) {
+    buscar <- NULL
+    e1 <- try(session$find_element("css selector", "#buscIndDesc"), silent = TRUE)
+    if (!inherits(e1, "try-error")) buscar <- e1 else {
+      e2 <- try(
+        session$find_element(
+          "xpath",
+          paste0("//input[( @type='button' or @type='submit') and ",
+                 "normalize-space(@value)='Buscar']")
+        ),
+        silent = TRUE
       )
-    ),
-    timeouts = list(implicit = 0L, pageLoad = 120000L, script = 60000L)
-  )
-  
-  # Best-effort: pass a driver HTTP timeout only if your build supports it
-  ses_args <- list(
-    browser      = "firefox",
-    host         = sel_host,
-    port         = sel_port,
-    capabilities = caps
-  )
-  add_timeout_if_supported <- function(args) {
-    fml <- try(names(formals(selenium::SeleniumSession$new)), silent = TRUE)
-    if (!inherits(fml, "try-error")) {
-      if ("request_timeout" %in% fml) {
-        args$request_timeout <- as.integer(wd_request_timeout_ms)
-      } else if ("http_timeout_ms" %in% fml) {
-        args$http_timeout_ms <- as.integer(wd_request_timeout_ms)
-      }
+      if (!inherits(e2, "try-error")) buscar <- e2
     }
-    args
-  }
-  ses_args <- add_timeout_if_supported(ses_args)
-  
-  session <- do.call(selenium::SeleniumSession$new, ses_args)
-  on.exit(session$close(), add = TRUE)
-  
-  # 4) JS helpers
-  js_set_select <- function(id, value = NULL, text = NULL) {
-    val <- if (is.null(value)) "null" else sprintf("'%s'", value)
-    txt <- if (is.null(text))  "null" else jsonlite::toJSON(text)
-    script <- paste(
-      "var sel=document.getElementById('", id, "');",
-      "if(!sel) return 'no-sel'; var i=-1;",
-      "if(", val, "!==null){",
-      " for(var k=0;k<sel.options.length;k++){",
-      "  if(sel.options[k].value===", val, "){i=k;break;}",
-      " }",
-      "} else if(", txt, "!==null){",
-      " var want=", txt, ";",
-      " for(var k=0;k<sel.options.length;k++){",
-      "  if(sel.options[k].text.trim()===want.trim()){i=k;break;}",
-      " }",
-      "}",
-      "if(i<0) return 'not-found';",
-      "sel.selectedIndex=i;",
-      "sel.dispatchEvent(new Event('change',{bubbles:true}));",
-      "sel.scrollIntoView({block:'center'});",
-      "return 'ok';",
-      sep = ""
-    )
-    session$execute_script(script)[[1]]
-  }
-  js_click_text <- function(xpath_expr) {
-    sc <- sprintf(
-      "var x=document.evaluate(%s,document,null,"
-      %+% "XPathResult.FIRST_ORDERED_NODE_TYPE,null);",
-      jsonlite::toJSON(xpath_expr)
-    )
-    sc <- paste0(
-      sc,
-      "var el=x.singleNodeValue; if(!el) return false;",
-      "el.scrollIntoView({block:'center'}); el.click(); return true;"
-    )
-    isTRUE(session$execute_script(sc)[[1]])
-  }
-  
-  # 5) Page bootstrap helpers
-  open_descargas <- function() {
-    session$navigate(base_url)
-    wait_ready(session, timeout_page)
-    ok_tab <- FALSE
-    tab_try <- try(wait_for(session, "css selector", "#ui-id-3", timeout_ctrl),
-                   silent = TRUE)
-    if (!inherits(tab_try, "try-error")) { tab_try$click(); ok_tab <- TRUE }
-    else {
-      ok_tab <- js_click_text(
-        "//a[@href='#descargas' and normalize-space(.)='Descargas']"
-      )
-    }
-    if (!ok_tab) stop("Could not activate 'Descargas' tab.")
-    wait_for(session, "css selector", "#SMCASelDesc", timeout_ctrl)
-  }
-  
-  read_select_df_by_id <- function(id) {
-    js <- paste0(
-      "var s=document.getElementById('", id, "');",
-      "if(!s){return '[]';} var out=[];",
-      "for(var i=0;i<s.options.length;i++){",
-      " var t=s.options[i].text; var v=s.options[i].value;",
-      " if(v && t && t.indexOf('- - -')===-1){ out.push([t,v]); }",
-      "}",
-      "return JSON.stringify(out);"
-    )
-    raw <- session$execute_script(js)
-    if (is.list(raw)) raw <- raw[[1]]
-    if (is.null(raw) || identical(raw, "")) {
-      return(data.frame(text=character(0), value=character(0),
-                        stringsAsFactors = FALSE))
-    }
-    arr <- jsonlite::fromJSON(raw)
-    if (length(arr) == 0) {
-      return(data.frame(text=character(0), value=character(0),
-                        stringsAsFactors = FALSE))
-    }
-    df <- as.data.frame(arr, stringsAsFactors = FALSE)
-    names(df) <- c("text","value")
-    df
-  }
-  
-  wait_options <- function(id, min_n = 1, timeout = 20) {
-    t0 <- Sys.time()
-    repeat {
-      js_n <- paste0(
-        "var s=document.getElementById('", id, "');",
-        "if(!s) return 0;",
-        "var n=s.options.length;",
-        "if(n>0 && s.options[0].value==='') n--;",
-        "return n;"
-      )
-      n <- session$execute_script(js_n)
-      if (is.list(n)) n <- n[[1]]
-      if (is.null(n) || !is.finite(as.numeric(n))) n <- 0L
-      n <- as.integer(n)
-      if (n >= min_n) break
-      if (as.numeric(difftime(Sys.time(), t0, units = "secs")) > timeout) break
-      Sys.sleep(1.0)
-    }
-    read_select_df_by_id(id)
-  }
-  
-  # 6) Control finders and result waiters
-  find_red_select <- function() wait_for(session, "css selector",
-                                         "#redSelDesc", timeout_ctrl)
-  find_est_select <- function() wait_for(session, "css selector",
-                                         "#estSelDesc", timeout_ctrl)
-  get_year_select <- function() {
-    el <- try(session$find_element("css selector", "#yInitDesc"), silent = TRUE)
-    if (!inherits(el, "try-error")) return(el)
-    session$find_element("xpath",
-                         "//*[normalize-space()='Elige un año:']/following::select"
-    )
-  }
-  find_btn_buscar <- function() {
-    el <- try(session$find_element("xpath", '//*[@id="buscIndDesc"]'),
-              silent = TRUE)
-    if (!inherits(el, "try-error")) return(el)
-    session$find_element(
-      "xpath",
-      "//input[( @type='button' or @type='submit') and @value='Buscar']"
-    )
-  }
-  find_btn_csv <- function() {
-    els <- list(
-      try(session$find_element("xpath", '//*[@id="descargarDesc_CSV"]'),
-          silent = TRUE),
-      try(session$find_element("css selector", "#btnCSV"), silent = TRUE),
+    csv_candidates <- list(
+      try(session$find_element("css selector", "#descargarDesc_CSV"), silent = TRUE),
+      try(session$find_element("css selector", "#btnCSV"),            silent = TRUE),
       try(session$find_element("xpath",
                                "//a[contains(normalize-space(.),'CSV')]"),
           silent = TRUE),
@@ -499,207 +2165,287 @@ cdmx_download_sinaica_data <- function(
                                "//button[contains(normalize-space(.),'CSV')]"),
           silent = TRUE)
     )
-    for (e in els) if (!inherits(e, "try-error")) return(e)
-    stop("CSV control not found after results.")
+    csv <- NULL
+    for (e in csv_candidates) if (!inherits(e, "try-error")) { csv <- e; break }
+    csv_href <- NULL
+    if (!is.null(csv)) {
+      csv_href <- try(
+        session$execute_script(
+          "return arguments[0] && arguments[0].getAttribute
+           ? arguments[0].getAttribute('href') : null;",
+          list(csv)
+        )[[1]],
+        silent = TRUE
+      )
+      if (inherits(csv_href, "try-error")) csv_href <- NULL
+    }
+    list(buscar = buscar, csv = csv, href = csv_href)
   }
   
-  # Adaptive CSV wait (CDMX is slow; ensure >=45s there)
-  wait_results_or_modal <- function(timeout = timeout_csv) {
-    t0 <- Sys.time(); accepted <- FALSE
-    repeat {
-      b <- try(session$find_element("css selector", "#btnMDAceptar"),
-               silent = TRUE)
-      if (!inherits(b, "try-error")) {
-        ok <- try(b$click(), silent = TRUE)
-        if (inherits(ok, "try-error")) {
-          session$execute_script(
-            "var x=document.querySelector('#btnMDAceptar'); if(x){x.click();}"
-          )
-        }
-        accepted <- TRUE
-        Sys.sleep(0.8)
+  # -- local: sweep the top-level downloads folder for stale CSVs ---------------------------
+  cleanup_top_downloads <- function(dir, grace_sec = 120) {
+    old <- list.files(dir, pattern = "\\.csv$", full.names = TRUE)
+    if (!length(old)) return(invisible(TRUE))
+    now <- Sys.time()
+    for (p in old) {
+      age <- try(now - file.info(p)$mtime, silent = TRUE)
+      if (!inherits(age, "try-error") &&
+          is.finite(as.numeric(age)) &&
+          as.numeric(age, units = "secs") > grace_sec) {
+        try(unlink(p), silent = TRUE)
       }
-      csv_btn <- try(find_btn_csv(), silent = TRUE)
-      if (!inherits(csv_btn, "try-error")) return(csv_btn)
-      if (as.numeric(difftime(Sys.time(), t0, units = "secs")) > timeout) {
-        stop("Timeout waiting for results (CSV) after ",
-             if (accepted) "accepting modal" else "clicking Buscar", ".")
-      }
-      Sys.sleep(0.5)
+    }
+    invisible(TRUE)
+  }
+  
+  # 0) Cap the last requested year (do not exceed provided vector)
+  end_year_cap <- max(years)
+  
+  # 1) Ensure folders exist
+  downloads_root <- Sys.getenv("DOWNLOADS_DIR", here::here("data", "downloads"))
+  dir.create(downloads_root, recursive = TRUE, showWarnings = FALSE)
+  message("✔️ Downloads dir: ", downloads_root)
+  
+  # 2) Resolve subdir destination
+  is_abs <- function(p) grepl("^(/|[A-Za-z]:[/\\\\])", p)
+  normalize_safe <- function(p) {
+    out <- try(normalizePath(p, winslash = "/", mustWork = FALSE), silent = TRUE)
+    if (inherits(out, "try-error")) p else out
+  }
+  target_dir <- NULL
+  if (!is.null(subdir)) {
+    subdir_norm <- normalize_safe(subdir)
+    target_dir  <- if (is_abs(subdir)) subdir_norm else file.path(downloads_root, subdir)
+    dir.create(target_dir, recursive = TRUE, showWarnings = FALSE)
+    message("📂 Target subdir : ", target_dir)
+  }
+  
+  # -- 3.1) EARLY EXIT: skip if target_dir already looks complete -------------------------
+  if (!is.null(target_dir)) {
+    # Count all CSVs in the target dir (non-recursive; matches how we save files)
+    csvs   <- list.files(target_dir, pattern = "\\.csv$", full.names = TRUE)
+    n_csv  <- length(csvs)
+    
+    # Heuristics: look for per-SMCA prefixes we generate in filenames
+    # (robust to extra text around them; case-insensitive)
+    has_cdmx     <- any(grepl("cdmx",         basename(csvs), ignore.case = TRUE))
+    has_hgo      <- any(grepl("hidalgo",      basename(csvs), ignore.case = TRUE))
+    has_mxst     <- any(grepl("mexico_state", basename(csvs), ignore.case = TRUE))
+    has_morelos  <- any(grepl("morelos", basename(csvs), ignore.case = TRUE))
+    has_puebla   <- any(grepl("puebla", basename(csvs), ignore.case = TRUE))
+    has_tlaxcala <- any(grepl("tlaxcala", basename(csvs), ignore.case = TRUE))
+    has_michocan <- any(grepl("michoacán", basename(csvs), ignore.case = TRUE))
+    has_guerrero <- any(grepl("guerrero", basename(csvs), ignore.case = TRUE))
+    
+    # Condition A: absolute count threshold (>= 620 CSVs)
+    # Condition B: at least one file for each state group present
+    already_complete <- (n_csv >= 1000) || (has_cdmx && has_hgo && has_mxst && n_csv > 0)
+    
+    if (already_complete) {
+      msg_dir <- target_dir
+      msg_cnt <- sprintf("✅ There are %d files downloaded%s",
+                         n_csv, if (n_csv >= 1000) " (≥ 1000)" else "")
+      message(sprintf("\n↪︎ Data already present on \"%s\" - Skipping the download", msg_dir))
+      message(msg_cnt)
+      
+      # Return a tiny log so callers can tell we skipped on purpose
+      return(invisible(
+        tibble::tibble(
+          smca      = NA_character_,
+          red       = NA_character_,
+          parametro = NA_character_,
+          year      = NA_integer_,
+          status    = "skipped_preexisting",
+          file      = NA_character_
+        )
+      ))
     }
   }
   
-  # 7) SMCA targets
+  
+  # 3) Start or reuse Selenium (configure Firefox for silent CSV downloads)
+  close_on_exit <- FALSE
+  if (is.null(session)) {
+    close_on_exit <- TRUE
+    if (!container) {
+      message("🚀 Starting local Selenium on 4445…")
+      cid <- system(
+        paste0(
+          "docker run -d -p 4445:4444 --shm-size=2g ",
+          "selenium/standalone-firefox:4.34.0-20250717"
+        ),
+        intern = TRUE
+      )
+      on.exit(try(system(sprintf("docker rm -f %s", cid), intern = TRUE),
+                  silent = TRUE), add = TRUE)
+      sel_host <- "localhost"; sel_port <- 4445L
+    } else {
+      sel_host <- "selenium";  sel_port <- 4444L
+    }
+    
+    dl_dir_container <- if (container) "/home/seluser/Downloads" else downloads_root
+    caps <- list(
+      browserName = "firefox",
+      "moz:firefoxOptions" = list(
+        prefs = list(
+          "browser.download.folderList"     = 2L,
+          "browser.download.dir"            = dl_dir_container,
+          "browser.download.useDownloadDir" = TRUE,
+          "browser.helperApps.neverAsk.saveToDisk" = paste(
+            "text/csv", "application/csv", "application/vnd.ms-excel",
+            "application/octet-stream", sep = ","
+          ),
+          "browser.download.manager.showWhenStarting" = FALSE,
+          "browser.download.alwaysOpenPanel"         = FALSE,
+          "pdfjs.disabled"                           = TRUE
+        )
+      ),
+      timeouts = list(implicit = 0L, pageLoad = 120000L, script = 60000L)
+    )
+    ses_args <- list(
+      browser      = "firefox",
+      host         = sel_host,
+      port         = sel_port,
+      capabilities = caps
+    )
+    fml <- try(names(formals(selenium::SeleniumSession$new)), silent = TRUE)
+    if (!inherits(fml, "try-error")) {
+      if ("request_timeout" %in% fml) {
+        ses_args$request_timeout <- as.integer(wd_request_timeout_ms)
+      } else if ("http_timeout_ms" %in% fml) {
+        ses_args$http_timeout_ms <- as.integer(wd_request_timeout_ms)
+      }
+    }
+    session <- do.call(selenium::SeleniumSession$new, ses_args)
+  }
+  if (isTRUE(close_on_exit)) on.exit(session$close(), add = TRUE)
+  
+  # 4) Static config
   smca_targets <- list(
     list(value = "43", text = "EDOMEX : México"),
     list(value = "40", text = "HGO : Hidalgo"),
-    list(value = "61", text = "CDMX : Ciudad de México")
+    list(value = "61", text = "CDMX : Ciudad de México"),
+    list(value = "45", text = "MOR : Morelos"),
+    list(value = "62", text = "GUE : Guerrero"),
+    list(value = "44", text = "MICH : Michoacán"),
+    list(value = "56", text = "TLAX : Tlaxcala"),
+    list(value = "49", text = "PUE : Puebla"),
+    list(value = "50", text = "QRO : Querétaro")
   )
-  
-  # Mapping for filename prefix
+
   smca_slug_map <- c(
     "EDOMEX : México"         = "mexico_state",
     "HGO : Hidalgo"           = "hidalgo",
-    "CDMX : Ciudad de México" = "cmdx"
+    "CDMX : Ciudad de México" = "cmdx",
+    "MOR : Morelos"           = "morelos",
+    "GUE : Guerrero"          = "guerrero",
+    "MICH : Michoacán"        = "michoacán",
+    "TLAX : Tlaxcala"         = "tlaxcala",
+    "PUE : Puebla"            = "puebla",
+    "QRO : Querétaro"         = "querétaro"
   )
-  slugify <- function(x) {
-    x <- iconv(x, from = "", to = "ASCII//TRANSLIT")
-    x <- tolower(gsub("[^a-zA-Z0-9]+", "_", x))
-    x <- gsub("^_+|_+$", "", x)
-    x <- gsub("_+", "_", x)
-    x
-  }
-  next_nonconflicting <- function(path) {
-    if (!file.exists(path)) return(path)
-    base <- tools::file_path_sans_ext(basename(path))
-    ext  <- tools::file_ext(path)
-    dirn <- dirname(path)
-    k <- 2L
-    repeat {
-      cand <- file.path(dirn, sprintf("%s_%02d.%s", base, k, ext))
-      if (!file.exists(cand)) return(cand)
-      k <- k + 1L
-    }
-  }
   
-  # 8) Logging
+  # 5) Run and log
   log <- list()
   
-  # --- Helpers that (re)hydrate the form --------------------------------------
-  # Returns TRUE if stations exist and parámetro set; FALSE if no stations.
-  rehydrate_form <- function(smca, red_val, par_val, long_pause = TRUE) {
-    open_descargas()
-    res <- js_set_select("SMCASelDesc", value = smca$value, text = smca$text)
-    if (!identical(res, "ok")) stop("SMCA select failed after reload.")
-    if (nzchar(red_val)) {
-      res <- js_set_select("redSelDesc", value = red_val, text = NULL)
-      if (!identical(res, "ok")) stop("Red select failed after reload.")
-    }
-    # Stations present?
-    find_est_select()
-    st_df <- wait_options("estSelDesc", min_n = 1, timeout = timeout_est_ready)
-    if (nrow(st_df) == 0) {
-      message("      🚫 No stations in this red — skipping.")
-      return(FALSE)
-    }
-    # Add all stations
-    try(session$find_element("css selector", "#delLstEstDat")$click(),
-        silent = TRUE)
-    wait_for(session, "css selector", "#addTodasEstDesc", timeout_ctrl)$click()
-    
-    # Parámetro
-    res <- js_set_select("paramSelDesc", value = par_val, text = NULL)
-    if (!identical(res, "ok")) {
-      ok <- js_click_text(
-        paste0(
-          "//th[normalize-space()='Selecciona un parámetro:']",
-          "/following::select[1]/option[@value=", jsonlite::toJSON(par_val), "]"
-        )
-      )
-      if (!ok) stop("Failed to select parámetro after reload.")
-    }
-    # Long pause is only used on hard reloads; otherwise we keep it short.
-    if (isTRUE(long_pause)) Sys.sleep(45) else Sys.sleep(1.0)
-    TRUE
-  }
-  
-  # Wait until years populate; if they stall, nudge the parámetro again
-  wait_years_ready <- function(par_val,
-                               timeout = timeout_year_ready,
-                               poke_every = 8) {
-    t0 <- Sys.time(); tries <- 0L
-    repeat {
-      years_df <- wait_options("yInitDesc", min_n = 1, timeout = 2)
-      if (nrow(years_df)) return(years_df)
-      tries <- tries + 1L
-      if (tries %% poke_every == 0L) {
-        js_set_select("paramSelDesc", value = par_val, text = NULL)
-        Sys.sleep(0.8)
-      }
-      if (as.numeric(difftime(Sys.time(), t0, units = "secs")) > timeout) {
-        return(data.frame(text = character(0), value = character(0),
-                          stringsAsFactors = FALSE))
-      }
-      Sys.sleep(0.8)
-    }
-  }
-  # ---------------------------------------------------------------------------
-  
-  # 9) Main loops (reload page at the START of EACH parámetro)
   for (smca in smca_targets) {
     message("\n🏷️  SMCA: ", smca$text)
     
-    # Discover redes once per SMCA
-    open_descargas()
-    res <- js_set_select("SMCASelDesc", value = smca$value, text = smca$text)
+    # -- Adaptive budgets for the slow CDMX group -----------------------------------------
+    is_cdmx <- identical(smca$value, "61") || grepl("^\\s*CDMX", smca$text)
+    mult    <- if (is_cdmx) 3L else 1L
+    
+    csv_wait_this        <- if (is_cdmx) max(timeout_csv, 45) else timeout_csv
+    timeout_ctrl_sm      <- max(timeout_ctrl * mult,      if (is_cdmx) 15 else 5)
+    timeout_param_sm     <- max(timeout_param_ready * mult, if (is_cdmx) 60 else 10)
+    timeout_year_sm      <- max(timeout_year_ready  * mult, if (is_cdmx) 60 else 10)
+    timeout_est_sm       <- max(timeout_est_ready   * mult, if (is_cdmx) 30 else 10)
+    settle_after_add     <- if (is_cdmx) 30 else 1
+    settle_after_param   <- if (is_cdmx) 60 else 1
+    long_pause_cdmx      <- is_cdmx
+    
+    # Read redes once per SMCA
+    sinaica_open_descargas(session, base_url, timeout_page, timeout_ctrl_sm)
+    res <- sinaica_js_set_select(session, "SMCASelDesc",
+                                 value = smca$value, text = smca$text)
     if (!identical(res, "ok")) stop("Failed to select SMCA: ", smca$text)
-    find_red_select()
-    redes_df <- wait_options("redSelDesc", min_n = 1, timeout = 60)
-    if (nrow(redes_df) == 0) {
+    wait_for(session, "css selector", "#redSelDesc", timeout_ctrl_sm)
+    redes_df <- sinaica_wait_options(session, "redSelDesc", min_n = 1, timeout = 60)
+    if (!nrow(redes_df)) {
       redes_df <- data.frame(text = "Única", value = "", stringsAsFactors = FALSE)
     }
-    
-    # CDMX tends to be slower → ensure CSV wait >= 45s here
-    csv_wait_this_smca <- if (grepl("^CDMX", smca$text)) max(timeout_csv, 45) else timeout_csv
     
     for (ri in seq_len(nrow(redes_df))) {
       red_name <- redes_df$text[ri]
       red_val  <- redes_df$value[ri]
       message("   🌐 Red: ", red_name)
       
-      # Fresh page; set SMCA/red; verify stations exist
-      open_descargas()
-      js_set_select("SMCASelDesc", value = smca$value, text = smca$text)
-      if (nzchar(red_val)) js_set_select("redSelDesc", value = red_val, text = NULL)
+      # Fresh page; ensure stations exist before reading parámetros
+      Sys.sleep(if (is_cdmx) 6 else 4)
+      sinaica_open_descargas(session, base_url, timeout_page, timeout_ctrl_sm)
+      sinaica_js_set_select(session, "SMCASelDesc", value = smca$value)
+      if (nzchar(red_val)) sinaica_js_set_select(session, "redSelDesc", value = red_val)
       
-      find_est_select()
-      st_df <- wait_options("estSelDesc", min_n = 1, timeout = timeout_est_ready)
-      if (nrow(st_df) == 0) {
+      wait_for(session, "css selector", "#estSelDesc", timeout_ctrl_sm)
+      st_df <- sinaica_wait_options(session, "estSelDesc",
+                                    min_n = 1, timeout = timeout_est_sm)
+      if (!nrow(st_df)) {
         message("   🚫 No stations in this red — skipping whole red.")
         next
       }
       
-      # Add all stations and read available parámetros
-      try(session$find_element("css selector", "#delLstEstDat")$click(),
-          silent = TRUE)
-      wait_for(session, "css selector", "#addTodasEstDesc", timeout_ctrl)$click()
-      params_df <- wait_options("paramSelDesc", min_n = 1,
-                                timeout = timeout_param_ready)
-      if (nrow(params_df) == 0) {
+      # Add all stations, then get parámetros (CDMX settles longer)
+      try(session$find_element("css selector", "#delLstEstDat")$click(), silent = TRUE)
+      wait_for(session, "css selector", "#addTodasEstDesc", timeout_ctrl_sm)$click()
+      if (settle_after_add > 0) Sys.sleep(settle_after_add)
+      
+      params_df <- sinaica_wait_options(session, "paramSelDesc",
+                                        min_n = 1, timeout = timeout_param_sm)
+      if (!nrow(params_df)) {
         message("   ⚠️ Parámetros empty for this red — skipping.")
         next
       }
       
       for (pi in seq_len(nrow(params_df))) {
-        par_name <- params_df$text[pi]
+        par_name <- iconv(params_df$text[pi], from = "", to = "UTF-8", sub = "byte")
         par_val  <- params_df$value[pi]
-        par_name <- iconv(par_name, from = "", to = "UTF-8", sub = "byte")
         message("      🧪 Parámetro: ", par_name)
         
-        ok_form <- rehydrate_form(smca, red_val, par_val, long_pause = FALSE)
+        ok_form <- sinaica_rehydrate_form(
+          session, base_url, smca, red_val, par_val,
+          timeout_page, timeout_ctrl_sm, timeout_est_sm,
+          long_pause = long_pause_cdmx
+        )
         if (!isTRUE(ok_form)) {
           message("      ⏭️  Skip parámetro due to no stations.")
           next
         }
+        if (settle_after_param > 0) Sys.sleep(settle_after_param)
         
-        # Detect available years (robust)
-        years_df <- wait_years_ready(par_val, timeout = timeout_year_ready)
-        if (nrow(years_df) == 0) {
-          message("      ↪︎ Years empty; reloading form and retrying…")
-          ok_form <- rehydrate_form(smca, red_val, par_val, long_pause = TRUE)
-          if (!isTRUE(ok_form)) {
-            message("      ⏭️  Skip parámetro (no stations after reload).")
-            next
-          }
-          years_df <- wait_years_ready(par_val, timeout = timeout_year_ready)
+        # Years available for this parámetro/red/SMCA
+        years_df <- sinaica_wait_years_ready(
+          session, par_val, timeout = timeout_year_sm
+        )
+        if (!nrow(years_df)) {
+          message("      ↪︎ Years empty; hard reload and retry…")
+          ok_form <- sinaica_rehydrate_form(
+            session, base_url, smca, red_val, par_val,
+            timeout_page, timeout_ctrl_sm, timeout_est_sm,
+            long_pause = TRUE
+          )
+          if (!isTRUE(ok_form)) next
+          if (settle_after_param > 0) Sys.sleep(settle_after_param)
+          years_df <- sinaica_wait_years_ready(session, par_val,
+                                               timeout = timeout_year_sm)
         }
-        avail_years <- suppressWarnings(as.integer(years_df$value))
-        avail_years <- sort(unique(avail_years[is.finite(avail_years)]))
+        avail_years <- sort(unique(suppressWarnings(as.integer(years_df$value))))
+        avail_years <- avail_years[is.finite(avail_years)]
         if (!length(avail_years)) {
           message("      ⚠️ No available years listed — skipping parámetro.")
           next
         }
         
+        # Respect requested range and the availability
         min_req <- min(as.integer(years))
         max_req <- max(as.integer(years))
         end_cap <- min(end_year_cap, max_req, max(avail_years))
@@ -712,71 +2458,101 @@ cdmx_download_sinaica_data <- function(
         message(sprintf("         ↳ Years available here: %s",
                         paste(years_iter, collapse = ", ")))
         
-        # ---- Year loop using dynamic list ----
+        # Year loop
         for (yr in years_iter) {
           attempt <- 0L
           repeat {
             attempt <- attempt + 1L
             message(sprintf("         📥 Año %d (attempt %d/%d)…",
                             yr, attempt, max_attempts))
+            
             newest_path <- NA_character_
+            before <- list.files(downloads_root, pattern = "\\.csv$", full.names = TRUE)
+            
+            # Fast path: if results remain visible, skip re-hydration entirely.
+            goto_download <- FALSE
+            if (attempt > 1L) {
+              fast <- sinaica_quick_csv_download(
+                session, downloads_root, before,
+                settle_sec = settle_before_csv_click_sec,
+                timeout_dl_quick = min(25, timeout_dl)
+              )
+              if (!is.null(fast)) { src <- fast; goto_download <- TRUE }
+            }
             
             res_try <- try({
-              # Short settle on first year of this parámetro
-              if (yr == min(years_iter) && settle_first_year_sec > 0) {
-                Sys.sleep(settle_first_year_sec)
-              }
-              
-              invisible(get_year_select())
-              resy <- js_set_select("yInitDesc",
-                                    value = as.character(yr),
-                                    text  = as.character(yr))
-              if (!identical(resy, "ok")) stop("Could not set year ", yr)
-              
-              before <- list.files(downloads_root, pattern = "\\.csv$",
-                                   full.names = TRUE)
-              find_btn_buscar()$click()
-              
-              # Wait for either modal or CSV readiness
-              try({
-                wait_for(session, "css selector", "#btnMDAceptar",
-                         timeout_modal)$click()
-              }, silent = TRUE)
-              csv_btn <- wait_results_or_modal(timeout = csv_wait_this_smca)
-              
-              # Small settle then click CSV
-              if (settle_before_csv_click_sec > 0)
-                Sys.sleep(settle_before_csv_click_sec)
-              ok_click <- try(csv_btn$click(), silent = TRUE)
-              if (inherits(ok_click, "try-error")) {
-                session$execute_script(
-                  paste0("var e=arguments[0];",
-                         "if(e){e.scrollIntoView({block:'center'});e.click();}"),
-                  list(csv_btn$elementId)
+              if (!isTRUE(goto_download)) {
+                # Clean slate to avoid sticky UI state (CDMX: allow long settle)
+                sinaica_rehydrate_form(
+                  session, base_url, smca, red_val, par_val,
+                  timeout_page, timeout_ctrl_sm, timeout_est_sm,
+                  long_pause = long_pause_cdmx
+                )
+                
+                # Select the target year robustly
+                if (yr == min(years_iter) && settle_first_year_sec > 0) {
+                  Sys.sleep(settle_first_year_sec)  # small settle for first year
+                }
+                sinaica_set_year_robust(
+                  session, yr, par_val, timeout_year_ready = timeout_year_sm
+                )
+                
+                # Buscar → (modal) → decide CSV vs. nodata
+                btns <- robust_find_btns(session)
+                if (is.null(btns$buscar)) {
+                  try(
+                    wait_for(session, "css selector", "#buscIndDesc",
+                             timeout = max(timeout_ctrl_sm, 45)),
+                    silent = TRUE
+                  )
+                  btns <- robust_find_btns(session)
+                }
+                if (is.null(btns$buscar)) stop("Buscar control not present.")
+                btns$buscar$click()
+                
+                res <- sinaica_wait_csv_or_nodata(session, timeout = csv_wait_this)
+                if (identical(res$type, "nodata")) {
+                  message("            ↪︎ No hay datos — skipping this year quickly.")
+                  log[[length(log) + 1L]] <- tibble::tibble(
+                    smca      = smca$text,
+                    red       = red_name,
+                    parametro = par_name,
+                    year      = yr,
+                    status    = "nodata",
+                    file      = NA_character_
+                  )
+                  break
+                }
+                if (identical(res$type, "none")) {
+                  stop("Transient: CSV/modal not ready yet.")
+                }
+                
+                # Otherwise we have a CSV button → click → re-click loop until file
+                if (settle_before_csv_click_sec > 0)
+                  Sys.sleep(settle_before_csv_click_sec)
+                sinaica_click_el(session, res$btn)
+                
+                src <- sinaica_download_with_reclick(
+                  session,
+                  downloads_root = downloads_root,
+                  before         = before,
+                  timeout_total  = min(timeout_dl, if (is_cdmx) 90 else 75),
+                  click_every    = if (is_cdmx) 5 else 4
                 )
               }
               
-              # Wait a new CSV to appear in the downloads folder
-              src <- wait_for_new_download(
-                dir       = downloads_root,
-                before    = before,
-                pattern   = "\\.csv$",
-                quiet_sec = 2,
-                timeout   = timeout_dl
-              )
-              
-              # ----- Rename to conflict-free, informative name -----------------
-              smca_slug <- smca_slug_map[[smca$text]] %||% slugify(smca$text)
-              red_slug  <- slugify(red_name)
-              par_slug  <- slugify(par_name)
+              # Rename with conflict-proof informative name
+              smca_slug <- smca_slug_map[[smca$text]] %||% sinaica_slugify(smca$text)
+              red_slug  <- sinaica_slugify(red_name)
+              par_slug  <- sinaica_slugify(par_name)
               new_base  <- sprintf("%s__%s__%s__%d.csv",
                                    smca_slug, red_slug, par_slug, yr)
-              dest0     <- if (!is.null(target_dir))
-                file.path(target_dir, new_base) else
-                  file.path(dirname(src), new_base)
-              dest      <- next_nonconflicting(dest0)
-              
-              # Move/rename
+              dest0 <- if (!is.null(target_dir)) {
+                file.path(target_dir, new_base)
+              } else {
+                file.path(dirname(src), new_base)
+              }
+              dest <- sinaica_next_nonconflicting(dest0)
               ok_mv <- try(file.rename(src, dest), silent = TRUE)
               if (inherits(ok_mv, "try-error") || !isTRUE(ok_mv)) {
                 file.copy(src, dest, overwrite = TRUE); unlink(src)
@@ -785,20 +2561,22 @@ cdmx_download_sinaica_data <- function(
               message("            ✅ ", basename(newest_path))
             }, silent = TRUE)
             
+            # Always keep the top-level downloads tidy (ignore errors).
+            try(cleanup_top_downloads(downloads_root, grace_sec = 60), silent = TRUE)
+            
             if (!inherits(res_try, "try-error")) {
               log[[length(log) + 1L]] <- tibble::tibble(
-                smca       = smca$text,
-                red        = red_name,
-                parametro  = par_name,
-                year       = yr,
-                status     = "ok",
-                file       = newest_path
+                smca      = smca$text,
+                red       = red_name,
+                parametro = par_name,
+                year      = yr,
+                status    = "ok",
+                file      = newest_path
               )
               break
             } else if (attempt < max_attempts) {
               back <- min(45, 6 ^ attempt)
-              message(sprintf("            ⚠️  Failed; backoff %ds, retrying…",
-                              back))
+              message(sprintf("            ⚠️  Failed; backoff %ds, retrying…", back))
               Sys.sleep(back)
             } else {
               message("            ❌ Failed after max attempts.")
@@ -810,17 +2588,940 @@ cdmx_download_sinaica_data <- function(
                 status    = "failed",
                 file      = NA_character_
               )
-              Sys.sleep(2)
-              rehydrate_form(smca, red_val, par_val, long_pause = TRUE)
+              # Leave page fresh for next parámetro
+              sinaica_rehydrate_form(
+                session, base_url, smca, red_val, par_val,
+                timeout_page, timeout_ctrl_sm, timeout_est_sm, long_pause = TRUE
+              )
               break
             }
           } # repeat
-        }   # years_iter
-        # ----------------------------------------------------------------------
+        }   # years
       }     # parámetros
     }       # redes
   }         # smca
   
-  out <- dplyr::bind_rows(log)
-  invisible(out)
+  # Final pass: sweep anything older than 5 minutes in the top-level downloads dir
+  try(cleanup_top_downloads(downloads_root, grace_sec = 300), silent = TRUE)
+  
+  # -- Final targeted sweep --------------------------------------------------------------
+  # If we renamed/moved files to a subdir, prune the original SINAICA CSVs that the
+  # browser left in the top-level downloads folder. Be *very* specific: only delete
+  # CSVs whose basename contains BOTH "Datos" and "SINAICA".
+  if (!is.null(subdir)) {
+    try({
+      leftovers <- list.files(
+        downloads_root, pattern = "\\.csv$", full.names = TRUE
+      )
+      if (length(leftovers)) {
+        base <- basename(leftovers)
+        sel  <- grepl("Datos",  base, ignore.case = TRUE) &
+          grepl("SINAICA", base, ignore.case = TRUE)
+        to_rm <- leftovers[sel]
+        if (length(to_rm)) unlink(to_rm, recursive = FALSE, force = TRUE)
+      }
+    }, silent = TRUE)
+  }
+  
+  invisible(dplyr::bind_rows(log))
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: cdmx_download_inegi_census_2020_ampliado
+# @Arg       : areas          — character; which areas to fetch
+# @Arg       : base_url       — catalog page (for Referer header/log only)
+# @Arg       : out_dir        — directory to save ZIPs
+# @Arg       : overwrite      — re-download if file exists (default FALSE)
+# @Arg       : retries        — max HTTP retries (default 5)
+# @Arg       : quiet          — suppress progress messages (default FALSE)
+# @Output    : tibble(area, file_path, bytes, status)
+# @Purpose   : Download the CSV ZIPs for CA (cuestionario ampliado) directly.
+# --------------------------------------------------------------------------------------------
+cdmx_download_census_data <- function(
+    areas     = c("Ciudad de México", "Hidalgo", "México"),
+    base_url  = cdmx_cfg$base_url_census,
+    out_dir   = cdmx_cfg$dl_out,
+    overwrite = FALSE,
+    retries   = 5,
+    quiet     = FALSE
+) {
+  links <- inegi_census_2020_ampliado_links()
+  # Validate requested areas
+  bad <- setdiff(areas, links$area)
+  if (length(bad)) {
+    stop("Unknown area(s): ", paste(bad, collapse = ", "),
+         ". Allowed: ", paste(links$area, collapse = ", "))
+  }
+  
+  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+  
+  # Map areas → rows we need
+  need <- links[match(areas, links$area), , drop = FALSE]
+  
+  res <- lapply(seq_len(nrow(need)), function(i) {
+    area <- need$area[i]
+    url  <- need$href[i]
+    dst  <- file.path(out_dir, need$filename[i])
+    
+    if (file.exists(dst) && !overwrite) {
+      if (!quiet) message("↪︎ ", area, ": already present (skip).")
+      bytes <- suppressWarnings(file.size(dst))
+      return(tibble::tibble(
+        area      = area,
+        file_path = normalizePath(dst),
+        bytes     = bytes,
+        status    = "cached"
+      ))
+    }
+    
+    if (!quiet) message("⬇️  ", area, ": downloading CSV ZIP…")
+    got <- .http_retry_get_zip(url, dst, retries = retries,
+                               quiet = quiet, referer = base_url)
+    
+    if (got$code != 200L || is.na(got$bytes) || got$bytes < 1e6) {
+      # Treat <1MB as failure for these archives
+      if (file.exists(dst)) unlink(dst)
+      status <- if (got$code != 200L) paste0("http_", got$code) else "too_small"
+      if (!quiet) message("⚠️  ", area, ": failed (", status, ").")
+      return(tibble::tibble(
+        area      = area,
+        file_path = NA_character_,
+        bytes     = NA_real_,
+        status    = status
+      ))
+    }
+    
+    if (!quiet) {
+      pretty <- format(structure(got$bytes, class = "object_size"))
+      message("✅ ", area, ": ", basename(dst), " (", pretty, ")")
+    }
+    
+    tibble::tibble(
+      area      = area,
+      file_path = normalizePath(dst),
+      bytes     = got$bytes,
+      status    = "ok"
+    )
+  })
+  
+  dplyr::bind_rows(res)
+}
+
+# ============================================================================================
+#  CDMX-specific functions for processing data - helpers
+# ============================================================================================
+
+# ============================================================================================
+# Engine helper: MEMORY (RAM-heavy; fast on big machines)
+# Steps:
+#   1) Read Latin-1 CSVs → long
+#   2) Parse UTC datetime; map parámetros
+#   3) Aggregate and pivot to wide
+#   4) Build hourly skeleton; left join
+#   5) Relabel tz; optional write; optional cleanup
+# Returns: tibble OR Arrow Dataset if Parquet was written
+# ============================================================================================
+.cdmx_merge_memory_engine <- function(
+    csvs, years, tz, out_dir, out_name,
+    write_parquet, write_rds, write_csv, cleanup, verbose
+) {
+  if (isTRUE(verbose)) message("Engine: memory (RAM intensive).")
+  
+  # (0) Tiny helpers
+  # Null coalesce
+  `%||%` <- function(a, b) if (!is.null(a)) a else b
+  
+  # -- Trim & normalize non-breaking spaces -------------------------------------
+  .cdmx_tnb <- function(x) {
+    x <- gsub("\u00A0", " ", x, fixed = TRUE)
+    trimws(x)
+  }
+  
+  # -- Map Spanish/labelled parámetros → canonical variable names ----------------
+  .cdmx_map_param <- function(p) {
+    k <- toupper(.cdmx_tnb(p))
+    dplyr::case_when(
+      k %in% c("PM10","PARTICULAS MENORES A 10 MICRAS") ~ "pm10",
+      k %in% c("PM2.5","PM2,5","PARTICULAS MENORES A 2.5") ~ "pm2.5",
+      k %in% c("OZONO","O3") ~ "ozone",
+      k %in% c("DIOXIDO DE NITROGENO","NO2") ~ "no2",
+      k %in% c("OXIDOS DE NITROGENO","NOX") ~ "nox",
+      k %in% c("MONOXIDO DE NITROGENO","NO") ~ "no",
+      k %in% c("MONOXIDO DE CARBONO","CO") ~ "co",
+      k %in% c("DIOXIDO DE AZUFRE","SO2") ~ "so2",
+      k %in% c("DIOXIDO DE CARBONO","CO2") ~ "co2",
+      k %in% c("TEMPERATURA","TEMP") ~ "temperatura",
+      k %in% c("HUMEDAD RELATIVA","RH") ~ "rh",
+      k %in% c("VELOCIDAD DEL VIENTO","VEL VIENTO") ~ "vel viento",
+      k %in% c("DIRECCION DEL VIENTO","DIR VIENTO") ~ "dir viento",
+      k %in% c("PRESION BAROMETRICA","PRESION BARO") ~ "presion baro",
+      k %in% c("PRECIPITACION","LLUVIA") ~ "precipitacion",
+      k %in% c("RADIACION","RADIACION SOLAR") ~ "radiation",
+      TRUE ~ NA_character_
+    )
+  }
+  
+  # -- Mean that preserves NA for all-missing -----------------------------------
+  .cdmx_mean_na <- function(x) {
+    if (all(is.na(x))) return(NA_real_)
+    suppressWarnings(mean(x, na.rm = TRUE))
+  }
+  
+  # -- Guess parámetro from filename ---------------------------------------------
+  .cdmx_guess_from_file <- function(base) {
+    b <- tolower(base)
+    if (grepl("pm10", b)) return("PM10")
+    if (grepl("pm2_5|pm2\\.5", b)) return("PM2.5")
+    if (grepl("dioxido_de_nitrogeno|\\bno2\\b", b)) return("NO2")
+    if (grepl("dioxido_de_azufre|\\bso2\\b", b)) return("SO2")
+    if (grepl("ozono|\\bo3\\b", b)) return("O3")
+    if (grepl("monoxido.*carbono|\\bco\\b", b)) return("CO")
+    NA_character_
+  }
+  # -- DuckDB safe quoting -------------------------------------------------------
+  .cdmx_dq <- function(id) sprintf('"%s"', gsub('"', '""', id))
+  .cdmx_ds <- function(s)  sprintf("'%s'", gsub("'", "''", s))
+  
+  # ---- step 1: read all CSVs, normalize headers, longify --------------------
+  warn_log <- list()
+  read_one <- function(path) {
+    if (isTRUE(verbose)) message("… ", basename(path))
+    wtxt <- character()
+    df <- withCallingHandlers(
+      readr::read_csv(
+        file = path,
+        locale = readr::locale(
+          encoding = "Latin1", decimal_mark = ".", grouping_mark = ","
+        ),
+        show_col_types = FALSE, progress = FALSE
+      ),
+      warning = function(w) {
+        wtxt <<- c(wtxt, conditionMessage(w))
+        invokeRestart("muffleWarning")
+      }
+    )
+    if (length(wtxt)) {
+      warn_log[[length(warn_log) + 1L]] <<- list(
+        file = basename(path), warnings = unique(wtxt)
+      )
+    }
+    
+    if (!ncol(df)) return(NULL)
+    names(df) <- .cdmx_tnb(names(df))
+    
+    # convert literal placeholders to NA (keep tiny values intact)
+    df <- dplyr::mutate(
+      df,
+      dplyr::across(
+        where(is.character),
+        ~ dplyr::na_if(.x, "- - - -")
+      )
+    )
+    
+    pcol <- intersect(c("Parámetro","Parametro","parametro"), names(df))
+    if (!length(pcol)) {
+      df$parametro <- .cdmx_guess_from_file(basename(path))
+      pcol <- "parametro"
+    }
+    if (!all(c("Fecha","Hora") %in% names(df))) return(NULL)
+    
+    st_cols <- setdiff(
+      names(df)[grepl("\\s:\\s", names(df), perl = TRUE)],
+      c("Parámetro","Parametro","parametro","Fecha","Hora","Unidad")
+    )
+    if (!length(st_cols)) return(NULL)
+    
+    keep <- intersect(c(pcol[1], "Fecha","Hora","Unidad", st_cols), names(df))
+    df <- df[, keep, drop = FALSE]
+    
+    long <- tidyr::pivot_longer(
+      df,
+      cols = dplyr::all_of(st_cols),
+      names_to = "station_label",
+      values_to = "value"
+    )
+    
+    sp <- t(vapply(
+      strsplit(long$station_label, "\\s:\\s", perl = TRUE),
+      function(x) c(x[1] %||% NA_character_, x[2] %||% NA_character_),
+      character(2)
+    ))
+    station_code <- .cdmx_tnb(sp[, 1])
+    station_name <- .cdmx_tnb(sp[, 2])
+    
+    long$value <- suppressWarnings(
+      readr::parse_number(
+        as.character(long$value),
+        locale = readr::locale(decimal_mark = ".", grouping_mark = ",")
+      )
+    )
+    
+    hr <- suppressWarnings(as.integer(long$Hora))
+    hr[is.na(hr)] <- 0L
+    dt_chr <- sprintf(
+      "%s %02d:00:00", as.character(as.Date(long$Fecha)),
+      pmax(0L, pmin(23L, hr))
+    )
+    dt_utc <- as.POSIXct(dt_chr, tz = "UTC")
+    
+    tibble::tibble(
+      datetime = dt_utc,
+      station = station_name,
+      station_code = station_code,
+      year = as.integer(format(dt_utc, "%Y", tz = "UTC")),
+      parametro = as.character(long[[pcol[1]]]),
+      value = long$value
+    )
+  }
+  
+  pieces <- lapply(csvs, read_one)
+  pieces <- Filter(Negate(is.null), pieces)
+  if (!length(pieces)) stop("No usable rows after parsing.")
+  long_all <- dplyr::bind_rows(pieces)
+  
+  # ---- step 2: filter years and map parámetros ------------------------------
+  long_all <- long_all[long_all$year %in% years, , drop = FALSE]
+  long_all$.__var <- .cdmx_map_param(long_all$parametro)
+  long_all <- long_all[!is.na(long_all$.__var), , drop = FALSE]
+  
+  # ---- step 3: aggregate duplicates, pivot to wide --------------------------
+  aggr <- long_all |>
+    dplyr::group_by(datetime, station, station_code, year, .__var) |>
+    dplyr::summarise(value = .cdmx_mean_na(value), .groups = "drop")
+  
+  wide <- tidyr::pivot_wider(
+    aggr,
+    id_cols     = c(datetime, station, station_code, year),
+    names_from  = .__var,
+    values_from = value,
+    values_fn   = .cdmx_mean_na
+  )
+  
+  wide <- dplyr::mutate(
+    wide,
+    dplyr::across(
+      tidyselect::where(~ is.double(.x) && !inherits(.x, "POSIXt")),
+      ~ ifelse(is.nan(.x), NA_real_, .x)
+    )
+  )
+  
+  # ---- step 4: hourly skeleton per station × year ---------------------------
+  st_ref <- wide |>
+    dplyr::filter(!is.na(station_code), nzchar(station_code)) |>
+    dplyr::count(station, station_code, sort = TRUE) |>
+    dplyr::group_by(station) |>
+    dplyr::slice_max(n, n = 1, with_ties = FALSE) |>
+    dplyr::ungroup() |>
+    dplyr::select(station, station_code)
+  
+  t0 <- as.POSIXct(sprintf("%04d-01-01 00:00:00", min(years)), tz = "UTC")
+  t1 <- as.POSIXct(sprintf("%04d-12-31 23:00:00", max(years)), tz = "UTC")
+  hrs <- seq(t0, t1, by = "1 hour")
+  
+  stations <- sort(unique(wide$station))
+  if (!length(stations)) stop("No stations found after reshaping.")
+  
+  skel <- tidyr::expand_grid(station = stations, datetime = hrs)
+  skel$year <- as.integer(format(skel$datetime, "%Y", tz = "UTC"))
+  
+  wide_full <- skel |>
+    dplyr::left_join(st_ref, by = "station") |>
+    dplyr::left_join(
+      wide, by = c("station","station_code","datetime","year")
+    )
+  
+  # ---- step 5: tz relabel; outputs; cleanup ---------------------------------
+  if (!identical(tz, "UTC")) {
+    if (!requireNamespace("lubridate", quietly = TRUE)) {
+      stop("Package 'lubridate' is required for tz relabeling.")
+    }
+    wide_full$datetime <- lubridate::force_tz(wide_full$datetime, tz)
+  }
+  
+  if (!missing(out_dir) && !missing(out_name) && isTRUE(write_parquet)) {
+    if (!requireNamespace("arrow", quietly = TRUE)) {
+      stop("Package 'arrow' is required for Parquet output.")
+    }
+    dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+    pq <- file.path(out_dir, paste0(out_name, ".parquet"))
+    arrow::write_parquet(wide_full, pq, compression = "zstd")
+    if (isTRUE(verbose)) message("🧱 Wrote Parquet → ", pq)
+    ds <- arrow::open_dataset(pq)
+    if (isTRUE(cleanup)) {
+      invisible(lapply(csvs, function(f) try(unlink(f), TRUE)))
+    }
+    return(ds)
+  }
+  
+  if (isTRUE(write_rds) && !missing(out_dir) && !missing(out_name)) {
+    rds <- file.path(out_dir, paste0(out_name, ".rds"))
+    saveRDS(wide_full, rds, compress = "xz")
+    if (isTRUE(verbose)) message("💾 Wrote RDS → ", rds)
+  }
+  if (isTRUE(write_csv) && !missing(out_dir) && !missing(out_name)) {
+    csv <- file.path(out_dir, paste0(out_name, ".csv"))
+    readr::write_csv(wide_full, csv)
+    if (isTRUE(verbose)) message("📝 Wrote CSV → ", csv)
+  }
+  
+  if (isTRUE(cleanup)) {
+    if (isTRUE(verbose)) message("🧹 Removing source CSVs…")
+    invisible(lapply(csvs, function(f) try(unlink(f), TRUE)))
+  }
+  
+  return(wide_full)
+}
+
+
+# ============================================================================================
+# Engine helper: DUCKDB (disk-backed; UNPIVOT; partitioned Parquet dataset)
+# Steps:
+#   1) Connect + PRAGMAs + temp dir
+#   2) Create staging table
+#   3) For each CSV: detect encoding; UNPIVOT; insert filtered years
+#   4) Map parámetros; aggregate; station reference
+#   5) Build hourly skeleton; stream pivot → Parquet (partitioned by year)
+#   6) Cleanup temp DB and temp dir; optional CSV cleanup
+# Returns: Arrow Dataset handle (dataset folder)
+# ============================================================================================
+.cdmx_merge_duckdb_engine <- function(
+    csvs, years, tz, out_dir, out_name, cleanup, run_parallel, verbose
+) {
+  if (isTRUE(verbose)) message("Engine: duckdb (disk-backed).")
+  
+  if (!requireNamespace("duckdb", quietly = TRUE) ||
+      !requireNamespace("DBI", quietly = TRUE)) {
+    stop("Packages 'duckdb' and 'DBI' are required for duckdb engine.")
+  }
+  if (utils::packageVersion("duckdb") < "0.9.2") {
+    stop("DuckDB >= 0.9.2 is required for UNPIVOT.")
+  }
+  if (missing(out_dir) || missing(out_name)) {
+    stop("duckdb engine requires out_dir and out_name.")
+  }
+  if (!requireNamespace("arrow", quietly = TRUE)) {
+    stop("Package 'arrow' is required to open the dataset.")
+  }
+  # (0) Tiny helpers
+  # Null coalesce
+  `%||%` <- function(a, b) if (!is.null(a)) a else b
+  
+  # -- Trim & normalize non-breaking spaces -------------------------------------
+  .cdmx_tnb <- function(x) {
+    x <- gsub("\u00A0", " ", x, fixed = TRUE)
+    trimws(x)
+  }
+  
+  # -- Map Spanish/labelled parámetros → canonical variable names ----------------
+  .cdmx_map_param <- function(p) {
+    k <- toupper(.cdmx_tnb(p))
+    dplyr::case_when(
+      k %in% c("PM10","PARTICULAS MENORES A 10 MICRAS") ~ "pm10",
+      k %in% c("PM2.5","PM2,5","PARTICULAS MENORES A 2.5") ~ "pm2.5",
+      k %in% c("OZONO","O3") ~ "ozone",
+      k %in% c("DIOXIDO DE NITROGENO","NO2") ~ "no2",
+      k %in% c("OXIDOS DE NITROGENO","NOX") ~ "nox",
+      k %in% c("MONOXIDO DE NITROGENO","NO") ~ "no",
+      k %in% c("MONOXIDO DE CARBONO","CO") ~ "co",
+      k %in% c("DIOXIDO DE AZUFRE","SO2") ~ "so2",
+      k %in% c("DIOXIDO DE CARBONO","CO2") ~ "co2",
+      k %in% c("TEMPERATURA","TEMP") ~ "temperatura",
+      k %in% c("HUMEDAD RELATIVA","RH") ~ "rh",
+      k %in% c("VELOCIDAD DEL VIENTO","VEL VIENTO") ~ "vel viento",
+      k %in% c("DIRECCION DEL VIENTO","DIR VIENTO") ~ "dir viento",
+      k %in% c("PRESION BAROMETRICA","PRESION BARO") ~ "presion baro",
+      k %in% c("PRECIPITACION","LLUVIA") ~ "precipitacion",
+      k %in% c("RADIACION","RADIACION SOLAR") ~ "radiation",
+      TRUE ~ NA_character_
+    )
+  }
+  
+  # -- Mean that preserves NA for all-missing -----------------------------------
+  .cdmx_mean_na <- function(x) {
+    if (all(is.na(x))) return(NA_real_)
+    suppressWarnings(mean(x, na.rm = TRUE))
+  }
+  
+  # -- Guess parámetro from filename ---------------------------------------------
+  .cdmx_guess_from_file <- function(base) {
+    b <- tolower(base)
+    if (grepl("pm10", b)) return("PM10")
+    if (grepl("pm2_5|pm2\\.5", b)) return("PM2.5")
+    if (grepl("dioxido_de_nitrogeno|\\bno2\\b", b)) return("NO2")
+    if (grepl("dioxido_de_azufre|\\bso2\\b", b)) return("SO2")
+    if (grepl("ozono|\\bo3\\b", b)) return("O3")
+    if (grepl("monoxido.*carbono|\\bco\\b", b)) return("CO")
+    NA_character_
+  }
+  # -- DuckDB safe quoting -------------------------------------------------------
+  .cdmx_dq <- function(id) sprintf('"%s"', gsub('"', '""', id))
+  .cdmx_ds <- function(s)  sprintf("'%s'", gsub("'", "''", s))
+  
+  # ---- step 1: connect + PRAGMAs + temp dir ---------------------------------
+  dbdir <- tempfile("cdmx_duck_")
+  con <- DBI::dbConnect(duckdb::duckdb(dbdir = dbdir, read_only = FALSE))
+  on.exit({
+    try(DBI::dbDisconnect(con, shutdown = TRUE), silent = TRUE)
+    try(unlink(dbdir, recursive = TRUE, force = TRUE), silent = TRUE)
+  }, add = TRUE)
+  
+  thr <- if (run_parallel) max(1L, min(parallel::detectCores(), 8L)) else 1L
+  DBI::dbExecute(con, sprintf("PRAGMA threads=%d;", thr))
+  DBI::dbExecute(con, "PRAGMA memory_limit='6GB';")
+  
+  tdir <- file.path(tempdir(), sprintf("_duck_tmp_%s", Sys.getpid()))
+  dir.create(tdir, recursive = TRUE, showWarnings = FALSE)
+  DBI::dbExecute(con, sprintf("PRAGMA temp_directory=%s;", .cdmx_ds(tdir)))
+  on.exit(try(unlink(tdir, recursive = TRUE, force = TRUE), silent = TRUE),
+          add = TRUE)
+  
+  # ---- step 2: staging table -------------------------------------------------
+  DBI::dbExecute(
+    con,
+    paste0(
+      "CREATE TABLE staging_long(",
+      "datetime TIMESTAMP, station VARCHAR, station_code VARCHAR, ",
+      "year INTEGER, parametro VARCHAR, value DOUBLE);"
+    )
+  )
+  
+  # ---- step 3: insert per CSV via UNPIVOT (encoding aware) -------------------
+  ylist <- paste(sort(unique(years)), collapse = ",")
+  
+  insert_one <- function(path) {
+    # 3.0 detect header with encoding fallback
+    encs <- c("latin-1","utf-8")
+    used <- NULL
+    hdr  <- NULL
+    for (ec in encs) {
+      q <- paste0(
+        "SELECT * FROM read_csv_auto(",
+        .cdmx_ds(path),
+        ", HEADER=TRUE, ALL_VARCHAR=TRUE, SAMPLE_SIZE=20000, ",
+        "ENCODING=", .cdmx_ds(ec), ", IGNORE_ERRORS=FALSE) LIMIT 0;"
+      )
+      hdr <- tryCatch(DBI::dbGetQuery(con, q), error = function(e) NULL)
+      if (!is.null(hdr) && ncol(hdr)) { used <- ec; break }
+    }
+    if (is.null(hdr) || !ncol(hdr)) return(invisible(0L))
+    
+    # 3.1 identify columns (keep raw names for quoting)
+    cr <- colnames(hdr)
+    ct <- .cdmx_tnb(cr)
+    f_i <- which(ct == "Fecha")[1]
+    h_i <- which(ct == "Hora")[1]
+    if (is.na(f_i) || is.na(h_i)) return(invisible(0L))
+    
+    fecha_q <- .cdmx_dq(cr[f_i])
+    hora_q  <- .cdmx_dq(cr[h_i])
+    
+    p_i <- which(ct %in% c("Parámetro","Parametro","parametro"))[1]
+    if (!is.na(p_i)) {
+      param_expr <- .cdmx_dq(cr[p_i])
+    } else {
+      g <- .cdmx_guess_from_file(basename(path))
+      param_expr <- if (is.na(g)) "NULL" else .cdmx_ds(g)
+    }
+    
+    patt <- "^[^:]+\\s*:\\s*.+$"
+    meta <- ct %in% c("Fecha","Hora","Unidad",
+                      "Parámetro","Parametro","parametro")
+    st_cols <- cr[grepl(patt, ct, perl = TRUE) & !meta]
+    if (!length(st_cols)) return(invisible(0L))
+    
+    unp <- paste(vapply(st_cols, .cdmx_dq, character(1)), collapse = ",")
+    
+    # 3.2 insert long rows via UNPIVOT; robust date/hour parse
+    sql <- paste0(
+      "INSERT INTO staging_long ",
+      "SELECT ",
+      "CAST(d AS TIMESTAMP) + (h * INTERVAL 1 HOUR) AS datetime, ",
+      "COALESCE(",
+      "NULLIF(REGEXP_EXTRACT(st, '^.*?\\s*:\\s*(.*)$', 1), ''), st) AS station, ",
+      "NULLIF(REGEXP_EXTRACT(st, '^(.*?)\\s*:\\s*', 1), '') AS station_code, ",
+      "EXTRACT(YEAR FROM (CAST(d AS TIMESTAMP) + (h * INTERVAL 1 HOUR))) AS year, ",
+      param_expr, " AS parametro, ",
+      "TRY_CAST(REPLACE(",
+      "CASE WHEN TRIM(val) IN ('- - - -',' - - - -') THEN NULL ELSE val END, ",
+      "',' , '') AS DOUBLE) AS value ",
+      "FROM (SELECT ",
+      "TRIM(", fecha_q, ") AS d_raw, ",
+      "TRIM(", hora_q,  ") AS h_str, ",
+      "COALESCE(",
+      "STRPTIME(d_raw,'%Y-%m-%d'), ",
+      "STRPTIME(SPLIT_PART(d_raw,' ',1),'%Y-%m-%d'), ",
+      "STRPTIME(d_raw,'%d/%m/%Y'), ",
+      "STRPTIME(SPLIT_PART(d_raw,' ',1),'%d/%m/%Y'), ",
+      "STRPTIME(d_raw,'%d-%m-%Y'), ",
+      "STRPTIME(SPLIT_PART(d_raw,' ',1),'%d-%m-%Y'), ",
+      "STRPTIME(d_raw,'%m/%d/%Y'), ",
+      "STRPTIME(SPLIT_PART(d_raw,' ',1),'%m/%d/%Y'), ",
+      "STRPTIME(d_raw,'%m-%d-%Y'), ",
+      "STRPTIME(SPLIT_PART(d_raw,' ',1),'%m-%d-%Y') ",
+      ") AS d, ",
+      "GREATEST(0, LEAST(23, TRY_CAST(SUBSTR(h_str,1,2) AS INTEGER))) AS h, ",
+      "* FROM read_csv_auto(",
+      .cdmx_ds(path),
+      ", HEADER=TRUE, ALL_VARCHAR=TRUE, SAMPLE_SIZE=200000, ",
+      "ENCODING=", .cdmx_ds(used), ", IGNORE_ERRORS=TRUE) ",
+      ") t ",
+      "UNPIVOT (val FOR st IN (", unp, ")) u ",
+      "WHERE d IS NOT NULL AND ",
+      "EXTRACT(YEAR FROM (CAST(d AS TIMESTAMP) + (h * INTERVAL 1 HOUR))) ",
+      "IN (", ylist, ");"
+    )
+    
+    DBI::dbExecute(con, sql)
+  }
+  
+  total_ins <- 0L
+  for (pth in csvs) {
+    ins <- tryCatch(insert_one(pth), error = function(e) 0L)
+    total_ins <- total_ins + as.integer(ins %||% 0L)
+    if (isTRUE(verbose)) {
+      message("… ", basename(pth), " | inserted=", as.integer(ins %||% 0L))
+    }
+  }
+  
+  n_rows <- DBI::dbGetQuery(con, "SELECT COUNT(*) n FROM staging_long;")[["n"]]
+  if (!n_rows) stop("No rows loaded into staging_long.")
+  
+  # ---- step 4: map parámetros; aggregate; station ref -------------------------
+  DBI::dbExecute(
+    con,
+    paste0(
+      "CREATE TABLE long_mapped AS ",
+      "SELECT datetime, station, station_code, year, ",
+      "CASE ",
+      "WHEN UPPER(TRIM(parametro)) IN ",
+      "('PM10','PARTICULAS MENORES A 10 MICRAS') THEN 'pm10' ",
+      "WHEN UPPER(TRIM(parametro)) IN ",
+      "('PM2.5','PM2,5','PARTICULAS MENORES A 2.5') THEN 'pm2.5' ",
+      "WHEN UPPER(TRIM(parametro)) IN ('OZONO','O3') THEN 'ozone' ",
+      "WHEN UPPER(TRIM(parametro)) IN ('DIOXIDO DE NITROGENO','NO2') THEN 'no2' ",
+      "WHEN UPPER(TRIM(parametro)) IN ('OXIDOS DE NITROGENO','NOX') THEN 'nox' ",
+      "WHEN UPPER(TRIM(parametro)) IN ('MONOXIDO DE NITROGENO','NO') THEN 'no' ",
+      "WHEN UPPER(TRIM(parametro)) IN ('MONOXIDO DE CARBONO','CO') THEN 'co' ",
+      "WHEN UPPER(TRIM(parametro)) IN ('DIOXIDO DE AZUFRE','SO2') THEN 'so2' ",
+      "WHEN UPPER(TRIM(parametro)) IN ('DIOXIDO DE CARBONO','CO2') THEN 'co2' ",
+      "WHEN UPPER(TRIM(parametro)) IN ('TEMPERATURA','TEMP') THEN 'temperatura' ",
+      "WHEN UPPER(TRIM(parametro)) IN ('HUMEDAD RELATIVA','RH') THEN 'rh' ",
+      "WHEN UPPER(TRIM(parametro)) IN ",
+      "('VELOCIDAD DEL VIENTO','VEL VIENTO') THEN 'vel viento' ",
+      "WHEN UPPER(TRIM(parametro)) IN ",
+      "('DIRECCION DEL VIENTO','DIR VIENTO') THEN 'dir viento' ",
+      "WHEN UPPER(TRIM(parametro)) IN ",
+      "('PRESION BAROMETRICA','PRESION BARO') THEN 'presion baro' ",
+      "WHEN UPPER(TRIM(parametro)) IN ('PRECIPITACION','LLUVIA') ",
+      "THEN 'precipitacion' ",
+      "WHEN UPPER(TRIM(parametro)) IN ('RADIACION','RADIACION SOLAR') ",
+      "THEN 'radiation' ",
+      "ELSE NULL END AS var, ",
+      "value ",
+      "FROM staging_long WHERE parametro IS NOT NULL;"
+    )
+  )
+  
+  DBI::dbExecute(
+    con,
+    paste0(
+      "CREATE TABLE aggr AS ",
+      "SELECT datetime, station, station_code, year, var, ",
+      "AVG(value) AS value ",
+      "FROM long_mapped ",
+      "WHERE var IS NOT NULL ",
+      "GROUP BY 1,2,3,4,5;"
+    )
+  )
+  
+  DBI::dbExecute(
+    con,
+    paste0(
+      "CREATE TABLE st_ref AS ",
+      "SELECT station, station_code FROM (",
+      "SELECT station, station_code, COUNT(*) AS n, ",
+      "ROW_NUMBER() OVER(",
+      "PARTITION BY station ORDER BY COUNT(*) DESC) AS rn ",
+      "FROM aggr ",
+      "WHERE station_code IS NOT NULL AND station_code <> '' ",
+      "GROUP BY 1,2) t WHERE rn = 1;"
+    )
+  )
+  
+  # ---- step 4.1: Quick diagnostics of the database -------------------------------
+  DBI::dbGetQuery(con, "SELECT COUNT(*) AS n FROM aggr;")
+  DBI::dbGetQuery(con, "
+  SELECT COUNT(DISTINCT station) AS stations,
+         MIN(year) AS y0, MAX(year) AS y1
+  FROM aggr;")
+  DBI::dbGetQuery(con, "
+  WITH sy AS (SELECT DISTINCT station, year FROM aggr),
+       h AS (SELECT 8760 AS hours)  -- ~8,784 for leap years
+  SELECT COUNT(*) AS approx_rows
+  FROM sy JOIN h ON TRUE;")
+  
+  # ---- step 5: stream pivot → Parquet (partitioned by year) -------------------
+
+  # choose a codec: "ZSTD" (smaller, slower) or "SNAPPY" (faster, larger)
+  parquet_codec <- "SNAPPY"  # try SNAPPY first; switch back to ZSTD later if desired
+  
+  base <- file.path(out_dir, paste0(out_name, "_dataset"))
+  dir.create(base, recursive = TRUE, showWarnings = FALSE)
+  
+  yrs <- sort(unique(years))
+  
+  for (yy in yrs) {
+    if (isTRUE(verbose)) message(sprintf("→ Writing year %d …", yy))
+    
+    # temp slice of aggr for this year (reduces work for join/agg)
+    DBI::dbExecute(
+      con,
+      sprintf("CREATE TEMP TABLE aggr_y AS
+             SELECT * FROM aggr WHERE year = %d;", yy)
+    )
+    
+    # COPY one year at a time; skeleton only for that year
+    sql_copy_y <- paste0(
+      "COPY (",
+      "WITH stations AS (SELECT DISTINCT station FROM aggr_y), ",
+      "hours AS (SELECT gs.ts AS datetime FROM generate_series(",
+      "  TIMESTAMP '", yy, "-01-01 00:00:00', ",
+      "  TIMESTAMP '", yy, "-12-31 23:00:00', INTERVAL 1 HOUR) AS gs(ts)), ",
+      "sk AS (SELECT s.station, h.datetime FROM stations s CROSS JOIN hours h) ",
+      "SELECT ",
+      "  sk.datetime, ",
+      "  sk.station, ",
+      "  sr.station_code, ",
+      "  ", yy, " AS year, ",
+      "  AVG(CASE WHEN a.var='pm2.5'        THEN a.value END) AS \"pm2.5\", ",
+      "  AVG(CASE WHEN a.var='pm10'         THEN a.value END) AS pm10, ",
+      "  AVG(CASE WHEN a.var='no'           THEN a.value END) AS no, ",
+      "  AVG(CASE WHEN a.var='no2'          THEN a.value END) AS no2, ",
+      "  AVG(CASE WHEN a.var='co'           THEN a.value END) AS co, ",
+      "  AVG(CASE WHEN a.var='co2'          THEN a.value END) AS co2, ",
+      "  AVG(CASE WHEN a.var='nox'          THEN a.value END) AS nox, ",
+      "  AVG(CASE WHEN a.var='so2'          THEN a.value END) AS so2, ",
+      "  AVG(CASE WHEN a.var='ozone'        THEN a.value END) AS ozone, ",
+      "  AVG(CASE WHEN a.var='presion baro' THEN a.value END) AS \"presion baro\", ",
+      "  AVG(CASE WHEN a.var='rh'           THEN a.value END) AS rh, ",
+      "  AVG(CASE WHEN a.var='vel viento'   THEN a.value END) AS \"vel viento\", ",
+      "  AVG(CASE WHEN a.var='dir viento'   THEN a.value END) AS \"dir viento\", ",
+      "  AVG(CASE WHEN a.var='precipitacion'THEN a.value END) AS precipitacion, ",
+      "  AVG(CASE WHEN a.var='radiation'    THEN a.value END) AS radiation, ",
+      "  AVG(CASE WHEN a.var='temperatura'  THEN a.value END) AS temperatura ",
+      "FROM sk ",
+      "LEFT JOIN st_ref sr ",
+      "  ON sk.station = sr.station ",
+      "LEFT JOIN aggr_y a ",
+      "  ON sk.station  = a.station ",
+      " AND COALESCE(sr.station_code, a.station_code) = a.station_code ",
+      " AND sk.datetime = a.datetime ",
+      "GROUP BY 1,2,3 ",
+      "ORDER BY sk.station, sk.datetime ",
+      ") TO ",
+      .cdmx_ds(base),
+      " (FORMAT PARQUET, COMPRESSION ", parquet_codec, ", PARTITION_BY (year));"
+    )
+    
+    DBI::dbExecute(con, sql_copy_y)
+    DBI::dbExecute(con, "DROP TABLE aggr_y;")
+    if (isTRUE(verbose)) message(sprintf("✓ Year %d done.", yy))
+  }
+  
+  n_pq <- length(list.files(base, pattern = "\\.parquet$", recursive = TRUE))
+  if (isTRUE(verbose)) message(sprintf("Parquet files written: %d", n_pq))
+  if (n_pq == 0) stop("No Parquet files were written.")
+  
+  ds <- arrow::open_dataset(base)
+  if (isTRUE(cleanup)) {
+    invisible(lapply(csvs, function(f) try(unlink(f), TRUE)))
+  }
+  return(ds)
+}
+
+# ============================================================================================
+#  CDMX-specific functions for processing data - main function and tiny helpers
+# ============================================================================================
+
+# Function: cdmx_merge_pollution_csvs
+# @Arg  : downloads_folder — folder with .csv files (recursive = TRUE)
+# @Arg  : tz               — Olson tz for final relabel (clock preserved)
+# @Arg  : years            — integer vector (UTC/local years to keep)
+# @Arg  : cleanup          — TRUE removes source CSVs after merging
+# @Arg  : out_dir          — output directory (created if missing)
+# @Arg  : out_name         — base name without extension
+# @Arg  : write_parquet    — TRUE to write Parquet (Arrow)
+# @Arg  : write_rds        — TRUE to write RDS (memory engine only)
+# @Arg  : write_csv        — TRUE to write CSV (memory engine only)
+# @Arg  : verbose          — TRUE prints progress
+# @Arg  : engine           — 'auto'|'duckdb'|'memory'
+#                            In 'auto': if RAM > 31 GB → 'duckdb', else 'memory'
+# @Output : Arrow Dataset (duckdb or memory+parquet) OR tibble (memory no parquet)
+# @Steps : (0) helpers, (1) discover files, (2) RAM + engine pick,
+#          (3A) memory helper, (3B) duckdb helper
+# ============================================================================================
+cdmx_merge_pollution_csvs <- function(
+    downloads_folder,
+    tz               = "America/Mexico_City",
+    years            = 2000:2023,
+    cleanup          = FALSE,
+    out_dir,
+    out_name,
+    write_parquet    = TRUE,
+    write_rds        = FALSE,
+    write_csv        = FALSE,
+    verbose          = TRUE,
+    engine           = c("auto","duckdb","memory")
+) {
+  engine <- match.arg(engine)
+  
+  # ---- (1) discover CSV files ------------------------------------------------
+  csvs <- list.files(
+    downloads_folder, pattern = "\\.csv$", full.names = TRUE, recursive = TRUE
+  )
+  if (!length(csvs)) stop("No CSV files found under: ", downloads_folder)
+  yrs <- sort(unique(years))
+  
+  # ---- (2) RAM detection + engine rule --------------------------------------
+  if (!requireNamespace("memuse", quietly = TRUE)) {
+    stop("Package 'memuse' is required for RAM detection.")
+  }
+  ram_gb <- memuse::Sys.meminfo()[1]$totalram@size
+  run_parallel <- (ram_gb > 31)
+  
+  if (engine == "auto") {
+    engine <- if (ram_gb > 64) "memory" else "duckdb"
+  }
+  
+  if (isTRUE(verbose)) {
+    message(sprintf("Engine=%s | RAM=%.1f GB | years=%d | parallel=%s",
+                    engine, ram_gb, length(yrs),
+                    ifelse(run_parallel,"yes","no")))
+  }
+  
+  # ---- (3A) memory engine ----------------------------------------------------
+  if (engine == "memory") {
+    return(
+      .cdmx_merge_memory_engine(
+        csvs = csvs,
+        years = yrs,
+        tz = tz,
+        out_dir = out_dir,
+        out_name = out_name,
+        write_parquet = write_parquet,
+        write_rds = write_rds,
+        write_csv = write_csv,
+        cleanup = cleanup,
+        verbose = verbose
+      )
+    )
+  }
+  
+  # ---- (3B) duckdb engine ----------------------------------------------------
+  return(
+    .cdmx_merge_duckdb_engine(
+      csvs = csvs,
+      years = yrs,
+      tz = tz,
+      out_dir = out_dir,
+      out_name = out_name,
+      cleanup = cleanup,
+      run_parallel = run_parallel,
+      verbose = verbose
+    )
+  )
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: cdmx_filter_stations_in_metro
+# @Arg       : station_location — data.frame/tibble with lon/lat columns
+# @Arg       : metro_area       — sf (MULTI)POLYGON of the metropolitan area
+# @Arg       : radius_km        — numeric; max distance to keep (default 20)
+# @Arg       : lon_col          — name of longitude column (default "lon")
+# @Arg       : lat_col          — name of latitude column  (default "lat")
+# @Arg       : stations_epsg    — EPSG for lon/lat (default 4326 WGS84)
+# @Arg       : dissolve         — logical; TRUE unions metro polygons (default TRUE)
+# @Arg       : verbose          — logical; TRUE prints summary (default TRUE)
+# @Output    : sf POINT data.frame of stations filtered to inside/near metro_area
+# @Purpose   : Keep stations that lie inside or within 'radius_km' km from the
+#              metropolitan area polygon. Builds geometry from lon/lat, aligns
+#              CRS for accurate distance, and filters using geodesic-safe
+#              distances (projects to meters when needed).
+# @Written_on: 2025-09-15
+# @Written_by: Marcos Paulo (with ChatGPT)
+# --------------------------------------------------------------------------------------------
+cdmx_filter_stations_in_metro <- function(
+    station_location,
+    metro_area,
+    radius_km     = 20,
+    lon_col       = "lon",
+    lat_col       = "lat",
+    stations_epsg = 4326,
+    dissolve      = TRUE,
+    verbose       = TRUE
+) {
+  # 0) deps and basic checks ---------------------------------------------------
+  if (!inherits(metro_area, "sf"))
+    stop("'metro_area' must be an sf object.")
+  if (!all(c(lon_col, lat_col) %in% names(station_location)))
+    stop("Columns ", lon_col, " and ", lat_col, " not found in stations.")
+
+  # 1) drop NA coords; convert stations → sf POINT (lon/lat) ------------------
+  st_df <- station_location[
+    stats::complete.cases(station_location[, c(lon_col, lat_col)]), , drop = FALSE
+  ]
+  if (!nrow(st_df)) stop("No stations with non-missing lon/lat.")
+  st_sf <- sf::st_as_sf(
+    st_df,
+    coords = c(lon_col, lat_col),
+    crs    = stations_epsg,
+    remove = FALSE
+  )
+  
+  # 2) prepare metro polygon: valid geometry; optionally dissolve -------------
+  metro_sf <- sf::st_make_valid(metro_area)
+  if (dissolve) metro_sf <- sf::st_union(metro_sf)
+  
+  # 3) pick a working CRS in meters for accurate distance ---------------------
+  #    If metro_area already uses a projected CRS (units in m), reuse it.
+  #    Else build a local Azimuthal Equidistant centered on metro centroid.
+  need_proj <- isTRUE(sf::st_is_longlat(sf::st_crs(metro_sf)))
+  if (need_proj) {
+    # 3a) compute centroid lon/lat for a local AEQD projection
+    metro_wgs <- sf::st_transform(metro_sf, 4326)
+    cen       <- sf::st_coordinates(sf::st_centroid(metro_wgs))
+    aeqd_str  <- sprintf(
+      "+proj=aeqd +lat_0=%f +lon_0=%f +units=m +datum=WGS84 +no_defs",
+      cen[2], cen[1]
+    )
+    target_crs <- sf::st_crs(aeqd_str)
+  } else {
+    target_crs <- sf::st_crs(metro_sf)
+  }
+  
+  # 4) transform both layers to target_crs (meters) ---------------------------
+  metro_m <- if (need_proj) sf::st_transform(metro_sf, target_crs) else metro_sf
+  st_m    <- sf::st_transform(st_sf, target_crs)
+  
+  # 5) compute keep mask: inside OR within radius_km (meters) -----------------
+  radius_m <- radius_km * 1000
+  # Fast: within-distance against dissolved polygon
+  within_dist <- sf::st_is_within_distance(st_m, metro_m, dist = radius_m)
+  keep <- lengths(within_dist) > 0
+  
+  # 6) subset; report; return sf ----------------------------------------------
+  out <- st_m[keep, , drop = FALSE]
+  if (isTRUE(verbose)) {
+    message("Stations input: ", nrow(st_sf),
+            " | kept: ", nrow(out),
+            " | radius: ", radius_km, " km")
+  }
+  
+  # 7) optional: return in original lon/lat CRS (often handy) -----------------
+  #    Comment the next line if you prefer to keep 'target_crs' instead.
+  out <- sf::st_transform(out, stations_epsg)
+  
+  return(out)
 }

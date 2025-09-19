@@ -14,6 +14,7 @@
 packages <- c(
   "arrow",
   "dplyr",
+  "haven",
   "here",
   "lubridate",
   "readr",
@@ -274,6 +275,158 @@ prepare_new_bogota_like_legacy <- function(
     dplyr::arrange(.data$station, .data$datetime)
   
   df
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: prepare_legacy_cdmx
+# @Arg       : legacy_df  — tibble read from legacy Stata/CSV for Mexico City
+# @Arg       : tz         — Olson timezone for datetime parsing (default "UTC")
+# @Output    : tibble with columns (order fixed):
+#              datehour, year, month, day, hour, station_code, pm25, pm10, no2, o3, co
+# @Purpose   : Normalize the *legacy* panel to the comparison schema:
+#              - keep a single datetime (datehour), drop datehour2/day_week
+#              - rename station → station_code
+#              - enforce types and column order
+# @Notes     : Assumes legacy_df already has datehour (POSIXct), year/month/day/hour.
+# --------------------------------------------------------------------------------------------
+prepare_legacy_cdmx <- function(legacy_df, tz = "UTC") {
+  df <- legacy_df
+  
+  # 1) Prefer `datehour` as the single datetime and drop extras
+  if (!"datehour" %in% names(df) && "datehour2" %in% names(df)) {
+    # if only datehour2 exists, coerce to POSIXct at hour if available
+    base_dt <- as.POSIXct(df$datehour2, tz = tz)
+    if ("hour" %in% names(df)) {
+      df$datehour <- base_dt + as.difftime(df$hour, units = "hours")
+    } else {
+      df$datehour <- base_dt
+    }
+  }
+  df$datehour <- as.POSIXct(df$datehour, tz = tz)
+  
+  # 2) Drop unused columns if present
+  drop_cols <- intersect(c("datehour2", "day_week", "date"), names(df))
+  if (length(drop_cols)) df <- dplyr::select(df, -dplyr::all_of(drop_cols))
+  
+  # 3) Rename station → station_code
+  if ("station" %in% names(df)) {
+    df <- dplyr::rename(df, station_code = station)
+  }
+  
+  # 4) Make sure pollutants/numerics are numeric
+  num_cols <- intersect(c("pm10", "pm25", "no2", "o3", "co"), names(df))
+  if (length(num_cols)) {
+    df[num_cols] <- lapply(df[num_cols], function(x) suppressWarnings(as.numeric(x)))
+  }
+  
+  # 5) Ensure time parts exist (derive if missing)
+  if (!all(c("year","month","day","hour") %in% names(df))) {
+    df <- df |>
+      dplyr::mutate(
+        year  = if (!"year"  %in% names(df))  lubridate::year(.data$datehour)  else .data$year,
+        month = if (!"month" %in% names(df))  lubridate::month(.data$datehour) else .data$month,
+        day   = if (!"day"   %in% names(df))  lubridate::day(.data$datehour)   else .data$day,
+        hour  = if (!"hour"  %in% names(df))  lubridate::hour(.data$datehour)  else .data$hour
+      )
+  }
+  
+  # 6) Reorder columns exactly as requested
+  keep_order <- c("datehour","year","month","day","hour","station_code",
+                  "pm25","pm10","no2","o3","co")
+  # add any missing value cols as NA to keep the order stable
+  for (nm in setdiff(keep_order, names(df))) df[[nm]] <- NA_real_
+  df <- dplyr::select(df, dplyr::all_of(keep_order))
+  
+  dplyr::arrange(df, .data$station_code, .data$datehour)
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: prepare_new_cdmx_like_legacy
+# @Arg  : new_df            — tibble read from your new Parquet dataset
+# @Arg  : stations_keep_df  — data frame (or sf) listing stations to keep.
+#                             Default NULL (keep all). Must contain a column with
+#                             station codes (default 'code'); geometry is ignored.
+# @Arg  : station_code_col  — column name in stations_keep_df with station codes
+#                             (default "code")
+# @Arg  : year_keep         — integer vector of years to keep (default 2010:2023)
+# @Arg  : tz                — Olson timezone (default "UTC")
+# @Output : tibble with columns (order fixed):
+#           datehour, year, month, day, hour, station_code, pm25, pm10, no2, o3, co
+# @Purpose : Make the *new* panel directly comparable to the legacy one and (optionally)
+#            subset to a set of station codes from an external table.
+# --------------------------------------------------------------------------------------------
+prepare_new_cdmx_like_legacy <- function(
+    new_df,
+    stations_keep_df = NULL,
+    station_code_col = "code",
+    year_keep = 2010:2023,
+    tz = "UTC"
+) {
+  # -- 1) Ensure we have a station_code column to work with --------------------
+  if (!"station_code" %in% names(new_df)) {
+    if ("station" %in% names(new_df)) {
+      new_df$station_code <- new_df$station
+    } else {
+      stop("new_df must have 'station_code' or 'station' column.")
+    }
+  }
+  
+  # -- 2) Optional: filter stations using stations_keep_df ---------------------
+  if (!is.null(stations_keep_df)) {
+    if (!station_code_col %in% names(stations_keep_df)) {
+      stop("stations_keep_df must contain column '", station_code_col, "'.")
+    }
+    keep_codes <- unique(toupper(trimws(stations_keep_df[[station_code_col]])))
+    new_df$station_code <- toupper(trimws(new_df$station_code))
+    new_df <- dplyr::filter(new_df, .data$station_code %in% keep_codes)
+  }
+  
+  # -- 3) Rename/transform to legacy names, keep only needed vars --------------
+  if (!"datetime" %in% names(new_df)) {
+    stop("new_df must have a 'datetime' column (timestamp).")
+  }
+  # Some files use "ozone", others "ozono"—prefer "ozone", fall back to "ozono"
+  o3_col <- if ("ozone" %in% names(new_df)) "ozone" else
+    if ("ozono" %in% names(new_df)) "ozono" else NA_character_
+  if (is.na(o3_col)) stop("new_df must have 'ozone' (or 'ozono').")
+  if (!"pm2.5" %in% names(new_df)) stop("new_df must have column `pm2.5`.")
+  must_have <- c("pm10","no2","co")
+  miss <- setdiff(must_have, names(new_df))
+  if (length(miss)) stop("new_df is missing: ", paste(miss, collapse = ", "))
+  
+  df <- new_df |>
+    dplyr::transmute(
+      datehour     = as.POSIXct(.data$datetime, tz = tz),
+      station_code = .data$station_code,
+      pm25         = .data$`pm2.5`,
+      pm10         = .data$pm10,
+      no2          = .data$no2,
+      o3           = .data[[o3_col]],
+      co           = .data$co
+    )
+  
+  # -- 4) Time parts + year filter --------------------------------------------
+  df <- df |>
+    dplyr::mutate(
+      year  = lubridate::year(.data$datehour),
+      month = lubridate::month(.data$datehour),
+      day   = lubridate::day(.data$datehour),
+      hour  = lubridate::hour(.data$datehour)
+    ) |>
+    dplyr::filter(.data$year %in% year_keep)
+  
+  # -- 5) Enforce numeric types + final column order ---------------------------
+  num_cols <- c("pm25","pm10","no2","o3","co")
+  df[num_cols] <- lapply(df[num_cols], function(x) suppressWarnings(as.numeric(x)))
+  
+  keep_order <- c("datehour","year","month","day","hour",
+                  "station_code","pm25","pm10","no2","o3","co")
+  
+  df |>
+    dplyr::select(dplyr::all_of(keep_order)) |>
+    dplyr::arrange(.data$station_code, .data$datehour)
 }
 
 

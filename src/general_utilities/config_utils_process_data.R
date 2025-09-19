@@ -9,21 +9,24 @@
 # @Date: Nov 2024
 # @Author: Marcos Paulo
 # ============================================================================================
-
 # List of required packages
 packages <- c(
   "arrow",
+  "DBI",
   "dplyr",
   "doParallel",
+  "duckdb",
   "exactextractr",
   "foreach",
   "here",
   "lubridate",
   "memuse",
+  "readr",
   "rnaturalearth",
   "rnaturalearthdata",
   "sf",
   "terra",
+  "tibble",
   "tidyr",
   "rlang")
 
