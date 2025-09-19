@@ -11,38 +11,34 @@ LABEL \
 ARG PPM_DATE=2025-09-01
 ENV DEBIAN_FRONTEND=noninteractive
 
-# 0) System libs for building R packages (builder-only; dev headers OK here)
-# - build-essential: compilers for occasional source builds
-# - libgit2-dev: enables gert/credentials flows
-# - geospatial stack: sf/terra/gdal/proj/udunits
-# - text shaping: for high-quality plots (ragg/textshaping/systemfonts)
+# 0) Build toolchain & headers for source builds (sf/terra/arrow/textshaping/etc.)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential git curl ca-certificates pkg-config cmake \
-    libgit2-dev \
-    libgdal-dev libproj-dev libgeos-dev libudunits2-dev \
+    build-essential git curl ca-certificates pkg-config cmake libgit2-dev \
+    gdal-bin libgdal-dev libproj-dev libgeos-dev libudunits2-dev \
     libxml2-dev libssl-dev libcurl4-openssl-dev \
-    libpng-dev libfreetype6-dev libfontconfig1-dev \
-    libharfbuzz-dev libfribidi-dev \
-    xz-utils \
-    libx11-dev \
+    libpng-dev libfreetype6-dev libfontconfig1-dev libharfbuzz-dev libfribidi-dev \
+    libx11-dev xz-utils pandoc \
  && update-ca-certificates && rm -rf /var/lib/apt/lists/*
 
-# Unable duckdb's configure from trying to auto-tune parallel flags
+# Keep {duckdb} from doing CRAN-specific parallel tuning tricks
 ENV NOT_CRAN=true
+# Optional: skip building vignettes to speed up renv restore
+ENV RENV_CONFIGURE_BUILD_VIGNETTES=FALSE
 
-# 1) Use Posit Package Manager (PPM) with a FROZEN snapshot for reproducibility
-#    (change PPM_DATE to bump all binaries deterministically)
+# 1) PPM snapshot (Ubuntu noble) + CRAN fallback
 ENV RENV_CONFIG_PPM_ENABLED=TRUE \
-    RENV_CONFIG_PPM_URL="https://packagemanager.posit.co/cran/__linux__/bookworm/${PPM_DATE}" \
-    RENV_CONFIG_REPOS_OVERRIDE="https://packagemanager.posit.co/cran/__linux__/bookworm/${PPM_DATE}"
-
+    RENV_CONFIG_PPM_URL="https://packagemanager.posit.co/cran/__linux__/ubuntu/noble/${PPM_DATE}"
 RUN mkdir -p /usr/local/lib/R/etc && \
     printf '%s\n' \
-'options(repos = c(CRAN = "'$RENV_CONFIG_PPM_URL'"))' \
-'options(HTTPUserAgent = sprintf("R/%s R (%s)", getRversion(), paste(R.version[["platform"]], R.version[["arch"]], R.version[["os"]])) )' \
+'options(repos = c(' \
+'  RSPM = Sys.getenv("RENV_CONFIG_PPM_URL"),' \
+'  CRAN = "https://cran.rstudio.com/"' \
+'))' \
+'options(HTTPUserAgent = sprintf("R/%s R (%s)", getRversion(),' \
+'  paste(R.version[["platform"]], R.version[["arch"]], R.version[["os"]])))' \
     >> /usr/local/lib/R/etc/Rprofile.site
 
-# 2) Project checkout (shallow for cache/bandwidth)
+# 2) Project checkout (shallow clone for cache/bandwidth)
 ARG REPO_URL=https://github.com/correia-marcos/air_quality.git
 ARG GIT_REF=main
 RUN git clone --depth 1 --branch ${GIT_REF} ${REPO_URL} /air_monitoring
@@ -53,14 +49,14 @@ ENV RENV_PATHS_CACHE=/air_monitoring/renv/.cache
 ENV RENV_PATHS_LIBRARY=/air_monitoring/renv/library
 RUN mkdir -p renv/.cache renv/library
 
-# 4) Copy only renv metadata first (better Docker layer caching)
+# 4) Copy minimal renv metadata first (better Docker layer caching)
 COPY renv.lock renv/settings.json ./
 COPY renv/activate.R renv/activate.R
 COPY .Rprofile ./
 
-# 5) Install renv + restore from lockfile (PPM gives prebuilt binaries)
+# 5) Restore packages from lockfile (PPM snapshot + CRAN fallback)
 RUN R -q -e "install.packages('renv'); renv::restore(prompt = FALSE)"
-# Optional: validate the library is consistent
+# Optional: verify
 # RUN R -q -e "renv::status()"
 
 ################################################################################
@@ -75,11 +71,7 @@ LABEL \
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# 0) Runtime deps (only shared objects needed at runtime; avoid -dev here)
-# - gdal/proj/geos/udunits runtime libs for sf/terra
-# - Arrow codecs so R {arrow} can read/write Parquet efficiently
-# - duckdb CLI (handy for debugging, COPY TO parquet, etc.)
-# - locales/tz and CA bundle for reproducibility & HTTPS
+# 0) Runtime deps (shared objects only; no -dev unless you need to compile inside)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl git ca-certificates \
     locales tzdata \
@@ -88,12 +80,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # text rendering (ragg/systemfonts)
     libpng16-16 libfreetype6 libfontconfig1 libharfbuzz0b libfribidi0 \
     fonts-dejavu fonts-liberation \
-    # parquet/arrow codec libs commonly used
+    # parquet/arrow codecs
     libzstd1 liblz4-1 libsnappy1v5 libbrotli1 bzip2 \
-    # small init to handle PID1 signals cleanly
+    # doc rendering (knitr/rmarkdown)
+    pandoc \
+    # clean PID1 handling
     tini \
- && update-ca-certificates \
- && rm -rf /var/lib/apt/lists/* \
+ && update-ca-certificates && rm -rf /var/lib/apt/lists/* \
  && sed -i 's/# en_US.UTF-8/en_US.UTF-8/' /etc/locale.gen \
  && sed -i 's/# pt_BR.UTF-8/pt_BR.UTF-8/' /etc/locale.gen \
  && locale-gen
@@ -106,14 +99,17 @@ ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \
     LC_ALL=en_US.UTF-8 \
     TZ=America/Sao_Paulo
 
-# 1) Same PPM snapshot inside runtime (for interactive installs to be reproducible)
+# 1) Same PPM snapshot + CRAN fallback in runtime (for interactive installs)
 ARG PPM_DATE=2025-09-01
-ENV RENV_CONFIG_PPM_URL="https://packagemanager.posit.co/cran/__linux__/bookworm/${PPM_DATE}"
-
+ENV RENV_CONFIG_PPM_URL="https://packagemanager.posit.co/cran/__linux__/ubuntu/noble/${PPM_DATE}"
 RUN mkdir -p /usr/local/lib/R/etc && \
     printf '%s\n' \
-'options(repos = c(CRAN = "'$RENV_CONFIG_PPM_URL'"))' \
-'options(HTTPUserAgent = sprintf("R/%s R (%s)", getRversion(), paste(R.version[["platform"]], R.version[["arch"]], R.version[["os"]])) )' \
+'options(repos = c(' \
+'  RSPM = Sys.getenv("RENV_CONFIG_PPM_URL"),' \
+'  CRAN = "https://cran.rstudio.com/"' \
+'))' \
+'options(HTTPUserAgent = sprintf("R/%s R (%s)", getRversion(),' \
+'  paste(R.version[["platform"]], R.version[["arch"]], R.version[["os"]])))' \
     >> /usr/local/lib/R/etc/Rprofile.site
 
 # 2) Shared global renv cache (mount as named volume in compose)
@@ -124,7 +120,7 @@ RUN mkdir -p /usr/local/lib/R/renv-cache \
  && echo "RENV_PATHS_CACHE=/usr/local/lib/R/renv-cache" \
     >> /usr/local/lib/R/etc/Renviron.site
 
-# 3) Bring in the baked project + restored library from builder
+# 3) Bring in baked project + restored library from builder
 COPY --from=builder /air_monitoring /air_monitoring
 
 # 4) RStudio user prefs & profile
@@ -143,7 +139,22 @@ EXPOSE 8787
 HEALTHCHECK --interval=30s --timeout=5s --retries=5 \
   CMD curl -fsS http://localhost:8787/ || exit 1
 
-# 7) Entrypoint (use tini for clean shutdown) + your script
+# 7) Entrypoint (tini for clean shutdown) + your script
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 ENTRYPOINT ["/usr/bin/tini","-g","--","/usr/local/bin/entrypoint.sh"]
+
+# OPTIONAL: DuckDB CLI — uncomment to install
+# ARG DUCKDB_CLI_VERSION=1.3.3
+# RUN apt-get update && apt-get install -y --no-install-recommends unzip \
+#  && arch="$(dpkg --print-architecture)" \
+#  && case "$arch" in \
+#       arm64) asset="duckdb_cli-linux-aarch64.zip" ;; \
+#       amd64) asset="duckdb_cli-linux-amd64.zip" ;; \
+#       *) echo "Unsupported arch: $arch" && exit 1 ;; \
+#     esac \
+#  && curl -L -o /tmp/duckdb.zip \
+#       "https://github.com/duckdb/duckdb/releases/download/v${DUCKDB_CLI_VERSION}/${asset}" \
+#  && unzip /tmp/duckdb.zip -d /usr/local/bin \
+#  && chmod +x /usr/local/bin/duckdb \
+#  && rm -f /tmp/duckdb.zip
