@@ -28,12 +28,13 @@ print(bogota_cfg$dl_dir)  # already imported through source
 outdir <- here::here(bogota_cfg$out_dir, "pollution_ground_stations", "Bogota")
 dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
 
+census_zip = here::here(bogota_cfg$dl_dir, "census", "CG2005_AMPLIADO.zip")
 # ============================================================================================
 # II: Process  data
 # ============================================================================================
 # Apply function to merge all downloaded file into a single tidy dataframe
 bogota_stations_data <- bogota_merge_stations_downloads(
-  downloads_folder = here::here(bogota_cfg$dl_dir, "ground_stations"),
+  downloads_folder = here::here(bogota_cfg$dl_dir, "Ground_stations"),
   cleanup = FALSE,
   tz = "America/Bogota"
 )
@@ -41,6 +42,22 @@ bogota_stations_data <- bogota_merge_stations_downloads(
 # Check coverage
 miss <- bogota_missing_matrix(bogota_stations_data, years = bogota_cfg$years)
 if (nrow(miss)) print(head(miss, 20))
+
+
+# List files inside the ZIP
+zip_contents <- utils::unzip(census_zip, list = TRUE)
+Sys.setlocale("LC_CTYPE", "en_US.UTF-8")
+
+print(zip_contents)
+needed = c(as.character(zip_contents$Name[12]),
+           as.character(zip_contents$Name[4]))
+out_dir <- here::here(bogota_cfg$dl_dir, "census", "unzipped")
+dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
+utils::unzip(zipfile   = census_zip,
+             files     = needed,
+             exdir     = out_dir,
+             overwrite = TRUE,
+             junkpaths = TRUE)
 
 # ============================================================================================
 # III: Save  data
