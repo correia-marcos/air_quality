@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gdal-bin libgdal-dev libproj-dev libgeos-dev libudunits2-dev \
     libxml2-dev libssl-dev libcurl4-openssl-dev \
     libpng-dev libfreetype6-dev libfontconfig1-dev libharfbuzz-dev libfribidi-dev \
-    libx11-dev xz-utils pandoc \
+    libx11-dev xz-utils pandoc libarchive-dev\
  && update-ca-certificates && rm -rf /var/lib/apt/lists/*
 
 # Keep {duckdb} from doing CRAN-specific parallel tuning tricks
@@ -86,6 +86,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pandoc \
     # clean PID1 handling
     tini \
+    # archive system requirements
+    libarchive13 \
  && update-ca-certificates && rm -rf /var/lib/apt/lists/* \
  && sed -i 's/# en_US.UTF-8/en_US.UTF-8/' /etc/locale.gen \
  && sed -i 's/# pt_BR.UTF-8/pt_BR.UTF-8/' /etc/locale.gen \
