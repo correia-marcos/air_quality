@@ -44,15 +44,36 @@ miss <- bogota_missing_matrix(bogota_stations_data, years = bogota_cfg$years)
 if (nrow(miss)) print(head(miss, 20))
 
 
-# List files inside the ZIP
-zip_contents <- utils::unzip(census_zip, list = TRUE)
-Sys.setlocale("LC_CTYPE", "en_US.UTF-8")
 
-print(zip_contents)
-needed = c(as.character(zip_contents$Name[12]),
-           as.character(zip_contents$Name[4]))
+# ============================================================================================
+# II: CHECK  data
+# ============================================================================================
+Sys.setlocale("LC_CTYPE", "en_US.UTF-8")
+# List files inside the ZIP
+lst <- archive::archive(census_zip)
+print(lst$path)
+
+paths_norm <- stringi::stri_trans_general(lst$path, "Latin-ASCII")
+print(paths_norm)
+
+translates = stri_trans_list()
+# print(translates)
+
 out_dir <- here::here(bogota_cfg$dl_dir, "census", "unzipped")
 dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
+
+keep <- grepl("Bogot.*|Cundina.*", paths_norm, ignore.case = TRUE)
+archive::archive_extract(census_zip, dir = out_dir)
+
+any(!validUTF8(lst$path))
+
+# If you want the same two entries by position:
+needed <- paths_norm[c(12, 4)]
+
+
+archive::archive_extract(census_zip, dir = out_dir, file = needed)
+
+
 utils::unzip(zipfile   = census_zip,
              files     = needed,
              exdir     = out_dir,

@@ -12,6 +12,7 @@
 # List of required packages
 packages <- c(
   "arrow",
+  "archive",
   "DBI",
   "dplyr",
   "doParallel",
@@ -25,6 +26,7 @@ packages <- c(
   "rnaturalearth",
   "rnaturalearthdata",
   "sf",
+  "stringi",
   "terra",
   "tibble",
   "tidyr",
