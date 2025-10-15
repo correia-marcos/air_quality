@@ -20,55 +20,77 @@
 # @Author: Marcos
 # ============================================================================================
 
-# Get all libraries and functions
+# Get all libraries and functions - config_utils_plot_tables to generate one LaTeX table
 source(here::here("src", "general_utilities", "config_utils_download_data.R"))
+source(here::here("src", "general_utilities", "config_utils_plot_tables.R"))
 source(here::here("src","city_specific", "registry.R"))
 source(here::here("src","city_specific", "cdmx.R"))
 
 # ============================================================================================
-# I: Download data
+# I: Import data
 # ============================================================================================
+mexico <- ne_states(country = "Mexico", returnclass = "sf")
+
 # Show parameters imported on src/city_specific_cdmx.R
 print(cdmx_cfg$id)
 print(cdmx_cfg$years)
 print(cdmx_cfg$dl_dir)
 print(cdmx_cfg$out_dir)
+print(cdmx_cfg$which_states)
 
+# ============================================================================================
+# II: Download data
+# ============================================================================================
 # Apply function to download shapefiles for Bogotá metro area
 metro_area <- cdmx_download_metro_area(
   base_url          = cdmx_cfg$base_url_shp,
   keep_municipality = cdmx_cfg$cities_in_metro,
-  download_dir      = here::here(cdmx_cfg$dl_dir, "metro_area"),
-  out_file          = here::here(cdmx_cfg$out_dir, "cities_shapefiles", "cdmx_metro.gpkg"),
+  download_dir      = here::here(cdmx_cfg$dl_dir,"metro_area"),
   overwrite_zip     = FALSE,
   overwrite_gpkg    = TRUE,
-  quiet             = FALSE
-)
+  quiet             = FALSE,
+  out_file          = here::here(cdmx_cfg$out_dir, 
+                                 "geospatial_data",
+                                 "metro_areas",
+                                 "cdmx_metro.gpkg"))
+
+# Apply function to save a LaTeX table of the states that we must download stations data
+table_states_to_download <- table_state_metro_distances(
+  national_states_sf = mexico,
+  metro_area_sf = metro_area,
+  save_latex_table = TRUE,
+  caption = "Administrative states and distance to metropolitan area (in Km)",
+  out_file = here::here("results", "tables", "states_to_get_stations", "CDMX.tex"),
+  overwrite_tex = TRUE
+) # change cdmx_cfg$which_states if necessary! Depending on result
 
 # Apply function to gen/save table with stations and their location - inside CDMX
 station_in_cdmx <- cdmx_scrape_station_catalog(
   page_url      = cdmx_cfg$url_loc_stations_cdmx,
-  out_dir       = here::here(cdmx_cfg$out_dir, "pollution_ground_stations", "Mexico_city"),
+  out_dir       = here::here(cdmx_cfg$out_dir,
+                             "geospatial_data",
+                             "ground_stations",
+                             "CDMX"),
   out_name      = "cdmx_station_location",
   write_parquet = FALSE,
   write_csv     = TRUE,
   write_rds     = FALSE,
-  verbose       = TRUE
-)
+  verbose       = TRUE)
 
 # Apply function to gen/save remain stations location and information - out CDMX
 all_stations <- cdmx_scrape_states_merge(
   station_in_cdmx = station_in_cdmx,
   base_url        = cdmx_cfg$url_loc_stations_others,
-  states          = c("Guerrero", "Hidalgo", "México", "Michoacán", "Morelos", "Querétaro",
-                      "Puebla", "Tlaxcala"),
-  out_dir         = here::here(cdmx_cfg$out_dir, "pollution_ground_stations", "Mexico_city"),
+  states          = cdmx_cfg$which_states,
+  out_dir         = here::here(cdmx_cfg$out_dir,
+                               "geospatial_data",
+                               "ground_stations",
+                               "CDMX"),
   out_name        = "all_station_location",
   write_parquet   = FALSE,
   write_csv       = TRUE,
   write_rds       = FALSE,
-  verbose         = TRUE
-)
+  verbose         = TRUE)
 
 # Apply function to create Selenium server and download the data for Mexico stations
 download_logs <- cdmx_download_sinaica_data(
@@ -79,8 +101,12 @@ download_logs <- cdmx_download_sinaica_data(
   settle_before_csv_click_sec = 1,
   subdir                      = here::here(cdmx_cfg$dl_dir, "Ground_stations")
 )
+
 # Save the log of downloading for transparency
 write.csv(download_logs, file = path(cdmx_cfg$dl_dir, "stations_log.csv"))
+
+# Apply function to download 2023 pollution data for states missing this year
+
 
 # Apply function to download Census data for the metro area
 census_log <- cdmx_download_census_data(

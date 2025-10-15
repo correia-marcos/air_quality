@@ -20,14 +20,17 @@
 # @Author: Marcos
 # ============================================================================================
 
-# Get all libraries and functions
+# Get all libraries and functions - config_utils_plot_tables to generate one LaTeX table
 source(here::here("src", "general_utilities", "config_utils_download_data.R"))
+source(here::here("src", "general_utilities", "config_utils_plot_tables.R"))
 source(here::here("src","city_specific", "registry.R"))
 source(here::here("src","city_specific", "bogota.R"))
 
 # ============================================================================================
-# I: Download data
+# I: Import data
 # ============================================================================================
+colombia <- ne_states(country = "Colombia", returnclass = "sf")
+
 # Show parameters imported on src/city_specific_bogota.R
 print(bogota_cfg$base_url_shp)
 print(bogota_cfg$base_url_census)
@@ -37,6 +40,9 @@ print(bogota_cfg$years)
 print(bogota_cfg$dl_dir)
 print(bogota_cfg$out_dir)
 
+# ============================================================================================
+# I: Download data
+# ============================================================================================
 # Apply function to download shapefiles for Bogotá metro area
 metro_area <- bogota_download_metro_area(
   level             = "mpio",
@@ -48,6 +54,16 @@ metro_area <- bogota_download_metro_area(
   overwrite_gpkg    = TRUE,
   quiet             = FALSE
   )
+
+# Apply function to save a LaTeX table of the states that we must download stations data
+table_states_to_download <- table_state_metro_distances(
+  national_states_sf = colombia,
+  metro_area_sf = metro_area,
+  save_latex_table = TRUE,
+  caption = "Administrative states and distance to metropolitan area (in Km)",
+  out_file = here::here("results", "tables", "states_to_get_stations", "bogota.tex"),
+  overwrite_tex = TRUE
+) # change cdmx_cfg$which_states if necessary! Depending on result
 
 # Apply function to generate and save dataframe with stations and their location
 rmcab_dir <- bogota_scrape_rmcab_station_table(
@@ -63,7 +79,7 @@ rmcab_dir <- bogota_scrape_rmcab_station_table(
 )
 
 # Apply function to create Selenium server and download the data for Bogota
-bogota_download_station_data(
+download_logs <- bogota_download_station_data(
   base_url      = bogota_cfg$base_url_rmcab,
   start_year    = min(bogota_cfg$years),
   end_year      = max(bogota_cfg$years),
