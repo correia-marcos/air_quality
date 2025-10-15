@@ -13,58 +13,72 @@
 # @Date: May 2025
 # @Author: Marcos
 # ============================================================================================
+source(here::here("src", "general_utilities", "config_utils_process_data.R"))
+source(here::here("src", "general_utilities", "config_utils_plot_tables.R"))
 source(here::here("src", "general_utilities", "config_utils_validation_old_version.R"))
+
+# Make sure the Arrow package will interpret the time of dataframes in the correct TZ
+options(arrow.local_tz = "UTC")
 
 # ============================================================================================
 # I: Import  data
 # ============================================================================================
-# Import the raw panel of ground stations
-cdmx_stations_new <- read_parquet(here::here("data", "raw",
-                                             "pollution_ground_stations",
-                                             "Mexico_city",
-                                             "mexico_stations_2000_2023.parquet"))
+# Define the location of datasets
+dir_cdmx_stations_data   <- here::here("data", "raw","air_monitoring_stations",
+                                       "cdmx_metro_buffer_stations_dataset")
+dir_l_cdmx_stations_data <- here::here("data", "_legacy", "pollution", "Mexico_city",
+                                       "Air_Pollution_Mexico_2010_2023.dta")
+dir_cdmx_area            <- here::here("data", "raw", "geospatial_data",
+                                       "metro_areas", "cdmx_metro.gpkg")
+dir_l_cdmx_area          <- here::here("data", "raw",
+                                       "cities_shapefiles(old)",
+                                       "Mexico_city")
+dir_cdmx_station_loc     <- here::here("data", "interim", "spatial_filtered_stations",
+                                       "CDMX_stations.gpkg")
 
-possible_stations <- read.csv(here::here("data", "raw",
-                                         "pollution_ground_stations",
-                                         "Mexico_city",
-                                         "all_station_on_metro_area.csv"))
+# Open air pollution dataframes
+cdmx_stations_data        <- arrow::open_dataset(dir_cdmx_stations_data)
+legacy_cdmx_stations_data <- read_dta(dir_l_cdmx_stations_data)
 
-metro_area        <- sf::st_read(here::here("data", "raw",
-                                            "cities_shapefiles",
-                                            "cdmx_metro.gpkg"))
-
-metro_area_old   <- sf::st_read(here::here("data", "raw",
-                                           "cities_shapefiles",
-                                           "Mexico_city"))
-
-# Define the directory with legacy data and import it
-legacy_dir        <- here::here("data", "_legacy", "pollution", "Mexico_city")
-cdmx_stations_old <- read_dta(here::here(legacy_dir,
-                                         "Air_Pollution_Mexico_2010_2023.dta"))
-
+# Open spatial data
+cdmx              <- sf::st_read(dir_cdmx_area)
+legacy_cdmx       <- sf::st_read(dir_l_cdmx_area)
+stations_in_metro <- sf::st_read(dir_cdmx_station_loc)
 # ============================================================================================
 # II: Process  data
 # ============================================================================================
 # Apply function harmonize values, types and the order of the old dataframe
-cdmx_old <- prepare_legacy_cdmx(cdmx_stations_old)
+cdmx_old <- prepare_legacy_cdmx(legacy_cdmx_stations_data)
 
 # Apply function to harmonize the new dataframe making it like the legacy one
 # - restrict to 2010–2023
-cdmx_new <- prepare_new_cdmx_like_legacy(
-  new_df            = cdmx_stations_new,
-  stations_keep_df  = possible_stations,  # filters to rows whose station_code is in `code`
-  station_code_col  = "code",
-  year_keep         = 2010:2023,
-  tz                = "UTC"
+cdmx_new <- prepare_new_panel_like_legacy(
+  new_data         = cdmx_stations_data,   # Arrow Dataset
+  year_keep        = 2010:2023,
+  tz               = "America/Mexico_City",
+  return           = "tibble"              # collect; normalize station_code in R
 )
 
-# Apply function to Compare both datasets
+# Apply function to Compare both datasets without shifting hours
+raw_comparison <- compare_panels(
+  old_df                = cdmx_old,
+  new_df                = cdmx_new,
+  keys                  = c("station_code", "year", "month", "day", "hour"),
+  values                = c("pm10", "pm25", "o3", "co", "no2"),
+  restrict_to_old_codes = TRUE,
+  prefer_station        = c(ATI = "Atizapán"),
+  new_shift_hours       = 0L 
+)
+
+# Apply function to Compare both datasets shifting hours
 res <- compare_panels(
-  old_df  = cdmx_old,
-  new_df  = cdmx_new,
-  keys    = c("station_code", "year", "month", "day", "hour"),
-  values  = c("pm10", "pm25", "no2", "o3", "co"),
-  tol     = c(pm10 = 0, pm25 = 0, no2 = 0, o3 = 0, co = 0)
+  old_df                = cdmx_old,
+  new_df                = cdmx_new,
+  keys                  = c("station_code", "year", "month", "day", "hour"),
+  values                = c("pm10", "pm25", "o3", "co", "no2"),
+  restrict_to_old_codes = TRUE,
+  prefer_station        = c(ATI = "Atizapán"),
+  new_shift_hours       = +1L 
 )
 
 # Quick summaries for the console
@@ -73,28 +87,107 @@ message("Rows only in new    : ", nrow(res$only_new))
 print(res$diff_summary)
 
 # Separate values to save
-differences       <- res$diffs_long
-differences_2023_pm10  <- differences %>% 
-  filter(year == 2023) %>% 
-  filter(variable == "pm10")
-check             <- res$diff_summary
+differences_shifting_hour <- res$diffs_long %>% 
+  filter(year == 2023)
+differences_no_shifting   <- raw_comparison$diffs_long %>% 
+  filter(year == 2023)
 
 # Quick check on the non missing data
-differences_no_na <- differences %>%
-  filter(within_tol == FALSE)
+differences_shifting_hour_pm25 <- differences_shifting_hour %>%
+  filter(within_tol == FALSE) %>%
+  filter(variable == "pm25")
+
+differences_shifting_hour_pm10 <- differences_shifting_hour %>%
+  filter(within_tol == FALSE) %>%
+  filter(variable == "pm10")
 
 # Quick check on the missing data from before
 new_only <- res$only_new %>%
-  distinct(station_code, year, month, day, hour) %>%
-  arrange(station_code, year, month, day, hour)
-
-missing_values_in_2023 <- 
+  filter(year == 2023)
 
 # Check the rows that exist only on the old data
 old_only <- res$only_old
 
+# ============================================================================================
+# III: Generate figures/tables
+# ============================================================================================
+# 3) Stations now vs before
+cdmx_has_pm10_2023_stations_legacy_scheme <- plot_metro_area_interactive(
+  metro_area_sf = legacy_cdmx,
+  stations_sf   = stations_in_metro,
+  pollution_ds  = cdmx_stations_data,
+  legacy_df     = legacy_cdmx_stations_data,
+  filter_type   = "has_pm_in_year",
+  filter_year   = 2023,
+  pollutant     = "pm10",
+  color_scheme  = "legacy2023",
+  city_name     = "Mexico City"
+)
+
+cdmx_has_pm25_2023_stations_legacy_scheme <- plot_metro_area_interactive(
+  metro_area_sf = legacy_cdmx,
+  stations_sf   = stations_in_metro,
+  pollution_ds  = cdmx_stations_data,
+  legacy_df     = legacy_cdmx_stations_data,
+  filter_type   = "has_pm_in_year",
+  filter_year   = 2023,
+  pollutant     = "pm25",
+  color_scheme  = "legacy2023",
+  city_name     = "Mexico City"
+)
+
+cdmx_has_pm10_2022_stations_legacy_scheme <- plot_metro_area_interactive(
+  metro_area_sf = legacy_cdmx,
+  stations_sf   = stations_in_metro,
+  pollution_ds  = cdmx_stations_data,
+  legacy_df     = legacy_cdmx_stations_data,
+  filter_type   = "has_pm_in_year",
+  filter_year   = 2022,
+  pollutant     = "pm10",
+  color_scheme  = "legacy2023",
+  city_name     = "Mexico City"
+)
+
+cdmx_has_pm25_2022_stations_legacy_scheme <- plot_metro_area_interactive(
+  metro_area_sf = legacy_cdmx,
+  stations_sf   = stations_in_metro,
+  pollution_ds  = cdmx_stations_data,
+  legacy_df     = legacy_cdmx_stations_data,
+  filter_type   = "has_pm_in_year",
+  filter_year   = 2022,
+  pollutant     = "pm25",
+  color_scheme  = "legacy2023",
+  city_name     = "Mexico City"
+)
 
 
+# ============================================================================================
+# IV: Save figures/data
+# ============================================================================================
+# Ensure output folder exists
+outdir <- here("results", "validation_rep_package", "CDMX")
+dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
+
+# Save plot
+htmlwidgets::saveWidget(
+  cdmx_has_pm10_2023_stations_legacy_scheme,
+  here::here(outdir, "cdmx_pm10_stations_in_2023_by_presence.html"),
+  selfcontained = TRUE)
+
+htmlwidgets::saveWidget(
+  cdmx_has_pm25_2023_stations_legacy_scheme,
+  here::here(outdir, "cdmx_pm25_stations_in_2023_by_presence.html"),
+  selfcontained = TRUE)
+
+htmlwidgets::saveWidget(
+  cdmx_has_pm10_2022_stations_legacy_scheme,
+  here::here(outdir, "cdmx_pm10_stations_in_2022_by_presence.html"),
+  selfcontained = TRUE)
+
+htmlwidgets::saveWidget(
+  cdmx_has_pm25_2022_stations_legacy_scheme,
+  here::here(outdir, "cdmx_pm25_stations_in_2022_by_presence.html"),
+  selfcontained = TRUE)
 # ================= CHECKS ====================================================================
 # ================= CHECKS ====================================================================
 # ================= CHECKS ====================================================================
@@ -115,128 +208,8 @@ stations_2023_with_pm10_data <- cdmx_new_2023 %>%
   filter() %>%
   pull(station_code)
 
+checkson <- readr::read_csv("/Users/correia-marcos/Downloads/contaminantes_2010.csv",
+                            skip = 10)
 
-library(sf)
-library(dplyr)
-library(ggplot2)
-library(ggrepel)
-
-possible_stations_2023_filtered <- possible_stations %>% 
-  filter(code %in% stations_2023_with_data)
-
-# -- make stations an sf from lon/lat (WGS84), then project to metro_area CRS
-stations_sf <- st_as_sf(
-  possible_stations_2023_filtered,
-  coords = c("lon", "lat"),
-  crs = 4326,
-  remove = FALSE
-) %>%
-  st_transform(st_crs(metro_area))
-
-# (optional) keep only stations inside the metro polygon (uncomment if desired)
-# metro_union   <- st_union(metro_area)
-# stations_sf   <- st_filter(stations_sf, metro_union)
-
-# get XY for labels
-lab_xy <- st_coordinates(stations_sf)
-labs   <- cbind(st_drop_geometry(stations_sf), lab_xy)
-
-# nice bounding box for coord_sf
-bb <- st_bbox(metro_area)
-
-p <- ggplot() +
-  # metro polygons
-  geom_sf(
-    data  = metro_area,
-    fill  = "#F5F7FA",
-    color = "#8C9199",
-    linewidth = 0.3
-  ) +
-  # station points
-  geom_sf(
-    data  = stations_sf,
-    aes(fill = entity),
-    shape = 21, size = 3, alpha = 0.95, color = "white", linewidth = 0.3
-  ) +
-  # station codes as labels
-  geom_text_repel(
-    data = labs,
-    aes(x = X, y = Y, label = code),
-    size = 3, min.segment.length = 0, seed = 42,
-    box.padding = 0.25, point.padding = 0.2, max.overlaps = Inf
-  ) +
-  coord_sf(
-    xlim = c(bb["xmin"]-10, bb["xmax"]+10),
-    ylim = c(bb["ymin"]-10, bb["ymax"]+10),
-    expand = FALSE
-  ) +
-  scale_fill_brewer(palette = "Set2", name = "Entidad") +
-  labs(
-    title = "Estaciones dentro del Área Metropolitana de la CDMX",
-    subtitle = "Puntos = estaciones; etiquetas = códigos",
-    x = NULL, y = NULL
-  ) +
-  theme_void(base_size = 12) +
-  theme(
-    panel.background = element_rect(fill = "white", color = NA),
-    plot.title = element_text(face = "bold"),
-    legend.position = "bottom",
-    legend.title = element_text(size = 10),
-    legend.key.size = unit(10, "pt")
-  )
-
-p
-
-
-stations_sf <- st_as_sf(
-  possible_stations_2023_filtered,
-  coords = c("lon", "lat"),
-  crs = 4674,
-  remove = FALSE
-) %>%
-  st_transform(st_crs(metro_area_old))
-
-bb <- st_bbox(metro_area_old)
-
-p_old <- ggplot() +
-  # metro polygons
-  geom_sf(
-    data  = metro_area_old,
-    fill  = "#F5F7FA",
-    color = "#8C9199",
-    linewidth = 0.3
-  ) +
-  # station points
-  geom_sf(
-    data  = stations_sf,
-    aes(fill = entity),
-    shape = 21, size = 3, alpha = 0.95, color = "white", linewidth = 0.3
-  ) +
-  # station codes as labels
-  geom_text_repel(
-    data = labs,
-    aes(x = X, y = Y, label = code),
-    size = 3, min.segment.length = 0, seed = 42,
-    box.padding = 0.25, point.padding = 0.2, max.overlaps = Inf
-  ) +
-  coord_sf(
-    xlim = c(bb["xmin"]-10, bb["xmax"]+10),
-    ylim = c(bb["ymin"]-10, bb["ymax"]+10),
-    expand = FALSE
-  ) +
-  scale_fill_brewer(palette = "Set2", name = "Entidad") +
-  labs(
-    title = "Estaciones dentro del Área Metropolitana de la CDMX",
-    subtitle = "Puntos = estaciones; etiquetas = códigos",
-    x = NULL, y = NULL
-  ) +
-  theme_void(base_size = 12) +
-  theme(
-    panel.background = element_rect(fill = "white", color = NA),
-    plot.title = element_text(face = "bold"),
-    legend.position = "bottom",
-    legend.title = element_text(size = 10),
-    legend.key.size = unit(10, "pt")
-  )
-
-p_old
+checkson <- checkson %>% 
+  arrange(cve_station)
