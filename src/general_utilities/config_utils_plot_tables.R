@@ -12,13 +12,18 @@
 
 # List of required packages
 packages <- c(
+  "arrow",
   "cowplot",
   "dplyr",
+  "ggmap",
   "ggplot2",
   "ggspatial",
   "ggridges",
   "haven",
   "here",
+  "htmltools",
+  "kableExtra",
+  "leaflet",
   "lubridate",
   "rlang",
   "rnaturalearth",
@@ -48,13 +53,836 @@ for (pkg in packages) {
 # Clear objects on environment
 rm(packages, pkg)
 
+# Try installing rnaturalearthhires in different cran
+options(repos = c(CRAN = "https://ropensci.r-universe.dev"))
+if (!requireNamespace("rnaturalearthhires", quietly = TRUE)) {
+  renv::install("rnaturalearthhires")
+  library(rnaturalearthhires)
+}
+
 # Set a global theme with Palatino as the base font
 font_add("Palatino", regular = here::here("fonts", "texgyrepagella-regular.otf"))
 showtext_auto()
 theme_set(theme_minimal(base_family = "Palatino", base_size = 14))
+
 # ############################################################################################
-# Functions
+# Helper - Functions
 # ############################################################################################
+
+# Pick a Stadia tile (if key present) or use a quiet fallback (CartoDB)
+.stadia_tile <- function(style = "stamen_terrain_background",
+                         envkey = "STADIA_MAPS_KEY") {
+  key <- Sys.getenv(envkey, unset = "")
+  if (nzchar(key)) {
+    # Stadia hosts Stamen styles; many are .jpg tiles
+    url <- sprintf(
+      "https://tiles.stadiamaps.com/tiles/%s/{z}/{x}/{y}.jpg?api_key=%s",
+      style, key
+    )
+    list(
+      url = url,
+      attribution = paste0(
+        '&copy; <a href="https://stadiamaps.com/">Stadia Maps</a> ',
+        '&copy; <a href="https://stamen.com/">Stamen</a> ',
+        '&copy; <a href="https://www.openstreetmap.org/copyright">',
+        'OpenStreetMap</a> contributors'
+      )
+    )
+  } else {
+    list(url = NULL, attribution = NULL)
+  }
+}
+
+# ############################################################################################
+# Main Functions
+# ############################################################################################
+
+# --------------------------------------------------------------------------------------------
+# Function: table_state_metro_distances
+# @Arg : national_states_sf — sf MULTIPOLYGON of country states (any CRS)
+# @Arg : metro_area_sf      — sf (MULTI)POLYGON for the metro area (any CRS)
+# @Arg : state_name_col     — column in `national_states_sf` with state names
+#                             (default "name"; falls back to common variants)
+# @Arg : caption            — LaTeX caption (default auto: country/neutral text)
+# @Arg : save_latex_table   — write LaTeX to file? (default FALSE)
+# @Arg : out_file           — path to .tex file if saving
+# @Arg : overwrite_tex      — overwrite existing .tex? (default FALSE)
+# @Arg : quiet              — suppress info messages (default FALSE)
+# @Output : data.frame with columns: state_name, distance_km, Potential_source
+#           (If save_latex_table = TRUE, also writes a .tex file.)
+# @Purpose: Min distance (km) from each state to the metro area (0 for overlaps).
+#           Adds an indicator (≤ 20 km) as Potential_source (1/0).
+# @Notes  : Distances computed in a local UTM for accuracy; then converted to km.
+#           Uses st_make_valid() as a guard for tricky polygons.
+# @Written_on: 28/09/2025
+# @Written_by: Marcos Paulo
+# --------------------------------------------------------------------------------------------
+table_state_metro_distances <- function(
+    national_states_sf,
+    metro_area_sf,
+    state_name_col   = "name",
+    caption          = NULL,
+    save_latex_table = FALSE,
+    out_file         = NULL,
+    overwrite_tex    = FALSE,
+    quiet            = FALSE
+) {
+  # ---- 0) deps + input validation --------------------------------------------
+  if (!requireNamespace("sf", quietly = TRUE))
+    stop("Package 'sf' is required. install.packages('sf')")
+  if (!requireNamespace("dplyr", quietly = TRUE))
+    stop("Package 'dplyr' is required. install.packages('dplyr')")
+  
+  stopifnot(inherits(national_states_sf, "sf"),
+            inherits(metro_area_sf, "sf"))
+  if (nrow(national_states_sf) == 0)
+    stop("`national_states_sf` has zero rows.")
+  if (nrow(metro_area_sf) == 0)
+    stop("`metro_area_sf` has zero rows.")
+  
+  # ---- 1) pick state-name column (with fallbacks) ----------------------------
+  nm_col <- state_name_col
+  if (!nm_col %in% names(national_states_sf)) {
+    fallbacks <- c("name", "name_es", "name_en", "NAME", "STATE_NAME")
+    avail <- intersect(fallbacks, names(national_states_sf))
+    if (length(avail) > 0) {
+      nm_col <- avail[1]
+      if (!quiet) message("Using state name column: '", nm_col, "' (fallback).")
+    } else {
+      stop("Column '", state_name_col, "' not found. Available: ",
+           paste(names(national_states_sf), collapse = ", "))
+    }
+  }
+  
+  # ---- 2) make geometries valid and project to local UTM ---------------------
+  # local UTM from metro bbox center
+  utm_for <- function(sfobj) {
+    bb  <- sf::st_bbox(sf::st_transform(sfobj, 4326))
+    lon <- as.numeric((bb["xmin"] + bb["xmax"]) / 2)
+    lat <- as.numeric((bb["ymin"] + bb["ymax"]) / 2)
+    zone <- floor((lon + 180) / 6) + 1
+    if (lat >= 0) 32600 + zone else 32700 + zone
+  }
+  
+  states_ok <- sf::st_make_valid(national_states_sf)
+  metro_ok  <- sf::st_make_valid(metro_area_sf)
+  
+  crs_utm   <- utm_for(metro_ok)
+  states_utm <- sf::st_transform(states_ok, crs_utm)
+  metro_utm  <- sf::st_transform(metro_ok,  crs_utm)
+  
+  # Treat metro as one geometry
+  metro_union <- sf::st_union(metro_utm)
+  
+  # ---- 3) min distance (km) per state; 0 if intersects ----------------------
+  # st_distance returns an n×1 matrix (units in meters)
+  dist_m  <- as.numeric(sf::st_distance(states_utm, metro_union))
+  dist_km <- dist_m / 1000
+  
+  # Set overlaps to 0 (robust vs float equality)
+  overlaps <- sf::st_intersects(states_utm, metro_union, sparse = FALSE)[, 1]
+  dist_km[overlaps] <- 0
+  
+  # Build result df
+  result_df <- dplyr::tibble(
+    state_name       = as.character(states_utm[[nm_col]]),
+    distance_km      = dist_km,
+    Potential_source = as.integer(dist_km <= 20)
+  ) |>
+    dplyr::arrange(distance_km) %>% 
+    dplyr::filter(!is.na(state_name))
+  
+  # ---- 4) Optional LaTeX export (pretty-printed, booktabs) -------------------
+  # ---- 4) Optional LaTeX export (pretty-printed, booktabs) -------------------
+  if (isTRUE(save_latex_table)) {
+    if (is.null(out_file))
+      stop("Provide `out_file` when `save_latex_table = TRUE`.")
+    
+    # (a) helper: escape LaTeX special chars in text cells
+    latex_escape <- function(x) {
+      x <- gsub("\\\\", "\\\\textbackslash{}", x)   # backslash
+      x <- gsub("&",  "\\\\&",  x, fixed = TRUE)
+      x <- gsub("%",  "\\\\%",  x, fixed = TRUE)
+      x <- gsub("\\$", "\\\\$",  x)
+      x <- gsub("#",  "\\\\#",  x)
+      x <- gsub("_",  "\\\\_",  x)
+      x <- gsub("\\{", "\\\\{",  x)
+      x <- gsub("\\}", "\\\\}",  x)
+      x <- gsub("~",  "\\\\textasciitilde{}",  x, fixed = TRUE)
+      x <- gsub("\\^", "\\\\textasciicircum{}", x)
+      x
+    }
+    
+    # (b) caption (auto if missing)
+    if (is.null(caption)) {
+      caption <- paste(
+        "Administrative states and distance to metropolitan area",
+        "(distance in km; Potential source = 1 if $\\leq 20$ km)"
+      )
+    }
+    
+    # (c) format table data
+    fmt_km <- function(v) format(round(v, 2), big.mark = ",", trim = TRUE)
+    df_tbl <- result_df |>
+      dplyr::mutate(
+        State              = latex_escape(as.character(state_name)),
+        `Distance (km)`    = fmt_km(distance_km),
+        `Potential source` = ifelse(Potential_source == 1, "1", "0")
+      ) |>
+      dplyr::select(State, `Distance (km)`, `Potential source`)
+    
+    # (d) build LaTeX as a vector of lines (pretty-printed)
+    # NOTE: requires \usepackage{booktabs} in your preamble
+    lines <- c(
+      "\\begin{table}[htbp]",
+      "  \\centering",
+      paste0("  \\caption{", latex_escape(caption), "}"),
+      "  \\begin{tabular}{lrr}",
+      "    \\midrule",
+      "    \\midrule",
+      "    \\multicolumn{1}{c}{\\textbf{State}} &",
+      "    \\multicolumn{1}{c}{\\textbf{Distance to metro area}} &",
+      "    \\multicolumn{1}{c}{\\textbf{Potential pollution source?}} \\\\",
+      "    \\multicolumn{1}{c}{} &",
+      "    \\multicolumn{1}{c}{\\textbf{(km)}} &",
+      "    \\multicolumn{1}{c}{\\textbf{($\\leq 20$ km)}} \\\\",
+      "    \\midrule"
+    )
+    
+    # (e) append one line per data row (indented, readable)
+    if (nrow(df_tbl) > 0) {
+      row_lines <- apply(df_tbl, 1, function(r)
+        paste0("    ", r[1], " & ", r[2], " & ", r[3], " \\\\"))
+      lines <- c(lines, row_lines)
+    }
+    
+    # (f) close the environment
+    lines <- c(
+      lines,
+      "    \\bottomrule",
+      "    \\bottomrule",
+      "  \\end{tabular}",
+      "  \\label{table_state_metro_distances}",
+      "\\end{table}"
+    )
+    
+    # (g) write to file (preserves indentation / one row per line)
+    if (file.exists(out_file) && !overwrite_tex) {
+      stop("File exists and `overwrite_tex = FALSE`: ", out_file)
+    }
+    dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
+    writeLines(lines, out_file)
+    
+    if (!quiet) message("LaTeX table saved → ", normalizePath(out_file))
+  }
+  
+  return(result_df)
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: plot_metro_area_national_context
+# @Arg : national_states_sf — sf MULTIPOLYGON of country states (any CRS)
+# @Arg : metro_area_sf      — sf (MULTI)POLYGON for the metro area (any CRS)
+# @Arg : which_states       — chr vec; state names to highlight (must match `state_name_col`)
+# @Arg : state_name_col     — column in `national_states_sf` with state names (default "name")
+# @Arg : map_mode           — 'ggmap' (tiles) | 'sf' (no tiles). If 'ggmap' but the
+#                            Stadia Maps key is missing, it will fall back to 'sf'.
+# @Arg : basemap_zoom       — numeric zoom for ggmap::get_stadiamap (default 5)
+# @Arg : basemap_type       — one of possible options on the ggmap. ('stamen_terrain',
+# 'stamen_toner', 'stamen_toner_lite'...)
+# @Arg : city_name          — character; used in title (e.g., "Mexico City")
+# @Arg : states_border_col  — color for all state borders (default "grey20")
+# @Arg : states_border_lwd  — linewidth for borders (default 0.4)
+# @Arg : highlight_fill     — fill for highlighted states (default "#F59E0B")
+# @Arg : highlight_alpha    — alpha for highlighted states (default 0.20)
+# @Arg : highlight_border   — border color for highlighted states (default "#B45309")
+# @Arg : metro_fill         — fill for metro polygon (default "#1D4ED8")
+# @Arg : metro_alpha        — alpha for metro polygon (default 0.30)
+# @Arg : metro_border       — border color for metro polygon (default "#1E3A8A")
+# @Arg : add_graticule      — logical; add light graticule lines (default TRUE)
+# @Arg : stadiamaps_envkey  — env var name with Stadia key (default "STADIA_MAPS_KEY")
+# @Output : ggplot object
+# @Purpose: Country map with optional raster tiles, borders, highlighted states,
+#           and metro overlay. Legend shows what colors mean and metro area (km²).
+# @Notes  : Requires packages: sf, ggplot2. For 'ggmap' mode: ggmap + stadiamaps key.
+# @Written_on: 28/09/2025
+# @Written_by: Marcos Paulo
+# --------------------------------------------------------------------------------------------
+plot_metro_area_national_context <- function(
+    national_states_sf,
+    metro_area_sf,
+    which_states       = NULL,
+    state_name_col     = "name",
+    map_mode           = c("ggmap", "sf"),
+    basemap_zoom       = 5,
+    basemap_type       = "stamen_terrain_background",
+    city_name          = "the city",
+    states_border_col  = "grey20",
+    states_border_lwd  = 0.4,
+    highlight_fill     = "#F59E0B",
+    highlight_alpha    = 0.20,
+    highlight_border   = "#B45309",
+    metro_fill         = "#1D4ED8",
+    metro_alpha        = 0.30,
+    metro_border       = "#1E3A8A",
+    add_graticule      = TRUE,
+    stadiamaps_envkey  = "STADIA_MAPS_API_KEY"
+) {
+  # ---- 0) deps + theme -------------------------------------------------------
+  if (!requireNamespace("sf", quietly = TRUE)) {
+    stop("Package 'sf' is required. install.packages('sf')")
+  }
+  if (!requireNamespace("ggplot2", quietly = TRUE)) {
+    stop("Package 'ggplot2' is required. install.packages('ggplot2')")
+  }
+  ggplot2::theme_set(
+    ggplot2::theme_minimal(base_family = "Palatino", base_size = 14)
+  )
+  
+  map_mode <- match.arg(map_mode)
+  
+  # ---- 1) prepare data (CRS → 4326 for tiles; compute metro area) -----------
+  states84 <- sf::st_transform(national_states_sf, 4326)
+  metro84  <- sf::st_transform(metro_area_sf, 4326)
+  
+  # pick a UTM CRS based on bbox midpoint (no centroid needed)
+  utm_for <- function(sfobj) {
+    bb  <- sf::st_bbox(sf::st_transform(sfobj, 4326))
+    lon <- as.numeric((bb["xmin"] + bb["xmax"]) / 2)
+    lat <- as.numeric((bb["ymin"] + bb["ymax"]) / 2)
+    zone <- floor((lon + 180) / 6) + 1
+    if (lat >= 0) 32600 + zone else 32700 + zone
+  }
+
+  crs_area <- utm_for(metro84)
+  metro_u  <- sf::st_make_valid(sf::st_union(metro84))
+  metro_u  <- sf::st_transform(metro_u, crs_area)
+  area_km2 <- as.numeric(sf::st_area(metro_u)) / 1e6
+  area_lab <- round(area_km2, 2)
+  
+  # ---- 2) choose state-name col, build highlight sf --------------------------
+  nm_col <- state_name_col
+  if (!nm_col %in% names(states84)) {
+    nm_col <- if ("name_es" %in% names(states84)) "name_es" else NULL
+  }
+  if (is.null(nm_col)) {
+    stop("Could not find a state name column. Set `state_name_col`.")
+  }
+  has_hl   <- !is.null(which_states) && length(which_states) > 0
+  states_h <- if (has_hl) {
+    states84[states84[[nm_col]] %in% which_states, , drop = FALSE]
+  } else {
+    states84[0, , drop = FALSE]
+  }
+  
+  # ---- 3) legend labels + levels --------------------------------------------
+  lbl_states <- "Downloaded stations data"
+  lbl_metro  <- sprintf("Metro area (%s km²)", format(area_lab, big.mark = ","))
+  
+  # Build the levels present in the plot (states label only if there are any)
+  legend_levels <- c(if (nrow(states_h) > 0) lbl_states, lbl_metro)
+  
+  # Map the fill colors to those *labels* (names must match factor levels)
+  fill_values <- stats::setNames(
+    c(if (nrow(states_h) > 0) highlight_fill, metro_fill),
+    legend_levels
+  )
+  
+  # ---- 4) get raster tiles if requested --------------------------------------
+  basemap <- NULL
+  if (map_mode == "ggmap") {
+    if (!requireNamespace("ggmap", quietly = TRUE)) {
+      warning("ggmap not available; falling back to 'sf' mode.")
+      map_mode <- "sf"
+    } else {
+      key <- Sys.getenv(stadiamaps_envkey, unset = "")
+      if (!nzchar(key)) {
+        warning("No Stadia key in env var '", stadiamaps_envkey,
+                "'. Falling back to 'sf' mode.")
+        map_mode <- "sf"
+      } else {
+        ggmap::register_stadiamaps(key)  # safe to call multiple times
+        bb  <- sf::st_bbox(states84)
+        pad <- 0.4
+        bbox <- c(
+          left   = as.numeric(bb["xmin"]) - pad,
+          bottom = as.numeric(bb["ymin"]) - pad,
+          right  = as.numeric(bb["xmax"]) + pad,
+          top    = as.numeric(bb["ymax"]) + pad
+        )
+        basemap <- try(
+          ggmap::get_stadiamap(
+            bbox = bbox, zoom = basemap_zoom, maptype = basemap_type, crop = TRUE
+          ),
+          silent = TRUE
+        )
+        if (inherits(basemap, "try-error")) {
+          warning("Stadia request failed; using 'sf' mode.")
+          map_mode <- "sf"
+          basemap  <- NULL
+        }
+      }
+    }
+  }
+  
+  # ---- 5) draw plot ----------------------------------------------------------
+  if (map_mode == "ggmap" && !is.null(basemap)) {
+    p <- ggmap::ggmap(basemap)
+    
+    if (nrow(states_h) > 0) {
+      states_h$..layer <- factor(lbl_states, levels = legend_levels)
+      p <- p + ggplot2::geom_sf(
+        data = states_h, ggplot2::aes(fill = ..layer), inherit.aes = FALSE,
+        alpha = highlight_alpha, color = highlight_border,
+        linewidth = states_border_lwd
+      )
+    }
+    
+    p <- p + ggplot2::geom_sf(
+      data = states84, inherit.aes = FALSE,
+      fill = NA, color = states_border_col, linewidth = states_border_lwd
+    )
+    
+    metro84$..layer <- factor(lbl_metro, levels = legend_levels)
+    p <- p + ggplot2::geom_sf(
+      data = metro84, ggplot2::aes(fill = ..layer), inherit.aes = FALSE,
+      alpha = metro_alpha, color = metro_border, linewidth = 0.8
+    )
+    
+  } else {
+    p <- ggplot2::ggplot() +
+      ggplot2::geom_sf(
+        data = states84, inherit.aes = FALSE,
+        fill = "grey98", color = states_border_col,
+        linewidth = states_border_lwd
+      )
+    
+    if (nrow(states_h) > 0) {
+      states_h$..layer <- factor(lbl_states, levels = legend_levels)
+      p <- p + ggplot2::geom_sf(
+        data = states_h, ggplot2::aes(fill = ..layer), inherit.aes = FALSE,
+        alpha = highlight_alpha, color = highlight_border,
+        linewidth = states_border_lwd
+      )
+    }
+    
+    metro84$..layer <- factor(lbl_metro, levels = legend_levels)
+    p <- p + ggplot2::geom_sf(
+      data = metro84, ggplot2::aes(fill = ..layer), inherit.aes = FALSE,
+      alpha = metro_alpha, color = metro_border, linewidth = 0.8
+    )
+  }
+  
+  # ---- 6) manual legend + styling -------------------------------------------
+  p <- p +
+    ggplot2::scale_fill_manual(
+      name   = NULL,
+      values = fill_values,
+      breaks = legend_levels,
+      guide  = ggplot2::guide_legend(override.aes = list(alpha = 0.6))
+    ) +
+    ggplot2::labs(
+      title = sprintf("Metropolitan area of %s — national context", city_name),
+      subtitle = if (map_mode == "ggmap")
+        "Basemap: Stadia Maps (Stamen styles) via ggmap"
+      else
+        NULL
+    )
+  
+  if (add_graticule) {
+    p <- p + ggplot2::theme(
+      panel.grid.minor = ggplot2::element_blank(),
+      panel.grid.major = ggplot2::element_line(color = "grey80", linewidth = 0.2)
+    )
+  } else {
+    p <- p + ggplot2::theme(
+      panel.grid.minor = ggplot2::element_blank(),
+      panel.grid.major = ggplot2::element_blank()
+    )
+  }
+  
+  p <- p + ggplot2::theme(
+    axis.title      = ggplot2::element_blank(),
+    legend.position = "bottom",
+    plot.title      = ggplot2::element_text(face = "bold")
+  )
+  
+  # Print and return the plot
+  print(p)
+  invisible(p)
+}
+
+
+# ============================================================================================
+# Function: plot_metro_area_interactive
+# @Arg : metro_area_sf   — sf (MULTI)POLYGON of the metro area (any CRS)
+# @Arg : stations_sf     — sf POINTS of stations; must include columns:
+#                          • code (station_code), • station (name),
+#                          • entity (state),      • altitude_m (meters)
+# @Arg : pollution_ds    — OPTIONAL Arrow Dataset (or dplyr tbl) with columns:
+#                          station_code, year, pm10, `pm2.5`  (default NULL)
+# @Arg : legacy_df       — OPTIONAL tibble with columns station, year
+#                          (used only for color_scheme = "legacy2023")
+# @Arg : filter_type     — one of:
+#                          "none"               : no filter
+#                          "has_pm_any"         : any non-NA in pm10 OR pm2.5 (any year)
+#                          "has_pm_in_year"     : non-NA in selected pollutant & year
+#                          "has_both_in_year"   : non-NA in BOTH pm10 & pm2.5 for year
+# @Arg : filter_year     — integer year used by *_in_year filters (default 2023)
+# @Arg : pollutant       — "none", "pm25", or "pm10" (used only by has_pm_in_year)
+# @Arg : color_scheme    — "entity" or "legacy2023"
+#                          • entity     : color by stations_sf$entity
+#                          • legacy2023 : color by presence in legacy_df (year==2023)
+# @Arg : buffer_km       — numeric; radius for outside-station buffers (default 20)
+# @Arg : city_name       — character; used in the map title/control
+# @Arg : stadiamaps_key  — character; your Stadia Maps API key. If empty, function
+#                          falls back to CartoDB Positron tiles (no key needed).
+#                          A convenient pattern is to pass:
+#                          Sys.getenv("STADIA_MAPS_API_KEY", unset = "")
+# @Arg : tileset         — Stadia tileset id (e.g. "stamen_terrain_background",
+#                          "stamen_toner", "stamen_watercolor").
+# @Output : leaflet htmlwidget (interactive map)
+# @Purpose : Interactive metro map with basemap, metro polygon, station points,
+#            optional 20-km buffers for stations outside the metro polygon,
+#            optional filters from a parquet/Arrow dataset, and info-rich tooltips.
+#            The corner box shows the city + number of stations; legend labels
+#            include per-category counts.
+# @Written_on: 30/09/2025
+# @Written_by: Marcos Paulo
+# ============================================================================================
+plot_metro_area_interactive <- function(
+    metro_area_sf,
+    stations_sf,
+    pollution_ds   = NULL,
+    legacy_df      = NULL,
+    filter_type    = c("none", "has_pm_any", "has_pm_in_year", "has_both_in_year"),
+    filter_year    = 2023,
+    pollutant      = c("none", "pm25", "pm10"),
+    color_scheme   = c("entity", "legacy2023"),
+    buffer_km      = 20,
+    city_name      = "the city",
+    stadiamaps_key = Sys.getenv("STADIA_MAPS_API_KEY", unset = ""),
+    tileset        = "stamen_terrain_background"
+) {
+  # ---- 0) Dependencies & argument checks ------------------------------------
+  stopifnot(inherits(metro_area_sf, "sf"), inherits(stations_sf, "sf"))
+  for (pkg in c("leaflet", "sf", "dplyr", "rlang", "htmltools", "RColorBrewer"))
+    if (!requireNamespace(pkg, quietly = TRUE))
+      stop("Package '", pkg, "' is required. Please install it.")
+  
+  filter_type  <- match.arg(filter_type)
+  pollutant    <- match.arg(pollutant)
+  color_scheme <- match.arg(color_scheme)
+  
+  # If no Stadia key, we *warn* and later fall back to CartoDB Positron tiles
+  if (!nzchar(stadiamaps_key)) {
+    # Try alternate env var name before warning (handy if you stored a different key)
+    stadiamaps_key <- Sys.getenv("STADIA_MAPS_KEY", unset = "")
+    if (!nzchar(stadiamaps_key)) {
+      message("ℹ No Stadia key supplied; using CartoDB Positron fallback basemap.")
+    }
+  }
+  
+  # ---- 1) Make sure station columns exist & work in WGS84 for leaflet --------
+  needed_cols <- c("code", "station", "entity", "altitude_m")
+  miss <- setdiff(needed_cols, names(stations_sf))
+  if (length(miss)) stop("stations_sf is missing: ", paste(miss, collapse = ", "))
+  
+  metro_84    <- sf::st_transform(metro_area_sf, 4326)
+  stations_84 <- sf::st_transform(stations_sf, 4326)
+  
+  # ---- 2) (Optional) build a station-code filter from the Arrow dataset ------
+  # This block only runs if a filter was requested. It returns character vector
+  # 'codes_keep' with station codes that pass the filter; stations outside this
+  # set are dropped from the plot.
+  codes_keep <- NULL
+  if (filter_type != "none") {
+    if (is.null(pollution_ds))
+      stop("filter_type='", filter_type, "' requires 'pollution_ds'.")
+    
+    # Arrow/dplyr quirk: backtick the pm2.5 column name via parse_expr
+    pm25_expr <- rlang::parse_expr("`pm2.5`")
+    pm10_expr <- rlang::sym("pm10")
+    
+    if (!all(c("station_code", "year") %in% names(pollution_ds)))
+      stop("pollution_ds must contain 'station_code' and 'year'.")
+    
+    if (filter_type == "has_pm_any") {
+      codes_keep <- pollution_ds |>
+        dplyr::select(station_code, !!pm10_expr, !!pm25_expr) |>
+        dplyr::filter(!is.na(!!pm10_expr) | !is.na(!!pm25_expr)) |>
+        dplyr::distinct(station_code) |>
+        dplyr::collect() |>
+        dplyr::pull(station_code)
+      
+    } else if (filter_type == "has_pm_in_year") {
+      if (pollutant == "none")
+        stop("For 'has_pm_in_year' set pollutant = 'pm25' or 'pm10'.")
+      col_expr <- if (pollutant == "pm25") pm25_expr else pm10_expr
+      
+      codes_keep <- pollution_ds |>
+        dplyr::select(station_code, year, !!col_expr) |>
+        dplyr::filter(year == !!filter_year, !is.na(!!col_expr)) |>
+        dplyr::distinct(station_code) |>
+        dplyr::collect() |>
+        dplyr::pull(station_code)
+      
+    } else if (filter_type == "has_both_in_year") {
+      codes_keep <- pollution_ds |>
+        dplyr::select(station_code, year, !!pm10_expr, !!pm25_expr) |>
+        dplyr::filter(year == !!filter_year) |>
+        dplyr::group_by(station_code) |>
+        dplyr::summarise(
+          has10 = any(!is.na(!!pm10_expr)),
+          has25 = any(!is.na(!!pm25_expr)),
+          .groups = "drop"
+        ) |>
+        dplyr::filter(has10 & has25) |>
+        dplyr::collect() |>
+        dplyr::pull(station_code)
+    }
+  }
+  
+  if (!is.null(codes_keep)) {
+    stations_84 <- stations_84 |>
+      dplyr::filter(.data$code %in% codes_keep)
+  }
+  
+  # ---- 3) Compute 20-km buffers for stations outside the metro polygon -------
+  # We need metric units to buffer distances accurately. Choose a local UTM zone
+  # from the *bbox center* (no st_point_on_surface on lon/lat → avoids warnings).
+  utm_for <- function(sfobj_wgs84) {
+    bb  <- sf::st_bbox(sfobj_wgs84)     # xmin, ymin, xmax, ymax (lon/lat)
+    lon <- (bb["xmin"] + bb["xmax"]) / 2
+    lat <- (bb["ymin"] + bb["ymax"]) / 2
+    zone <- floor((lon + 180) / 6) + 1
+    if (is.na(zone)) zone <- 14         # safe default near central MX
+    if (lat >= 0) 32600 + zone else 32700 + zone
+  }
+  epsg_loc   <- utm_for(metro_84)
+  metro_m    <- sf::st_transform(metro_84, epsg_loc)
+  stations_m <- sf::st_transform(stations_84, epsg_loc)
+  
+  # Identify stations within the metro polygon; buffer those outside by buffer_km
+  inside_lgl <- sf::st_within(
+    stations_m, sf::st_union(metro_m), sparse = FALSE
+  )[, 1]
+  outside_m  <- stations_m[!inside_lgl, , drop = FALSE]
+  buffers_m  <- if (nrow(outside_m)) sf::st_buffer(outside_m, buffer_km * 1000) else outside_m
+  buffers_84 <- sf::st_transform(buffers_m, 4326)
+  
+  # ---- 4) Color scheme + counts to display in the legend ---------------------
+  # We build:
+  #  • 'category' vector for each station (entity or presence/absence),
+  #  • 'counts' of each category,
+  #  • a color palette over unique categories,
+  #  • and final *labels with counts* for the legend.
+  if (color_scheme == "entity") {
+    category      <- stations_84$entity
+    cats          <- sort(unique(category))
+    category      <- factor(category, levels = cats)
+    counts        <- as.integer(tabulate(factor(category, levels = cats)))
+    # Color palette: Dark2 with fallback recycle
+    palette_cols  <- grDevices::colorRampPalette(
+      RColorBrewer::brewer.pal(8, "Dark2")
+    )(length(cats))
+    pal <- leaflet::colorFactor(palette = palette_cols, domain = cats,
+                                na.color = "black")
+    legend_title  <- "Entity (state)"
+    legend_labels <- sprintf("%s (%d)", cats, counts)
+    
+  } else {
+    # legacy2023: need a set of station *codes* present in 2023 in legacy_df
+    if (is.null(legacy_df))
+      stop("color_scheme='legacy2023' requires 'legacy_df' (station, year).")
+    if (!all(c("station", "year") %in% names(legacy_df)))
+      stop("legacy_df must have columns 'station' and 'year'.")
+    
+    # Find the stations in the legacy dataframe for a given filter
+    if (filter_type != "none") {
+      if (filter_type == "has_pm_any") {
+        present_legacy <- legacy_df |>
+          dplyr::filter(!is.na(pm10) | !is.na(pm25)) |>
+          dplyr::distinct(station) |>
+          dplyr::collect() |>
+          dplyr::pull(station)
+      } else if (filter_type == "has_pm_in_year") {
+        col_expr <- if (pollutant == "pm25") "pm25" else "pm10"
+        present_legacy <- legacy_df |>
+          dplyr::filter(year == filter_year, !is.na(.data[[col_expr]])) |>
+          dplyr::distinct(station) |>
+          dplyr::pull(station)
+      } else if (filter_type == "has_both_in_year") {
+        present_legacy <- legacy_df |>
+          dplyr::filter(year == filter_year, !is.na(pm10), !is.na(pm25)) |>
+          dplyr::distinct(station) |>
+          dplyr::pull(station)
+      }} else {
+        present_legacy <- legacy_df |>
+          dplyr::distinct(station) |>
+          dplyr::pull(station)
+      }
+    
+    # Create a list of stations that exists in the legacy dataframe
+    new_in_legacy  <- stations_84 %>% 
+      dplyr::filter(entity == "CDMX") %>% # Only CDMX stations in the legacy dataframe
+      dplyr::filter(code %in% present_legacy) %>%
+      dplyr::pull(station)
+    
+    is_in  <- stations_84$station %in% new_in_legacy
+    cats   <- c("Present in replication", "Not in replication")
+    category <- ifelse(is_in, cats[1], cats[2])
+    counts   <- as.integer(tabulate(factor(category, levels = cats)))
+    category <- factor(category, levels = cats)
+    
+    legend_title  <- "Legacy presence"
+    legend_labels <- c(sprintf("%s (%d)", cats[1], counts[1]),
+                       sprintf("%s (%d)", cats[2], counts[2]))
+    
+    # names correspond to domain values
+    pal_vec <- setNames(c("#9CA3AF", "#1D4ED8"), legend_labels)
+    
+    # Make color palette
+    pal <- leaflet::colorFactor(
+      palette = pal_vec,
+      domain  = cats,
+      na.color = "#9CA3AF"
+    )
+
+  }
+  
+  # ---- 5) Labels & popups (enforce 0/NA altitude → NA in display) ------------
+  alt_disp <- stations_84$altitude_m
+  alt_disp[is.na(alt_disp) | alt_disp == 0] <- NA_real_  # display rule
+  
+  fmt_num <- function(x) ifelse(is.na(x), "NA", formatC(x, format = "f", digits = 0,
+                                                        big.mark = ","))
+  stations_84$.label <- sprintf(
+    "%s (%s)<br/>Entity: %s<br/>Altitude: %s m",
+    htmltools::htmlEscape(stations_84$station),
+    htmltools::htmlEscape(stations_84$code),
+    htmltools::htmlEscape(stations_84$entity),
+    fmt_num(alt_disp)
+  )
+  stations_84$.popup <- htmltools::HTML(stations_84$.label)
+  
+  # ---- 6) Basemap URL (Stadia if key available; else CartoDB Positron) -------
+  if (nzchar(stadiamaps_key)) {
+    tile_url <- sprintf(
+      "https://tiles.stadiamaps.com/tiles/%s/{z}/{x}/{y}.png?api_key=%s",
+      tileset, stadiamaps_key
+    )
+    tile_attr <- paste0(
+      '&copy; <a href="https://stadiamaps.com/">Stadia Maps</a>, ',
+      '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>, ',
+      'Map tiles & styles by Stamen/Stadia'
+    )
+    base_group <- "Stadia"
+  } else {
+    # Nice, light fallback that needs no key
+    tile_url <- "https://cartodb-basemaps-a.global.ssl.fastly.net/light_all/{z}/{x}/{y}.png"
+    tile_attr <- paste0(
+      '&copy; <a href="https://carto.com/attributions">CARTO</a> | ',
+      '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
+    )
+    base_group <- "CartoDB Positron"
+  }
+  
+  # ---- 7) Fit view to metro area bbox ----------------------------------------
+  bbox84 <- sf::st_bbox(metro_84)
+  view   <- unname(c(bbox84["ymin"], bbox84["xmin"], bbox84["ymax"], bbox84["xmax"]))
+  
+  # ---- 8) Build leaflet map (no 'if' mid-pipe; mutate object instead) --------
+  m <- leaflet::leaflet(options = leaflet::leafletOptions(minZoom = 3))
+  m <- m |>
+    leaflet::addTiles(urlTemplate = tile_url,
+                      attribution = tile_attr,
+                      group = base_group) |>
+    leaflet::fitBounds(lng1 = view[2], lat1 = view[1],
+                       lng2 = view[4], lat2 = view[3])
+  
+  # Metro area polygon
+  m <- m |>
+    leaflet::addPolygons(
+      data = metro_84,
+      color = "#1E3A8A", weight = 1, fillColor = "#1D4ED8",
+      fillOpacity = 0.25, group = "Metro area",
+      highlightOptions = leaflet::highlightOptions(
+        weight = 2, color = "#0F172A", bringToFront = TRUE
+      )
+    )
+  
+  # Optional 20-km buffers (only if there are stations outside the metro)
+  if (nrow(buffers_84) > 0) {
+    m <- m |>
+      leaflet::addPolygons(
+        data = buffers_84, color = "#7C3AED", weight = 1,
+        fillColor = "#7C3AED", fillOpacity = 0.15,
+        group = "20 km buffers",
+        label = "20 km buffer (outside metro)"
+      )
+  }
+  
+  # Stations as circle markers
+  m <- m |>
+    leaflet::addCircleMarkers(
+      data = stations_84,
+      radius = 6,
+      stroke = TRUE, color = "#111827", weight = 1,
+      fillColor = pal(category), fillOpacity = 0.9,
+      label = lapply(stations_84$.label, htmltools::HTML),
+      popup = stations_84$.popup,
+      group = "Stations"
+    )
+  
+  # ---- 9) Legend with counts (labels show “… (n)”) ---------------------------
+  # We pass both 'pal' and fixed 'labels' so the legend shows counts. We also
+  # ensure the legend uses the same category order we computed above.
+  m <- m |>
+    leaflet::addLegend(
+      position = "bottomright",
+      colors   = pal(cats),
+      labels   = legend_labels,
+      values   = category,
+      na.label = "Not Available",
+      opacity  = 0.9,
+      title    = legend_title
+    )
+  
+  # ---- 10) Layers control -----------------------------------------------------
+  overlay_groups <- c("Metro area", "Stations")
+  if (nrow(buffers_84) > 0) overlay_groups <- c(overlay_groups, "20 km buffers")
+  
+  m <- m |>
+    leaflet::addLayersControl(
+      baseGroups    = c(base_group),
+      overlayGroups = overlay_groups,
+      options       = leaflet::layersControlOptions(collapsed = FALSE)
+    )
+  
+  # ---- 11) Corner box: city name + TOTAL station count -----------------------
+  total_stations <- nrow(stations_84)
+  box_html <- sprintf(
+    '<div style="background:rgba(255,255,255,.85);padding:.45em .65em;
+                border-radius:6px; line-height:1.15;">
+       <b>%s</b><br/>
+       <span style="font-size:90%%;">
+         Number of stations shown: <b>%s</b><br/>
+         Hover for details • Click for popup
+       </span>
+     </div>',
+    htmltools::htmlEscape(sprintf("Metro area of %s", city_name)),
+    formatC(total_stations, format = "d", big.mark = ",")
+  )
+  
+  m <- m |>
+    leaflet::addControl(html = box_html, position = "topleft")
+  
+  # ---- 12) Return htmlwidget --------------------------------------------------
+  m
+}
+
 
 # --------------------------------------------------------------------------------------------
 # Function: plot_merra2_grid_city
