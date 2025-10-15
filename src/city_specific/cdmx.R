@@ -25,6 +25,8 @@ cdmx_cfg <- list(
                        15059, 15060, 15069, 15070, 15075, 15081, 15083, 15084, 15089, 15091,
                        15092, 15093, 15095, 15099, 15100, 15103, 15104, 15108, 15109, 15120, 
                        15121, 15122, 15125),
+  which_states     = c("Guerrero", "Hidalgo", "México", "Michoacán", "Morelos", "Querétaro",
+                       "Puebla", "Tlaxcala"),
   base_url_shp     = "https://www.inegi.org.mx/app/biblioteca/ficha.html?upc=794551132173",
   base_url_sinaica = "https://sinaica.inecc.gob.mx/scica/",
   base_url_census  = "https://www.inegi.org.mx/programas/ccpv/2020/#microdatos",
@@ -2029,7 +2031,7 @@ cdmx_scrape_states_merge <- function(
         lat        = coords[["lat"]],
         altitude_m = alt_m,
         notes      = NA_character_,
-        id_station = as.double(est_id),
+        id_station = as.character(est_id),
         source_url = url
       )
       
@@ -2713,34 +2715,50 @@ cdmx_download_census_data <- function(
 # ============================================================================================
 
 # ============================================================================================
-# Engine helper: MEMORY (RAM-heavy; fast on big machines)
-# Steps:
-#   1) Read Latin-1 CSVs → long
-#   2) Parse UTC datetime; map parámetros
-#   3) Aggregate and pivot to wide
-#   4) Build hourly skeleton; left join
-#   5) Relabel tz; optional write; optional cleanup
-# Returns: tibble OR Arrow Dataset if Parquet was written
+# Helper: MEMORY engine (RAM-path; now writes per-year partitioned Parquet)
+# --------------------------------------------------------------------------------------------
+# @Arg  : csvs                 — character vector of CSV paths (already discovered)
+# @Arg  : years                — integer vector of years to keep
+# @Arg  : tz                   — Olson tz for final relabel (clock preserved)
+# @Arg  : out_dir, out_name    — output location; Parquet goes to:
+#                                 file.path(out_dir, paste0(out_name, "_dataset"))
+#                                 with partition "year=YYYY/"
+# @Arg  : write_parquet        — logical; write partitioned dataset if TRUE
+# @Arg  : write_rds, write_csv — optional single-file artifacts (full table)
+# @Arg  : cleanup              — logical; remove source CSVs after success
+# @Arg  : verbose              — logical; print progress
+# @Arg  : stations_keep_codes  — NULL or vector of station codes to keep
+# @Return: If write_parquet=TRUE → Arrow Dataset handle to the dataset folder.
+#          Else → tibble (in-memory).
+# @Steps : (0) helpers, (1) read/longify (early station filter),
+#          (2) filter years + map parámetros, (3) aggregate + pivot wide,
+#          (4) canonical station_code, (5) hourly skeleton,
+#          (6) join skeleton, (7) tz relabel,
+#          (8) write artifacts (partitioned Parquet, optional RDS/CSV),
+#          (9) optional cleanup, (10) return result.
 # ============================================================================================
 .cdmx_merge_memory_engine <- function(
     csvs, years, tz, out_dir, out_name,
-    write_parquet, write_rds, write_csv, cleanup, verbose
+    write_parquet, write_rds, write_csv,
+    cleanup, verbose, stations_keep_codes = NULL
 ) {
   if (isTRUE(verbose)) message("Engine: memory (RAM intensive).")
   
-  # (0) Tiny helpers
-  # Null coalesce
+  # ---- (0) tiny helpers ------------------------------------------------------
   `%||%` <- function(a, b) if (!is.null(a)) a else b
-  
-  # -- Trim & normalize non-breaking spaces -------------------------------------
-  .cdmx_tnb <- function(x) {
-    x <- gsub("\u00A0", " ", x, fixed = TRUE)
-    trimws(x)
+  .tnb <- function(x) trimws(gsub("\u00A0", " ", x, fixed = TRUE))
+  .guess_from_file <- function(base) {
+    b <- tolower(base)
+    if (grepl("pm10", b)) return("PM10")
+    if (grepl("pm2_5|pm2\\.5", b)) return("PM2.5")
+    if (grepl("dioxido_de_nitrogeno|\\bno2\\b", b)) return("NO2")
+    if (grepl("dioxido_de_azufre|\\bso2\\b", b)) return("SO2")
+    if (grepl("ozono|\\bo3\\b", b)) return("O3")
+    if (grepl("monoxido.*carbono|\\bco\\b", b)) return("CO")
+    NA_character_
   }
-  
-  # -- Map Spanish/labelled parámetros → canonical variable names ----------------
-  .cdmx_map_param <- function(p) {
-    k <- toupper(.cdmx_tnb(p))
+  .map_param <- function(p) {
+    k <- toupper(.tnb(p))
     dplyr::case_when(
       k %in% c("PM10","PARTICULAS MENORES A 10 MICRAS") ~ "pm10",
       k %in% c("PM2.5","PM2,5","PARTICULAS MENORES A 2.5") ~ "pm2.5",
@@ -2761,39 +2779,22 @@ cdmx_download_census_data <- function(
       TRUE ~ NA_character_
     )
   }
-  
-  # -- Mean that preserves NA for all-missing -----------------------------------
-  .cdmx_mean_na <- function(x) {
+  .mean_na <- function(x) {
     if (all(is.na(x))) return(NA_real_)
     suppressWarnings(mean(x, na.rm = TRUE))
   }
   
-  # -- Guess parámetro from filename ---------------------------------------------
-  .cdmx_guess_from_file <- function(base) {
-    b <- tolower(base)
-    if (grepl("pm10", b)) return("PM10")
-    if (grepl("pm2_5|pm2\\.5", b)) return("PM2.5")
-    if (grepl("dioxido_de_nitrogeno|\\bno2\\b", b)) return("NO2")
-    if (grepl("dioxido_de_azufre|\\bso2\\b", b)) return("SO2")
-    if (grepl("ozono|\\bo3\\b", b)) return("O3")
-    if (grepl("monoxido.*carbono|\\bco\\b", b)) return("CO")
-    NA_character_
-  }
-  # -- DuckDB safe quoting -------------------------------------------------------
-  .cdmx_dq <- function(id) sprintf('"%s"', gsub('"', '""', id))
-  .cdmx_ds <- function(s)  sprintf("'%s'", gsub("'", "''", s))
-  
-  # ---- step 1: read all CSVs, normalize headers, longify --------------------
+  # ---- (1) read/longify with early station filter ---------------------------
   warn_log <- list()
   read_one <- function(path) {
     if (isTRUE(verbose)) message("… ", basename(path))
+    
     wtxt <- character()
     df <- withCallingHandlers(
       readr::read_csv(
-        file = path,
-        locale = readr::locale(
-          encoding = "Latin1", decimal_mark = ".", grouping_mark = ","
-        ),
+        file   = path,
+        locale = readr::locale(encoding = "Latin1",
+                               decimal_mark = ".", grouping_mark = ","),
         show_col_types = FALSE, progress = FALSE
       ),
       warning = function(w) {
@@ -2806,22 +2807,18 @@ cdmx_download_census_data <- function(
         file = basename(path), warnings = unique(wtxt)
       )
     }
-    
     if (!ncol(df)) return(NULL)
-    names(df) <- .cdmx_tnb(names(df))
+    names(df) <- .tnb(names(df))
     
-    # convert literal placeholders to NA (keep tiny values intact)
+    # "- - - -" placeholders → NA (strings only)
     df <- dplyr::mutate(
       df,
-      dplyr::across(
-        where(is.character),
-        ~ dplyr::na_if(.x, "- - - -")
-      )
+      dplyr::across(where(is.character), ~ dplyr::na_if(.x, "- - - -"))
     )
     
     pcol <- intersect(c("Parámetro","Parametro","parametro"), names(df))
     if (!length(pcol)) {
-      df$parametro <- .cdmx_guess_from_file(basename(path))
+      df$parametro <- .guess_from_file(basename(path))
       pcol <- "parametro"
     }
     if (!all(c("Fecha","Hora") %in% names(df))) return(NULL)
@@ -2833,7 +2830,7 @@ cdmx_download_census_data <- function(
     if (!length(st_cols)) return(NULL)
     
     keep <- intersect(c(pcol[1], "Fecha","Hora","Unidad", st_cols), names(df))
-    df <- df[, keep, drop = FALSE]
+    df   <- df[, keep, drop = FALSE]
     
     long <- tidyr::pivot_longer(
       df,
@@ -2847,8 +2844,18 @@ cdmx_download_census_data <- function(
       function(x) c(x[1] %||% NA_character_, x[2] %||% NA_character_),
       character(2)
     ))
-    station_code <- .cdmx_tnb(sp[, 1])
-    station_name <- .cdmx_tnb(sp[, 2])
+    station_code <- .tnb(sp[, 1])
+    station_name <- .tnb(sp[, 2])
+    
+    # Early filter by station codes (if provided)
+    if (!is.null(stations_keep_codes)) {
+      keep_set <- unique(stats::na.omit(stations_keep_codes))
+      ok <- !is.na(station_code) & station_code %in% keep_set
+      if (!any(ok)) return(NULL)
+      long <- long[ok, , drop = FALSE]
+      station_code <- station_code[ok]
+      station_name <- station_name[ok]
+    }
     
     long$value <- suppressWarnings(
       readr::parse_number(
@@ -2866,12 +2873,12 @@ cdmx_download_census_data <- function(
     dt_utc <- as.POSIXct(dt_chr, tz = "UTC")
     
     tibble::tibble(
-      datetime = dt_utc,
-      station = station_name,
+      datetime     = dt_utc,
+      station      = station_name,
       station_code = station_code,
-      year = as.integer(format(dt_utc, "%Y", tz = "UTC")),
-      parametro = as.character(long[[pcol[1]]]),
-      value = long$value
+      year         = as.integer(format(dt_utc, "%Y", tz = "UTC")),
+      parametro    = as.character(long[[pcol[1]]]),
+      value        = long$value
     )
   }
   
@@ -2880,24 +2887,25 @@ cdmx_download_census_data <- function(
   if (!length(pieces)) stop("No usable rows after parsing.")
   long_all <- dplyr::bind_rows(pieces)
   
-  # ---- step 2: filter years and map parámetros ------------------------------
+  # ---- (2) keep years + map parámetros --------------------------------------
   long_all <- long_all[long_all$year %in% years, , drop = FALSE]
-  long_all$.__var <- .cdmx_map_param(long_all$parametro)
+  long_all$.__var <- .map_param(long_all$parametro)
   long_all <- long_all[!is.na(long_all$.__var), , drop = FALSE]
   
-  # ---- step 3: aggregate duplicates, pivot to wide --------------------------
+  # ---- (3) aggregate duplicates; pivot to wide ------------------------------
   aggr <- long_all |>
     dplyr::group_by(datetime, station, station_code, year, .__var) |>
-    dplyr::summarise(value = .cdmx_mean_na(value), .groups = "drop")
+    dplyr::summarise(value = .mean_na(value), .groups = "drop")
   
   wide <- tidyr::pivot_wider(
     aggr,
     id_cols     = c(datetime, station, station_code, year),
     names_from  = .__var,
     values_from = value,
-    values_fn   = .cdmx_mean_na
+    values_fn   = .mean_na
   )
   
+  # Remove NaN (keep POSIXct intact)
   wide <- dplyr::mutate(
     wide,
     dplyr::across(
@@ -2906,7 +2914,7 @@ cdmx_download_census_data <- function(
     )
   )
   
-  # ---- step 4: hourly skeleton per station × year ---------------------------
+  # ---- (4) canonical station_code per station -------------------------------
   st_ref <- wide |>
     dplyr::filter(!is.na(station_code), nzchar(station_code)) |>
     dplyr::count(station, station_code, sort = TRUE) |>
@@ -2915,8 +2923,9 @@ cdmx_download_census_data <- function(
     dplyr::ungroup() |>
     dplyr::select(station, station_code)
   
-  t0 <- as.POSIXct(sprintf("%04d-01-01 00:00:00", min(years)), tz = "UTC")
-  t1 <- as.POSIXct(sprintf("%04d-12-31 23:00:00", max(years)), tz = "UTC")
+  # ---- (5) hourly skeleton across requested span ----------------------------
+  t0  <- as.POSIXct(sprintf("%04d-01-01 00:00:00", min(years)), tz = "UTC")
+  t1  <- as.POSIXct(sprintf("%04d-12-31 23:00:00", max(years)), tz = "UTC")
   hrs <- seq(t0, t1, by = "1 hour")
   
   stations <- sort(unique(wide$station))
@@ -2925,13 +2934,14 @@ cdmx_download_census_data <- function(
   skel <- tidyr::expand_grid(station = stations, datetime = hrs)
   skel$year <- as.integer(format(skel$datetime, "%Y", tz = "UTC"))
   
+  # ---- (6) join skeleton ← st_ref ← wide ------------------------------------
   wide_full <- skel |>
     dplyr::left_join(st_ref, by = "station") |>
     dplyr::left_join(
       wide, by = c("station","station_code","datetime","year")
     )
   
-  # ---- step 5: tz relabel; outputs; cleanup ---------------------------------
+  # ---- (7) tz relabel (preserve clock times) --------------------------------
   if (!identical(tz, "UTC")) {
     if (!requireNamespace("lubridate", quietly = TRUE)) {
       stop("Package 'lubridate' is required for tz relabeling.")
@@ -2939,21 +2949,52 @@ cdmx_download_census_data <- function(
     wide_full$datetime <- lubridate::force_tz(wide_full$datetime, tz)
   }
   
-  if (!missing(out_dir) && !missing(out_name) && isTRUE(write_parquet)) {
+  # ---- (8) write artifacts ---------------------------------------------------
+  # 8a) partitioned Parquet dataset when requested
+  if (isTRUE(write_parquet) && !missing(out_dir) && !missing(out_name)) {
     if (!requireNamespace("arrow", quietly = TRUE)) {
       stop("Package 'arrow' is required for Parquet output.")
     }
-    dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
-    pq <- file.path(out_dir, paste0(out_name, ".parquet"))
-    arrow::write_parquet(wide_full, pq, compression = "zstd")
-    if (isTRUE(verbose)) message("🧱 Wrote Parquet → ", pq)
-    ds <- arrow::open_dataset(pq)
+    base <- file.path(out_dir, paste0(out_name, "_dataset"))
+    dir.create(base, recursive = TRUE, showWarnings = FALSE)
+    
+    # Write per-year dataset (overwrite if exists)
+    arrow::write_dataset(
+      dataset                 = wide_full,
+      path                    = base,
+      format                  = "parquet",
+      partitioning            = "year",
+      existing_data_behavior  = "overwrite",
+      compression             = "zstd"
+    )
+    if (isTRUE(verbose)) {
+      n_pq <- length(list.files(base, pattern = "\\.parquet$", recursive = TRUE))
+      message("🧱 Wrote partitioned dataset → ", base,
+              " (files: ", n_pq, ")")
+    }
+    ds <- arrow::open_dataset(base)
+    
+    # Optional extras (single-file RDS/CSV of the full table)
+    if (isTRUE(write_rds)) {
+      rds <- file.path(out_dir, paste0(out_name, ".rds"))
+      saveRDS(wide_full, rds, compress = "xz")
+      if (isTRUE(verbose)) message("💾 Wrote RDS → ", rds)
+    }
+    if (isTRUE(write_csv)) {
+      csv <- file.path(out_dir, paste0(out_name, ".csv"))
+      readr::write_csv(wide_full, csv)
+      if (isTRUE(verbose)) message("📝 Wrote CSV → ", csv)
+    }
+    
+    # Optional cleanup of raw CSVs
     if (isTRUE(cleanup)) {
+      if (isTRUE(verbose)) message("🧹 Removing source CSVs…")
       invisible(lapply(csvs, function(f) try(unlink(f), TRUE)))
     }
     return(ds)
   }
   
+  # 8b) if not writing Parquet, still allow RDS/CSV
   if (isTRUE(write_rds) && !missing(out_dir) && !missing(out_name)) {
     rds <- file.path(out_dir, paste0(out_name, ".rds"))
     saveRDS(wide_full, rds, compress = "xz")
@@ -2965,31 +3006,31 @@ cdmx_download_census_data <- function(
     if (isTRUE(verbose)) message("📝 Wrote CSV → ", csv)
   }
   
+  # ---- (9) optional cleanup of CSVs -----------------------------------------
   if (isTRUE(cleanup)) {
     if (isTRUE(verbose)) message("🧹 Removing source CSVs…")
     invisible(lapply(csvs, function(f) try(unlink(f), TRUE)))
   }
   
-  return(wide_full)
+  # ---- (10) return in-memory tibble -----------------------------------------
+  wide_full
 }
 
 
 # ============================================================================================
-# Engine helper: DUCKDB (disk-backed; UNPIVOT; partitioned Parquet dataset)
-# Steps:
-#   1) Connect + PRAGMAs + temp dir
-#   2) Create staging table
-#   3) For each CSV: detect encoding; UNPIVOT; insert filtered years
-#   4) Map parámetros; aggregate; station reference
-#   5) Build hourly skeleton; stream pivot → Parquet (partitioned by year)
-#   6) Cleanup temp DB and temp dir; optional CSV cleanup
-# Returns: Arrow Dataset handle (dataset folder)
+# Helper: DUCKDB engine (disk-backed; UNPIVOT; partitioned Parquet dataset)
+# --------------------------------------------------------------------------------------------
+# Notes:
+#  • Writes to "<out_name>_dataset/year=YYYY/*.parquet" (SNAPPY by default).
+#  • Applies stations_keep_codes inside the UNPIVOT INSERT (early prune).
+#  • Copies one year at a time to reduce peak memory and avoid long COPY stalls.
 # ============================================================================================
 .cdmx_merge_duckdb_engine <- function(
-    csvs, years, tz, out_dir, out_name, cleanup, run_parallel, verbose
+    csvs, years, tz, out_dir, out_name, cleanup, run_parallel,
+    verbose, stations_keep_codes = NULL
 ) {
-  if (isTRUE(verbose)) message("Engine: duckdb (disk-backed).")
-  
+  if (isTRUE(verbose))
+    message("Engine: duckdb (disk-backed, readr pre-clean).")
   if (!requireNamespace("duckdb", quietly = TRUE) ||
       !requireNamespace("DBI", quietly = TRUE)) {
     stop("Packages 'duckdb' and 'DBI' are required for duckdb engine.")
@@ -3003,48 +3044,18 @@ cdmx_download_census_data <- function(
   if (!requireNamespace("arrow", quietly = TRUE)) {
     stop("Package 'arrow' is required to open the dataset.")
   }
-  # (0) Tiny helpers
-  # Null coalesce
+  if (!requireNamespace("readr", quietly = TRUE)) {
+    stop("Package 'readr' is required for pre-cleaning CSVs.")
+  }
+  if (!requireNamespace("dplyr", quietly = TRUE)) {
+    stop("Package 'dplyr' is required for pre-cleaning CSVs.")
+  }
+  
   `%||%` <- function(a, b) if (!is.null(a)) a else b
-  
-  # -- Trim & normalize non-breaking spaces -------------------------------------
-  .cdmx_tnb <- function(x) {
-    x <- gsub("\u00A0", " ", x, fixed = TRUE)
-    trimws(x)
-  }
-  
-  # -- Map Spanish/labelled parámetros → canonical variable names ----------------
-  .cdmx_map_param <- function(p) {
-    k <- toupper(.cdmx_tnb(p))
-    dplyr::case_when(
-      k %in% c("PM10","PARTICULAS MENORES A 10 MICRAS") ~ "pm10",
-      k %in% c("PM2.5","PM2,5","PARTICULAS MENORES A 2.5") ~ "pm2.5",
-      k %in% c("OZONO","O3") ~ "ozone",
-      k %in% c("DIOXIDO DE NITROGENO","NO2") ~ "no2",
-      k %in% c("OXIDOS DE NITROGENO","NOX") ~ "nox",
-      k %in% c("MONOXIDO DE NITROGENO","NO") ~ "no",
-      k %in% c("MONOXIDO DE CARBONO","CO") ~ "co",
-      k %in% c("DIOXIDO DE AZUFRE","SO2") ~ "so2",
-      k %in% c("DIOXIDO DE CARBONO","CO2") ~ "co2",
-      k %in% c("TEMPERATURA","TEMP") ~ "temperatura",
-      k %in% c("HUMEDAD RELATIVA","RH") ~ "rh",
-      k %in% c("VELOCIDAD DEL VIENTO","VEL VIENTO") ~ "vel viento",
-      k %in% c("DIRECCION DEL VIENTO","DIR VIENTO") ~ "dir viento",
-      k %in% c("PRESION BAROMETRICA","PRESION BARO") ~ "presion baro",
-      k %in% c("PRECIPITACION","LLUVIA") ~ "precipitacion",
-      k %in% c("RADIACION","RADIACION SOLAR") ~ "radiation",
-      TRUE ~ NA_character_
-    )
-  }
-  
-  # -- Mean that preserves NA for all-missing -----------------------------------
-  .cdmx_mean_na <- function(x) {
-    if (all(is.na(x))) return(NA_real_)
-    suppressWarnings(mean(x, na.rm = TRUE))
-  }
-  
-  # -- Guess parámetro from filename ---------------------------------------------
-  .cdmx_guess_from_file <- function(base) {
+  .tnb <- function(x) trimws(gsub("\u00A0", " ", x, fixed = TRUE))
+  .dq  <- function(id) sprintf('"%s"', gsub('"', '""', id))
+  .ds  <- function(s)  sprintf("'%s'", gsub("'", "''", s))
+  .guess_from_file <- function(base) {
     b <- tolower(base)
     if (grepl("pm10", b)) return("PM10")
     if (grepl("pm2_5|pm2\\.5", b)) return("PM2.5")
@@ -3054,9 +3065,48 @@ cdmx_download_census_data <- function(
     if (grepl("monoxido.*carbono|\\bco\\b", b)) return("CO")
     NA_character_
   }
-  # -- DuckDB safe quoting -------------------------------------------------------
-  .cdmx_dq <- function(id) sprintf('"%s"', gsub('"', '""', id))
-  .cdmx_ds <- function(s)  sprintf("'%s'", gsub("'", "''", s))
+  
+  # --- (0) pre-clean one CSV → temp UTF-8 file + header info
+  .preclean_to_utf8 <- function(path) {
+    wtxt <- character()
+    df <- withCallingHandlers(
+      readr::read_csv(
+        file   = path,
+        locale = readr::locale(encoding = "Latin1",
+                               decimal_mark = ".", grouping_mark = ","),
+        show_col_types = FALSE, progress = FALSE
+      ),
+      warning = function(w) {
+        wtxt <<- c(wtxt, conditionMessage(w))
+        invokeRestart("muffleWarning")
+      }
+    )
+    if (!ncol(df)) return(NULL)
+    
+    # Normalize header & cells; convert dash/space/NBSP soup to NA
+    names(df) <- .tnb(names(df))
+    nb <- "\u00A0"
+    is_chr <- vapply(df, is.character, logical(1))
+    if (any(is_chr)) {
+      df[is_chr] <- lapply(df[is_chr], function(x) {
+        x <- gsub(nb, " ", x, fixed = TRUE)
+        x <- trimws(x)
+        x[x == ""] <- NA_character_
+        # Any combo of hyphens/spaces/NBSP only → NA
+        x[grepl("^[-\\s\u00A0]+$", x)] <- NA_character_
+        x
+      })
+    }
+    
+    # Write a temporary UTF-8 CSV (readr writes NA as empty)
+    tmp <- tempfile("cdmx_utf8_", fileext = ".csv")
+    readr::write_csv(df, tmp, na = "")
+    list(
+      path = tmp,
+      hdr_raw = names(df),   # post-clean raw names
+      warn = unique(wtxt)
+    )
+  }
   
   # ---- step 1: connect + PRAGMAs + temp dir ---------------------------------
   dbdir <- tempfile("cdmx_duck_")
@@ -3066,15 +3116,34 @@ cdmx_download_census_data <- function(
     try(unlink(dbdir, recursive = TRUE, force = TRUE), silent = TRUE)
   }, add = TRUE)
   
-  thr <- if (run_parallel) max(1L, min(parallel::detectCores(), 8L)) else 1L
+  thr <- if (run_parallel) max(1L, (parallel::detectCores() - 2)) else 1L
   DBI::dbExecute(con, sprintf("PRAGMA threads=%d;", thr))
   DBI::dbExecute(con, "PRAGMA memory_limit='6GB';")
   
   tdir <- file.path(tempdir(), sprintf("_duck_tmp_%s", Sys.getpid()))
   dir.create(tdir, recursive = TRUE, showWarnings = FALSE)
-  DBI::dbExecute(con, sprintf("PRAGMA temp_directory=%s;", .cdmx_ds(tdir)))
+  DBI::dbExecute(con, sprintf("PRAGMA temp_directory=%s;", .ds(tdir)))
   on.exit(try(unlink(tdir, recursive = TRUE, force = TRUE), silent = TRUE),
           add = TRUE)
+  
+  # ---- step 1b: detect TZ support (AT TIME ZONE) -----------------------------
+  tz_sql <- .ds(tz)
+  tz_supported <- tryCatch({
+    DBI::dbGetQuery(
+      con,
+      paste0(
+        "SELECT (TIMESTAMP '2000-01-01 00:00:00' AT TIME ZONE ", tz_sql,
+        ") IS NOT NULL AS ok;"
+      )
+    )$ok[[1]] %||% FALSE
+  }, error = function(e) FALSE)
+  
+  if (isTRUE(verbose)) {
+    msg <- if (tz_supported)
+      sprintf("TZ conversion enabled via AT TIME ZONE (%s).", tz) else
+        "TZ conversion not available; storing naive local timestamps."
+    message(msg)
+  }
   
   # ---- step 2: staging table -------------------------------------------------
   DBI::dbExecute(
@@ -3086,108 +3155,174 @@ cdmx_download_census_data <- function(
     )
   )
   
-  # ---- step 3: insert per CSV via UNPIVOT (encoding aware) -------------------
+  # ---- step 3: insert per-CSV via UNPIVOT (pre-cleaned UTF-8) ---------------
   ylist <- paste(sort(unique(years)), collapse = ",")
   
-  insert_one <- function(path) {
-    # 3.0 detect header with encoding fallback
-    encs <- c("latin-1","utf-8")
-    used <- NULL
-    hdr  <- NULL
-    for (ec in encs) {
-      q <- paste0(
-        "SELECT * FROM read_csv_auto(",
-        .cdmx_ds(path),
-        ", HEADER=TRUE, ALL_VARCHAR=TRUE, SAMPLE_SIZE=20000, ",
-        "ENCODING=", .cdmx_ds(ec), ", IGNORE_ERRORS=FALSE) LIMIT 0;"
+  keep_sql <- ""
+  if (!is.null(stations_keep_codes)) {
+    ks <- unique(stats::na.omit(stations_keep_codes))
+    ks <- ks[nzchar(ks)]
+    if (length(ks)) {
+      inlist <- paste(vapply(ks, .ds, character(1)), collapse = ",")
+      keep_sql <- paste0(
+        " AND NULLIF(REGEXP_EXTRACT(st, '^(.*?)\\s*:\\s*', 1), '') IN (",
+        inlist, ")"
       )
-      hdr <- tryCatch(DBI::dbGetQuery(con, q), error = function(e) NULL)
-      if (!is.null(hdr) && ncol(hdr)) { used <- ec; break }
     }
-    if (is.null(hdr) || !ncol(hdr)) return(invisible(0L))
+  }
+  
+  insert_one <- function(path) {
+    # 0) pre-clean to UTF-8 temp file
+    pc <- .preclean_to_utf8(path)
+    if (is.null(pc)) return(0L)
+    tmp <- pc$path
+    cr  <- pc$hdr_raw
+    ct  <- .tnb(cr)
     
-    # 3.1 identify columns (keep raw names for quoting)
-    cr <- colnames(hdr)
-    ct <- .cdmx_tnb(cr)
+    # 1) find core columns
     f_i <- which(ct == "Fecha")[1]
     h_i <- which(ct == "Hora")[1]
-    if (is.na(f_i) || is.na(h_i)) return(invisible(0L))
+    if (is.na(f_i) || is.na(h_i)) return(0L)
+    fecha_q <- .dq(cr[f_i])
+    hora_q  <- .dq(cr[h_i])
     
-    fecha_q <- .cdmx_dq(cr[f_i])
-    hora_q  <- .cdmx_dq(cr[h_i])
-    
+    # parámetro source (existing column or filename guess) → param_src
     p_i <- which(ct %in% c("Parámetro","Parametro","parametro"))[1]
     if (!is.na(p_i)) {
-      param_expr <- .cdmx_dq(cr[p_i])
+      param_sel <- paste0(.dq(cr[p_i]), " AS param_src")
     } else {
-      g <- .cdmx_guess_from_file(basename(path))
-      param_expr <- if (is.na(g)) "NULL" else .cdmx_ds(g)
+      g <- .guess_from_file(basename(path))
+      param_sel <- if (is.na(g)) "NULL AS param_src"
+      else paste0(.ds(g), " AS param_src")
     }
     
-    patt <- "^[^:]+\\s*:\\s*.+$"
-    meta <- ct %in% c("Fecha","Hora","Unidad",
-                      "Parámetro","Parametro","parametro")
-    st_cols <- cr[grepl(patt, ct, perl = TRUE) & !meta]
-    if (!length(st_cols)) return(invisible(0L))
+    # station columns: anything "CODE : Name", excluding metadata
+    meta <- ct %in% c("Fecha","Hora","Unidad","Parámetro",
+                      "Parametro","parametro")
+    st_cols <- cr[grepl("^[^:]+\\s*:\\s*.+$", ct, perl = TRUE) & !meta]
+    if (!length(st_cols)) return(0L)
+    unp_in <- paste(vapply(st_cols, .dq, character(1)), collapse = ",")
     
-    unp <- paste(vapply(st_cols, .cdmx_dq, character(1)), collapse = ",")
+    # Optional prebuilt station filter
+    keep_sql <- ""
+    if (!is.null(stations_keep_codes)) {
+      ks <- unique(stats::na.omit(stations_keep_codes))
+      ks <- ks[nzchar(ks)]
+      if (length(ks)) {
+        inlist <- paste(vapply(ks, .ds, character(1)), collapse = ",")
+        keep_sql <- paste0(
+          " AND NULLIF(REGEXP_EXTRACT(st, '^(.*?)\\s*:\\s*', 1), '') ",
+          "IN (", inlist, ")"
+        )
+      }
+    }
     
-    # 3.2 insert long rows via UNPIVOT; robust date/hour parse
-    sql <- paste0(
-      "INSERT INTO staging_long ",
-      "SELECT ",
-      "CAST(d AS TIMESTAMP) + (h * INTERVAL 1 HOUR) AS datetime, ",
-      "COALESCE(",
-      "NULLIF(REGEXP_EXTRACT(st, '^.*?\\s*:\\s*(.*)$', 1), ''), st) AS station, ",
-      "NULLIF(REGEXP_EXTRACT(st, '^(.*?)\\s*:\\s*', 1), '') AS station_code, ",
-      "EXTRACT(YEAR FROM (CAST(d AS TIMESTAMP) + (h * INTERVAL 1 HOUR))) AS year, ",
-      param_expr, " AS parametro, ",
-      "TRY_CAST(REPLACE(",
-      "CASE WHEN TRIM(val) IN ('- - - -',' - - - -') THEN NULL ELSE val END, ",
-      "',' , '') AS DOUBLE) AS value ",
-      "FROM (SELECT ",
-      "TRIM(", fecha_q, ") AS d_raw, ",
-      "TRIM(", hora_q,  ") AS h_str, ",
-      "COALESCE(",
-      "STRPTIME(d_raw,'%Y-%m-%d'), ",
-      "STRPTIME(SPLIT_PART(d_raw,' ',1),'%Y-%m-%d'), ",
-      "STRPTIME(d_raw,'%d/%m/%Y'), ",
-      "STRPTIME(SPLIT_PART(d_raw,' ',1),'%d/%m/%Y'), ",
-      "STRPTIME(d_raw,'%d-%m-%Y'), ",
-      "STRPTIME(SPLIT_PART(d_raw,' ',1),'%d-%m-%Y'), ",
-      "STRPTIME(d_raw,'%m/%d/%Y'), ",
-      "STRPTIME(SPLIT_PART(d_raw,' ',1),'%m/%d/%Y'), ",
-      "STRPTIME(d_raw,'%m-%d-%Y'), ",
-      "STRPTIME(SPLIT_PART(d_raw,' ',1),'%m-%d-%Y') ",
-      ") AS d, ",
-      "GREATEST(0, LEAST(23, TRY_CAST(SUBSTR(h_str,1,2) AS INTEGER))) AS h, ",
-      "* FROM read_csv_auto(",
-      .cdmx_ds(path),
-      ", HEADER=TRUE, ALL_VARCHAR=TRUE, SAMPLE_SIZE=200000, ",
-      "ENCODING=", .cdmx_ds(used), ", IGNORE_ERRORS=TRUE) ",
+    # 2) common FROM/WHERE block (so we can COUNT then INSERT)
+    from_where <- paste0(
+      "FROM (",
+      "  SELECT ",
+      "    *, ",
+      "    ", param_sel, ", ",
+      "    COALESCE(",
+      "      STRPTIME(", fecha_q, ",'%Y-%m-%d'), ",
+      "      STRPTIME(SPLIT_PART(", fecha_q, ",' ',1),'%Y-%m-%d'), ",
+      "      STRPTIME(", fecha_q, ",'%Y/%m/%d'), ",
+      "      STRPTIME(SPLIT_PART(", fecha_q, ",' ',1),'%Y/%m/%d'), ",
+      "      STRPTIME(", fecha_q, ",'%d/%m/%Y'), ",
+      "      STRPTIME(SPLIT_PART(", fecha_q, ",' ',1),'%d/%m/%Y'), ",
+      "      STRPTIME(", fecha_q, ",'%d-%m-%Y'), ",
+      "      STRPTIME(SPLIT_PART(", fecha_q, ",' ',1),'%d-%m-%Y'), ",
+      "      STRPTIME(", fecha_q, ",'%m/%d/%Y'), ",
+      "      STRPTIME(SPLIT_PART(", fecha_q, ",' ',1),'%m/%d/%Y'), ",
+      "      STRPTIME(", fecha_q, ",'%m-%d-%Y'), ",
+      "      STRPTIME(SPLIT_PART(", fecha_q, ",' ',1),'%m-%d-%Y'), ",
+      "      STRPTIME(", fecha_q, ",'%d.%m.%Y'), ",
+      "      STRPTIME(", fecha_q, ",'%Y.%m.%d') ",
+      "    ) AS d, ",
+      "    GREATEST(0, LEAST(23, ",
+      "      TRY_CAST(SUBSTR(TRIM(", hora_q, "),1,2) AS INTEGER))) AS h ",
+      "  FROM read_csv_auto(",
+      .ds(tmp),
+      "    , HEADER=TRUE, ALL_VARCHAR=TRUE, SAMPLE_SIZE=200000, ",
+      "      ENCODING='utf-8', IGNORE_ERRORS=TRUE",
+      "  )",
       ") t ",
-      "UNPIVOT (val FOR st IN (", unp, ")) u ",
-      "WHERE d IS NOT NULL AND ",
-      "EXTRACT(YEAR FROM (CAST(d AS TIMESTAMP) + (h * INTERVAL 1 HOUR))) ",
-      "IN (", ylist, ");"
+      "UNPIVOT INCLUDE NULLS (val FOR st IN (", unp_in, ")) u ",
+      "WHERE d IS NOT NULL ",
+      "  AND EXTRACT(YEAR FROM (CAST(d AS TIMESTAMP) + ",
+      "      (h * INTERVAL 1 HOUR))) IN (", ylist, ")",
+      keep_sql
+      # keep val even if NULL so skeleton can later fill the panel
+      # if you want to skip empty cells: add " AND val IS NOT NULL"
     )
     
-    DBI::dbExecute(con, sql)
+    # 3) dry-run count (how many rows would be inserted)
+    count_sql <- paste0("SELECT COUNT(*) AS n ", from_where, ";")
+    n_cand <- DBI::dbGetQuery(con, count_sql)[["n"]]
+    if (isTRUE(verbose)) {
+      message("   → candidate rows in ", basename(path), ": ",
+              format(n_cand, big.mark = ","))
+    }
+    if (!is.finite(n_cand) || n_cand <= 0) return(0L)
+    
+    # 4) real insert; compute reliable delta by counting table n before/after
+    n_before <- DBI::dbGetQuery(
+      con, "SELECT COUNT(*) AS n FROM staging_long;"
+    )[["n"]]
+    
+    # Build datetime expr: UTC (tz-supported) or naive (fallback)
+    dt_expr <- if (tz_supported) {
+      paste0(
+        "CAST((CAST(d AS TIMESTAMP) + (h * INTERVAL 1 HOUR)) ",
+        "     AT TIME ZONE ", tz_sql, " AS TIMESTAMP)"
+      )
+    } else {
+      "CAST(d AS TIMESTAMP) + (h * INTERVAL 1 HOUR)"
+    }
+    
+    insert_sql <- paste0(
+      "INSERT INTO staging_long ",
+      "SELECT ",
+      "  ", dt_expr, " AS datetime, ",
+      "  COALESCE(",
+      "    NULLIF(REGEXP_EXTRACT(st, '^.*?\\s*:\\s*(.*)$', 1), ''), st",
+      "  ) AS station, ",
+      "  NULLIF(REGEXP_EXTRACT(st, '^(.*?)\\s*:\\s*', 1), '') ",
+      "    AS station_code, ",
+      "  EXTRACT(YEAR FROM (CAST(d AS TIMESTAMP) + ",
+      "        (h * INTERVAL 1 HOUR))) AS year, ",
+      "  param_src AS parametro, ",
+      "  TRY_CAST(REPLACE(TRIM(val), ',', '') AS DOUBLE) AS value ",
+      from_where,
+      ";"
+    )
+    DBI::dbExecute(con, insert_sql)
+    
+    n_after <- DBI::dbGetQuery(
+      con, "SELECT COUNT(*) AS n FROM staging_long;"
+    )[["n"]]
+    as.integer(n_after - n_before)
   }
   
   total_ins <- 0L
   for (pth in csvs) {
-    ins <- tryCatch(insert_one(pth), error = function(e) 0L)
+    ins <- tryCatch(insert_one(pth), error = function(e) {
+      if (isTRUE(verbose)) message("   ! insert error: ", conditionMessage(e))
+      0L
+    })
     total_ins <- total_ins + as.integer(ins %||% 0L)
     if (isTRUE(verbose)) {
-      message("… ", basename(pth), " | inserted=", as.integer(ins %||% 0L))
+      message("… ", basename(pth), " | inserted=",
+              as.integer(ins %||% 0L))
     }
   }
   
-  n_rows <- DBI::dbGetQuery(con, "SELECT COUNT(*) n FROM staging_long;")[["n"]]
+  n_rows <- DBI::dbGetQuery(
+    con, "SELECT COUNT(*) n FROM staging_long;"
+  )[["n"]]
   if (!n_rows) stop("No rows loaded into staging_long.")
   
-  # ---- step 4: map parámetros; aggregate; station ref -------------------------
+  # ---- step 4: map parámetros; aggregate; station ref ------------------------
   DBI::dbExecute(
     con,
     paste0(
@@ -3199,14 +3334,22 @@ cdmx_download_census_data <- function(
       "WHEN UPPER(TRIM(parametro)) IN ",
       "('PM2.5','PM2,5','PARTICULAS MENORES A 2.5') THEN 'pm2.5' ",
       "WHEN UPPER(TRIM(parametro)) IN ('OZONO','O3') THEN 'ozone' ",
-      "WHEN UPPER(TRIM(parametro)) IN ('DIOXIDO DE NITROGENO','NO2') THEN 'no2' ",
-      "WHEN UPPER(TRIM(parametro)) IN ('OXIDOS DE NITROGENO','NOX') THEN 'nox' ",
-      "WHEN UPPER(TRIM(parametro)) IN ('MONOXIDO DE NITROGENO','NO') THEN 'no' ",
-      "WHEN UPPER(TRIM(parametro)) IN ('MONOXIDO DE CARBONO','CO') THEN 'co' ",
-      "WHEN UPPER(TRIM(parametro)) IN ('DIOXIDO DE AZUFRE','SO2') THEN 'so2' ",
-      "WHEN UPPER(TRIM(parametro)) IN ('DIOXIDO DE CARBONO','CO2') THEN 'co2' ",
-      "WHEN UPPER(TRIM(parametro)) IN ('TEMPERATURA','TEMP') THEN 'temperatura' ",
-      "WHEN UPPER(TRIM(parametro)) IN ('HUMEDAD RELATIVA','RH') THEN 'rh' ",
+      "WHEN UPPER(TRIM(parametro)) IN ('DIOXIDO DE NITROGENO','NO2') ",
+      "THEN 'no2' ",
+      "WHEN UPPER(TRIM(parametro)) IN ('OXIDOS DE NITROGENO','NOX') ",
+      "THEN 'nox' ",
+      "WHEN UPPER(TRIM(parametro)) IN ('MONOXIDO DE NITROGENO','NO') ",
+      "THEN 'no' ",
+      "WHEN UPPER(TRIM(parametro)) IN ('MONOXIDO DE CARBONO','CO') ",
+      "THEN 'co' ",
+      "WHEN UPPER(TRIM(parametro)) IN ('DIOXIDO DE AZUFRE','SO2') ",
+      "THEN 'so2' ",
+      "WHEN UPPER(TRIM(parametro)) IN ('DIOXIDO DE CARBONO','CO2') ",
+      "THEN 'co2' ",
+      "WHEN UPPER(TRIM(parametro)) IN ('TEMPERATURA','TEMP') ",
+      "THEN 'temperatura' ",
+      "WHEN UPPER(TRIM(parametro)) IN ('HUMEDAD RELATIVA','RH') ",
+      "THEN 'rh' ",
       "WHEN UPPER(TRIM(parametro)) IN ",
       "('VELOCIDAD DEL VIENTO','VEL VIENTO') THEN 'vel viento' ",
       "WHEN UPPER(TRIM(parametro)) IN ",
@@ -3217,8 +3360,7 @@ cdmx_download_census_data <- function(
       "THEN 'precipitacion' ",
       "WHEN UPPER(TRIM(parametro)) IN ('RADIACION','RADIACION SOLAR') ",
       "THEN 'radiation' ",
-      "ELSE NULL END AS var, ",
-      "value ",
+      "ELSE NULL END AS var, value ",
       "FROM staging_long WHERE parametro IS NOT NULL;"
     )
   )
@@ -3229,8 +3371,7 @@ cdmx_download_census_data <- function(
       "CREATE TABLE aggr AS ",
       "SELECT datetime, station, station_code, year, var, ",
       "AVG(value) AS value ",
-      "FROM long_mapped ",
-      "WHERE var IS NOT NULL ",
+      "FROM long_mapped WHERE var IS NOT NULL ",
       "GROUP BY 1,2,3,4,5;"
     )
   )
@@ -3242,58 +3383,56 @@ cdmx_download_census_data <- function(
       "SELECT station, station_code FROM (",
       "SELECT station, station_code, COUNT(*) AS n, ",
       "ROW_NUMBER() OVER(",
-      "PARTITION BY station ORDER BY COUNT(*) DESC) AS rn ",
+      "  PARTITION BY station ORDER BY COUNT(*) DESC",
+      ") AS rn ",
       "FROM aggr ",
       "WHERE station_code IS NOT NULL AND station_code <> '' ",
       "GROUP BY 1,2) t WHERE rn = 1;"
     )
   )
   
-  # ---- step 4.1: Quick diagnostics of the database -------------------------------
-  DBI::dbGetQuery(con, "SELECT COUNT(*) AS n FROM aggr;")
-  DBI::dbGetQuery(con, "
-  SELECT COUNT(DISTINCT station) AS stations,
-         MIN(year) AS y0, MAX(year) AS y1
-  FROM aggr;")
-  DBI::dbGetQuery(con, "
-  WITH sy AS (SELECT DISTINCT station, year FROM aggr),
-       h AS (SELECT 8760 AS hours)  -- ~8,784 for leap years
-  SELECT COUNT(*) AS approx_rows
-  FROM sy JOIN h ON TRUE;")
-  
-  # ---- step 5: stream pivot → Parquet (partitioned by year) -------------------
-
-  # choose a codec: "ZSTD" (smaller, slower) or "SNAPPY" (faster, larger)
-  parquet_codec <- "SNAPPY"  # try SNAPPY first; switch back to ZSTD later if desired
-  
+  # ---- step 5: stream pivot → per-year Parquet (SNAPPY) ----------------------
+  parquet_codec <- "SNAPPY"
   base <- file.path(out_dir, paste0(out_name, "_dataset"))
   dir.create(base, recursive = TRUE, showWarnings = FALSE)
   
   yrs <- sort(unique(years))
-  
   for (yy in yrs) {
     if (isTRUE(verbose)) message(sprintf("→ Writing year %d …", yy))
-    
-    # temp slice of aggr for this year (reduces work for join/agg)
     DBI::dbExecute(
       con,
       sprintf("CREATE TEMP TABLE aggr_y AS
-             SELECT * FROM aggr WHERE year = %d;", yy)
+               SELECT * FROM aggr WHERE year = %d;", yy)
     )
+    outdir_y <- file.path(base, paste0(sprintf("year=%d", yy), ".parquet"))
+    if (dir.exists(outdir_y)) unlink(outdir_y, recursive = TRUE, force = TRUE)
     
-    # COPY one year at a time; skeleton only for that year
+    # Skeleton: LOCAL → UTC if tz_supported; else naive local hours
+    hours_sql <- if (tz_supported) {
+      paste0(
+        "SELECT CAST((gs.ts AT TIME ZONE ", .ds(tz), ") AS TIMESTAMP) ",
+        "AS datetime FROM generate_series(",
+        "TIMESTAMP '", yy, "-01-01 00:00:00', ",
+        "TIMESTAMP '", yy, "-12-31 23:00:00', ",
+        "INTERVAL 1 HOUR) AS gs(ts)"
+      )
+    } else {
+      paste0(
+        "SELECT gs.ts AS datetime FROM generate_series(",
+        "TIMESTAMP '", yy, "-01-01 00:00:00', ",
+        "TIMESTAMP '", yy, "-12-31 23:00:00', ",
+        "INTERVAL 1 HOUR) AS gs(ts)"
+      )
+    }
+    
     sql_copy_y <- paste0(
       "COPY (",
       "WITH stations AS (SELECT DISTINCT station FROM aggr_y), ",
-      "hours AS (SELECT gs.ts AS datetime FROM generate_series(",
-      "  TIMESTAMP '", yy, "-01-01 00:00:00', ",
-      "  TIMESTAMP '", yy, "-12-31 23:00:00', INTERVAL 1 HOUR) AS gs(ts)), ",
-      "sk AS (SELECT s.station, h.datetime FROM stations s CROSS JOIN hours h) ",
+      "hours AS (", hours_sql, "), ",
+      "sk AS (SELECT s.station, h.datetime ",
+      "       FROM stations s CROSS JOIN hours h) ",
       "SELECT ",
-      "  sk.datetime, ",
-      "  sk.station, ",
-      "  sr.station_code, ",
-      "  ", yy, " AS year, ",
+      "  sk.datetime, sk.station, sr.station_code, ", yy, " AS year, ",
       "  AVG(CASE WHEN a.var='pm2.5'        THEN a.value END) AS \"pm2.5\", ",
       "  AVG(CASE WHEN a.var='pm10'         THEN a.value END) AS pm10, ",
       "  AVG(CASE WHEN a.var='no'           THEN a.value END) AS no, ",
@@ -3303,25 +3442,30 @@ cdmx_download_census_data <- function(
       "  AVG(CASE WHEN a.var='nox'          THEN a.value END) AS nox, ",
       "  AVG(CASE WHEN a.var='so2'          THEN a.value END) AS so2, ",
       "  AVG(CASE WHEN a.var='ozone'        THEN a.value END) AS ozone, ",
-      "  AVG(CASE WHEN a.var='presion baro' THEN a.value END) AS \"presion baro\", ",
+      "  AVG(CASE WHEN a.var='presion baro' THEN a.value END) ",
+      "    AS \"presion baro\", ",
       "  AVG(CASE WHEN a.var='rh'           THEN a.value END) AS rh, ",
-      "  AVG(CASE WHEN a.var='vel viento'   THEN a.value END) AS \"vel viento\", ",
-      "  AVG(CASE WHEN a.var='dir viento'   THEN a.value END) AS \"dir viento\", ",
-      "  AVG(CASE WHEN a.var='precipitacion'THEN a.value END) AS precipitacion, ",
-      "  AVG(CASE WHEN a.var='radiation'    THEN a.value END) AS radiation, ",
-      "  AVG(CASE WHEN a.var='temperatura'  THEN a.value END) AS temperatura ",
+      "  AVG(CASE WHEN a.var='vel viento'   THEN a.value END) ",
+      "    AS \"vel viento\", ",
+      "  AVG(CASE WHEN a.var='dir viento'   THEN a.value END) ",
+      "    AS \"dir viento\", ",
+      "  AVG(CASE WHEN a.var='precipitacion' THEN a.value END) ",
+      "    AS precipitacion, ",
+      "  AVG(CASE WHEN a.var='radiation'    THEN a.value END) ",
+      "    AS radiation, ",
+      "  AVG(CASE WHEN a.var='temperatura'  THEN a.value END) ",
+      "    AS temperatura ",
       "FROM sk ",
-      "LEFT JOIN st_ref sr ",
-      "  ON sk.station = sr.station ",
-      "LEFT JOIN aggr_y a ",
-      "  ON sk.station  = a.station ",
+      "LEFT JOIN st_ref sr ON sk.station = sr.station ",
+      "LEFT JOIN aggr_y a ON sk.station = a.station ",
       " AND COALESCE(sr.station_code, a.station_code) = a.station_code ",
       " AND sk.datetime = a.datetime ",
       "GROUP BY 1,2,3 ",
       "ORDER BY sk.station, sk.datetime ",
       ") TO ",
-      .cdmx_ds(base),
-      " (FORMAT PARQUET, COMPRESSION ", parquet_codec, ", PARTITION_BY (year));"
+      .ds(base),
+      " (FORMAT PARQUET, COMPRESSION ", parquet_codec,
+      ", PARTITION_BY (year), OVERWRITE_OR_IGNORE TRUE);"
     )
     
     DBI::dbExecute(con, sql_copy_y)
@@ -3337,29 +3481,32 @@ cdmx_download_census_data <- function(
   if (isTRUE(cleanup)) {
     invisible(lapply(csvs, function(f) try(unlink(f), TRUE)))
   }
-  return(ds)
+  ds
 }
+
 
 # ============================================================================================
 #  CDMX-specific functions for processing data - main function and tiny helpers
 # ============================================================================================
 
+# ============================================================================================
 # Function: cdmx_merge_pollution_csvs
-# @Arg  : downloads_folder — folder with .csv files (recursive = TRUE)
-# @Arg  : tz               — Olson tz for final relabel (clock preserved)
-# @Arg  : years            — integer vector (UTC/local years to keep)
-# @Arg  : cleanup          — TRUE removes source CSVs after merging
-# @Arg  : out_dir          — output directory (created if missing)
-# @Arg  : out_name         — base name without extension
-# @Arg  : write_parquet    — TRUE to write Parquet (Arrow)
-# @Arg  : write_rds        — TRUE to write RDS (memory engine only)
-# @Arg  : write_csv        — TRUE to write CSV (memory engine only)
-# @Arg  : verbose          — TRUE prints progress
-# @Arg  : engine           — 'auto'|'duckdb'|'memory'
-#                            In 'auto': if RAM > 31 GB → 'duckdb', else 'memory'
-# @Output : Arrow Dataset (duckdb or memory+parquet) OR tibble (memory no parquet)
-# @Steps : (0) helpers, (1) discover files, (2) RAM + engine pick,
-#          (3A) memory helper, (3B) duckdb helper
+# @Arg  : downloads_folder  — folder with .csv files (recursive = TRUE)
+# @Arg  : tz                — Olson tz for final relabel (default "America/Mexico_City")
+# @Arg  : years             — integer vector of years to keep (UTC/local)
+# @Arg  : cleanup           — remove source CSVs after success (default FALSE)
+# @Arg  : out_dir, out_name — output location (dataset goes to "<name>_dataset/")
+# @Arg  : write_parquet     — TRUE → write Parquet artifacts
+#                             • memory: per-year partitioned dataset via {arrow}
+#                             • duckdb: per-year partitioned dataset via COPY
+# @Arg  : write_rds, write_csv — optional single-file extras (memory engine)
+# @Arg  : verbose           — print progress (default TRUE)
+# @Arg  : engine            — "auto" | "duckdb" | "memory"
+#                             Auto: if RAM > 64 GB → "memory", else "duckdb"
+# @Arg  : stations_keep_codes — NULL or character vector of station codes to keep
+# @Return: Arrow Dataset handle (if Parquet written) else tibble.
+# @Steps : (1) discover CSVs, (2) RAM detect + engine pick,
+#          (3A) memory engine, (3B) duckdb engine.
 # ============================================================================================
 cdmx_merge_pollution_csvs <- function(
     downloads_folder,
@@ -3372,11 +3519,12 @@ cdmx_merge_pollution_csvs <- function(
     write_rds        = FALSE,
     write_csv        = FALSE,
     verbose          = TRUE,
-    engine           = c("auto","duckdb","memory")
+    engine           = c("auto","duckdb","memory"),
+    stations_keep_codes = NULL
 ) {
   engine <- match.arg(engine)
   
-  # ---- (1) discover CSV files ------------------------------------------------
+  # ---- (1) discover CSV files -----------------------------------------------
   csvs <- list.files(
     downloads_folder, pattern = "\\.csv$", full.names = TRUE, recursive = TRUE
   )
@@ -3393,43 +3541,42 @@ cdmx_merge_pollution_csvs <- function(
   if (engine == "auto") {
     engine <- if (ram_gb > 64) "memory" else "duckdb"
   }
-  
   if (isTRUE(verbose)) {
     message(sprintf("Engine=%s | RAM=%.1f GB | years=%d | parallel=%s",
                     engine, ram_gb, length(yrs),
-                    ifelse(run_parallel,"yes","no")))
+                    ifelse(run_parallel, "yes", "no")))
   }
   
   # ---- (3A) memory engine ----------------------------------------------------
   if (engine == "memory") {
     return(
       .cdmx_merge_memory_engine(
-        csvs = csvs,
-        years = yrs,
-        tz = tz,
-        out_dir = out_dir,
-        out_name = out_name,
-        write_parquet = write_parquet,
-        write_rds = write_rds,
-        write_csv = write_csv,
-        cleanup = cleanup,
-        verbose = verbose
+        csvs                = csvs,
+        years               = yrs,
+        tz                  = tz,
+        out_dir             = out_dir,
+        out_name            = out_name,
+        write_parquet       = write_parquet,
+        write_rds           = write_rds,
+        write_csv           = write_csv,
+        cleanup             = cleanup,
+        verbose             = verbose,
+        stations_keep_codes = stations_keep_codes
       )
     )
   }
   
   # ---- (3B) duckdb engine ----------------------------------------------------
-  return(
-    .cdmx_merge_duckdb_engine(
-      csvs = csvs,
-      years = yrs,
-      tz = tz,
-      out_dir = out_dir,
-      out_name = out_name,
-      cleanup = cleanup,
-      run_parallel = run_parallel,
-      verbose = verbose
-    )
+  .cdmx_merge_duckdb_engine(
+    csvs                = csvs,
+    years               = yrs,
+    tz                  = tz,
+    out_dir             = out_dir,
+    out_name            = out_name,
+    cleanup             = cleanup,
+    run_parallel        = run_parallel,
+    verbose             = verbose,
+    stations_keep_codes = stations_keep_codes
   )
 }
 
@@ -3442,6 +3589,8 @@ cdmx_merge_pollution_csvs <- function(
 # @Arg       : lon_col          — name of longitude column (default "lon")
 # @Arg       : lat_col          — name of latitude column  (default "lat")
 # @Arg       : stations_epsg    — EPSG for lon/lat (default 4326 WGS84)
+# @Arg       : out_file          — where to write the cropped GeoPackage
+# @Arg       : overwrite_gpkg    — logical; overwrite output GeoPackage if exists
 # @Arg       : dissolve         — logical; TRUE unions metro polygons (default TRUE)
 # @Arg       : verbose          — logical; TRUE prints summary (default TRUE)
 # @Output    : sf POINT data.frame of stations filtered to inside/near metro_area
@@ -3449,18 +3598,20 @@ cdmx_merge_pollution_csvs <- function(
 #              metropolitan area polygon. Builds geometry from lon/lat, aligns
 #              CRS for accurate distance, and filters using geodesic-safe
 #              distances (projects to meters when needed).
-# @Written_on: 2025-09-15
-# @Written_by: Marcos Paulo (with ChatGPT)
+# @Written_on: 15/09/2025
+# @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 cdmx_filter_stations_in_metro <- function(
     station_location,
     metro_area,
-    radius_km     = 20,
-    lon_col       = "lon",
-    lat_col       = "lat",
-    stations_epsg = 4326,
-    dissolve      = TRUE,
-    verbose       = TRUE
+    radius_km      = 20,
+    lon_col        = "lon",
+    lat_col        = "lat",
+    stations_epsg  = 4326,
+    out_file       = here::here("data", "interim", "geospatial_data_filtered", "CDMX.gpkg"),
+    overwrite_gpkg = TRUE,
+    dissolve       = TRUE,
+    verbose        = TRUE
 ) {
   # 0) deps and basic checks ---------------------------------------------------
   if (!inherits(metro_area, "sf"))
@@ -3468,6 +3619,9 @@ cdmx_filter_stations_in_metro <- function(
   if (!all(c(lon_col, lat_col) %in% names(station_location)))
     stop("Columns ", lon_col, " and ", lat_col, " not found in stations.")
 
+  # Guarantee output directory exists
+  dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
+  
   # 1) drop NA coords; convert stations → sf POINT (lon/lat) ------------------
   st_df <- station_location[
     stats::complete.cases(station_location[, c(lon_col, lat_col)]), , drop = FALSE
@@ -3507,6 +3661,7 @@ cdmx_filter_stations_in_metro <- function(
   
   # 5) compute keep mask: inside OR within radius_km (meters) -----------------
   radius_m <- radius_km * 1000
+  
   # Fast: within-distance against dissolved polygon
   within_dist <- sf::st_is_within_distance(st_m, metro_m, dist = radius_m)
   keep <- lengths(within_dist) > 0
@@ -3519,9 +3674,24 @@ cdmx_filter_stations_in_metro <- function(
             " | radius: ", radius_km, " km")
   }
   
-  # 7) optional: return in original lon/lat CRS (often handy) -----------------
-  #    Comment the next line if you prefer to keep 'target_crs' instead.
+  # 7) return in original lon/lat CRS (often handy) -----------------
   out <- sf::st_transform(out, stations_epsg)
   
+  # 8) Write GeoPackage
+  if (file.exists(out_file) && !overwrite_gpkg) {
+    if (!verbose) message("↪︎ Output exists and overwrite_gpkg=FALSE: ", out_file)
+  } else {
+    if (!verbose) message("💾 Writing GeoPackage → ", out_file)
+    if (file.exists(out_file) && overwrite_gpkg) unlink(out_file, force = TRUE)
+    suppressMessages(sf::st_write(out, out_file, verbose = TRUE))
+  }
+  
+  # 9) Friendly summary
+  if (!verbose) {
+    message("✅ Done. Selected ", row(out), " stations that at most", radius_km, 
+            " km from the metro area")
+  }
+
+
   return(out)
 }
