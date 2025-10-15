@@ -343,90 +343,168 @@ prepare_legacy_cdmx <- function(legacy_df, tz = "UTC") {
 
 
 # --------------------------------------------------------------------------------------------
-# Function: prepare_new_cdmx_like_legacy
-# @Arg  : new_df            — tibble read from your new Parquet dataset
-# @Arg  : stations_keep_df  — data frame (or sf) listing stations to keep.
-#                             Default NULL (keep all). Must contain a column with
-#                             station codes (default 'code'); geometry is ignored.
-# @Arg  : station_code_col  — column name in stations_keep_df with station codes
-#                             (default "code")
-# @Arg  : year_keep         — integer vector of years to keep (default 2010:2023)
-# @Arg  : tz                — Olson timezone (default "UTC")
-# @Output : tibble with columns (order fixed):
+# Function : prepare_new_panel_like_legacy
+# @Arg  : new_data         — tibble/data.frame OR Arrow Dataset/dplyr tbl with columns:
+#                            datetime, station_code (or station), pm10, `pm2.5`,
+#                            no2, co, and ozone (or o3/ozono).
+# @Arg  : stations_keep_df — OPTIONAL data.frame/sf with a station code column
+#                            (see station_code_col). Geometry is ignored.
+# @Arg  : station_code_col — column name in stations_keep_df (default "code")
+# @Arg  : year_keep        — integer vector of UTC years to keep (default 2010:2023)
+# @Arg  : tz               — Olson tz string. Used to RELABEL timestamps after collect
+#                            (no clock shift; like lubridate::force_tz).
+# @Arg  : return           — "tibble" (collect to R) or "arrow" (keep lazy). Default "tibble".
+#
+# @Output : tibble (if return="tibble") or lazy dplyr query (if return="arrow")
+#           with columns:
 #           datehour, year, month, day, hour, station_code, pm25, pm10, no2, o3, co
-# @Purpose : Make the *new* panel directly comparable to the legacy one and (optionally)
-#            subset to a set of station codes from an external table.
+#
+# @Purpose : Make a new panel comparable to the legacy schema in an Arrow-friendly way:
+#            • no base R string ops inside the lazy pipeline,
+#            • Arrow-translatable datetime filters,
+#            • robust ozone column detection,
+#            • optional station allow-list,
+#            • stable column order and numeric types.
 # --------------------------------------------------------------------------------------------
-prepare_new_cdmx_like_legacy <- function(
-    new_df,
+prepare_new_panel_like_legacy <- function(
+    new_data,
     stations_keep_df = NULL,
     station_code_col = "code",
-    year_keep = 2010:2023,
-    tz = "UTC"
+    year_keep        = 2010:2023,
+    tz               = "UTC",
+    return           = c("tibble", "arrow")
 ) {
-  # -- 1) Ensure we have a station_code column to work with --------------------
-  if (!"station_code" %in% names(new_df)) {
-    if ("station" %in% names(new_df)) {
-      new_df$station_code <- new_df$station
-    } else {
-      stop("new_df must have 'station_code' or 'station' column.")
-    }
+  # ---- 0) Validate & set up ---------------------------------------------------
+  return <- match.arg(return)
+  if (!requireNamespace("dplyr", quietly = TRUE)) stop("Need 'dplyr'.")
+  if (!requireNamespace("rlang", quietly = TRUE)) stop("Need 'rlang'.")
+  if (!requireNamespace("lubridate", quietly = TRUE)) stop("Need 'lubridate'.")
+  
+  cols <- names(new_data)
+  if (is.null(cols)) {
+    stop("`new_data` must be a data.frame/tibble or an Arrow Dataset/table.")
   }
   
-  # -- 2) Optional: filter stations using stations_keep_df ---------------------
+  # (0.1) Ensure we have a station identifier column (station_code or station)
+  if (!("station_code" %in% cols || "station" %in% cols)) {
+    stop("`new_data` must include 'station_code' or 'station'.")
+  }
+  
+  # (0.2) Detect ozone column (allow common variants)
+  o3_col <- intersect(c("ozone", "o3", "ozono"), cols)
+  if (!length(o3_col)) stop("`new_data` must include 'ozone' (or 'o3'/'ozono').")
+  o3_col <- o3_col[1]
+  
+  # (0.3) Required columns
+  if (!"pm2.5" %in% cols) stop("`new_data` must include column `pm2.5`.")
+  must_have <- c("pm10", "no2", "co", "datetime")
+  miss <- setdiff(must_have, cols)
+  if (length(miss)) stop("`new_data` is missing: ", paste(miss, collapse = ", "))
+  
+  df <- new_data
+  
+  # ---- 1) Arrow-safe year filtering ------------------------------------------
+  # Build UTC bounds in R (so no as.POSIXct/format inside Arrow filter).
+  ymin <- min(year_keep, na.rm = TRUE)
+  ymax <- max(year_keep, na.rm = TRUE)
+  start_utc <- as.POSIXct(sprintf("%04d-01-01 00:00:00", ymin), tz = "UTC")
+  end_utc   <- as.POSIXct(sprintf("%04d-01-01 00:00:00", ymax + 1L), tz = "UTC")
+  
+  # ---- 2) Create a station_code (coalesce) without string transforms ----------
+  # Arrow can translate dplyr::coalesce; avoid trimws/toupper here.
+  df <- dplyr::mutate(
+    df,
+    station_code = dplyr::coalesce(.data$station_code, .data$station)
+  )
+  
+  # ---- 3) Optional: filter by a station allow-list ----------------------------
+  # IMPORTANT: do NOT apply toupper/trimws to the Arrow column.
+  # Instead, normalize the *vector of values* in R, and compare raw equality.
   if (!is.null(stations_keep_df)) {
     if (!station_code_col %in% names(stations_keep_df)) {
-      stop("stations_keep_df must contain column '", station_code_col, "'.")
+      stop("`stations_keep_df` must have column '", station_code_col, "'.")
     }
-    keep_codes <- unique(toupper(trimws(stations_keep_df[[station_code_col]])))
-    new_df$station_code <- toupper(trimws(new_df$station_code))
-    new_df <- dplyr::filter(new_df, .data$station_code %in% keep_codes)
+    keep_codes <- as.character(stations_keep_df[[station_code_col]])
+    # Normalize the *values* (in R); Arrow will do a fast `%in%` compare.
+    keep_codes <- unique(keep_codes[!is.na(keep_codes)])
+    keep_codes <- trimws(keep_codes)
+    # Widen matching a bit without touching the Arrow column:
+    # include raw, UPPER, and lower variants in the value set.
+    keep_all <- unique(c(keep_codes,
+                         toupper(keep_codes),
+                         tolower(keep_codes)))
+    if (length(keep_all)) {
+      df <- dplyr::filter(df, .data$station_code %in% keep_all)
+    } else {
+      df <- dplyr::filter(df, FALSE)
+    }
   }
   
-  # -- 3) Rename/transform to legacy names, keep only needed vars --------------
-  if (!"datetime" %in% names(new_df)) {
-    stop("new_df must have a 'datetime' column (timestamp).")
-  }
-  # Some files use "ozone", others "ozono"—prefer "ozone", fall back to "ozono"
-  o3_col <- if ("ozone" %in% names(new_df)) "ozone" else
-    if ("ozono" %in% names(new_df)) "ozono" else NA_character_
-  if (is.na(o3_col)) stop("new_df must have 'ozone' (or 'ozono').")
-  if (!"pm2.5" %in% names(new_df)) stop("new_df must have column `pm2.5`.")
-  must_have <- c("pm10","no2","co")
-  miss <- setdiff(must_have, names(new_df))
-  if (length(miss)) stop("new_df is missing: ", paste(miss, collapse = ", "))
+  # ---- 4) Apply Arrow-translatable datetime window ----------------------------
+  df <- dplyr::filter(df, .data$datetime >= start_utc, .data$datetime < end_utc)
   
-  df <- new_df |>
-    dplyr::transmute(
-      datehour     = as.POSIXct(.data$datetime, tz = tz),
-      station_code = .data$station_code,
-      pm25         = .data$`pm2.5`,
-      pm10         = .data$pm10,
-      no2          = .data$no2,
-      o3           = .data[[o3_col]],
-      co           = .data$co
+  # ---- 5) Select/rename to the harmonized schema ------------------------------
+  # NOTE: Refer to `pm2.5` with backticks; this is Arrow-friendly.
+  df <- dplyr::transmute(
+    df,
+    datehour     = .data$datetime,   # relabel tz later (no clock shift)
+    station      = .data$station,
+    station_code = .data$station_code,
+    pm25         = .data$`pm2.5`,
+    pm10         = .data$pm10,
+    no2          = .data$no2,
+    o3           = .data[[o3_col]],
+    co           = .data$co
+  )
+  
+  # ---- 6) Derive time parts ---------------------------------------------------
+  if (return == "arrow") {
+    # Stay lazy: use strftime (Arrow translates these)
+    df <- dplyr::mutate(
+      df,
+      year  = as.integer(strftime(.data$datehour, "%Y")),
+      month = as.integer(strftime(.data$datehour, "%m")),
+      day   = as.integer(strftime(.data$datehour, "%d")),
+      hour  = as.integer(strftime(.data$datehour, "%H"))
     )
+    df <- dplyr::select(
+      df,
+      datehour, year, month, day, hour,
+      station_code, pm25, pm10, no2, o3, co
+    )
+    df <- dplyr::arrange(df, .data$station_code, .data$datehour)
+    return(df)
+  }
   
-  # -- 4) Time parts + year filter --------------------------------------------
-  df <- df |>
-    dplyr::mutate(
-      year  = lubridate::year(.data$datehour),
-      month = lubridate::month(.data$datehour),
-      day   = lubridate::day(.data$datehour),
-      hour  = lubridate::hour(.data$datehour)
-    ) |>
-    dplyr::filter(.data$year %in% year_keep)
+  # If you want a tibble: collect to R, then finish normalization.
+  df <- dplyr::collect(df)
+
+  # ---- 7) Relabel timezone without shifting the wall clock -------------------
+  # This matches your legacy behavior (display/interpretation tz).
+  df$datehour <- lubridate::force_tz(df$datehour, tzone = tz)
   
-  # -- 5) Enforce numeric types + final column order ---------------------------
-  num_cols <- c("pm25","pm10","no2","o3","co")
+  # ---- 8) Derive time parts in R (lubridate) ---------------------------------
+  df <- dplyr::mutate(
+    df,
+    year  = lubridate::year(.data$datehour),
+    month = lubridate::month(.data$datehour),
+    day   = lubridate::day(.data$datehour),
+    hour  = lubridate::hour(.data$datehour)
+  )
+  
+  # ---- 9) Final hygiene: numeric coercion + stable column order --------------
+  num_cols <- c("pm25", "pm10", "no2", "o3", "co")
   df[num_cols] <- lapply(df[num_cols], function(x) suppressWarnings(as.numeric(x)))
   
-  keep_order <- c("datehour","year","month","day","hour",
-                  "station_code","pm25","pm10","no2","o3","co")
+  # Normalize station_code *now* (safe in R): trim + upper for stable joins.
+  df$station_code <- toupper(trimws(df$station_code))
   
-  df |>
-    dplyr::select(dplyr::all_of(keep_order)) |>
+  keep_order <- c("datehour", "year", "month", "day", "hour", "station", "station_code",
+                  "pm25", "pm10", "no2", "o3", "co")
+  df <- dplyr::select(df, dplyr::all_of(keep_order)) |>
     dplyr::arrange(.data$station_code, .data$datehour)
+  
+  df
 }
 
 
@@ -434,22 +512,130 @@ prepare_new_cdmx_like_legacy <- function(
 # Function: compare_panels
 # @Arg       : old_df      — legacy-prepared tibble
 # @Arg       : new_df      — new-prepared tibble
-# @Arg       : keys        — character vector of key columns (default station,y/m/d/h)
-# @Arg       : values      — character vector of value columns to compare
-# @Arg       : tol         — named numeric tolerances per column (defaults 0 when missing)
+# @Arg       : keys        — key cols (default station,y/m/d/h; consider
+#                            station_code,y/m/d/h for robustness)
+# @Arg       : values      — value columns to compare
+# @Arg       : tol         — named numeric tolerances per column (defaults 0)
+# @Arg       : restrict_to_old_codes — if TRUE, keep in new_df only rows whose
+#               station_code exists in old_df (no-op if column missing)
+# @Arg       : prefer_station — named chr vec: station_code -> preferred name
+#               (applies to new_df). Example: c(ATI = "Atizapán")
+# @Arg       : new_exclude  — rows to drop from new_df before join:
+#               * character: station_code values to remove
+#               * data.frame/tibble: subset of cols to anti_join away
+#               * function(df): returns filtered new_df
+# @Arg       : new_shift_hours — integer hours to shift new_df time by.
+#               Positive = move forward; negative = move backward.
+#               Works if new_df has 'datetime' OR y/m/d/h columns.
 # @Output    : list(only_old, only_new, diffs_long, diff_summary)
-# @Purpose   : Pinpoint row-level and cell-level differences with tolerances.
+# @Purpose   : Pinpoint row- and cell-level differences with tolerances.
 # --------------------------------------------------------------------------------------------
 compare_panels <- function(
     old_df,
     new_df,
     keys   = c("station", "year", "month", "day", "hour"),
     values = c("pm10", "pm25", "ozone", "co", "no2"),
-    tol    = c()
+    tol    = c(),
+    restrict_to_old_codes = TRUE,
+    prefer_station = NULL,
+    new_exclude = NULL,
+    new_shift_hours = 0L
 ) {
   # 0) helper: fetch tolerance (0 if not provided)
   tol_get <- function(v) {
-    if (!is.null(tol) && !is.null(tol[[v]]) && is.finite(tol[[v]])) as.numeric(tol[[v]]) else 0
+    if (!is.null(tol) && !is.null(tol[[v]]) && is.finite(tol[[v]]))
+      as.numeric(tol[[v]]) else 0
+  }
+  
+  # 0a) sanity for shift param
+  if (length(new_shift_hours) != 1L || is.na(new_shift_hours) ||
+      !is.finite(new_shift_hours)) {
+    stop("new_shift_hours must be a single finite number.")
+  }
+  new_shift_hours <- as.integer(new_shift_hours)
+  
+  # 0b) optional: restrict new_df to codes present in old_df
+  if (isTRUE(restrict_to_old_codes) &&
+      "station_code" %in% names(old_df) &&
+      "station_code" %in% names(new_df)) {
+    keep_codes <- unique(old_df$station_code)
+    keep_codes <- keep_codes[!is.na(keep_codes) & nzchar(keep_codes)]
+    new_df <- new_df[new_df$station_code %in% keep_codes |
+                       is.na(new_df$station_code), , drop = FALSE]
+  }
+  
+  # 0c) explicit exclusions for new_df
+  if (!is.null(new_exclude)) {
+    if (is.character(new_exclude)) {
+      if ("station_code" %in% names(new_df)) {
+        new_df <- new_df[!(new_df$station_code %in% new_exclude), ,
+                         drop = FALSE]
+      }
+    } else if (is.data.frame(new_exclude)) {
+      by_cols <- intersect(names(new_df), names(new_exclude))
+      if (length(by_cols)) {
+        new_df <- dplyr::anti_join(new_df, new_exclude, by = by_cols)
+      }
+    } else if (is.function(new_exclude)) {
+      new_df <- new_exclude(new_df)
+    }
+  }
+  
+  # 0d) disambiguate duplicated codes by preferred station
+  if (!is.null(prefer_station) &&
+      "station_code" %in% names(new_df) &&
+      "station" %in% names(new_df)) {
+    stopifnot(is.character(prefer_station))
+    for (sc in names(prefer_station)) {
+      nm <- unname(prefer_station[[sc]])
+      new_df <- new_df[!(new_df$station_code == sc &
+                           !is.na(new_df$station) &
+                           new_df$station != nm), , drop = FALSE]
+    }
+  }
+  
+  # 0e) apply time shift on new_df, if requested
+  if (new_shift_hours != 0L) {
+    h <- as.difftime(as.numeric(new_shift_hours), units = "hours")
+    
+    has_dt    <- "datetime" %in% names(new_df)
+    has_parts <- all(c("year","month","day","hour") %in% names(new_df))
+    
+    if (!has_dt && !has_parts) {
+      stop("To shift time, new_df must have 'datetime' or y/m/d/h columns.")
+    }
+    
+    if (!has_dt && has_parts) {
+      # Build a temporary UTC datetime from y/m/d/h, then shift
+      tmp_dt <- ISOdatetime(new_df$year, new_df$month, new_df$day,
+                            new_df$hour, 0, 0, tz = "UTC")
+      tmp_dt <- as.POSIXct(tmp_dt, tz = "UTC")
+      tmp_dt <- tmp_dt + h
+      # Overwrite parts with shifted components
+      lt <- as.POSIXlt(tmp_dt, tz = "UTC")
+      new_df$year  <- as.integer(lt$year + 1900L)
+      new_df$month <- as.integer(lt$mon + 1L)
+      new_df$day   <- as.integer(lt$mday)
+      new_df$hour  <- as.integer(lt$hour)
+    } else {
+      # Shift existing datetime, keep its tz attribute as-is
+      dt <- new_df$datetime
+      if (!inherits(dt, "POSIXt")) dt <- as.POSIXct(dt, tz = "UTC")
+      dt <- dt + h
+      new_df$datetime <- dt
+      # If date-parts exist, recompute them from shifted datetime
+      if ("year" %in% names(new_df)) {
+        lt <- as.POSIXlt(dt)
+        if ("year"  %in% names(new_df))
+          new_df$year  <- as.integer(lt$year + 1900L)
+        if ("month" %in% names(new_df))
+          new_df$month <- as.integer(lt$mon + 1L)
+        if ("day"   %in% names(new_df))
+          new_df$day   <- as.integer(lt$mday)
+        if ("hour"  %in% names(new_df))
+          new_df$hour  <- as.integer(lt$hour)
+      }
+    }
   }
   
   # 1) sanity checks
@@ -458,9 +644,11 @@ compare_panels <- function(
   if (length(miss_old) || length(miss_new)) {
     stop(
       "Missing columns. ",
-      if (length(miss_old)) paste0("old_df lacks: ", paste(miss_old, collapse = ", ")),
+      if (length(miss_old))
+        paste0("old_df lacks: ", paste(miss_old, collapse = ", ")),
       if (length(miss_old) && length(miss_new)) " ; ",
-      if (length(miss_new)) paste0("new_df lacks: ", paste(miss_new, collapse = ", "))
+      if (length(miss_new))
+        paste0("new_df lacks: ", paste(miss_new, collapse = ", "))
     )
   }
   
@@ -475,19 +663,24 @@ compare_panels <- function(
   # 3) rows present only in old or only in new
   has_any_old <- joined |>
     dplyr::select(dplyr::ends_with("_old")) |>
-    dplyr::mutate(any_old = rowSums(!is.na(dplyr::across(dplyr::everything()))) > 0) |>
+    dplyr::mutate(
+      any_old = rowSums(!is.na(dplyr::across(dplyr::everything()))) > 0
+    ) |>
     (\(x) x$any_old)()
   
   has_any_new <- joined |>
     dplyr::select(dplyr::ends_with("_new")) |>
-    dplyr::mutate(any_new = rowSums(!is.na(dplyr::across(dplyr::everything()))) > 0) |>
+    dplyr::mutate(
+      any_new = rowSums(!is.na(dplyr::across(dplyr::everything()))) > 0
+    ) |>
     (\(x) x$any_new)()
   
   only_old <- joined[ has_any_old & !has_any_new,
                       c(keys, grep("_old$", names(joined), value = TRUE)),
                       drop = FALSE]
+  
   only_new <- joined[!has_any_old &  has_any_new,
-                      c(keys, grep("_new$", names(joined), value = TRUE)),
+                     c(keys, grep("_new$", names(joined), value = TRUE)),
                      drop = FALSE]
   
   # 4) long, cell-level diffs (carry value_old/value_new explicitly)
@@ -504,10 +697,11 @@ compare_panels <- function(
         absv       = abs(diff),
         within_tol = absv <= tol_get(v)
       ) |>
-      dplyr::select(variable, dplyr::all_of(keys), value_old, value_new, diff, absv, within_tol)
+      dplyr::select(variable, dplyr::all_of(keys),
+                    value_old, value_new, diff, absv, within_tol)
   })
   
-  # 5) summaries by variable (now easy & robust)
+  # 5) summaries by variable
   diff_summary <- diffs_long |>
     dplyr::group_by(variable) |>
     dplyr::summarise(
