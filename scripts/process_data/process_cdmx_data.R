@@ -23,37 +23,17 @@ source(here::here("src","city_specific", "cdmx.R"))
 # I: Import  data
 # ============================================================================================
 # Ensure output folder exists
-outdir <- here::here(cdmx_cfg$out_dir, "pollution_ground_stations", "Mexico_city")
-dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
+outdir_pollution  <- here::here(cdmx_cfg$out_dir, "air_monitoring_stations")
+outdir_geospatial <- here::here(cdmx_cfg$out_dir, "geospatial_data")
 
-station_location  <- read.csv(here::here(cdmx_cfg$out_dir,
-                                         "pollution_ground_stations",
-                                         "Mexico_city",
-                                         "all_station_location.csv"))
-metro_area        <- sf::st_read(here::here(cdmx_cfg$out_dir,
-                                            "cities_shapefiles",
-                                            "cdmx_metro.gpkg"))
-legacy_metro_area <- sf::st_read(here::here(cdmx_cfg$out_dir,
-                                            "cities_shapefiles",
-                                            "Mexico_city"))
+# Open station location and other spatial data
+station_location <- read.csv(here::here(outdir_geospatial, "ground_stations", 
+                                        "CDMX", "all_station_location.csv"))
+metro_area       <- sf::st_read(here::here(outdir_geospatial, "metro_areas",
+                                           "cdmx_metro.gpkg"))
 # ============================================================================================
 # II: Process  data
 # ============================================================================================
-# Apply function to merge all downloaded file into a single tidy dataframe
-cdmx_stations_data <- cdmx_merge_pollution_csvs(
-  downloads_folder = here::here(cdmx_cfg$dl_dir, "Ground_stations"),
-  tz               = "UTC",
-  years            = cdmx_cfg$years,
-  cleanup          = FALSE,
-  out_dir          = here::here(outdir, "full_data"),
-  out_name         = "mexico_stations_2000_2023",
-  write_parquet    = TRUE,
-  write_rds        = FALSE,
-  write_csv        = FALSE,
-  verbose          = TRUE,
-  engine           = "auto"
-)
-
 # Apply function to filter the stations in the metro area + 20 km radius
 stations_kept <- cdmx_filter_stations_in_metro(
   station_location = station_location,
@@ -61,24 +41,33 @@ stations_kept <- cdmx_filter_stations_in_metro(
   radius_km        = 20,             # change if needed
   lon_col          = "lon",
   lat_col          = "lat",
-  stations_epsg    = 4326,           # your lon/lat columns CRS
+  stations_epsg    = 4326,
   dissolve         = TRUE,
-  verbose          = TRUE
+  verbose          = TRUE,
+  out_file         = here::here("data", "interim", "spatial_filtered_stations",
+                                "CDMX_stations.gpkg"),
 )
-legacy_stations_kept <- cdmx_filter_stations_in_metro(
-  station_location = station_location,
-  metro_area       = legacy_metro_area,
-  radius_km        = 20,             # change if needed
-  lon_col          = "lon",
-  lat_col          = "lat",
-  stations_epsg    = 4326,           # your lon/lat columns CRS
-  dissolve         = TRUE,
-  verbose          = TRUE
+
+# Get list with unique stations inside the buffer (20 km) metro area
+stations_to_keep = unique(stations_kept$code)
+
+# Apply function to merge all downloaded file into a single tidy dataframe
+cdmx_stations_data <- cdmx_merge_pollution_csvs(
+  downloads_folder     = here::here(cdmx_cfg$dl_dir, "Ground_stations"),
+  tz                   = "America/Mexico_City",
+  years                = cdmx_cfg$years,
+  stations_keep_codes  = stations_to_keep,
+  cleanup              = FALSE,
+  out_dir              = outdir_pollution,
+  out_name             = "cdmx_metro_buffer_stations",
+  write_parquet        = TRUE,
+  write_rds            = FALSE,
+  write_csv            = FALSE,
+  verbose              = TRUE,
+  engine               = "auto"
 )
 
 # ============================================================================================
 # III: Save  data
 # ============================================================================================
 # Save the raw data of ground stations
-station_metro_csv <- file.path(outdir, paste0("all_station_on_metro_area", ".csv"))
-readr::write_csv(stations_kept, station_metro_csv)
