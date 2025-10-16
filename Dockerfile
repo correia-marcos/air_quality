@@ -4,6 +4,9 @@
 FROM rocker/r-ver:4.5.1 AS builder
 # NOTE: rocker/r-ver:4.5.1 is Ubuntu 24.04 "noble" (multi-arch: amd64/arm64)
 
+# Use bash with pipefail for all RUN instructions in this stage
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
 # Step 1 — Metadata, args, and base env
 LABEL org.opencontainers.image.source="https://github.com/correia-marcos/air_quality" \
       org.opencontainers.image.version="v1.0.0" \
@@ -15,7 +18,6 @@ ARG PPM_DATE=2025-09-01
 
 ENV DEBIAN_FRONTEND=noninteractive \
     TZ=UTC \
-    # faster, quieter CRAN-ish builds in CI
     NOT_CRAN=true \
     RENV_CONFIGURE_BUILD_VIGNETTES=FALSE
 
@@ -37,9 +39,8 @@ RUN apt-get update \
 ENV RENV_CONFIG_PPM_ENABLED=TRUE \
     RENV_CONFIG_PPM_URL="https://packagemanager.posit.co/cran/__linux__/ubuntu/noble/${PPM_DATE}"
 
-RUN set -euo pipefail; \
-    mkdir -p /usr/local/lib/R/etc; \
-    cat >/usr/local/lib/R/etc/Rprofile.site <<'RPROF'
+RUN mkdir -p /usr/local/lib/R/etc \
+ && cat >/usr/local/lib/R/etc/Rprofile.site <<'RPROF'
 options(repos = c(
   RSPM      = Sys.getenv("RENV_CONFIG_PPM_URL"),
   RUniverse = "https://ropensci.r-universe.dev",
@@ -73,7 +74,10 @@ RUN R -q -e "options(renv.verbose = FALSE); install.packages('renv', quiet = TRU
 FROM rocker/rstudio:4.5.1 AS final
 # NOTE: rocker/rstudio:4.5.1 is Ubuntu 24.04 "noble" (multi-arch: amd64/arm64)
 
-# Step 7 — Runtime env (UTC, locale, CA trust)
+# Use bash with pipefail for all RUN instructions in this stage
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+# Step 1 — Runtime env (UTC, locale, CA trust)
 LABEL org.opencontainers.image.source="https://github.com/correia-marcos/air_quality" \
       org.opencontainers.image.version="v1.0.0" \
       maintainer="Marcos Correia <marcospaulorcorreia@gmail.com>"
@@ -86,7 +90,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt \
     GIT_SSL_CAINFO=/etc/ssl/certs/ca-certificates.crt
 
-# Step 8 — Runtime libs: geospatial, LaTeX, fonts, codecs, ICU runtime, pandoc
+# Step 2 — Runtime libs: geospatial, LaTeX, fonts, codecs, ICU runtime, pandoc
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
     curl git ca-certificates locales tzdata tini \
@@ -115,17 +119,16 @@ RUN apt-get update \
  && locale-gen \
  && fc-cache -f -v
 
-# Step 9 — Runtime R repos + shared renv cache (heredoc + Renviron.site)
+# Step 3 — Runtime R repos + shared renv cache (heredoc + Renviron.site)
 ARG PPM_DATE=2025-09-01
 ENV RENV_CONFIG_PPM_URL="https://packagemanager.posit.co/cran/__linux__/ubuntu/noble/${PPM_DATE}" \
     RENV_PATHS_CACHE=/usr/local/lib/R/renv-cache \
     RENV_CONFIG_SANDBOX_ENABLED=FALSE \
     RENV_CONFIG_CACHE_SYMLINKS=FALSE
 
-RUN set -euo pipefail; \
-    mkdir -p /usr/local/lib/R/renv-cache /usr/local/lib/R/etc; \
-    echo "RENV_PATHS_CACHE=/usr/local/lib/R/renv-cache" >> /usr/local/lib/R/etc/Renviron.site; \
-    cat >/usr/local/lib/R/etc/Rprofile.site <<'RPROF'
+RUN mkdir -p /usr/local/lib/R/renv-cache /usr/local/lib/R/etc \
+ && echo "RENV_PATHS_CACHE=/usr/local/lib/R/renv-cache" >> /usr/local/lib/R/etc/Renviron.site \
+ && cat >/usr/local/lib/R/etc/Rprofile.site <<'RPROF'
 options(repos = c(
   RSPM      = Sys.getenv("RENV_CONFIG_PPM_URL"),
   RUniverse = "https://ropensci.r-universe.dev",
@@ -138,24 +141,26 @@ options(HTTPUserAgent = sprintf(
 ))
 RPROF
 
-# Step 10 — Copy baked project + restored library from builder
+# Step 4 — Copy baked project + restored library from builder
 COPY --from=builder /air_monitoring /air_monitoring
 
-# Step 11 — Ownership (best-effort across arches) & working directory
+# Step 5 — Ownership (best-effort across arches) & working directory
 RUN chown -R rstudio:staff /air_monitoring || true \
  && chown -R rstudio:rstudio /home/rstudio || true
 WORKDIR /air_monitoring
 
-# Step 12 — RStudio server: port + healthcheck + entrypoint
+# Step 6 — RStudio server: port + healthcheck + entrypoint
 EXPOSE 8787
 HEALTHCHECK --interval=30s --timeout=5s --retries=5 \
   CMD curl -fsS http://localhost:8787/ || exit 1
 
-ENTRYPOINT ["/usr/bin/tini","-g","--"]
-CMD ["/init"]
+# Step 7 — Entrypoint (tini for clean shutdown) + your script
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+ENTRYPOINT ["/usr/bin/tini","-g","--","/usr/local/bin/entrypoint.sh"]
 
 # ------------------------------------------------------------------------------
-# (Optional) Step 13 — DuckDB CLI (enable if you want the CLI in the image)
+# (Optional) DuckDB CLI — enable if you want the CLI in the image
 # ------------------------------------------------------------------------------
 # ARG DUCKDB_CLI_VERSION=1.3.3
 # RUN apt-get update && apt-get install -y --no-install-recommends unzip \
