@@ -93,7 +93,7 @@ all_stations <- cdmx_scrape_states_merge(
   verbose         = TRUE)
 
 # Apply function to create Selenium server and download the data for Mexico stations
-download_logs <- cdmx_download_sinaica_data(
+download_logs_stations <- cdmx_download_sinaica_data(
   base_url                    = cdmx_cfg$base_url_sinaica,
   years                       = cdmx_cfg$years,
   container                   = TRUE,
@@ -102,11 +102,13 @@ download_logs <- cdmx_download_sinaica_data(
   subdir                      = here::here(cdmx_cfg$dl_dir, "Ground_stations")
 )
 
-# Save the log of downloading for transparency
-write.csv(download_logs, file = path(cdmx_cfg$dl_dir, "stations_log.csv"))
+# Save the log of downloading for transparency - if at least 1000 downloads were made
+if (nrow(download_logs_stations) >= 1000){
+  write.csv(download_logs_stations, file = path(cdmx_cfg$dl_dir, "stations_log.csv"))
+}
 
 # Apply function to download 2023 pollution data for states missing this year
-missing_data <- cdmx_download_remaining_raw_sinaica(
+missing_data_stations <- cdmx_download_remaining_raw_sinaica(
   base_url         = cdmx_cfg$base_url_sinaica,
   subdir_existing  = here::here(cdmx_cfg$dl_dir, "Ground_stations"),
   out_subdir_raw   = here::here(cdmx_cfg$dl_dir, "Ground_stations_raw_missing_data"),

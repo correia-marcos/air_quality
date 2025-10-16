@@ -49,7 +49,8 @@ metro_area <- bogota_download_metro_area(
   base_url          = bogota_cfg$base_url_shp,
   keep_municipality = bogota_cfg$cities_in_metro,
   download_dir      = here::here(bogota_cfg$dl_dir, "metro_area"),
-  out_file          = here::here(bogota_cfg$out_dir, "cities_shapefiles", "cdmx_metro.gpkg"),
+  out_file          = here::here(bogota_cfg$out_dir, "geospatial_data", "metro_areas",
+                                 "bogota_metro.gpkg"),
   overwrite_zip     = FALSE,
   overwrite_gpkg    = TRUE,
   quiet             = FALSE
@@ -79,7 +80,7 @@ rmcab_dir <- bogota_scrape_rmcab_station_table(
 )
 
 # Apply function to create Selenium server and download the data for Bogota
-download_logs <- bogota_download_station_data(
+download_logs_station_bogota <- bogota_download_station_data(
   base_url      = bogota_cfg$base_url_rmcab,
   start_year    = min(bogota_cfg$years),
   end_year      = max(bogota_cfg$years),
