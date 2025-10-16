@@ -2,8 +2,9 @@
 # STAGE 1: Builder — clone repo + renv restore (Ubuntu noble)
 ################################################################################
 FROM rocker/r-ver:4.5.1 AS builder
-# rocker/r-ver:4.5.1 is Ubuntu noble on arm64 at the moment
+# NOTE: rocker/r-ver:4.5.1 is Ubuntu 24.04 "noble" (multi-arch: amd64/arm64)
 
+# Step 1 — Metadata, args, and base env
 LABEL org.opencontainers.image.source="https://github.com/correia-marcos/air_quality" \
       org.opencontainers.image.version="v1.0.0" \
       maintainer="Marcos Correia <marcospaulorcorreia@gmail.com>"
@@ -13,10 +14,14 @@ ARG GIT_REF=main
 ARG PPM_DATE=2025-09-01
 
 ENV DEBIAN_FRONTEND=noninteractive \
-    TZ=UTC
+    TZ=UTC \
+    # faster, quieter CRAN-ish builds in CI
+    NOT_CRAN=true \
+    RENV_CONFIGURE_BUILD_VIGNETTES=FALSE
 
-# Toolchain & headers for source builds (sf/terra/arrow/stringi/etc.)
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Step 2 — Toolchain & headers for source builds (sf/terra/arrow/stringi/etc.)
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
     build-essential git curl ca-certificates pkg-config cmake libgit2-dev \
     gdal-bin libgdal-dev libproj-dev proj-bin proj-data \
     libgeos-dev libudunits2-dev libsqlite3-dev \
@@ -25,43 +30,50 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libfreetype6-dev libfontconfig1-dev libharfbuzz-dev libfribidi-dev \
     libx11-dev xz-utils bzip2 libarchive-dev libzstd-dev liblz4-dev libsnappy-dev \
     pandoc libicu-dev \
- && update-ca-certificates && rm -rf /var/lib/apt/lists/*
+ && update-ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
 
-# PPM (Ubuntu noble) + CRAN + r-universe (for rnaturalearthhires)
+# Step 3 — Configure R repositories (RSPM + r-universe + CRAN) via heredoc
 ENV RENV_CONFIG_PPM_ENABLED=TRUE \
-    RENV_CONFIG_PPM_URL="https://packagemanager.posit.co/cran/__linux__/ubuntu/noble/${PPM_DATE}" \
-    NOT_CRAN=true \
-    RENV_CONFIGURE_BUILD_VIGNETTES=FALSE
-RUN mkdir -p /usr/local/lib/R/etc && \
-    printf '%s\n' \
-'options(repos = c(' \
-'  RSPM = Sys.getenv("RENV_CONFIG_PPM_URL"),' \
-'  RUniverse = "https://ropensci.r-universe.dev",' \
-'  CRAN = "https://cran.rstudio.com/"' \
-'))' \
-'options(HTTPUserAgent = sprintf("R/%s R (%s)", getRversion(),' \
-'  paste(R.version[["platform"]], R.version[["arch"]], R.version[["os"]])))' \
-    >> /usr/local/lib/R/etc/Rprofile.site
+    RENV_CONFIG_PPM_URL="https://packagemanager.posit.co/cran/__linux__/ubuntu/noble/${PPM_DATE}"
 
-# Clone project (shallow) and restore with renv
+RUN set -euo pipefail; \
+    mkdir -p /usr/local/lib/R/etc; \
+    cat >/usr/local/lib/R/etc/Rprofile.site <<'RPROF'
+options(repos = c(
+  RSPM      = Sys.getenv("RENV_CONFIG_PPM_URL"),
+  RUniverse = "https://ropensci.r-universe.dev",
+  CRAN      = "https://cran.rstudio.com/"
+))
+options(HTTPUserAgent = sprintf(
+  "R/%s R (%s)",
+  getRversion(),
+  paste(R.version[["platform"]], R.version[["arch"]], R.version[["os"]])
+))
+RPROF
+
+# Step 4 — Clone project (shallow) for better cache reuse
 WORKDIR /air_monitoring
 RUN git clone --depth 1 --branch "${GIT_REF}" "${REPO_URL}" /air_monitoring
 
-# Local renv cache/library (cached layers)
+# Step 5 — Prepare renv cache/library (layer-cached)
 ENV RENV_PATHS_CACHE=/air_monitoring/renv/.cache \
     RENV_PATHS_LIBRARY=/air_monitoring/renv/library \
     RENV_CONFIG_SANDBOX_ENABLED=FALSE \
     RENV_CONFIG_CACHE_SYMLINKS=FALSE
 RUN mkdir -p renv/.cache renv/library
 
-RUN R -q -e "install.packages('renv'); renv::restore(prompt = FALSE)"
+# Step 6 — Restore packages from renv.lock (PPM snapshot + CRAN + r-universe)
+RUN R -q -e "options(renv.verbose = FALSE); install.packages('renv', quiet = TRUE); renv::restore(prompt = FALSE)"
+
 
 ################################################################################
 # STAGE 2: Runtime — RStudio + LaTeX + geospatial + fonts (Ubuntu noble)
 ################################################################################
 FROM rocker/rstudio:4.5.1 AS final
-# rocker/rstudio:4.5.1 is Ubuntu noble on arm64 at the moment
+# NOTE: rocker/rstudio:4.5.1 is Ubuntu 24.04 "noble" (multi-arch: amd64/arm64)
 
+# Step 7 — Runtime env (UTC, locale, CA trust)
 LABEL org.opencontainers.image.source="https://github.com/correia-marcos/air_quality" \
       org.opencontainers.image.version="v1.0.0" \
       maintainer="Marcos Correia <marcospaulorcorreia@gmail.com>"
@@ -74,56 +86,67 @@ ENV DEBIAN_FRONTEND=noninteractive \
     CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt \
     GIT_SSL_CAINFO=/etc/ssl/certs/ca-certificates.crt
 
-# Runtime libs: geospatial, LaTeX, fonts, codecs, ICU runtime, pandoc
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Step 8 — Runtime libs: geospatial, LaTeX, fonts, codecs, ICU runtime, pandoc
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
     curl git ca-certificates locales tzdata tini \
+    # geospatial runtime
     gdal-bin libgdal-dev libproj-dev proj-bin proj-data \
     libgeos-dev libudunits2-0 libsqlite3-0 \
+    # raster/graphics codecs
     libpng16-16 libjpeg-turbo8 libtiff6 \
+    # font stack for ragg/showtext/systemfonts
     libfreetype6 libfontconfig1 libharfbuzz0b libfribidi0 \
     fonts-dejavu fonts-liberation fonts-noto fonts-noto-color-emoji \
+    # parquet/arrow codecs
     libzstd1 liblz4-1 libsnappy1v5 libbrotli1 bzip2 \
+    # doc rendering (knitr/rmarkdown)
     pandoc \
+    # LaTeX (XeLaTeX/LuaLaTeX + language packs)
     texlive-latex-base texlive-latex-recommended texlive-latex-extra \
     texlive-fonts-recommended texlive-fonts-extra texlive-plain-generic \
     texlive-xetex texlive-luatex lmodern latexmk ghostscript dvipng cm-super \
     texlive-lang-english texlive-lang-spanish texlive-lang-portuguese \
+    # archives + ICU runtime
     libarchive13 libicu74 \
- && update-ca-certificates && rm -rf /var/lib/apt/lists/* \
+ && update-ca-certificates \
+ && rm -rf /var/lib/apt/lists/* \
  && sed -i 's/# en_US.UTF-8/en_US.UTF-8/' /etc/locale.gen \
  && locale-gen \
  && fc-cache -f -v
 
-# PPM repo options at runtime too
+# Step 9 — Runtime R repos + shared renv cache (heredoc + Renviron.site)
 ARG PPM_DATE=2025-09-01
 ENV RENV_CONFIG_PPM_URL="https://packagemanager.posit.co/cran/__linux__/ubuntu/noble/${PPM_DATE}" \
     RENV_PATHS_CACHE=/usr/local/lib/R/renv-cache \
     RENV_CONFIG_SANDBOX_ENABLED=FALSE \
     RENV_CONFIG_CACHE_SYMLINKS=FALSE
-RUN mkdir -p /usr/local/lib/R/renv-cache \
- && echo "RENV_PATHS_CACHE=/usr/local/lib/R/renv-cache" \
-    >> /usr/local/lib/R/etc/Renviron.site \
- && mkdir -p /usr/local/lib/R/etc \
- && printf '%s\n' \
-'options(repos = c(' \
-'  RSPM = Sys.getenv("RENV_CONFIG_PPM_URL"),' \
-'  RUniverse = "https://ropensci.r-universe.dev",' \
-'  CRAN = "https://cran.rstudio.com/"' \
-'))' \
-'options(HTTPUserAgent = sprintf("R/%s R (%s)", getRversion(),' \
-'  paste(R.version[["platform"]], R.version[["arch"]], R.version[["os"]])))' \
-    >> /usr/local/lib/R/etc/Rprofile.site
 
-# Bring in baked project + restored library from builder
+RUN set -euo pipefail; \
+    mkdir -p /usr/local/lib/R/renv-cache /usr/local/lib/R/etc; \
+    echo "RENV_PATHS_CACHE=/usr/local/lib/R/renv-cache" >> /usr/local/lib/R/etc/Renviron.site; \
+    cat >/usr/local/lib/R/etc/Rprofile.site <<'RPROF'
+options(repos = c(
+  RSPM      = Sys.getenv("RENV_CONFIG_PPM_URL"),
+  RUniverse = "https://ropensci.r-universe.dev",
+  CRAN      = "https://cran.rstudio.com/"
+))
+options(HTTPUserAgent = sprintf(
+  "R/%s R (%s)",
+  getRversion(),
+  paste(R.version[["platform"]], R.version[["arch"]], R.version[["os"]])
+))
+RPROF
+
+# Step 10 — Copy baked project + restored library from builder
 COPY --from=builder /air_monitoring /air_monitoring
 
-# Ownership (best-effort on arm64)
+# Step 11 — Ownership (best-effort across arches) & working directory
 RUN chown -R rstudio:staff /air_monitoring || true \
  && chown -R rstudio:rstudio /home/rstudio || true
-
 WORKDIR /air_monitoring
 
-# RStudio server
+# Step 12 — RStudio server: port + healthcheck + entrypoint
 EXPOSE 8787
 HEALTHCHECK --interval=30s --timeout=5s --retries=5 \
   CMD curl -fsS http://localhost:8787/ || exit 1
@@ -131,7 +154,9 @@ HEALTHCHECK --interval=30s --timeout=5s --retries=5 \
 ENTRYPOINT ["/usr/bin/tini","-g","--"]
 CMD ["/init"]
 
-# OPTIONAL: DuckDB CLI
+# ------------------------------------------------------------------------------
+# (Optional) Step 13 — DuckDB CLI (enable if you want the CLI in the image)
+# ------------------------------------------------------------------------------
 # ARG DUCKDB_CLI_VERSION=1.3.3
 # RUN apt-get update && apt-get install -y --no-install-recommends unzip \
 #  && arch="$(dpkg --print-architecture)" \
