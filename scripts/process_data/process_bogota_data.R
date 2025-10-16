@@ -22,11 +22,10 @@ source(here::here("src","city_specific", "bogota.R"))
 # ============================================================================================
 # I: Import  data
 # ============================================================================================
-print(bogota_cfg$dl_dir)  # already imported through source
+# Define the output folders
+outdir_pollution  <- here::here(bogota_cfg$out_dir, "air_monitoring_stations")
+outdir_geospatial <- here::here(bogota_cfg$out_dir, "geospatial_data")
 
-# Ensure output folder exists
-outdir <- here::here(bogota_cfg$out_dir, "pollution_ground_stations", "Bogota")
-dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
 
 census_zip = here::here(bogota_cfg$dl_dir, "census", "CG2005_AMPLIADO.zip")
 # ============================================================================================

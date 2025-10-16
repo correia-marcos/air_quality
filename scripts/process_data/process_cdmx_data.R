@@ -22,7 +22,7 @@ source(here::here("src","city_specific", "cdmx.R"))
 # ============================================================================================
 # I: Import  data
 # ============================================================================================
-# Ensure output folder exists
+# Define the output folders
 outdir_pollution  <- here::here(cdmx_cfg$out_dir, "air_monitoring_stations")
 outdir_geospatial <- here::here(cdmx_cfg$out_dir, "geospatial_data")
 
