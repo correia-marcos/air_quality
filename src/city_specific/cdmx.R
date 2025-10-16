@@ -3049,7 +3049,7 @@ cdmx_download_sinaica_data <- function(
 # @Purpose: (1) Detect which SMCA/state slugs lack `year_check` in validated folder.
 #           (2) On “Módulos ▸ Datos crudos”, loop networks/stations in those states and
 #               download hourly raw files for every available parameter in 2023.
-# @Notes : Requires the raw helpers you extracted:
+# @Notes : Requires the raw helpers:
 #          - sinaica_raw_open_datos_crudos(), sinaica_raw_list_networks_and_stations(),
 #            sinaica_raw_select_station(), sinaica_raw_list_parametros(),
 #            sinaica_raw_select_parametro(), sinaica_raw_set_datobase_hourly(),
@@ -3058,8 +3058,8 @@ cdmx_download_sinaica_data <- function(
 #            sinaica_raw_click_descarga()
 #          Also uses: wait_ready(), wait_for(), wait_for_new_download(),
 #                      sinaica_slugify(), sinaica_next_nonconflicting()
-# @Written_on: 10/16/2025
-# @Written_by: Marcos Paulo (with ChatGPT)
+# @Written_on: 12/10/2025
+# @Written_by: Marcos Paulo
 # ============================================================================================
 cdmx_download_remaining_raw_sinaica <- function(
     base_url        = cdmx_cfg$base_url_sinaica,
@@ -3195,11 +3195,9 @@ cdmx_download_remaining_raw_sinaica <- function(
   
   # -- 3) Open raw module and read the (red, station, state) index --------------------------
   sinaica_raw_open_datos_crudos(session, base_url, timeout_page, timeout_ctrl)
-  
-  # Read pairs now; then enrich with state by one DOM pass (data-tokens heuristic).
   idx <- sinaica_raw_list_networks_and_stations(session)
   
-  # Inject state via a single JS sweep of the open "Estación" menu (robust for multiword).
+  # Enrich with state from the open menu via one DOM pass
   state_json <- session$execute_script(
     "
     function norm(s){return (s||'').toString().replace(/\\s+/g,' ').trim();}
@@ -3236,7 +3234,7 @@ cdmx_download_remaining_raw_sinaica <- function(
         var stTxt=norm(stSpan?stSpan.textContent:a.textContent);
         var dt=norm(a.getAttribute('data-tokens')||'');
         var tokens=dt.split(/\\s+/);
-        var j=firstCapsIx(tokens); // tokens before j form the state name
+        var j=firstCapsIx(tokens);
         var state= (j>0? tokens.slice(0,j).join(' ') : '');
         out.push([curRed, stTxt, state, slug(state)]);
       }
@@ -3244,26 +3242,22 @@ cdmx_download_remaining_raw_sinaica <- function(
     return JSON.stringify(out);
     "
   )[[1]]
-  
   enrich <- try(jsonlite::fromJSON(state_json), silent = TRUE)
   if (!inherits(enrich, "try-error") && length(enrich)) {
     e <- as.data.frame(enrich, stringsAsFactors = FALSE)
     names(e) <- c("red_text","station_text","state_text","state_slug")
     idx <- merge(
-      idx, e,
-      by = c("red_text","station_text"),
-      all.x = TRUE, sort = FALSE
+      idx, e, by = c("red_text","station_text"), all.x = TRUE, sort = FALSE
     )
   } else {
-    # Fallback: unknown states → NA; we will keep all and filter later softly.
     idx$state_text <- NA_character_
     idx$state_slug <- NA_character_
   }
   
   # Keep only target SMCA/state slugs
   need_set <- unique(needed)
-  idx_need <- idx[!is.na(idx$state_slug) & idx$state_slug %in% need_set, , drop = FALSE]
-  
+  idx_need <- idx[!is.na(idx$state_slug) & idx$state_slug %in% need_set, ,
+                  drop = FALSE]
   if (!nrow(idx_need)) {
     message("⚠️ Could not match any station rows to missing states: ",
             paste(need_set, collapse = ", "))
@@ -3283,7 +3277,7 @@ cdmx_download_remaining_raw_sinaica <- function(
   # -- 4) Main loop: for each (network, station) in missing states, pull all parameters -----
   log <- list()
   
-  # Small util to rename/move downloaded file to 5-part schema
+  # Rename/move into 5-part schema
   save_download <- function(src, smca_slug, red_slug, par_slug, station_slug) {
     base_out <- sprintf("%s__%s__%s__%s__%d.xls",
                         smca_slug, red_slug, par_slug, station_slug, year_check)
@@ -3295,24 +3289,20 @@ cdmx_download_remaining_raw_sinaica <- function(
     }
     dest
   }
+  norm_state_slug <- function(s) {
+    gsub("_+", "_", tolower(iconv(s, "", "ASCII//TRANSLIT")))
+  }
   
-  # Map state_slug back to smca_slug (they are identical for all but EDOMEX/CDMX labels)
-  # Here state_slug should be like 'hidalgo','puebla', etc.; for safety, normalize.
-  norm_state_slug <- function(s) gsub("_+", "_", tolower(iconv(s, "", "ASCII//TRANSLIT")))
-  
-  # Loop networks → stations
   for (i in seq_len(nrow(idx_need))) {
     red_text     <- idx_need$red_text[i]
     red_slug     <- idx_need$red_slug[i]
     station_text <- idx_need$station_text[i]
     station_slug <- idx_need$station_slug[i]
     state_slug   <- norm_state_slug(idx_need$state_slug[i])
+    smca_slug_final <- state_slug
     
-    smca_slug_final <- state_slug  # e.g., 'hidalgo', 'puebla', etc.
-    
-    msg_head <- sprintf("\n🌐 Red: %s  |  📍 Estación: %s  |  🏷️ Estado: %s",
-                        red_text, station_text, state_slug)
-    message(msg_head)
+    message(sprintf("\n🌐 Red: %s  |  📍 Estación: %s  |  🏷️ Estado: %s",
+                    red_text, station_text, state_slug))
     
     # Select station
     ok_sel <- FALSE
@@ -3327,7 +3317,7 @@ cdmx_download_remaining_raw_sinaica <- function(
     }
     if (settle_after_station_sec > 0) Sys.sleep(settle_after_station_sec)
     
-    # List parameters for this station now
+    # Parameters for this station
     params <- sinaica_raw_list_parametros(session)
     if (!length(params)) {
       message("   ⚠️ No parameters listed for this station, skipping.")
@@ -3338,20 +3328,19 @@ cdmx_download_remaining_raw_sinaica <- function(
       par_slug <- sinaica_slugify(pname)
       message("   🧪 Param: ", pname)
       
-      # Attempt loop (parameter-level)
       attempt <- 0L
       repeat {
         attempt <- attempt + 1L
         newest_path <- NA_character_
         
         res_try <- try({
-          # Pick parameter
+          # Select parameter
           if (!sinaica_raw_select_parametro(session, pname)) {
             stop("Could not select parameter.")
           }
           if (settle_after_param_sec > 0) Sys.sleep(settle_after_param_sec)
           
-          # Dato base → hourly or skip this param if none available
+          # Dato base → hourly
           db <- sinaica_raw_set_datobase_hourly(session)
           if (identical(db, "none")) {
             message("      ↪︎ No 'Dato base' options; skipping parameter.")
@@ -3367,17 +3356,16 @@ cdmx_download_remaining_raw_sinaica <- function(
             break
           }
           
-          # Set date & longest range (prefer 1 año)
+          # Date & range
           sinaica_raw_set_fecha_inicio(session, sprintf("%d-01-01", year_check))
           sinaica_raw_set_rango_best(session)
           
-          # Update → wait for "Descarga Datos"
+          # Update → wait → download
           sinaica_raw_click_actualizar(session)
           Sys.sleep(2)
           ok_ready <- sinaica_raw_wait_descarga_ready(session, timeout_descarga)
           if (!ok_ready) stop("'Descarga Datos' did not appear in time.")
           
-          # Download
           before <- list.files(downloads_root, pattern = "\\.xls$", full.names = TRUE)
           if (!sinaica_raw_click_descarga(session)) {
             stop("Could not click 'Descarga Datos'.")
@@ -3391,7 +3379,6 @@ cdmx_download_remaining_raw_sinaica <- function(
             timeout   = timeout_dl
           )
           
-          # Rename/move
           newest_path <- save_download(
             src, smca_slug_final, red_slug, par_slug, station_slug
           )
@@ -3415,16 +3402,89 @@ cdmx_download_remaining_raw_sinaica <- function(
                           attempt, back))
           Sys.sleep(back)
         } else {
-          message("      ❌ Failed parameter after max attempts.")
-          log[[length(log) + 1L]] <- tibble::tibble(
-            smca      = smca_slug_final,
-            red       = red_text,
-            station   = station_text,
-            parametro = pname,
-            year      = year_check,
-            status    = "failed",
-            file      = NA_character_
-          )
+          # ------------------------- LAST-TRY with doubled budgets -------------------------
+          message("      🔁 Last-try: hard reload with doubled timeouts…")
+          last_try <- try({
+            # Re-open the module with doubled page/control timeouts
+            sinaica_raw_open_datos_crudos(session, base_url,
+                                          timeout_page * 2, timeout_ctrl * 2)
+            # Re-select the same station
+            ok2 <- sinaica_raw_select_station(session, red_slug, station_text)
+            if (!ok2) stop("Station reselection failed.")
+            if (settle_after_station_sec > 0)
+              Sys.sleep(settle_after_station_sec * 2)
+            
+            # Re-list and ensure the same parameter is present
+            params2 <- sinaica_raw_list_parametros(session)
+            if (!length(params2) || !(pname %in% params2)) {
+              stop("Parameter not listed after reload.")
+            }
+            if (!sinaica_raw_select_parametro(session, pname)) {
+              stop("Parameter selection failed after reload.")
+            }
+            if (settle_after_param_sec > 0)
+              Sys.sleep(settle_after_param_sec * 2)
+            
+            # Dato base hourly again (abort if not available)
+            db2 <- sinaica_raw_set_datobase_hourly(session)
+            if (identical(db2, "none")) stop("No 'Dato base' after reload.")
+            
+            # Set date & broader range, then Update
+            sinaica_raw_set_fecha_inicio(session, sprintf("%d-01-01", year_check))
+            sinaica_raw_set_rango_best(session)
+            sinaica_raw_click_actualizar(session)
+            Sys.sleep(4)
+            
+            # Wait longer for "Descarga Datos"
+            ok_ready2 <- sinaica_raw_wait_descarga_ready(
+              session, timeout_descarga * 2
+            )
+            if (!ok_ready2) stop("'Descarga Datos' not ready (last-try).")
+            
+            # Download with doubled timeout
+            before2 <- list.files(downloads_root, pattern = "\\.xls$",
+                                  full.names = TRUE)
+            if (!sinaica_raw_click_descarga(session)) {
+              stop("Click 'Descarga Datos' failed (last-try).")
+            }
+            Sys.sleep(3)
+            src2 <- wait_for_new_download(
+              dir       = downloads_root,
+              before    = before2,
+              pattern   = "\\.xls$",
+              quiet_sec = 3,
+              timeout   = timeout_dl * 2
+            )
+            
+            newest_path2 <- save_download(
+              src2, smca_slug_final, red_slug, par_slug, station_slug
+            )
+            message("      ✅ (last-try) ", basename(newest_path2))
+            newest_path2
+          }, silent = TRUE)
+          
+          if (!inherits(last_try, "try-error")) {
+            log[[length(log) + 1L]] <- tibble::tibble(
+              smca      = smca_slug_final,
+              red       = red_text,
+              station   = station_text,
+              parametro = pname,
+              year      = year_check,
+              status    = "ok_lasttry",
+              file      = as.character(last_try)
+            )
+          } else {
+            message("      ❌ Failed after last-try reload.")
+            log[[length(log) + 1L]] <- tibble::tibble(
+              smca      = smca_slug_final,
+              red       = red_text,
+              station   = station_text,
+              parametro = pname,
+              year      = year_check,
+              status    = "failed_lasttry",
+              file      = NA_character_
+            )
+          }
           break
         }
       } # repeat attempts
