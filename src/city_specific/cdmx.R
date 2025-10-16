@@ -1251,6 +1251,402 @@ sinaica_cleanup_downloads <- function(
   unlink(paths[match_idx][old], force = TRUE)
   length(old)
 }
+# ============================================================================================
+# RAW (“Datos crudos”) HELPERS
+# ============================================================================================
+# --------------------------------------------------------------------------------------------
+# Function : sinaica_raw_open_datos_crudos
+# @Arg     : session      — SeleniumSession
+# @Arg     : base_url     — SINAICA base (e.g., "https://sinaica.inecc.gob.mx/scica/")
+# @Arg     : timeout_page — seconds to wait for on-load readiness
+# @Arg     : timeout_ctrl — seconds to wait for first control on raw page
+# @Output  : invisible(TRUE) or error
+# @Purpose : Navigate to base URL, open “Módulos ▸ Datos crudos”, and wait controls.
+# --------------------------------------------------------------------------------------------
+sinaica_raw_open_datos_crudos <- function(session, base_url,
+                                          timeout_page = 10, timeout_ctrl = 10) {
+  session$navigate(base_url)
+  wait_ready(session, timeout_page)
+  
+  # Open "Módulos" dropdown then click "Datos crudos"
+  ok_open <- try(
+    session$find_element(
+      "xpath",
+      "//a[contains(@class,'dropdown-toggle') and contains(normalize-space(.),'Módulos')]"
+    )$click(),
+    silent = TRUE
+  )
+  
+  ok_click <- try(
+    session$find_element(
+      "xpath",
+      "//a[@href='/data.php?tipo=C' and normalize-space(.)='Datos crudos']"
+    )$click(),
+    silent = TRUE
+  )
+  if (inherits(ok_open, "try-error") || inherits(ok_click, "try-error")) {
+    # Fallback: find by text only
+    sinaica_js_click_text(
+      session,
+      "//a[contains(@href,'data.php?tipo=C') and contains(normalize-space(.),'Datos crudos')]"
+    )
+  }
+  
+  # Wait a key control on the raw page
+  wait_for(session, "css selector", "button[data-id='estacion']", timeout_ctrl)
+  invisible(TRUE)
+}
+# --------------------------------------------------------------------------------------------
+# Function : sinaica_raw_open_dropdown
+# @Arg     : session  — SeleniumSession
+# @Arg     : data_id  — one of "estacion" or "parametro"
+# @Arg     : timeout  — seconds to wait for the opened menu
+# @Output  : invisible(TRUE) or error
+# @Purpose : Open a Bootstrap-select dropdown (by data-id) and ensure items are visible.
+# --------------------------------------------------------------------------------------------
+sinaica_raw_open_dropdown <- function(session, data_id = c("estacion","parametro"),
+                                      timeout = 8) {
+  data_id <- match.arg(data_id)
+  btn <- wait_for(
+    session, "css selector", sprintf("button[data-id='%s']", data_id), timeout
+  )
+  try(btn$click(), silent = TRUE)
+  
+  # Wait until the inner <ul> has at least 1 <li> (header or option)
+  t0 <- Sys.time()
+  repeat {
+    n <- try(
+      session$execute_script(
+        paste0(
+          "var b=document.querySelector(\"button[data-id='", data_id, "']\");",
+          "if(!b) return 0;",
+          "var root=b.closest('.bootstrap-select');",
+          "if(!root) return 0;",
+          "var ul=root.querySelector('ul.dropdown-menu.inner');",
+          "if(!ul) return 0;",
+          "return ul.children.length||0;"
+        )
+      )[[1]],
+      silent = TRUE
+    )
+    if (!inherits(n, "try-error") && is.finite(n) && n > 0) break
+    if (as.numeric(difftime(Sys.time(), t0, units = "secs")) > timeout)
+      stop("Dropdown '", data_id, "' did not open or has no items.")
+    Sys.sleep(0.25)
+  }
+  invisible(TRUE)
+}
+# --------------------------------------------------------------------------------------------
+# Function : sinaica_raw_list_networks_and_stations
+# @Arg     : session — SeleniumSession
+# @Output  : data.frame(red_text, red_slug, station_text, station_slug)
+# @Purpose : Read the “Estación” dropdown content as pairs (Red, Estación). Red slug is the
+#            site header after “Red: ”, normalized via sinaica_slugify().
+# --------------------------------------------------------------------------------------------
+sinaica_raw_list_networks_and_stations <- function(session) {
+  # Ensure dropdown is open
+  try(sinaica_raw_open_dropdown(session, "estacion", timeout = 8), silent = TRUE)
+  
+  raw <- session$execute_script(
+    "
+    function normSpaces(s){ return (s||'').toString().replace(/\\s+/g,' ').trim(); }
+    function stripRedPrefix(s){
+      s = normSpaces(s);
+      var i = s.indexOf(':');
+      if(i>=0) s = s.slice(i+1);
+      return normSpaces(s);
+    }
+    var btn = document.querySelector(\"button[data-id='estacion']\");
+    if(!btn) return '[]';
+    var root = btn.closest('.bootstrap-select');
+    if(!root) return '[]';
+    var ul = root.querySelector('ul.dropdown-menu.inner');
+    if(!ul) return '[]';
+    var lis = ul.querySelectorAll('li');
+    var out = [];
+    var curRed = null;
+    for (var i=0;i<lis.length;i++){
+      var li = lis[i];
+      if(li.classList.contains('dropdown-header')){
+        var ht = li.querySelector('.text');
+        curRed = stripRedPrefix(ht ? ht.textContent : li.textContent);
+      } else if(li.classList.contains('divider')){
+        continue;
+      } else {
+        var a = li.querySelector('a .text') || li.querySelector('a');
+        var st = normSpaces(a ? a.textContent : '');
+        if(curRed && st){ out.push([curRed, st]); }
+      }
+    }
+    return JSON.stringify(out);
+    "
+  )[[1]]
+  
+  arr <- try(jsonlite::fromJSON(raw), silent = TRUE)
+  if (inherits(arr, "try-error") || !length(arr)) {
+    return(data.frame(
+      red_text     = character(0),
+      red_slug     = character(0),
+      station_text = character(0),
+      station_slug = character(0)
+    ))
+  }
+  df <- as.data.frame(arr, stringsAsFactors = FALSE)
+  names(df) <- c("red_text","station_text")
+  df$red_slug     <- vapply(df$red_text,     sinaica_slugify, character(1))
+  df$station_slug <- vapply(df$station_text, sinaica_slugify, character(1))
+  df[, c("red_text","red_slug","station_text","station_slug")]
+}
+# --------------------------------------------------------------------------------------------
+# Function : sinaica_raw_select_station
+# @Arg     : session      — SeleniumSession
+# @Arg     : red_slug     — network slug (e.g., 'atitalaquia'); see list helper
+# @Arg     : station_text — exact visible station name inside that red
+# @Arg     : timeout      — seconds to wait after click
+# @Output  : TRUE if clicked; FALSE otherwise
+# @Purpose : Click a station option under the specified Red header. Matching for the Red
+#            is by slug; station is by exact visible text.
+# --------------------------------------------------------------------------------------------
+sinaica_raw_select_station <- function(session, red_slug, station_text, timeout = 5) {
+  sinaica_raw_open_dropdown(session, "estacion", timeout = 8)
+  js <- paste0(
+    "
+    function slug(s){
+      s=(s||'').toString().normalize('NFD').replace(/\\p{Diacritic}/gu,'');
+      s=s.replace(/[^A-Za-z0-9]+/g,'_').replace(/^_+|_+$/g,'').toLowerCase();
+      return s.replace(/_+/g,'_');
+    }
+    function norm(s){ return (s||'').toString().replace(/\\s+/g,' ').trim(); }
+
+    var wantRed = ", jsonlite::toJSON(red_slug, auto_unbox = TRUE), ";
+    var wantSta = ", jsonlite::toJSON(station_text, auto_unbox = TRUE), ";
+
+    var btn = document.querySelector(\"button[data-id='estacion']\");
+    if(!btn) return false;
+    var root = btn.closest('.bootstrap-select');
+    if(!root) return false;
+    var ul = root.querySelector('ul.dropdown-menu.inner');
+    if(!ul) return false;
+
+    var lis = ul.querySelectorAll('li');
+    var curRed = null;
+    for (var i=0;i<lis.length;i++){
+      var li = lis[i];
+      if(li.classList.contains('dropdown-header')){
+        var ht = li.querySelector('.text');
+        var txt = ht ? ht.textContent : li.textContent;
+        // strip 'Red:' prefix
+        var p = txt.indexOf(':'); if(p>=0) txt = txt.slice(p+1);
+        curRed = slug(norm(txt));
+      } else if(li.classList.contains('divider')) {
+        continue;
+      } else {
+        var a = li.querySelector('a .text') || li.querySelector('a');
+        var st = norm(a ? a.textContent : '');
+        if(curRed===wantRed && st===wantSta){
+          try{ a.click(); return true; }catch(_){ return false; }
+        }
+      }
+    }
+    return false;
+    "
+  )
+  ok <- isTRUE(session$execute_script(js)[[1]])
+  if (ok) Sys.sleep(0.3)
+  ok
+}
+# --------------------------------------------------------------------------------------------
+# Function : sinaica_raw_list_parametros
+# @Arg     : session — SeleniumSession
+# @Output  : character vector of parameter names (visible text)
+# @Purpose : Open and read the “Parámetro” dropdown options.
+# --------------------------------------------------------------------------------------------
+sinaica_raw_list_parametros <- function(session) {
+  try(sinaica_raw_open_dropdown(session, "parametro", timeout = 8), silent = TRUE)
+  raw <- session$execute_script(
+    "
+    function norm(s){ return (s||'').toString().replace(/\\s+/g,' ').trim(); }
+    var btn = document.querySelector(\"button[data-id='parametro']\");
+    if(!btn) return '[]';
+    var root = btn.closest('.bootstrap-select');
+    if(!root) return '[]';
+    var ul = root.querySelector('ul.dropdown-menu.inner');
+    if(!ul) return '[]';
+    var as = ul.querySelectorAll('li a .text, li a');
+    var out = [];
+    for (var i=0;i<as.length;i++){
+      var t = norm(as[i].textContent);
+      if(t) out.push(t);
+    }
+    return JSON.stringify(out);
+    "
+  )[[1]]
+  arr <- try(jsonlite::fromJSON(raw), silent = TRUE)
+  arr  <- unique(arr)
+  if (inherits(arr, "try-error")) character(0) else as.character(arr)
+}
+# --------------------------------------------------------------------------------------------
+# Function : sinaica_raw_select_parametro
+# @Arg     : session  — SeleniumSession
+# @Arg     : name     — visible text (e.g., "Ozono")
+# @Output  : TRUE if clicked; FALSE otherwise
+# @Purpose : Select a parameter by its visible name in the dropdown.
+# --------------------------------------------------------------------------------------------
+sinaica_raw_select_parametro <- function(session, name) {
+  sinaica_raw_open_dropdown(session, "parametro", timeout = 8)
+  js <- paste0(
+    "
+    function norm(s){ return (s||'').toString().replace(/\\s+/g,' ').trim(); }
+    var want = ", jsonlite::toJSON(name, auto_unbox = TRUE), ";
+    var btn = document.querySelector(\"button[data-id='parametro']\");
+    if(!btn) return false;
+    var root = btn.closest('.bootstrap-select'); if(!root) return false;
+    var a = root.querySelector(\"ul.dropdown-menu.inner li a .text\");
+    var as = root.querySelectorAll('ul.dropdown-menu.inner li a');
+    for (var i=0;i<as.length;i++){
+      var t = norm(as[i].textContent);
+      if(t===want){ try{as[i].click();return true;}catch(_){return false;} }
+    }
+    return false;
+    "
+  )
+  isTRUE(session$execute_script(js)[[1]])
+}
+# --------------------------------------------------------------------------------------------
+# Function : sinaica_raw_set_datobase_hourly
+# @Arg     : session — SeleniumSession
+# @Output  : "ok" if set to hourly; "none" if only dashed placeholder; "absent" if no select
+# @Purpose : If #slcDatoBase exists and offers options, pick “Concentraciones horarias”.
+# --------------------------------------------------------------------------------------------
+sinaica_raw_set_datobase_hourly <- function(session) {
+  raw <- try(
+    session$execute_script(
+      "
+      function norm(s){ return (s||'').toString().replace(/\\s+/g,' ').trim(); }
+      var sel=document.getElementById('slcDatoBase');
+      if(!sel) return 'absent';
+      var n=sel.options.length;
+      if(n===0) return 'none';
+      if(n===1 && /-\\s-/.test(sel.options[0].textContent)) return 'none';
+
+      var targetIndex = -1;
+      for (var i=0;i<n;i++){
+        var t = norm(sel.options[i].textContent);
+        if (/^concentraciones\\s+horarias$/i.test(t)) { targetIndex = i; break; }
+        if (sel.options[i].value==='1') { targetIndex = i; } // fallback
+      }
+      if (targetIndex<0) targetIndex = 0;
+      sel.selectedIndex = targetIndex;
+      sel.dispatchEvent(new Event('input',{bubbles:true}));
+      sel.dispatchEvent(new Event('change',{bubbles:true}));
+      return 'ok';
+      "
+    )[[1]],
+    silent = TRUE
+  )
+  if (inherits(raw, "try-error")) "absent" else as.character(raw)
+}
+# --------------------------------------------------------------------------------------------
+# Function : sinaica_raw_set_fecha_inicio
+# @Arg     : session   — SeleniumSession
+# @Arg     : start_iso — "YYYY-MM-DD" (default "2023-01-01")
+# @Output  : invisible(TRUE)
+# @Purpose : Set #fechaIni directly (datepicker-friendly) and fire change/input events.
+# --------------------------------------------------------------------------------------------
+sinaica_raw_set_fecha_inicio <- function(session, start_iso = "2023-01-01") {
+  session$execute_script(
+    paste0(
+      "var d=document.getElementById('fechaIni');",
+      "if(d){ d.value=", jsonlite::toJSON(start_iso, auto_unbox = TRUE), ";",
+      " d.dispatchEvent(new Event('input',{bubbles:true}));",
+      " d.dispatchEvent(new Event('change',{bubbles:true})); }"
+    )
+  )
+  invisible(TRUE)
+}
+# --------------------------------------------------------------------------------------------
+# Function : sinaica_raw_set_rango_best
+# @Arg     : session — SeleniumSession
+# @Output  : character selected label (e.g., "1 año") or NA if control absent
+# @Purpose : Prefer “1 año” in #rango; otherwise pick the largest available span.
+# --------------------------------------------------------------------------------------------
+sinaica_raw_set_rango_best <- function(session) {
+  raw <- try(
+    session$execute_script(
+      "
+      function norm(s){ return (s||'').toString().replace(/\\s+/g,' ').trim(); }
+      var sel=document.getElementById('rango');
+      if(!sel) return '';
+      var n=sel.options.length, bestI=-1, bestScore=-1, chosen='';
+      for (var i=0;i<n;i++){
+        var t = norm(sel.options[i].textContent);
+        if (/^1\\s*a[nñ]o$/i.test(t)) { bestI=i; chosen=t; break; }
+        var v = parseInt(sel.options[i].value||'0',10);
+        if (isFinite(v) && v>bestScore){ bestScore=v; bestI=i; chosen=t; }
+      }
+      if (bestI<0) return '';
+      sel.selectedIndex=bestI;
+      sel.dispatchEvent(new Event('input',{bubbles:true}));
+      sel.dispatchEvent(new Event('change',{bubbles:true}));
+      return chosen;
+      "
+    )[[1]],
+    silent = TRUE
+  )
+  if (inherits(raw, "try-error")) return(NA_character_)
+  z <- as.character(raw %||% "")
+  if (!nzchar(z)) NA_character_ else z
+}
+# --------------------------------------------------------------------------------------------
+# Function : sinaica_raw_click_actualizar
+# @Arg     : session — SeleniumSession
+# @Output  : invisible(TRUE) or error
+# @Purpose : Click the “Actualizar” button (#actualiza).
+# --------------------------------------------------------------------------------------------
+sinaica_raw_click_actualizar <- function(session) {
+  btn <- wait_for(session, "css selector", "#actualiza", timeout = 10)
+  try(btn$click(), silent = TRUE)
+  invisible(TRUE)
+}
+# --------------------------------------------------------------------------------------------
+# Function : sinaica_raw_wait_descarga_ready
+# @Arg     : session — SeleniumSession
+# @Arg     : timeout — seconds to wait for the “Descarga Datos” button
+# @Output  : TRUE if visible; FALSE otherwise
+# @Purpose : Wait until #descDatos appears (or becomes visible) after Actualizar.
+# --------------------------------------------------------------------------------------------
+sinaica_raw_wait_descarga_ready <- function(session, timeout = 45) {
+  t0 <- Sys.time()
+  repeat {
+    ok <- try(
+      session$execute_script(
+        "var e=document.getElementById('descDatos'); if(!e) return false;
+         var s=window.getComputedStyle(e);
+         var r=e.getBoundingClientRect();
+         return s && s.display!=='none' && s.visibility!=='hidden' &&
+                r.width>0 && r.height>0;"
+      )[[1]],
+      silent = TRUE
+    )
+    if (!inherits(ok, "try-error") && isTRUE(ok)) return(TRUE)
+    if (as.numeric(difftime(Sys.time(), t0, units = "secs")) > timeout) break
+    Sys.sleep(0.4)
+  }
+  FALSE
+}
+# --------------------------------------------------------------------------------------------
+# Function : sinaica_raw_click_descarga
+# @Arg     : session — SeleniumSession
+# @Output  : TRUE if click attempted; FALSE if #descDatos not found
+# @Purpose : Click the “Descarga Datos” button (span#descDatos). The caller should then use
+#            wait_for_new_download(...) as in your SINAICA CSV flow.
+# --------------------------------------------------------------------------------------------
+sinaica_raw_click_descarga <- function(session) {
+  b <- try(session$find_element("css selector", "#descDatos"), silent = TRUE)
+  if (inherits(b, "try-error")) return(FALSE)
+  try(b$click(), silent = TRUE)
+  TRUE
+}
 # --------------------------------------------------------------------------------------------
 # Function: inegi_census_2020_ampliado_links
 # @Output    : tibble(area, slug, filename, href) for the 3 requested areas
@@ -1805,6 +2201,8 @@ cdmx_scrape_station_catalog <- function(
 # @Arg       : verbose         — logical; print progress (default TRUE)
 # @Output    : tibble merged (CDMX + selected states)
 # @Purpose   : Open dropdown → click state → wait table (scroll-aware) → iterate stations.
+# @Written_on: 20/08/2025
+# @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 cdmx_scrape_states_merge <- function(
     station_in_cdmx,
@@ -2120,6 +2518,8 @@ cdmx_scrape_states_merge <- function(
 # @Output  : invisible tibble log: smca, red, parametro, year, status, file
 # @Purpose : Drive SINAICA "Descargas" reliably. Same as before, but with adaptive waits
 #            for the slow CDMX group and a safer Buscar lookup.
+# @Written_on: 05/09/2025
+# @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 cdmx_download_sinaica_data <- function(
     base_url      = cdmx_cfg$base_url_sinaica,
@@ -2629,6 +3029,412 @@ cdmx_download_sinaica_data <- function(
 }
 
 
+# ============================================================================================
+# Function: cdmx_download_remaining_raw_sinaica
+# @Arg  : base_url         — SINAICA base URL (e.g., cdmx_cfg$base_url_sinaica)
+# @Arg  : subdir_existing  — dir with existing validated CSVs (to check missing 2023)
+# @Arg  : out_subdir_raw   — dir to save new raw downloads (separate from validated)
+# @Arg  : container        — TRUE if using docker-compose Selenium service
+# @Arg  : session          — optional SeleniumSession (reuse if provided)
+# @Arg  : year_check       — integer year to pull as raw (default 2023)
+# @Arg  : max_attempts     — retries per (station, parameter)
+# @Arg  : timeout_page     — seconds for base page ready
+# @Arg  : timeout_ctrl     — seconds for controls to appear
+# @Arg  : timeout_descarga — seconds to wait “Descarga Datos” after “Actualizar”
+# @Arg  : timeout_dl       — seconds to wait for each file to land in downloads
+# @Arg  : wd_request_timeout_ms — per-request driver timeout (if supported)
+# @Arg  : settle_after_station_sec — pause after picking a station
+# @Arg  : settle_after_param_sec   — pause after picking a parameter
+# @Output: invisible tibble log: smca, red, station, parametro, year, status, file
+# @Purpose: (1) Detect which SMCA/state slugs lack `year_check` in validated folder.
+#           (2) On “Módulos ▸ Datos crudos”, loop networks/stations in those states and
+#               download hourly raw files for every available parameter in 2023.
+# @Notes : Requires the raw helpers you extracted:
+#          - sinaica_raw_open_datos_crudos(), sinaica_raw_list_networks_and_stations(),
+#            sinaica_raw_select_station(), sinaica_raw_list_parametros(),
+#            sinaica_raw_select_parametro(), sinaica_raw_set_datobase_hourly(),
+#            sinaica_raw_set_fecha_inicio(), sinaica_raw_set_rango_best(),
+#            sinaica_raw_click_actualizar(), sinaica_raw_wait_descarga_ready(),
+#            sinaica_raw_click_descarga()
+#          Also uses: wait_ready(), wait_for(), wait_for_new_download(),
+#                      sinaica_slugify(), sinaica_next_nonconflicting()
+# @Written_on: 10/16/2025
+# @Written_by: Marcos Paulo (with ChatGPT)
+# ============================================================================================
+cdmx_download_remaining_raw_sinaica <- function(
+    base_url        = cdmx_cfg$base_url_sinaica,
+    subdir_existing = here::here(cdmx_cfg$dl_dir, "Ground_stations"),
+    out_subdir_raw  = here::here(cdmx_cfg$dl_dir, "Ground_stations_raw_missing_data"),
+    container       = TRUE,
+    session         = NULL,
+    year_check      = 2023L,
+    max_attempts    = 3L,
+    timeout_page    = 10,
+    timeout_ctrl    = 10,
+    timeout_descarga = 60,
+    timeout_dl      = 90,
+    wd_request_timeout_ms = 60000L,
+    settle_after_station_sec = 0.5,
+    settle_after_param_sec   = 0.5
+) {
+  `%||%` <- function(a, b) if (!is.null(a)) a else b
+  
+  # -- Standard SMCA → slug mapping (keep in sync with validated pipeline) ------------------
+  smca_slug_map <- c(
+    "EDOMEX : México"         = "mexico_state",
+    "HGO : Hidalgo"           = "hidalgo",
+    "CDMX : Ciudad de México" = "cmdx",
+    "MOR : Morelos"           = "morelos",
+    "GUE : Guerrero"          = "guerrero",
+    "MICH : Michoacán"        = "michoacán",
+    "TLAX : Tlaxcala"         = "tlaxcala",
+    "PUE : Puebla"            = "puebla",
+    "QRO : Querétaro"         = "querétaro"
+  )
+  target_smca_slugs <- unique(unname(smca_slug_map))
+  
+  # -- 1) Inspect validated folder to see which SMCA slugs miss `year_check` ----------------
+  if (!dir.exists(subdir_existing)) {
+    stop("Validated folder not found: ", subdir_existing)
+  }
+  files <- list.files(subdir_existing, pattern = "\\.csv$", full.names = FALSE)
+  base  <- sub("\\.csv$", "", basename(files))
+  toks  <- strsplit(base, "__", fixed = TRUE)
+  
+  smca_slug <- vapply(toks, function(x) x[1] %||% NA_character_, character(1))
+  yr        <- suppressWarnings(
+    as.integer(vapply(toks, function(x) tail(x, 1) %||% NA_character_,
+                      character(1)))
+  )
+  
+  seen <- data.frame(slug = smca_slug, year = yr, stringsAsFactors = FALSE)
+  seen <- seen[!is.na(seen$slug) & !is.na(seen$year), , drop = FALSE]
+  
+  have_yr <- unique(seen$slug[seen$year == as.integer(year_check)])
+  needed  <- setdiff(target_smca_slugs, have_yr)
+  
+  if (!length(needed)) {
+    message("✅ All SMCA slugs already have validated data for ", year_check, ".")
+    return(invisible(
+      tibble::tibble(
+        smca      = character(0),
+        red       = character(0),
+        station   = character(0),
+        parametro = character(0),
+        year      = integer(0),
+        status    = character(0),
+        file      = character(0)
+      )
+    ))
+  }
+  
+  message("Missing ", year_check, " for slugs: ", paste(needed, collapse = ", "))
+  
+  # -- 2) Prepare output dirs and Selenium session ------------------------------------------
+  downloads_root <- Sys.getenv("DOWNLOADS_DIR", here::here("data", "downloads"))
+  dir.create(downloads_root, recursive = TRUE, showWarnings = FALSE)
+  dir.create(out_subdir_raw, recursive = TRUE, showWarnings = FALSE)
+  message("📥  Top-level downloads: ", downloads_root)
+  message("📂  Raw output dir     : ", out_subdir_raw)
+  
+  close_on_exit <- FALSE
+  if (is.null(session)) {
+    close_on_exit <- TRUE
+    if (!container) {
+      message("🚀 Starting local Selenium on 4445…")
+      cid <- system(
+        paste0(
+          "docker run -d -p 4445:4444 --shm-size=2g ",
+          "selenium/standalone-firefox:4.34.0-20250717"
+        ),
+        intern = TRUE
+      )
+      on.exit(try(system(sprintf("docker rm -f %s", cid), intern = TRUE),
+                  silent = TRUE), add = TRUE)
+      sel_host <- "localhost"; sel_port <- 4445L
+    } else {
+      sel_host <- "selenium";  sel_port <- 4444L
+    }
+    
+    dl_dir_container <- if (container) "/home/seluser/Downloads" else downloads_root
+    caps <- list(
+      browserName = "firefox",
+      "moz:firefoxOptions" = list(
+        prefs = list(
+          "browser.download.folderList"     = 2L,
+          "browser.download.dir"            = dl_dir_container,
+          "browser.download.useDownloadDir" = TRUE,
+          "browser.helperApps.neverAsk.saveToDisk" = paste(
+            "text/csv", "application/csv", "application/vnd.ms-excel",
+            "application/octet-stream", sep = ","
+          ),
+          "browser.download.manager.showWhenStarting" = FALSE,
+          "browser.download.alwaysOpenPanel"         = FALSE,
+          "pdfjs.disabled"                           = TRUE
+        )
+      ),
+      timeouts = list(implicit = 0L, pageLoad = 120000L, script = 60000L)
+    )
+    ses_args <- list(
+      browser      = "firefox",
+      host         = sel_host,
+      port         = sel_port,
+      capabilities = caps
+    )
+    fml <- try(names(formals(selenium::SeleniumSession$new)), silent = TRUE)
+    if (!inherits(fml, "try-error")) {
+      if ("request_timeout" %in% fml) {
+        ses_args$request_timeout <- as.integer(wd_request_timeout_ms)
+      } else if ("http_timeout_ms" %in% fml) {
+        ses_args$http_timeout_ms <- as.integer(wd_request_timeout_ms)
+      }
+    }
+    session <- do.call(selenium::SeleniumSession$new, ses_args)
+  }
+  if (isTRUE(close_on_exit)) on.exit(session$close(), add = TRUE)
+  
+  # -- 3) Open raw module and read the (red, station, state) index --------------------------
+  sinaica_raw_open_datos_crudos(session, base_url, timeout_page, timeout_ctrl)
+  
+  # Read pairs now; then enrich with state by one DOM pass (data-tokens heuristic).
+  idx <- sinaica_raw_list_networks_and_stations(session)
+  
+  # Inject state via a single JS sweep of the open "Estación" menu (robust for multiword).
+  state_json <- session$execute_script(
+    "
+    function norm(s){return (s||'').toString().replace(/\\s+/g,' ').trim();}
+    function slug(s){
+      s=(s||'').toString().normalize('NFD').replace(/\\p{Diacritic}/gu,'');
+      s=s.replace(/[^A-Za-z0-9]+/g,'_').replace(/^_+|_+$/g,'').toLowerCase();
+      return s.replace(/_+/g,'_');
+    }
+    function firstCapsIx(tokens){
+      for(var i=0;i<tokens.length;i++){
+        if(/^[A-ZÁÉÍÓÚÜÑ]{2,4}$/.test(tokens[i])) return i;
+      }
+      return -1;
+    }
+    var btn=document.querySelector(\"button[data-id='estacion']\");
+    if(!btn) return '[]';
+    var root=btn.closest('.bootstrap-select'); if(!root) return '[]';
+    var ul=root.querySelector('ul.dropdown-menu.inner'); if(!ul) return '[]';
+    var lis=ul.querySelectorAll('li');
+    var out=[], curRed=null;
+    for(var i=0;i<lis.length;i++){
+      var li=lis[i];
+      if(li.classList.contains('dropdown-header')){
+        var ht=li.querySelector('.text');
+        var txt=ht?ht.textContent:li.textContent;
+        var p=txt.indexOf(':'); if(p>=0) txt=txt.slice(p+1);
+        curRed=norm(txt);
+      } else if(li.classList.contains('divider')){
+        continue;
+      } else {
+        var a=li.querySelector('a');
+        if(!a) continue;
+        var stSpan=a.querySelector('.text');
+        var stTxt=norm(stSpan?stSpan.textContent:a.textContent);
+        var dt=norm(a.getAttribute('data-tokens')||'');
+        var tokens=dt.split(/\\s+/);
+        var j=firstCapsIx(tokens); // tokens before j form the state name
+        var state= (j>0? tokens.slice(0,j).join(' ') : '');
+        out.push([curRed, stTxt, state, slug(state)]);
+      }
+    }
+    return JSON.stringify(out);
+    "
+  )[[1]]
+  
+  enrich <- try(jsonlite::fromJSON(state_json), silent = TRUE)
+  if (!inherits(enrich, "try-error") && length(enrich)) {
+    e <- as.data.frame(enrich, stringsAsFactors = FALSE)
+    names(e) <- c("red_text","station_text","state_text","state_slug")
+    idx <- merge(
+      idx, e,
+      by = c("red_text","station_text"),
+      all.x = TRUE, sort = FALSE
+    )
+  } else {
+    # Fallback: unknown states → NA; we will keep all and filter later softly.
+    idx$state_text <- NA_character_
+    idx$state_slug <- NA_character_
+  }
+  
+  # Keep only target SMCA/state slugs
+  need_set <- unique(needed)
+  idx_need <- idx[!is.na(idx$state_slug) & idx$state_slug %in% need_set, , drop = FALSE]
+  
+  if (!nrow(idx_need)) {
+    message("⚠️ Could not match any station rows to missing states: ",
+            paste(need_set, collapse = ", "))
+    return(invisible(
+      tibble::tibble(
+        smca      = character(0),
+        red       = character(0),
+        station   = character(0),
+        parametro = character(0),
+        year      = integer(0),
+        status    = character(0),
+        file      = character(0)
+      )
+    ))
+  }
+  
+  # -- 4) Main loop: for each (network, station) in missing states, pull all parameters -----
+  log <- list()
+  
+  # Small util to rename/move downloaded file to 5-part schema
+  save_download <- function(src, smca_slug, red_slug, par_slug, station_slug) {
+    base_out <- sprintf("%s__%s__%s__%s__%d.xls",
+                        smca_slug, red_slug, par_slug, station_slug, year_check)
+    dest0 <- file.path(out_subdir_raw, base_out)
+    dest  <- sinaica_next_nonconflicting(dest0)
+    ok_mv <- try(file.rename(src, dest), silent = TRUE)
+    if (inherits(ok_mv, "try-error") || !isTRUE(ok_mv)) {
+      file.copy(src, dest, overwrite = TRUE); unlink(src)
+    }
+    dest
+  }
+  
+  # Map state_slug back to smca_slug (they are identical for all but EDOMEX/CDMX labels)
+  # Here state_slug should be like 'hidalgo','puebla', etc.; for safety, normalize.
+  norm_state_slug <- function(s) gsub("_+", "_", tolower(iconv(s, "", "ASCII//TRANSLIT")))
+  
+  # Loop networks → stations
+  for (i in seq_len(nrow(idx_need))) {
+    red_text     <- idx_need$red_text[i]
+    red_slug     <- idx_need$red_slug[i]
+    station_text <- idx_need$station_text[i]
+    station_slug <- idx_need$station_slug[i]
+    state_slug   <- norm_state_slug(idx_need$state_slug[i])
+    
+    smca_slug_final <- state_slug  # e.g., 'hidalgo', 'puebla', etc.
+    
+    msg_head <- sprintf("\n🌐 Red: %s  |  📍 Estación: %s  |  🏷️ Estado: %s",
+                        red_text, station_text, state_slug)
+    message(msg_head)
+    
+    # Select station
+    ok_sel <- FALSE
+    for (att in seq_len(max_attempts)) {
+      ok_sel <- sinaica_raw_select_station(session, red_slug, station_text)
+      if (ok_sel) break
+      Sys.sleep(0.5)
+    }
+    if (!ok_sel) {
+      message("   ❌ Could not select station, skipping.")
+      next
+    }
+    if (settle_after_station_sec > 0) Sys.sleep(settle_after_station_sec)
+    
+    # List parameters for this station now
+    params <- sinaica_raw_list_parametros(session)
+    if (!length(params)) {
+      message("   ⚠️ No parameters listed for this station, skipping.")
+      next
+    }
+    
+    for (pname in params) {
+      par_slug <- sinaica_slugify(pname)
+      message("   🧪 Param: ", pname)
+      
+      # Attempt loop (parameter-level)
+      attempt <- 0L
+      repeat {
+        attempt <- attempt + 1L
+        newest_path <- NA_character_
+        
+        res_try <- try({
+          # Pick parameter
+          if (!sinaica_raw_select_parametro(session, pname)) {
+            stop("Could not select parameter.")
+          }
+          if (settle_after_param_sec > 0) Sys.sleep(settle_after_param_sec)
+          
+          # Dato base → hourly or skip this param if none available
+          db <- sinaica_raw_set_datobase_hourly(session)
+          if (identical(db, "none")) {
+            message("      ↪︎ No 'Dato base' options; skipping parameter.")
+            log[[length(log) + 1L]] <- tibble::tibble(
+              smca      = smca_slug_final,
+              red       = red_text,
+              station   = station_text,
+              parametro = pname,
+              year      = year_check,
+              status    = "nodatabase",
+              file      = NA_character_
+            )
+            break
+          }
+          
+          # Set date & longest range (prefer 1 año)
+          sinaica_raw_set_fecha_inicio(session, sprintf("%d-01-01", year_check))
+          sinaica_raw_set_rango_best(session)
+          
+          # Update → wait for "Descarga Datos"
+          sinaica_raw_click_actualizar(session)
+          Sys.sleep(2)
+          ok_ready <- sinaica_raw_wait_descarga_ready(session, timeout_descarga)
+          if (!ok_ready) stop("'Descarga Datos' did not appear in time.")
+          
+          # Download
+          before <- list.files(downloads_root, pattern = "\\.xls$", full.names = TRUE)
+          if (!sinaica_raw_click_descarga(session)) {
+            stop("Could not click 'Descarga Datos'.")
+          }
+          Sys.sleep(2)
+          src <- wait_for_new_download(
+            dir       = downloads_root,
+            before    = before,
+            pattern   = "\\.xls$",
+            quiet_sec = 2,
+            timeout   = timeout_dl
+          )
+          
+          # Rename/move
+          newest_path <- save_download(
+            src, smca_slug_final, red_slug, par_slug, station_slug
+          )
+          message("      ✅ ", basename(newest_path))
+        }, silent = TRUE)
+        
+        if (!inherits(res_try, "try-error")) {
+          log[[length(log) + 1L]] <- tibble::tibble(
+            smca      = smca_slug_final,
+            red       = red_text,
+            station   = station_text,
+            parametro = pname,
+            year      = year_check,
+            status    = "ok",
+            file      = newest_path
+          )
+          break
+        } else if (attempt < max_attempts) {
+          back <- min(45, 3 ^ attempt)
+          message(sprintf("      ⚠️ Failed attempt %d — backoff %ds, retrying…",
+                          attempt, back))
+          Sys.sleep(back)
+        } else {
+          message("      ❌ Failed parameter after max attempts.")
+          log[[length(log) + 1L]] <- tibble::tibble(
+            smca      = smca_slug_final,
+            red       = red_text,
+            station   = station_text,
+            parametro = pname,
+            year      = year_check,
+            status    = "failed",
+            file      = NA_character_
+          )
+          break
+        }
+      } # repeat attempts
+    }   # parameters
+  }     # stations
+  
+  invisible(dplyr::bind_rows(log))
+}
+
+
 # --------------------------------------------------------------------------------------------
 # Function: cdmx_download_inegi_census_2020_ampliado
 # @Arg       : areas          — character; which areas to fetch
@@ -2639,6 +3445,8 @@ cdmx_download_sinaica_data <- function(
 # @Arg       : quiet          — suppress progress messages (default FALSE)
 # @Output    : tibble(area, file_path, bytes, status)
 # @Purpose   : Download the CSV ZIPs for CA (cuestionario ampliado) directly.
+# @Written_on: 08/07/2025
+# @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 cdmx_download_census_data <- function(
     areas     = c("Ciudad de México", "Hidalgo", "México"),
@@ -3507,6 +4315,8 @@ cdmx_download_census_data <- function(
 # @Return: Arrow Dataset handle (if Parquet written) else tibble.
 # @Steps : (1) discover CSVs, (2) RAM detect + engine pick,
 #          (3A) memory engine, (3B) duckdb engine.
+# @Written_on: 20/08/2025
+# @Written_by: Marcos Paulo
 # ============================================================================================
 cdmx_merge_pollution_csvs <- function(
     downloads_folder,
@@ -3691,7 +4501,6 @@ cdmx_filter_stations_in_metro <- function(
     message("✅ Done. Selected ", row(out), " stations that at most", radius_km, 
             " km from the metro area")
   }
-
 
   return(out)
 }

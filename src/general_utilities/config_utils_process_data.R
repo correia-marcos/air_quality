@@ -13,6 +13,7 @@
 packages <- c(
   "arrow",
   "archive",
+  "censobr",
   "DBI",
   "dplyr",
   "doParallel",

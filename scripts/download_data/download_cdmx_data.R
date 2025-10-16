@@ -106,7 +106,11 @@ download_logs <- cdmx_download_sinaica_data(
 write.csv(download_logs, file = path(cdmx_cfg$dl_dir, "stations_log.csv"))
 
 # Apply function to download 2023 pollution data for states missing this year
-
+missing_data <- cdmx_download_remaining_raw_sinaica(
+  base_url         = cdmx_cfg$base_url_sinaica,
+  subdir_existing  = here::here(cdmx_cfg$dl_dir, "Ground_stations"),
+  out_subdir_raw   = here::here(cdmx_cfg$dl_dir, "Ground_stations_raw_missing_data"),
+  year_check       = 2023L)
 
 # Apply function to download Census data for the metro area
 census_log <- cdmx_download_census_data(
