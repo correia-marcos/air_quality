@@ -35,6 +35,16 @@ packages <- c(
   "zip"
   )
 
+ensure_installed <- function(pkgs) {
+  missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+  if (length(missing)) {
+    stop("Missing packages: ", paste(missing, collapse = ", "),
+         ". Run renv::restore() (or the build step) to install them.")
+  }
+}
+
+ensure_installed(packages)
+
 # Define the default source library for packages installation - may have problems otherwise
 options(repos = c(CRAN = "https://cran.rstudio.com/"))
 
