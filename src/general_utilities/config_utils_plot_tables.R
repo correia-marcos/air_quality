@@ -11,7 +11,7 @@
 # ============================================================================================
 
 # List of required packages
-packages <- c(
+pkgs <- c(
   "arrow",
   "cowplot",
   "dplyr",
@@ -28,6 +28,7 @@ packages <- c(
   "rlang",
   "rnaturalearth",
   "rnaturalearthdata",
+  "rnaturalearthhires",
   "sf",
   "showtext",
   "terra",
@@ -35,30 +36,26 @@ packages <- c(
   "viridisLite",
   "zoo")
 
-# Define the default source library for packages installation - may have problems otherwise
-options(repos=c(CRAN="https://cran.rstudio.com/"))
-
-# Install (if needed) and load packages
-for (pkg in packages) {
-  if (!requireNamespace(pkg, quietly = TRUE)) {
-    renv::install(pkg, configure.args = c("--with-gdal",
-                                          "--with-proj",
-                                          "--with-geos",
-                                          "--with-data-copy=true")
-                  )
+# Strict check: fail fast if something isn't in the project library
+ensure_installed <- function(pkgs) {
+  miss <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+  if (length(miss)) {
+    stop(
+      "Missing packages: ", paste(miss, collapse = ", "),
+      ". Run renv::restore() (or install locally with renv::install() then renv::snapshot())."
+    )
   }
-  library(pkg, character.only = TRUE)
 }
 
-# Clear objects on environment
-rm(packages, pkg)
+ensure_installed(pkgs)
 
-# Try installing rnaturalearthhires in different cran
-options(repos = c(CRAN = "https://ropensci.r-universe.dev"))
-if (!requireNamespace("rnaturalearthhires", quietly = TRUE)) {
-  renv::install("rnaturalearthhires")
-  library(rnaturalearthhires)
-}
+# Attach (quiet)
+invisible(lapply(pkgs, function(p) {
+  suppressPackageStartupMessages(library(p, character.only = TRUE))
+}))
+
+# no repo tweaking, no renv::install() here
+rm(pkgs, ensure_installed)
 
 # Set a global theme with Palatino as the base font
 font_add("Palatino", regular = here::here("fonts", "texgyrepagella-regular.otf"))

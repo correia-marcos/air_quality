@@ -10,7 +10,7 @@
 # @Author: Marcos Paulo
 # ============================================================================================
 # List of required packages
-packages <- c(
+pkgs <- c(
   "arrow",
   "archive",
   "censobr",
@@ -33,23 +33,26 @@ packages <- c(
   "tidyr",
   "rlang")
 
-# Define the default source library for packages installation - may have problems otherwise
-options(repos=c(CRAN="https://cran.rstudio.com/"))
-
-# Install (if needed) and load packages
-for (pkg in packages) {
-  if (!requireNamespace(pkg, quietly = TRUE)) {
-    renv::install(pkg, configure.args = c("--with-gdal",
-                                          "--with-proj",
-                                          "--with-geos",
-                                          "--with-data-copy=true")
+# Strict check: fail fast if something isn't in the project library
+ensure_installed <- function(pkgs) {
+  miss <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+  if (length(miss)) {
+    stop(
+      "Missing packages: ", paste(miss, collapse = ", "),
+      ". Run renv::restore() (or install locally with renv::install() then renv::snapshot())."
     )
   }
-  library(pkg, character.only = TRUE)
 }
 
-# Clear objects on environment
-rm(packages, pkg)
+ensure_installed(pkgs)
+
+# Attach (quiet)
+invisible(lapply(pkgs, function(p) {
+  suppressPackageStartupMessages(library(p, character.only = TRUE))
+}))
+
+# no repo tweaking, no renv::install() here
+rm(pkgs, ensure_installed)
 
 # ############################################################################################
 # Functions

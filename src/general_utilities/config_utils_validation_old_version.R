@@ -11,7 +11,7 @@
 # ============================================================================================
 
 # List of required packages
-packages <- c(
+pkgs <- c(
   "arrow",
   "dplyr",
   "haven",
@@ -21,21 +21,26 @@ packages <- c(
   "tidyr"
 )
 
-# Define the default source library for packages installation - may have problems otherwise
-options(repos = c(CRAN = "https://cran.rstudio.com/"))
-
-# Install (if needed) and load packages
-toy_protect <- requireNamespace("renv", quietly = TRUE)
-if (!toy_protect) stop("Please ensure renv is installed before running this script.")
-for (pkg in packages) {
-  if (!requireNamespace(pkg, quietly = TRUE)) {
-    renv::install(pkg)
+# Strict check: fail fast if something isn't in the project library
+ensure_installed <- function(pkgs) {
+  miss <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+  if (length(miss)) {
+    stop(
+      "Missing packages: ", paste(miss, collapse = ", "),
+      ". Run renv::restore() (or install locally with renv::install() then renv::snapshot())."
+    )
   }
-  library(pkg, character.only = TRUE)
 }
 
-# Clear objects on environment
-rm(packages, pkg, toy_protect)
+ensure_installed(pkgs)
+
+# Attach (quiet)
+invisible(lapply(pkgs, function(p) {
+  suppressPackageStartupMessages(library(p, character.only = TRUE))
+}))
+
+# no repo tweaking, no renv::install() here
+rm(pkgs, ensure_installed)
 
 # ============================================================================================
 # Validation helpers and functions
