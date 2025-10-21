@@ -37,11 +37,11 @@ pkgs <- c(
 ensure_installed <- function(pkgs) {
   miss <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
   if (length(miss)) {
-    stop(
+    message(
       "Missing packages: ", paste(miss, collapse = ", "),
       ". Run renv::restore() (or install locally with renv::install() then renv::snapshot())."
     )
-  }
+    renv::install(miss)}
 }
 
 ensure_installed(pkgs)

@@ -29,7 +29,7 @@ ensure_installed <- function(pkgs) {
       "Missing packages: ", paste(miss, collapse = ", "),
       ". Run renv::restore() (or install locally with renv::install() then renv::snapshot())."
     )
-  }
+    renv::install(miss)}
 }
 
 ensure_installed(pkgs)
