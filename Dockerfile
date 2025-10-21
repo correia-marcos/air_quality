@@ -65,9 +65,13 @@ ENV RENV_PATHS_CACHE=/air_monitoring/renv/.cache \
 RUN mkdir -p renv/.cache renv/library
 
 # Step 6 — Restore packages from renv.lock (PPM snapshot + CRAN + r-universe)
+#          Also ensure graphics/font pkgs are compiled here so they load at runtime.
 ARG EXTRA_R_PKGS="showtext sysfonts showtextdb svglite zoo"
-RUN R -q -e "options(renv.verbose = FALSE); install.packages('renv', quiet = TRUE); renv::restore(prompt = FALSE)"
-
+RUN R -q -e "options(renv.verbose = FALSE); install.packages('renv', quiet = TRUE); \
+             renv::restore(prompt = FALSE); \
+             ep <- strsplit(Sys.getenv('EXTRA_R_PKGS'), ' +')[[1]]; ep <- ep[nzchar(ep)]; \
+             if (length(ep)) renv::install(ep); \
+             renv::snapshot(prompt = FALSE)"
 
 ################################################################################
 # STAGE 2: Runtime — RStudio + LaTeX + geospatial + fonts (Ubuntu noble)
@@ -144,10 +148,12 @@ RPROF
 
 # Step 4 — Copy baked project + restored library from builder
 COPY --from=builder /air_monitoring /air_monitoring
+
+# Step 4.1 — RStudio preferences (open in project, etc.)
 COPY rstudio-prefs.json /home/rstudio/.config/rstudio/rstudio-prefs.json
 
 # Step 5 — Ownership (best-effort across arches) & working directory
-RUN chown -R rstudio:staff /air_monitoring || true \
+RUN chown -R rstudio:staff /air_monitoring /home/rstudio/.config || true \
  && chown -R rstudio:rstudio /home/rstudio || true
 WORKDIR /air_monitoring
 
@@ -160,20 +166,3 @@ HEALTHCHECK --interval=30s --timeout=5s --retries=5 \
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 ENTRYPOINT ["/usr/bin/tini","-g","--","/usr/local/bin/entrypoint.sh"]
-
-# ------------------------------------------------------------------------------
-# (Optional) DuckDB CLI — enable if you want the CLI in the image
-# ------------------------------------------------------------------------------
-# ARG DUCKDB_CLI_VERSION=1.3.3
-# RUN apt-get update && apt-get install -y --no-install-recommends unzip \
-#  && arch="$(dpkg --print-architecture)" \
-#  && case "$arch" in \
-#       arm64) asset="duckdb_cli-linux-aarch64.zip" ;; \
-#       amd64) asset="duckdb_cli-linux-amd64.zip" ;; \
-#       *) echo "Unsupported arch: $arch" && exit 1 ;; \
-#     esac \
-#  && curl -L -o /tmp/duckdb.zip \
-#       "https://github.com/duckdb/duckdb/releases/download/v${DUCKDB_CLI_VERSION}/${asset}" \
-#  && unzip /tmp/duckdb.zip -d /usr/local/bin \
-#  && chmod +x /usr/local/bin/duckdb \
-#  && rm -f /tmp/duckdb.zip
