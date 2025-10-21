@@ -65,6 +65,7 @@ ENV RENV_PATHS_CACHE=/air_monitoring/renv/.cache \
 RUN mkdir -p renv/.cache renv/library
 
 # Step 6 — Restore packages from renv.lock (PPM snapshot + CRAN + r-universe)
+ARG EXTRA_R_PKGS="showtext sysfonts showtextdb svglite zoo"
 RUN R -q -e "options(renv.verbose = FALSE); install.packages('renv', quiet = TRUE); renv::restore(prompt = FALSE)"
 
 
@@ -143,6 +144,7 @@ RPROF
 
 # Step 4 — Copy baked project + restored library from builder
 COPY --from=builder /air_monitoring /air_monitoring
+COPY rstudio-prefs.json /home/rstudio/.config/rstudio/rstudio-prefs.json
 
 # Step 5 — Ownership (best-effort across arches) & working directory
 RUN chown -R rstudio:staff /air_monitoring || true \
