@@ -28,7 +28,7 @@ pkgs <- c(
   "rlang",
   "rnaturalearth",
   "rnaturalearthdata",
-  # "rnaturalearthhires",
+  "rnaturalearthhires",
   "sf",
   "showtext",
   "terra",
@@ -44,6 +44,11 @@ ensure_installed <- function(pkgs) {
       "Missing packages: ", paste(miss, collapse = ", "),
       ". Run renv::restore() (or install locally with renv::install() then renv::snapshot())."
     )
+    if ("rnaturalearthhires" %in% miss) {
+      options(repos = c(CRAN = "https://ropensci.r-universe.dev"))
+      renv::install("rnaturalearthhires")
+    }
+    options(repos=c(CRAN="https://cran.rstudio.com/"))
     renv::install(miss)}
 }
 
