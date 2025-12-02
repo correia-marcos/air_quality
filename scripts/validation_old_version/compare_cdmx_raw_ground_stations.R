@@ -213,3 +213,5 @@ checkson <- readr::read_csv("/Users/correia-marcos/Downloads/contaminantes_2010.
 
 checkson <- checkson %>% 
   arrange(cve_station)
+
+renv::snapshot(prompt = FALSE)

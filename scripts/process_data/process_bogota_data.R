@@ -26,8 +26,13 @@ source(here::here("src","city_specific", "bogota.R"))
 outdir_pollution  <- here::here(bogota_cfg$out_dir, "air_monitoring_stations")
 outdir_geospatial <- here::here(bogota_cfg$out_dir, "geospatial_data")
 
-
-census_zip = here::here(bogota_cfg$dl_dir, "census", "CG2005_AMPLIADO.zip")
+# Read the geospatial data
+bogota_metro      <- st_read(here::here(outdir_geospatial,
+                                        "metro_areas",
+                                        "bogota_metro.gpkg"))
+bogota_metro_old  <- st_read(here::here(bogota_cfg$out_dir,
+                                        "cities_shapefiles(old)",
+                                        "Bogota_metro"))
 # ============================================================================================
 # II: Process  data
 # ============================================================================================
@@ -42,42 +47,47 @@ bogota_stations_data <- bogota_merge_stations_downloads(
 miss <- bogota_missing_matrix(bogota_stations_data, years = bogota_cfg$years)
 if (nrow(miss)) print(head(miss, 20))
 
+# Apply function to process census data (unzip, filter and harmonize)
+res <- bogota_filter_harmonize_census(
+  census_zip = here::here(bogota_cfg$dl_dir, "census", "CG2005_AMPLIADO.zip"),
+  out_dir    = here::here("data", "raw", "census", "Bogota", "CG2005"),
+  overwrite  = FALSE,
+  quiet      = FALSE
+)
 
 
 # ============================================================================================
 # II: CHECK  data
 # ============================================================================================
-Sys.setlocale("LC_CTYPE", "en_US.UTF-8")
-# List files inside the ZIP
+
+check = unzip(here::here(bogota_cfg$dl_dir, "census", "11.Bogota.zip"),
+              exdir = here::here(bogota_cfg$dl_dir, "census"))
+
+list_files <- unzip(here::here(bogota_cfg$dl_dir, "census", "CG2005_AMPLIADO.zip"),
+                    list = TRUE)
+
+file.rename(from = here::here(bogota_cfg$dl_dir, "census", "CG2005_AMPLIADO.zip",
+                              "CG2005_AMPLIADO_ANDA/11.Bogot\xa0.zip"),
+            to   = here::here(bogota_cfg$dl_dir, "census", "CG2005_AMPLIADO.zip",
+                              "CG2005_AMPLIADO_ANDA/11.Bogota.zip"))
+
+insiside_bogota <- unzip(here::here(bogota_cfg$dl_dir, "census", "CG2005_AMPLIADO.zip",
+                                    "CG2005_AMPLIADO_ANDA/11.Bogot\xa0.zip"),
+                         list = TRUE)
+
+
+bogota_csv = unz(description = bogota, filename = "CG2005_AMPLIADO_AN_11.CSV.zip")
+
+
+unzip(unz(description = census_zip, filename = "11.Bogot\xa0.zip"),
+      exdir = here::here("data", "downloads", "Bogota", "census"),
+      unzip = "unzip")
+
+
+
 lst <- archive::archive(census_zip)
+
 print(lst$path)
-
-paths_norm <- stringi::stri_trans_general(lst$path, "Latin-ASCII")
-print(paths_norm)
-
-translates = stri_trans_list()
-# print(translates)
-
-out_dir <- here::here(bogota_cfg$dl_dir, "census", "unzipped")
-dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
-
-keep <- grepl("Bogot.*|Cundina.*", paths_norm, ignore.case = TRUE)
-archive::archive_extract(census_zip, dir = out_dir)
-
-any(!validUTF8(lst$path))
-
-# If you want the same two entries by position:
-needed <- paths_norm[c(12, 4)]
-
-
-archive::archive_extract(census_zip, dir = out_dir, file = needed)
-
-
-utils::unzip(zipfile   = census_zip,
-             files     = needed,
-             exdir     = out_dir,
-             overwrite = TRUE,
-             junkpaths = TRUE)
 
 # ============================================================================================
 # III: Save  data
