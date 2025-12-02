@@ -48,6 +48,7 @@ ensure_installed <- function(pkgs) {
       options(repos = c(CRAN = "https://ropensci.r-universe.dev"))
       renv::install("rnaturalearthhires")
     }
+    miss <- miss[!miss %in% "rnaturalearthhires"]
     options(repos=c(CRAN="https://cran.rstudio.com/"))
     renv::install(miss)}
 }

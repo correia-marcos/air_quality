@@ -31,6 +31,7 @@ pkgs <- c(
   "terra",
   "tibble",
   "tidyr",
+  "tools",
   "rlang")
 
 # Strict check: fail fast if something isn't in the project library

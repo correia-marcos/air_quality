@@ -1163,6 +1163,247 @@ bogota_missing_matrix <- function(merged_tbl,
 }
 
 
+# --------------------------------------------------------------------------------------------
+# Function: bogota_filter_harmonize_census
+# @Arg       : census_zip   — path to CG2005_AMPLIADO.zip
+# @Arg       : out_dir      — where to write selected dept folders with CSVs
+# @Arg       : overwrite    — re-extract if output exists (default FALSE)
+# @Arg       : quiet        — suppress messages (default FALSE)
+# @Output    : list with $bogota and $cundinamarca
+#              - dir_extracted (folder containing only CSV files)
+#              - files_index   (tibble with file, size, type)
+# @Purpose   : Fast extract master ZIP (system tools), fix mojibake on disk,
+#              locate dep. 11 & 25 packages, unpack, then unpack the *CSV.zip*
+#              inside each and leave only the CSV files directly in the folder.
+# @Written_on: 22/10/2025
+# @Written_by: Marcos Paulo
+# --------------------------------------------------------------------------------------------
+bogota_filter_harmonize_census <- function(
+    census_zip = here::here(bogota_cfg$dl_dir, "census", "CG2005_AMPLIADO.zip"),
+    out_dir    = here::here("data", "raw", "census", "Bogota", "CG2005"),
+    overwrite  = FALSE,
+    quiet      = FALSE
+) {
+  if (!file.exists(census_zip)) stop("Master ZIP not found: ", census_zip)
+  for (pkg in c("tibble", "tools")) {
+    if (!requireNamespace(pkg, quietly = TRUE)) {
+      stop("Package '", pkg, "' is required.")
+    }
+  }
+  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+  
+  # ---- helpers ----------------------------------------------------------------
+  # fix_visible_glyphs()
+  # Purpose : Replace mojibaked glyphs produced by some unzip tools (macOS/Finder)
+  #           with the intended Spanish accented characters. Works on *valid*
+  #           UTF-8 strings; avoids byte-level surgery to prevent invalid UTF-8.
+  # Mapping : †→á, °→í, ¢→ó, §→ñ, Ç→é
+  fix_visible_glyphs <- function(x) {
+    repl <- c("†" = "á", "°" = "í", "¢" = "ó", "§" = "ñ", "Ç" = "é")
+    for (k in names(repl)) x <- gsub(k, repl[[k]], x, fixed = TRUE)
+    x
+  }
+  
+  # rename_tree_utf8()
+  # Purpose : Walk a directory tree deepest-first and rename each basename
+  #           applying fix_visible_glyphs(). This normalizes files/dirs *on disk*.
+  rename_tree_utf8 <- function(root) {
+    paths <- list.files(
+      root, recursive = TRUE, include.dirs = TRUE, full.names = TRUE
+    )
+    paths <- paths[order(nchar(paths), decreasing = TRUE)]
+    for (p in paths) {
+      new_base <- fix_visible_glyphs(basename(p))
+      if (!identical(new_base, basename(p))) {
+        new_path <- file.path(dirname(p), new_base)
+        dir.create(dirname(new_path), recursive = TRUE, showWarnings = FALSE)
+        suppressWarnings(file.rename(p, new_path))
+      }
+    }
+    invisible(root)
+  }
+  
+  # make_index_tbl()
+  # Purpose : Return a tibble index of files in a folder (recursive).
+  make_index_tbl <- function(root) {
+    files <- list.files(root, recursive = TRUE, full.names = TRUE)
+    if (!length(files)) {
+      return(tibble::tibble(file = character(), size = numeric(), type = character()))
+    }
+    tibble::tibble(
+      file = files, size = file.info(files)$size, type = tools::file_ext(files)
+    )
+  }
+  
+  # sys_extract_all()
+  # Purpose : Fast, robust extraction using system tools. On macOS uses `ditto`
+  #           (same engine as Finder/Archive Utility). Else, uses `unzip -o`.
+  sys_extract_all <- function(zipfile, exdir, overwrite = FALSE, quiet = FALSE) {
+    if (dir.exists(exdir) && overwrite) unlink(exdir, recursive = TRUE, force = TRUE)
+    dir.create(exdir, recursive = TRUE, showWarnings = FALSE)
+    
+    is_mac  <- identical(Sys.info()[["sysname"]], "Darwin")
+    has_dit <- nzchar(Sys.which("ditto"))
+    has_unz <- nzchar(Sys.which("unzip"))
+    status  <- 1L
+    
+    if (is_mac && has_dit) {
+      args <- c("-x", "-k",
+                shQuote(normalizePath(zipfile)),
+                shQuote(normalizePath(exdir)))
+      status <- system2("ditto", args,
+                        stdout = if (quiet) FALSE else "",
+                        stderr = if (quiet) FALSE else "")
+    } else if (has_unz) {
+      args <- c("-o", if (quiet) "-qq" else NULL,
+                shQuote(normalizePath(zipfile)),
+                "-d", shQuote(normalizePath(exdir)))
+      status <- system2("unzip", args,
+                        stdout = if (quiet) FALSE else "",
+                        stderr = if (quiet) FALSE else "")
+    } else {
+      utils::unzip(zipfile, exdir = exdir, overwrite = TRUE)
+      status <- 0L
+    }
+    if (!identical(status, 0L)) stop("System extraction failed for: ", zipfile)
+    invisible(exdir)
+  }
+  
+  # ---- 1) Extract the WHOLE master ZIP (once) ---------------------------------
+  master_dir <- file.path(tempdir(), "cg2005_master")
+  if (!dir.exists(master_dir) || isTRUE(overwrite)) {
+    if (!quiet) message("📦 Extracting master ZIP → ", master_dir)
+    sys_extract_all(census_zip, master_dir, overwrite = TRUE, quiet = quiet)
+    rename_tree_utf8(master_dir)  # normalize names from the extractor
+  } else if (!quiet) {
+    message("↪︎ Master already extracted: ", master_dir)
+  }
+  
+  # ---- 2) Locate department ZIPs by numeric prefix (11 & 25) ------------------
+  all_zips <- list.files(
+    master_dir, pattern = "\\.[Zz][Ii][Pp]$", recursive = TRUE, full.names = TRUE
+  )
+  if (!length(all_zips)) stop("No .zip files found under: ", master_dir)
+  
+  bf <- basename(all_zips)
+  bf_fix <- fix_visible_glyphs(bf)
+  
+  get_code <- function(x) {
+    m <- regexec("^([0-9]{2})", x); regmatches(x, m)[[1]][2]
+  }
+  codes <- vapply(bf, get_code, character(1L))
+  na_idx <- which(is.na(codes) | codes == "")
+  if (length(na_idx)) codes[na_idx] <- vapply(bf_fix[na_idx], get_code, character(1L))
+  
+  pick_by_code <- function(code) {
+    cand <- which(codes == sprintf("%02d", as.integer(code)))
+    if (!length(cand)) {
+      stop("Could not locate ZIP for code ", code,
+           ". Sample: ", paste(utils::head(bf_fix, 10), collapse = " | "))
+    }
+    cand[which.min(nchar(bf[cand]))]
+  }
+  
+  idx_b <- pick_by_code(11)
+  idx_c <- pick_by_code(25)
+  
+  bogota_zip_src       <- all_zips[idx_b]
+  cundinamarca_zip_src <- all_zips[idx_c]
+  
+  # Paths we’ll extract into
+  bog_dir <- file.path(out_dir, "11.Bogotá")
+  cun_dir <- file.path(out_dir, "25. Cundinamarca")
+  
+  # ---- 3) Extract each dept ZIP, then extract CSV.zip and keep only CSVs -----
+  dept_extract_csv_only <- function(zip_src, label, tgt_dir) {
+    # 3a) Extract department package (contains CSV.zip/DTA.zip/SAV.zip)
+    if (!dir.exists(tgt_dir) || isTRUE(overwrite)) {
+      if (dir.exists(tgt_dir)) unlink(tgt_dir, recursive = TRUE, force = TRUE)
+      if (!quiet) message("📤 Extracting ", label, " → ", tgt_dir)
+      sys_extract_all(zip_src, tgt_dir, overwrite = TRUE, quiet = quiet)
+      rename_tree_utf8(tgt_dir)
+    } else if (!quiet) {
+      message("↪︎ Using existing folder: ", tgt_dir)
+    }
+    
+    # 3b) Find the *CSV.zip* inside the dept folder
+    csv_zip <- list.files(
+      tgt_dir, pattern = "CSV\\.[Zz][Ii][Pp]$", full.names = TRUE, ignore.case = TRUE
+    )
+    if (!length(csv_zip)) {
+      # Fallback: maybe CSVs are loose; collect them if present
+      csvs_fallback <- list.files(tgt_dir, pattern = "\\.csv$", recursive = TRUE,
+                                  full.names = TRUE, ignore.case = TRUE)
+      if (!length(csvs_fallback)) {
+        stop("No CSV.zip and no .csv files found inside: ", tgt_dir)
+      }
+      # Move fallback CSVs to tgt_dir root with normalized names
+      for (f in csvs_fallback) {
+        file.copy(f, file.path(tgt_dir, fix_visible_glyphs(basename(f))),
+                  overwrite = TRUE)
+      }
+    } else {
+      # 3c) Extract CSV.zip to a staging dir, then move only *.csv to tgt_dir root
+      stage <- file.path(tgt_dir, "_csv_stage")
+      sys_extract_all(csv_zip[1], stage, overwrite = TRUE, quiet = quiet)
+      rename_tree_utf8(stage)
+      csvs <- list.files(stage, pattern = "\\.csv$", recursive = TRUE,
+                         full.names = TRUE, ignore.case = TRUE)
+      if (!length(csvs)) stop("CSV.zip contained no .csv files: ", csv_zip[1])
+      for (f in csvs) {
+        file.copy(f, file.path(tgt_dir, fix_visible_glyphs(basename(f))),
+                  overwrite = TRUE)
+      }
+      unlink(stage, recursive = TRUE, force = TRUE)
+    }
+    
+    # 3d) Remove any ZIPs left in tgt_dir (CSV/DTA/SAV) and any subfolders
+    zips_left <- list.files(tgt_dir, pattern = "\\.[Zz][Ii][Pp]$",
+                            full.names = TRUE, recursive = TRUE)
+    if (length(zips_left)) file.remove(zips_left)
+    
+    # Remove all subdirectories (leave only the CSV files at root)
+    subdirs <- list.dirs(tgt_dir, recursive = TRUE, full.names = TRUE)
+    subdirs <- subdirs[subdirs != tgt_dir]
+    if (length(subdirs)) {
+      subdirs <- subdirs[order(nchar(subdirs), decreasing = TRUE)]
+      for (d in subdirs) unlink(d, recursive = TRUE, force = TRUE)
+    }
+    
+    tibble::tibble(dir_extracted = tgt_dir)
+  }
+  
+  idx_bog <- dept_extract_csv_only(bogota_zip_src, "Bogotá (11)", bog_dir)
+  idx_cun <- dept_extract_csv_only(cundinamarca_zip_src, "Cundinamarca (25)", cun_dir)
+  
+  # 3e) Ensure the top-level copies of the department ZIPs do not remain in out_dir
+  #     (You asked to remove the zips extracted from the census_zip.)
+  #     We never copied them to out_dir in this version; nothing to remove here.
+  
+  # ---- 4) Build indexes (should list only the CSVs) ---------------------------
+  bogota_files       <- make_index_tbl(bog_dir)
+  cundinamarca_files <- make_index_tbl(cun_dir)
+  
+  if (!quiet) {
+    message("🧾 Bogotá CSVs: ", sum(tolower(bogota_files$type) == "csv"),
+            " | Cundinamarca CSVs: ",
+            sum(tolower(cundinamarca_files$type) == "csv"))
+  }
+  
+  # ---- 5) Return --------------------------------------------------------------
+  list(
+    bogota = list(
+      dir_extracted = bog_dir,
+      files_index   = bogota_files
+    ),
+    cundinamarca = list(
+      dir_extracted = cun_dir,
+      files_index   = cundinamarca_files
+    )
+  )
+}
+
+
 # ============================================================================================
 # ============================================================================================
 #  Bogota's wrapper functions
