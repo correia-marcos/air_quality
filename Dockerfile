@@ -64,14 +64,14 @@ ENV RENV_PATHS_CACHE=/air_monitoring/renv/.cache \
     RENV_CONFIG_CACHE_SYMLINKS=FALSE
 RUN mkdir -p renv/.cache renv/library
 
-# Step 6 — Restore packages from renv.lock (PPM snapshot + CRAN + r-universe)
-#          Also ensure graphics/font pkgs are compiled here so they load at runtime.
+# Step 6 — Restore packages + Install Extras (No Snapshot)
+# NOTE: We install extra packages directly. They will exist in the library
+#       but will NOT modify the renv.lock file.
 ARG EXTRA_R_PKGS="showtext sysfonts showtextdb svglite zoo"
 RUN R -q -e "options(renv.verbose = FALSE); install.packages('renv', quiet = TRUE); \
              renv::restore(prompt = FALSE); \
              ep <- strsplit(Sys.getenv('EXTRA_R_PKGS'), ' +')[[1]]; ep <- ep[nzchar(ep)]; \
-             if (length(ep)) renv::install(ep); \
-             renv::snapshot(prompt = FALSE)"
+             if (length(ep)) install.packages(ep, quiet = TRUE);"
 
 ################################################################################
 # STAGE 2: Runtime — RStudio + LaTeX + geospatial + fonts (Ubuntu noble)
@@ -128,6 +128,7 @@ RUN apt-get update \
 ARG PPM_DATE=2025-09-01
 ENV RENV_CONFIG_PPM_URL="https://packagemanager.posit.co/cran/__linux__/ubuntu/noble/${PPM_DATE}" \
     RENV_PATHS_CACHE=/usr/local/lib/R/renv-cache \
+    RENV_PATHS_LIBRARY=/air_monitoring/renv/library \
     RENV_CONFIG_SANDBOX_ENABLED=FALSE \
     RENV_CONFIG_CACHE_SYMLINKS=FALSE
 
@@ -151,6 +152,11 @@ COPY --from=builder /air_monitoring /air_monitoring
 
 # Step 4.1 — RStudio preferences (open in project, etc.)
 COPY rstudio-prefs.json /home/rstudio/.config/rstudio/rstudio-prefs.json
+
+# Step 4.2 — Ensure renv activation just in case .Rprofile was gitignored
+RUN if [ ! -f /air_monitoring/.Rprofile ]; then \
+      echo 'source("renv/activate.R")' >> /air_monitoring/.Rprofile; \
+    fi
 
 # Step 5 — Ownership (best-effort across arches) & working directory
 RUN chown -R rstudio:staff /air_monitoring /home/rstudio/.config || true \
