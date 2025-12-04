@@ -12,7 +12,17 @@ fi
 echo "${USER_NAME}:${PASS}" | chpasswd
 
 mkdir -p /usr/local/lib/R/renv-cache
-chown -R "${USER_NAME}":staff /usr/local/lib/R/renv-cache
+# Only chown if ownership is wrong to avoid startup delays
+if [ -d "/usr/local/lib/R/renv-cache" ]; then
+    CURRENT_OWNER=$(stat -c '%U' /usr/local/lib/R/renv-cache)
+    if [ "$CURRENT_OWNER" != "$USER_NAME" ]; then
+        echo "Fixing permissions on renv-cache..."
+        chown -R "${USER_NAME}":staff /usr/local/lib/R/renv-cache
+    fi
+else
+    mkdir -p /usr/local/lib/R/renv-cache
+    chown "${USER_NAME}":staff /usr/local/lib/R/renv-cache
+fi
 
 echo "Entrypoint args: $*"
 echo "R: $(which R) | Rscript: $(which Rscript)"
