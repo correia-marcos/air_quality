@@ -1,0 +1,58 @@
+services:
+  # Selenium is kept if your replication pipeline requires live downloading/scraping.
+  # If the replication starts from static files already in data/raw, you can remove this service.
+  selenium:
+    image: selenium/standalone-firefox:4.34.0-20250717
+    ports:
+      - "4445:4444"
+    shm_size: "2g"
+    restart: unless-stopped
+    environment:
+      SE_NODE_MAX_SESSIONS: "1"
+      SE_NODE_SESSION_TIMEOUT: "600"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:4444/wd/hub/status || exit 1"]
+      interval: 10s
+      timeout: 3s
+    # In release, we typically don't mount local downloads folder unless strictly needed.
+    # If needed:
+    # volumes:
+    #   - ./data/downloads:/home/seluser/Downloads
+
+  analysis:
+    # In release, we assume the image is built and maybe pulled from a registry.
+    # If building locally, we use the same context.
+    build:
+      context: .
+      target: final
+      args:
+        PPM_DATE: "2025-09-01"
+    image: air_quality_replication:v1.0.0 # Tag it explicitly
+    depends_on:
+      selenium:
+        condition: service_healthy
+    ports:
+      - "8787:8787"
+    environment:
+      - PASSWORD=replication # Simple password for reviewers
+      - USER=rstudio
+      - REMOTE_DRIVER_URL=http://selenium:4444
+      - IN_DOCKER=true
+      # Disable Renv cache for replication to ensure we use ONLY what's in the image
+      - RENV_CONFIG_CACHE_SYMLINKS=FALSE
+    volumes:
+      # --- CRITICAL CHANGES FOR RELEASE ---
+      
+      # 1. INPUT: Mount raw data (Assuming data is too large to bake into image)
+      - ./data/raw:/air_monitoring/data/raw:ro  # Read-only for safety
+      
+      # 2. OUTPUT: Mount results so the user can see what was produced
+      - ./results:/air_monitoring/results
+      
+      # 3. NO CODE MOUNTS:
+      # We intentionally DO NOT mount ./src or ./scripts. 
+      # The container must use the code 'baked' into it during the build.
+      
+      # 4. NO CACHE/CREDENTIAL MOUNTS:
+      # No .Renviron, no .netrc, no renv_cache. 
+      # The image must contain all necessary libraries.
