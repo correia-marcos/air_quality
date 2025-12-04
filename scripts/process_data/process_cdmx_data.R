@@ -26,11 +26,15 @@ source(here::here("src","city_specific", "cdmx.R"))
 outdir_pollution  <- here::here(cdmx_cfg$out_dir, "air_monitoring_stations")
 outdir_geospatial <- here::here(cdmx_cfg$out_dir, "geospatial_data")
 
+# Define the file's location
+all_station_csv   <- here::here(outdir_geospatial, "ground_stations", "CDMX",
+                                "all_station_location.csv")
+cdmx_metro        <- here::here(outdir_geospatial, "metro_areas", "cdmx_metro.gpkg")
+
 # Open station location and other spatial data
-station_location <- read.csv(here::here(outdir_geospatial, "ground_stations", 
-                                        "CDMX", "all_station_location.csv"))
-metro_area       <- sf::st_read(here::here(outdir_geospatial, "metro_areas",
-                                           "cdmx_metro.gpkg"))
+station_location <- read.csv(all_station_csv)
+metro_area       <- sf::st_read(cdmx_metro)
+
 # ============================================================================================
 # II: Process  data
 # ============================================================================================
