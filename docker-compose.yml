@@ -38,7 +38,7 @@ services:
     working_dir: /air_monitoring
     environment:
       - PASSWORD=${RSTUDIO_PASSWORD}
-      - USER=rstudio
+      - USER=${RSTUDIO_USER}
       - REMOTE_DRIVER_URL=http://selenium:4444
       - IN_DOCKER=true
       # Arrow/DuckDB predictable tmp (optional)
