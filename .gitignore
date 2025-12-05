@@ -29,7 +29,7 @@ tests/_out/
 .git
 
 # Ignore unzipped source code of interactive maps
-results/maps_interactive/*_files/
+results/figures/maps_interactive/*_files/
 
 
 # Ignore local OS files
