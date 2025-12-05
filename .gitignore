@@ -11,6 +11,7 @@
 # Ignore files related to credentials for data download
 .Renviron
 .netrc
+.env
 
 # Ignore entire raw data folder
 data/raw/
