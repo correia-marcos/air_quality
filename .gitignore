@@ -28,6 +28,10 @@ tests/_out/
 # Ignore Git folder
 .git
 
+# Ignore unzipped source code of interactive maps
+results/maps_interactive/*_files/
+
+
 # Ignore local OS files
 .DS_Store
 
