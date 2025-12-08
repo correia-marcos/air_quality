@@ -1,11 +1,12 @@
-# IDB Project: Inequality in air pollution monitoring and exposure
+# IDB Project: Inequality in Air Pollution Monitoring and Exposure
 
-**Objective:** This repository contains everything needed to reproduce our analysis in *“Inequality in Monitoring and Exposure to Air Pollution: Evidence from Four Latin American Cities”*. We measure how both monitoring coverage and pollutant exposure differ across socioeconomic groups in Bogotá, Mexico City, Santiago and São Paulo by integrating ground-station measurements and demographic indicators (also, we use MERRA-2 satellite data for robustness checks). To guarantee that every user—regardless of operating system or local setup—obtains bit-for-bit identical results, we:
+**Objective:** This repository contains the complete replication package for *“Inequality in Monitoring and Exposure to Air Pollution: Evidence from Four Latin American Cities”*.
 
-- **Containerize** all system libraries and OS dependencies with [Docker](https://www.docker.com).  
-- **Lock** R package versions and project settings with [renv](https://rstudio.github.io/renv/articles/renv.html).
+We measure how both monitoring coverage and pollutant exposure differ across socioeconomic groups in Bogotá, Mexico City, Santiago, and São Paulo. To guarantee that every user—regardless of operating system—obtains bit-for-bit identical results, this project is:
+1.  **Containerized** using [Docker](https://www.docker.com) to lock system libraries (GDAL, GEOS, R).
+2.  **Version-controlled** using [renv](https://rstudio.github.io/renv/) to lock R package versions.
 
-Together, this ensures state-of ar-the-art reproducibility from data download through final figures.  
+Together, this ensures state-of ar-the-art reproducibility from data download through final figures. 
 
 ---
 
@@ -13,74 +14,54 @@ Together, this ensures state-of ar-the-art reproducibility from data download th
 
 1. [Project Overview](#1-project-overview)
 2. [Repository Structure](#2-repository-structure)
-3. [Downloading Data](#3-downloading-data)
-4. [Prerequisites](#4-prerequisites)
-5. [Installation](#5-installation)
-   - [Docker (Recommended)](#docker-recommended)
-   - [Local Setup with renv](#local-setup-with-renv)
-6. [Usage](#6-usage)
-7. [Workflow](#7-workflow)
-8. [Contributing](#8-contributing)
-9. [License & Citation](#9-license--citation)
-10. [Contact](#contact)
+3. [Setup & Configuration](#3-setup--configuration)
+4. [Running the Analysis](#4-running-the-analysis)
+5. [Workflow Diagram](#5-workflow-diagram)
+6. [License & Citation](#6-license--citation)
 
 ---
 
 ## 1. Project Overview
 
-**Motivation:**  
-Air pollution is the leading environmental health risk to physical health and can also affect many others dimensions of life. If exposure to air pollution is itself unequal it can further reinforce socioeconomic inequalities through the impacts on health, education, productivity and social mobility.
+**Motivation:**
+Air pollution is a leading environmental health risk. If exposure to pollution is unequal, it reinforces socioeconomic disparities in health, education, and productivity.
 
-**Scope & Data:**
-
-- **Cities:** Metropolitan areas of Bogotá (COL), Mexico City (MEX), Santiago (CHL) and São Paulo (BRA).  
-- **Pollutants:** PM₂.₅ and PM₁₀ (primary focus), with supplemental analysis of O₃, CO and NO₂.  
-- **Data Sources:**  
-  - Hourly ground-station measurements (2023).  
-  - Census microdata with residential location, education (all countries) and income (Brazil & Mexico).  
-- **Harmonization:** Standardize education categories and align geographic boundaries to capture full metropolitan populations.
-
-**Key Goals:**
-
-1. Ingest and clean air quality and demographic data for each city.  
-2. Merge pollution metrics with socioeconomic indicators to measure exposure disparities.  
-3. Produce publication-quality figures, tables and statistical summaries of inequality patterns.  
-4. Guarantee reproducibility through Docker (system dependencies) and renv (R package versions).
+**Scope:**
+- **Cities:** Bogotá (COL), Mexico City (MEX), Santiago (CHL), São Paulo (BRA).
+- **Pollutants:** PM₂.₅ and PM₁₀ (primary), plus O₃, CO, NO₂.
+- **Data:**
+    - Ground-station measurements (hourly, 2023).
+    - Census microdata (Income, Education, Location).
+    - MERRA-2 Satellite Aerosol Optical Depth (for robustness).
 
 ---
 
 ## 2. Repository Structure
 
+This project follows a "Source vs. Execution" pattern. `src/` contains logic/functions, while `scripts/` executes that logic.
+
 ```text
 .
-├── .dockerignore              # Files to ignore from Docker build
-├── .gitignore                 # Files to ignore in Git
-├── .Rprofile                  # RStudio project configuration (for renv)
-├── Coding.Rproj               # RStudio project file
-├── Dockerfile                 # Defines Docker environment
-├── entrypoint.sh              # Launch script for container
-├── renv/                      # Local package library managed by renv
-├── renv.lock                  # Locked package versions
-├── data/                      # Data directory 
-│   ├── raw/                   # Original, unmodified data (shapefiles, .nc4, .csv)
-│   ├── interim/               # Cleaned/aggregated data for further processing
-│   └── processed/             # Cleaned/processed data ready for analysis
-├── doc/                       # Documentation, references, methodology notes
-├── src/                       # Utility functions & configs
-│   ├── config_utils_download_data.R
-│   ├── config_utils_plot_tables.R
-│   └── config_utils_process_data.R
-├── scripts/                   # “Glue” scripts that apply those utilities
-│   ├── download_data/         # Scripts to pull in raw data
-│   ├── process_data/          # Scripts to clean & transform data
-│   └── tables_images/         # Scripts to generate tables & figures
-├── results/                   # Output artifacts
-│   ├── figures/               # Plots and visualizations
-│   └── tables/                # Summary tables and CSV exports
-├── fonts/                     # LaTeX‐style fonts for plots
-├── LICENSE.md                 # Project license / terms of use 
-└── README.md                  # Project overview and setup instructions
-
+├── docker-compose.yml         # Dev Orchestration
+├── docker-compose.release.yml # Replication Orchestration (Immutable)
+├── Dockerfile                 # Image definition
+├── .env.example               # Template for credentials (COPY TO .env)
+├── renv.lock                  # Exact R package versions
+├── src/                       # Source Code (Functions)
+│   ├── city_specific/         # Cleaning logic per city
+│   └── general_utilities/     # Plotting and config helpers
+├── scripts/                   # Execution Pipelines
+│   ├── download_data/         # Pull raw data from APIs
+│   ├── process_data/          # Clean & Transform (Raw -> Interim -> Processed)
+│   └── tables_images/         # Generate final outputs
+├── data/
+│   ├── raw/                   # Immutable original inputs
+│   ├── interim/               # Intermediate steps (parquet/rds)
+│   └── processed/             # Final analysis-ready datasets
+└── results/
+    ├── figures/               # PDFs and PNGs
+    └── tables/                # LaTeX and CSV tables
+  
 ```
 
 ---
