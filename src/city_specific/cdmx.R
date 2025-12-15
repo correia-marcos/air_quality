@@ -16,7 +16,7 @@ cdmx_cfg <- list(
   id               = "Mexico City",
   tz               = "America/Mexico_City",
   years            = 2000L:2023L,
-  dl_dir           = here::here("data", "downloads", "CDMX"),
+  dl_dir           = here::here("data", "downloads", "cdmx"),
   out_dir          = here::here("data", "raw"),
   cities_in_metro  = c(09002, 09003, 09004, 09005, 09006, 09007, 09008, 09009, 09010, 09011,
                        09012, 09013, 09014, 09015, 09016, 09017, 13013, 13069, 15002, 15011,
