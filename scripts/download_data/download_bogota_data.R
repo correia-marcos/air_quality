@@ -31,13 +31,6 @@ source(here::here("src","city_specific", "bogota.R"))
 # ============================================================================================
 colombia <- ne_states(country = "Colombia", returnclass = "sf")
 
-# Apply function to create Selenium server and download the data for metro bogota
-download_logs_stations_metro_bogota <- sisaire_download_hourly_data(
-  base_url     = bogota_cfg$base_url_sisaire,
-  target_depts = bogota_cfg$which_states,
-  years_range  = bogota_cfg$years,
-  subdir       = file.path("bogota", "metro_area_ground_stations_hourly"))
-
 # Show parameters imported on src/city_specific_bogota.R
 print(bogota_cfg$base_url_shp)
 print(bogota_cfg$base_url_census)
@@ -112,7 +105,8 @@ download_logs_station_bogota <- bogota_download_station_data(
 download_logs_stations_metro_bogota <- sisaire_download_hourly_data(
   base_url     = bogota_cfg$base_url_sisaire,
   target_depts = bogota_cfg$which_states,
-  years_range  = bogota_cfg$years)
+  years_range  = bogota_cfg$years,
+  subdir       = file.path("bogota", "metro_area_ground_stations_hourly"))
 
 # Apply function to download Census data for the metro area
 census <- bogota_download_census_data(
