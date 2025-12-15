@@ -17,22 +17,24 @@
 
 # Parameters (single source)
 bogota_cfg <- list(
-  id              = "bogota",
-  tz              = "America/Bogota",
-  url_station_shp = "https://www.ambientebogota.gov.co/estaciones-rmcab",
-  base_url_shp    = "https://www.dane.gov.co/files/geoportal-provisional",
-  base_url_rmcab  = "http://rmcab.ambientebogota.gov.co/Report/stationreport",
-  base_url_census = "https://microdatos.dane.gov.co/index.php/catalog/421/get-microdata",
-  years           = 2000L:2023L,
-  dl_dir          = here::here("data", "downloads", "Bogota"),
-  out_dir         = here::here("data", "raw"),
-  cities_in_metro = c("Bogotá DC", "Bojacá", "Cajicá", "Chía", "Cota", "El Rosal", "Facatativá",
-                      "Funza", "Fusagasugá", "Gachancipá", "La Calera", "Madrid", "Mosquera",
-                      "Sibaté", "Soacha", "Sopó", "Subachoque", "Tabio", "Tenjo", "Tocancipá",
-                      "Zipaquirá"),
-  station_nme_map = c("Centro de alto rendimiento" = "Centro de Alto Rendimiento",
-                      "Las Ferias"                 = "Las Ferias",
-                      "Carvajal-Sevillana"         = "Carvajal-Sevillana")
+  id               = "bogota",
+  tz               = "America/Bogota",
+  url_station_shp  = "https://www.ambientebogota.gov.co/estaciones-rmcab",
+  base_url_shp     = "https://www.dane.gov.co/files/geoportal-provisional",
+  base_url_rmcab   = "http://rmcab.ambientebogota.gov.co/Report/stationreport",
+  base_url_sisaire = "http://sisaire.ideam.gov.co/ideam-sisaire-web/consultas.xhtml",
+  base_url_census  = "https://microdatos.dane.gov.co/index.php/catalog/421/get-microdata",
+  years            = 2000L:2023L,
+  dl_dir           = here::here("data", "downloads", "bogota"),
+  out_dir          = here::here("data", "raw"),
+  which_states     = c("Cundinamarca", "Bogotá D.C.", "Huila", "Meta", "Tolima"),
+  cities_in_metro  = c("Bogotá DC", "Bojacá", "Cajicá", "Chía", "Cota", "El Rosal",
+                       "Facatativá", "Funza", "Fusagasugá", "Gachancipá", "La Calera", "Madrid",
+                       "Mosquera", "Sibaté", "Soacha", "Sopó", "Subachoque", "Tabio", "Tenjo",
+                       "Tocancipá", "Zipaquirá"),
+  station_nme_map  = c("Centro de alto rendimiento" = "Centro de Alto Rendimiento",
+                       "Las Ferias"                 = "Las Ferias",
+                       "Carvajal-Sevillana"         = "Carvajal-Sevillana")
 )
 
 # ============================================================================================
@@ -459,6 +461,654 @@ bogota_get_station_info <- function(base_url) {
   
   message("Found ", nrow(out), " stations: ", paste(out$DisplayName, collapse = ", "))
   return(out)
+}
+
+
+# ----------------------------------------------------------------------------------------
+# Function: sisaire_download_department_metadata
+# @Arg      : base_url      — string; main SISAIRE URL
+# @Arg      : target_depts  — character vector; list of departments (e.g. "Cundinamarca")
+# @Arg      : container     — logical; TRUE if running inside Docker (default TRUE)
+# @Arg      : subdir        — string; subfolder in downloads to store files
+# @Arg      : timeout_page  — integer; max wait for page load (default 50)
+# @Arg      : timeout_dl    — integer; max wait for download (default 120)
+# @Output   : tibble; log of actions (department, status, file_path)
+# @Purpose  : Navigates SISAIRE -> Calidad del aire -> Por Departamento.
+#             Features robust "Google bounce" navigation to prevent cold-start errors,
+#             case-insensitive matching for "BOGOTÁ", and per-department retries.
+# @Written_on: 09/12/2025
+# @Written_by: Marcos Paulo
+# ----------------------------------------------------------------------------------------
+sisaire_download_department_metadata <- function(
+    base_url = bogota_cfg$base_url_sisaire,
+    target_depts = bogota_cfg$which_states,
+    container = TRUE,
+    subdir = "bogota/stations_metadata",
+    timeout_page = 15,
+    timeout_dl = 12
+) {
+  
+  # 0) Setup Directories
+  downloads_folder <- Sys.getenv("DOWNLOADS_DIR", here::here("data", "downloads"))
+  dir.create(downloads_folder, recursive = TRUE, showWarnings = FALSE)
+  
+  final_dir <- file.path(downloads_folder, subdir)
+  dir.create(final_dir, recursive = TRUE, showWarnings = FALSE)
+  message("✔️  Downloads dir: ", downloads_folder)
+  message("📂 Target subdir : ", final_dir)
+  
+  # 1) Docker / Selenium Setup
+  if (!container) {
+    message("🚀 Starting local Selenium on 4445…")
+    cid <- system(
+      "docker run -d -p 4445:4444 --shm-size=2g selenium/standalone-firefox:4.34.0-20250717",
+      intern = TRUE
+    )
+    on.exit(try(system(sprintf("docker rm -f %s", cid), intern = TRUE), silent = TRUE),
+            add = TRUE)
+    selenium_host <- "localhost"; selenium_port <- 4445L
+  } else {
+    selenium_host <- "selenium";  selenium_port <- 4444L
+  }
+  
+  download_dir_container <- if (container) "/home/seluser/Downloads" else downloads_folder
+  caps <- list(
+    browserName = "firefox",
+    "moz:firefoxOptions" = list(
+      prefs = list(
+        "browser.download.folderList" = 2L,
+        "browser.download.dir" = download_dir_container,
+        "browser.download.useDownloadDir" = TRUE,
+        "browser.helperApps.neverAsk.saveToDisk" = paste(
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "application/octet-stream", sep = ","
+        )
+      )
+    ),
+    timeouts = list(implicit = 0L, pageLoad = 60000L, script = 60000L)
+  )
+  
+  session <- selenium::SeleniumSession$new(
+    browser = "firefox", host = selenium_host, port = selenium_port, capabilities = caps
+  )
+  on.exit(session$close(), add = TRUE)
+  
+  # 2) Robust Helper: Google Bounce -> Dashboard -> Table
+  nav_to_dept_search <- function() {
+    # Sanity check: Bounce to Google to clear state
+    session$navigate("https://www.google.com")
+    Sys.sleep(5) 
+    
+    session$navigate(base_url)
+    # Heavy wait for SISAIRE hydration
+    Sys.sleep(40) 
+    wait_ready(session, timeout_page)
+    
+    # Click "Calidad del aire" (Parent Menu)
+    menu_top <- wait_for(session, "xpath", 
+                         "//span[contains(text(),'Calidad del aire')]", timeout_page)
+    menu_top$click()
+    
+    # Click "Por Departamento" (Submenu)
+    menu_sub <- wait_for(session, "css selector", 
+                         "a[href='calidad_aire_departamento.xhtml']", timeout_page)
+    menu_sub$click()
+    wait_ready(session, timeout_page)
+    Sys.sleep(5) 
+  }
+  
+  log <- list()
+  
+  # 3) Main Loop over Departments
+  for (dept in target_depts) {
+    message(sprintf("\n📍 Processing: %s", dept))
+    
+    status   <- "failed"
+    file_res <- NA_character_
+    attempt  <- 0
+    max_retries <- 3
+    
+    # RETRY LOOP for stability
+    repeat {
+      attempt <- attempt + 1
+      
+      try_result <- tryCatch({
+        
+        # A. Navigate 
+        nav_to_dept_search()
+        
+        # B. Filter Table
+        input_sel <- "input[id*='calTablaCantEst'][id*='filter']"
+        inp <- wait_for(session, "css selector", input_sel, timeout_page)
+        
+        inp$click()
+        inp$clear()
+        inp$send_keys(toupper(dept), keys$enter)
+        
+        Sys.sleep(5)
+        
+        # C. Find the Link (Uppercase)
+        target_text <- toupper(dept)
+        xpath_query <- sprintf("//a[contains(text(), '%s')]", target_text)
+        
+        row_link <- wait_for(session, "xpath", xpath_query, timeout_page)
+        row_link$click()
+        
+        # Wait for Detail View
+        Sys.sleep(60)
+        wait_ready(session, timeout_page)
+        
+        # --- CRITICAL FIX: CLEAN SLATE ---
+        # Before we start downloading, ensure the download folder is empty of .xlsx files.
+        # This guarantees that 'wait_for_new_download' will see the new file,
+        # even if it has the same name as a previous failed attempt.
+        trash_files <- list.files(downloads_folder, pattern = "\\.xlsx$", full.names = TRUE)
+        if (length(trash_files) > 0) {
+          unlink(trash_files)
+        }
+        # ---------------------------------
+        
+        # D. Download
+        before <- list.files(downloads_folder, pattern = "\\.xlsx$", full.names = TRUE)
+        btn_excel <- wait_for(session, "css selector", 
+                              "img[src*='logo-excel.png']", timeout_page)
+        
+        # Click parent <a>
+        btn_excel$find_element("xpath", ".. ")$click()
+        
+        src <- wait_for_new_download(
+          dir = downloads_folder,
+          before = before,
+          pattern = "\\.xls$",
+          timeout = timeout_dl
+        )
+        
+        # E. Move/Rename
+        sanitized_dept <- sanitize_name(dept)
+        dest_name <- paste0(sanitized_dept, ".xls")
+        dest_path <- file.path(final_dir, dest_name)
+        
+        if (file.exists(dest_path)) unlink(dest_path)
+        file.copy(src, dest_path)
+        unlink(src)
+        
+        message("   ✅ Downloaded: ", dest_name)
+        status   <- "ok"
+        file_res <- dest_path
+        
+        TRUE # Break loop
+        
+      }, error = function(e) {
+        message(sprintf("   ⚠️ Attempt %d/%d failed: %s", attempt, max_retries, e$message))
+        return(FALSE)
+      })
+      
+      if (try_result) break 
+      if (attempt >= max_retries) {
+        message("   ❌ Gave up on: ", dept)
+        break
+      }
+      Sys.sleep(10)
+    }
+    
+    log[[length(log) + 1L]] <- tibble::tibble(
+      department = dept,
+      status = status,
+      file = file_res
+    )
+  }
+  
+  dplyr::bind_rows(log)
+}
+
+
+# --------------------------------------------------------------------------------------
+# Function: sisaire_download_hourly_data
+#
+# @Arg      : base_url      — string; The base URL for the SISAIRE query page.
+# @Arg      : target_depts  — character vector; List of departments (e.g., "Bogotá D.C.").
+# @Arg      : target_params — character vector|NULL; Pollutants (e.g., "PM10", "O3").
+#                             If NULL, defaults to a standard list of 11 parameters.
+# @Arg      : years_range   — integer vector; Range of years to query (e.g., 2000:2024).
+# @Arg      : container     — logical; TRUE if running inside a Docker Selenium container.
+# @Arg      : subdir        — string; Subdirectory within downloads to save files.
+# @Arg      : timeout       — integer; Timeout in seconds for page loads (default 180).
+# @Output   : tibble; A log containing: dept, param, start, end, status, file.
+# @Purpose  : Robustly scrape hourly air quality data from the SISAIRE/IDEAM legacy app.
+#             Uses advanced Selenium strategies to bypass PrimeFaces/JSF limitations:
+#             1. "Direct Injection": Manipulates hidden <select> via JS.
+#             2. "Nuclear Clicks": Uses JS events to bypass Selenium interception.
+#             3. "Lazy Load Handling": Waits for AJAX signals.
+#             4. "State Recovery": Handles 'No Data' gracefully.
+# --------------------------------------------------------------------------------------
+sisaire_download_hourly_data <- function(
+    base_url = bogota_cfg$base_url_sisaire,
+    target_depts = bogota_cfg$which_states,
+    target_params = NULL,
+    years_range = bogota_cfg$years,
+    container = TRUE,
+    subdir = "stations_hourly",
+    timeout = 180
+) {
+  
+  # 0) Setup Directories
+  downloads_folder <- Sys.getenv("DOWNLOADS_DIR", here::here("data", "downloads"))
+  dir.create(downloads_folder, recursive = TRUE, showWarnings = FALSE)
+  final_dir <- file.path(downloads_folder, subdir)
+  dir.create(final_dir, recursive = TRUE, showWarnings = FALSE)
+  
+  message("✔️  Downloads dir: ", downloads_folder)
+  message("📂 Target subdir : ", final_dir)
+  
+  if (is.null(target_params)) {
+    target_params <- c("PM10", "PM2.5", "O3", "NO2", "SO2", "CO", 
+                       "TMPR_AIR_10CM", "VViento", "DViento", "P", "RGlobal")
+  }
+  
+  # 1) Docker / Selenium Setup
+  if (!container) {
+    message("🚀 Starting local Selenium on 4445…")
+    cid <- system(
+      paste("docker run -d -p 4445:4444 --shm-size=2g", 
+            "selenium/standalone-firefox:4.34.0-20250717"),
+      intern = TRUE
+    )
+    on.exit(
+      try(system(sprintf("docker rm -f %s", cid), intern = TRUE), silent = TRUE),
+      add = TRUE
+    )
+    selenium_host <- "localhost"; selenium_port <- 4445L
+  } else {
+    selenium_host <- "selenium";  selenium_port <- 4444L
+  }
+  
+  download_dir_container <- if (container) "/home/seluser/Downloads" else downloads_folder
+  
+  caps <- list(
+    browserName = "firefox",
+    "moz:firefoxOptions" = list(
+      prefs = list(
+        "browser.download.folderList" = 2L,
+        "browser.download.dir" = download_dir_container,
+        "browser.download.useDownloadDir" = TRUE,
+        "browser.helperApps.neverAsk.saveToDisk" = paste(
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "application/octet-stream", "text/csv", "text/plain", 
+          "application/csv", sep = ","
+        )
+      )
+    ),
+    timeouts = list(implicit = 0L, pageLoad = 60000L, script = 60000L)
+  )
+  
+  session <- selenium::SeleniumSession$new(
+    browser = "firefox", host = selenium_host, port = selenium_port, 
+    capabilities = caps, timeout = timeout
+  )
+  on.exit(session$close(), add = TRUE)
+  
+  # --- HELPER: Wait for Loading Spinner ---
+  wait_for_spinner <- function() {
+    Sys.sleep(0.5)
+    session$execute_script("
+        var start = new Date().getTime();
+        while (new Date().getTime() < start + 10000) {
+          if ($('#loading').is(':visible') == false) break;
+        }
+    ")
+    Sys.sleep(1)
+  }
+  
+  # --- HELPER: Safe Navigation ---
+  safe_navigate <- function(url) {
+    for(attempt in 1:10) { 
+      try({
+        session$navigate(url)
+        Sys.sleep(5)
+        curr_url <- session$current_url()
+        if (grepl("about:neterror", curr_url) || grepl("dnsNotFound", curr_url)) {
+          stop("DNS/Net Error detected")
+        }
+        return(TRUE) 
+      }, silent = TRUE) -> nav_res
+      
+      if (!inherits(nav_res, "try-error")) return(TRUE)
+      message(sprintf("      ⚠️ Server down (Attempt %d/10). Waiting 60s...", attempt))
+      Sys.sleep(60) 
+    }
+    stop("❌ Critical: Server is completely unreachable after 10 attempts.")
+  }
+  
+  # --- HELPER: Internal Wait ---
+  wait_for_xpath <- function(xpath, s_time=30) {
+    t0 <- Sys.time()
+    while(as.numeric(difftime(Sys.time(), t0, units="secs")) < s_time) {
+      el <- try(session$find_element("xpath", xpath), silent=TRUE)
+      if (!inherits(el, "try-error")) return(el)
+      Sys.sleep(0.5)
+    }
+    stop("Timeout waiting for element: ", xpath)
+  }
+  
+  # --- HELPER: Direct Injection ---
+  pf_select_option <- function(widget_id, label_text) {
+    input_id <- paste0(widget_id, "_input")
+    js_code <- sprintf("
+      var sel = document.getElementById('%s');
+      if (!sel) return false;
+      var found = false;
+      for (var i = 0; i < sel.options.length; i++) {
+        var txt = sel.options[i].text.trim().toUpperCase();
+        var target = '%s'.trim().toUpperCase();
+        if (txt === target) {
+          sel.selectedIndex = i;
+          found = true;
+          break;
+        }
+      }
+      if (found) {
+        if (window.jQuery) { $(sel).trigger('change'); } 
+        else {
+           if(sel.onchange) sel.onchange(); 
+           else sel.dispatchEvent(new Event('change'));
+        }
+        return true;
+      }
+      return false;
+    ", input_id, label_text)
+    
+    found <- session$execute_script(js_code)
+    if (isFALSE(found)) {
+      stop(sprintf("Could not find option '%s' in %s", label_text, widget_id))
+    }
+    wait_for_spinner()
+  }
+  
+  # --- HELPER: Setup Form (Adaptive Version) ---
+  setup_form <- function(dept, param) {
+    # Initial Wait Times
+    w_table   <- 10
+    w_confirm <- 30
+    
+    # Adaptive Loop (3 Attempts)
+    for (attempt in 1:3) {
+      
+      # Try the sequence (Dept -> Stations -> Validate)
+      res_seq <- tryCatch({
+        
+        # 1. DNS / URL Check (Fast check inside loop)
+        curr_url <- try(session$current_url(), silent=TRUE)
+        if (!inherits(curr_url, "try-error") && grepl("about:neterror", curr_url)) {
+          stop("DNS Error encountered inside setup.")
+        }
+        
+        # 2. Select Department
+        # We re-select every attempt to ensure clean state
+        pf_select_option("filtroForm\\:departamentoSel", dept)
+        
+        # Dept Validation
+        dept_val <- session$execute_script(
+          "return document.getElementById('filtroForm:departamentoSel_input').value;"
+        )
+        if (is.null(dept_val) || dept_val == "" || dept_val == "0") {
+          Sys.sleep(2)
+          pf_select_option("filtroForm\\:departamentoSel", dept)
+        }
+        
+        # 3. Open Stations Dropdown
+        trigger_sel <- '//*[@id="filtroForm:estacionesSel"]/ul'
+        session$find_element("xpath", trigger_sel)$click()
+        
+        # ADAPTIVE WAIT 1: Table Loading
+        message(sprintf("      ⏳ Waiting %ds for station table (Attempt %d)...", w_table, attempt))
+        Sys.sleep(w_table)
+        
+        # Verify Visibility
+        panel_sel <- "#filtroForm\\:estacionesSel_panel"
+        vis <- session$execute_script(sprintf("return $( '%s' ).is(':visible');", panel_sel))
+        if (!isTRUE(vis)) stop("Station panel not visible after wait.")
+        
+        # 4. Click 'Select All'
+        header_sel <- paste0(panel_sel, " .ui-selectcheckboxmenu-header .ui-chkbox-box")
+        chk_all <- session$find_element("css selector", header_sel)
+        chk_all$click()
+        
+        # ADAPTIVE WAIT 2: Confirmation / AJAX Load
+        message(sprintf("      ⏳ Waiting %ds for 'Select All' confirmation...", w_confirm))
+        Sys.sleep(w_confirm)
+        wait_for_spinner() # Extra spinner check
+        
+        # 5. Close Panel
+        session$find_element("css selector", "body")$send_keys(keys$escape)
+        Sys.sleep(2)
+        
+        # 6. Critical Validation: Did Dept turn blank?
+        final_dept_val <- session$execute_script(
+          "return document.getElementById('filtroForm:departamentoSel_input').value;"
+        )
+        if (is.null(final_dept_val) || final_dept_val == "" || final_dept_val == "0") {
+          stop("Critical: Department reset to blank after selecting stations.")
+        }
+        
+        # If we got here, Success!
+        TRUE 
+        
+      }, error = function(e) {
+        message("      ⚠️ Adaptive Step Failed: ", e$message)
+        return(FALSE)
+      })
+      
+      # Exit loop on success
+      if (isTRUE(res_seq)) {
+        # Proceed to Parameter Selection (outside adaptive loop as it's usually stable)
+        # But wrapped in tryCatch for safety
+        try({
+          pf_select_option("filtroForm\\:contaminanteSel", param)
+          trigger_par <- '//*[@id="filtroForm:contaminanteSel"]/div[3]'
+          try(session$find_element("xpath", trigger_par)$click(), silent=TRUE)
+          try(session$find_element("xpath", trigger_par)$click(), silent=TRUE)
+          
+          Sys.sleep(2)
+          session$find_element("css selector", "body")$send_keys(keys$escape)
+          session$execute_script("if(document.activeElement){document.activeElement.blur();}")
+          Sys.sleep(1)
+          return(TRUE)
+        }) -> res_param
+        
+        if(isTRUE(res_param)) return(TRUE)
+      }
+      
+      # If Failed: Prepare for Next Attempt
+      message("      🔄 Increasing adaptive waits (+40s) and retrying...")
+      w_table   <- w_table + 40
+      w_confirm <- w_confirm + 40
+      
+      # Reset UI state (Escape + Refresh logic handled by re-selection at top of loop)
+      session$find_element("css selector", "body")$send_keys(keys$escape)
+      Sys.sleep(2)
+    }
+    
+    return(FALSE) # Failed after 3 attempts
+  }
+  
+  log <- list()
+  
+  # 2) Main Loop
+  for (dept in target_depts) {
+    message(sprintf("\n📍 DEPT: %s", dept))
+    safe_navigate(base_url)
+    
+    for (param in target_params) {
+      message(sprintf("   🔹 Param: %s", param))
+      
+      setup_ok <- FALSE
+      # We rely on the internal adaptive loop, so we reduce outer retries 
+      # or keep them as a "hard reset" fallback.
+      for(s_att in 1:2) { 
+        if(setup_form(dept, param)) { setup_ok <- TRUE; break }
+        message("      ❌ Hard Setup Failure. Refreshing page...")
+        safe_navigate(base_url)
+      }
+      if(!setup_ok) { message("      ❌ Skipping Param: ", param); next }
+      
+      # --- DATE PROCESSING (Unchanged) ---
+      session$execute_script("document.getElementById('filtroForm:labelFIniLimite').click();")
+      Sys.sleep(2) 
+      input_start <- session$find_element("css selector", "#filtroForm\\:fechaIni_input")
+      start_val   <- input_start$get_attribute("value")
+      
+      if (is.null(start_val) || start_val == "") {
+        message("      ⚠️ No data start date found."); next
+      }
+      
+      d_start_avail <- as.Date(start_val)
+      d_end_limit   <- as.Date(paste0(max(years_range), "-12-31"))
+      message(sprintf("      📅 Data available from: %s", d_start_avail))
+      
+      curr_start <- d_start_avail
+      
+      while (curr_start < d_end_limit) {
+        next_year_date <- seq(curr_start, by = "1 year", length.out = 2)[2]
+        curr_end <- min(d_end_limit, next_year_date - 1)
+        if (curr_start > Sys.Date()) break
+        
+        status <- "ok"
+        f_path <- NA_character_
+        chunk_attempt <- 0
+        
+        repeat {
+          chunk_attempt <- chunk_attempt + 1
+          if (chunk_attempt > 3) { status <- "failed"; break }
+          
+          try({
+            s_start <- format(curr_start, "%Y-%m-%d")
+            s_end   <- format(curr_end,   "%Y-%m-%d")
+            
+            js_dates <- sprintf("
+              $('#filtroForm\\\\:fechaIni_input').val('%s').trigger('change');
+              $('#filtroForm\\\\:fechaFin_input').val('%s').trigger('change');
+            ", s_start, s_end)
+            session$execute_script(js_dates)
+            Sys.sleep(1)
+            
+            wait_for_spinner()
+            trigger_time <- '//*[@id="filtroForm:tipoSel"]/div[3]/span'
+            tm_trigger <- wait_for_xpath(trigger_time, 30)
+            
+            pf_select_option("filtroForm\\:tipoSel", "Hora")
+            tm_trigger$click()
+            tm_trigger$click()
+            
+            message("      🔎 Clicking Consultar...")
+            session$execute_script("
+               var btn = document.getElementById('filtroForm:btnConsultar');
+               if(btn) btn.click();
+            ")
+            
+            result_found <- FALSE
+            Sys.sleep(3)
+            
+            for(p_wait in 1:300) {
+              if (p_wait == 60 || p_wait == 120) {
+                message("      💤 Server sleepy. Clicking Consultar again...")
+                session$execute_script(
+                  "document.getElementById('filtroForm:btnConsultar').click();")
+              }
+              
+              growl_txt <- session$execute_script("
+                 var g = document.querySelector('div.ui-growl-item-container');
+                 if (g && window.getComputedStyle(g).opacity > 0.9) return g.innerText;
+                 return null;
+              ")
+              if (!is.null(growl_txt) && grepl("No se encontraron resultados",
+                                               growl_txt, ignore.case=T)) {
+                message(sprintf("      ⚠️ No data: %s [%s]", param, s_start))
+                status <- "no_data"
+                result_found <- TRUE
+                break
+              }
+              
+              js_click_csv <- "
+                 var xpath = \"//a[.//span[contains(@class, 'fa-file-text-o')]]\";
+                 var res = document.evaluate(xpath, document, null, 
+                                             XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+                 var el = res.singleNodeValue;
+                 if (el) { el.click(); return true; }
+                 return false;
+               "
+              was_clicked <- session$execute_script(js_click_csv)
+              
+              if (isTRUE(was_clicked)) {
+                Sys.sleep(5)
+                files_now <- list.files(downloads_folder, full.names=T)
+                recent <- any(difftime(Sys.time(),
+                                       file.info(files_now)$mtime, units="secs") < 10)
+                if (!recent) {
+                  message("      🖱️ CSV clicked but no download. Double-tapping...")
+                  session$execute_script(js_click_csv)
+                }
+                result_found <- TRUE
+                status <- "downloading"
+                break
+              }
+              Sys.sleep(1)
+            }
+            
+            if (!result_found) stop("Timed out (300s) waiting for results.")
+            if (status == "no_data") break 
+            
+            dl_file <- wait_for_new_download(
+              downloads_folder, character(0), "\\.(csv|txt)$", 120, quiet_sec = 1
+            )
+            
+            san_dept  <- sanitize_name(dept)
+            san_param <- sanitize_name(param)
+            out_name  <- sprintf("%s_%s_%s_%s.csv", san_dept, san_param, curr_start, curr_end)
+            dest      <- file.path(final_dir, out_name)
+            
+            if (file.exists(dest)) unlink(dest)
+            file.copy(dl_file, dest)
+            unlink(dl_file)
+            f_path <- dest
+            message(sprintf("      ⬇️  Saved: %s", out_name))
+            
+          }, silent = FALSE) -> chunk_res
+          
+          if (!inherits(chunk_res, "try-error") && status %in% c("ok","downloading")) break
+          if (status == "no_data") break
+          Sys.sleep(5) 
+        } 
+        
+        log[[length(log)+1]] <- tibble::tibble(
+          dept = dept, param = param, start = curr_start, end = curr_end, 
+          status = status, file = f_path
+        )
+        
+        if (status == "downloading") {
+          message("      ♻️  Resetting session...")
+          try(session$navigate("about:blank"), silent = TRUE)
+          Sys.sleep(1)
+          try({ safe_navigate(base_url) }, silent=TRUE)
+          Sys.sleep(5)
+          if(!setup_form(dept, param)) {
+            message("      ❌ Critical: Could not recover session.")
+            break
+          }
+        }
+        curr_start <- curr_end + 1
+      } 
+    }
+    message("   🧊 Dept finished. Cooling down for 30s...")
+    Sys.sleep(30)
+  }
+  
+  # --- FINAL CLEANUP ---
+  message("🧹 Cleaning up 'sisaire' temp files...")
+  garbage <- list.files(downloads_folder,
+                        pattern = "sisaire", full.names = TRUE, ignore.case = TRUE)
+  if(length(garbage) > 0) unlink(garbage, force=TRUE)
+  
+  dplyr::bind_rows(log)
 }
 
 
@@ -1080,6 +1730,185 @@ bogota_read_one_xlsx <- function(path, tz = "America/Bogota", verbose = FALSE) {
 }
 
 
+# ---------------------------------------------------------------------------------------------
+# Function: bogota_process_xlsx_to_parquet
+# @Arg      : downloads_folder — string; folder containing the raw .xlsx files
+# @Arg      : out_dir          — string; base output directory
+# @Arg      : out_name         — string; name of the dataset (e.g., "bogota_air")
+# @Arg      : years            — int vector; years to filter/keep (default 2008:2024)
+# @Arg      : tz               — string; Olson timezone (default "America/Bogota")
+# @Arg      : cleanup          — logical; delete source .xlsx after success?
+# @Arg      : verbose          — logical; print progress messages?
+# @Output   : Arrow Dataset connection (allowing lazy evaluation).
+# @Purpose  : 1. Reads varying Excel files using `bogota_read_one_xlsx`.
+#             2. Pivots them to long format in R to ensure schema consistency.
+#             3. Pushes to a temporary DuckDB instance.
+#             4. Uses DuckDB to Pivot Wide + Write Partitioned Parquet (Hive style).
+# @Written_on: 08/12/2025
+# @Written_by: Marcos Paulo
+# ---------------------------------------------------------------------------------------------
+bogota_process_xlsx_to_parquet <- function(
+    downloads_folder,
+    out_dir,
+    out_name  = "bogota_data",
+    years     = bogota_cfg$years,
+    tz        = "America/Bogota",
+    cleanup   = FALSE,
+    verbose   = TRUE
+) {
+  
+  # 1) Check dependencies
+  if (!requireNamespace("duckdb", quietly = TRUE) ||
+      !requireNamespace("DBI", quietly = TRUE) ||
+      !requireNamespace("arrow", quietly = TRUE) ||
+      !requireNamespace("tidyr", quietly = TRUE)) {
+    stop("pkgs 'duckdb', 'DBI', 'arrow', 'tidyr' required.")
+  }
+  
+  # 2) Discover files
+  files <- list.files(downloads_folder, pattern = "\\.xlsx$", full.names = TRUE)
+  if (length(files) == 0) stop("No .xlsx files found in ", downloads_folder)
+  
+  if (isTRUE(verbose)) {
+    message(sprintf("🚀 Starting Engine. Files: %d | Target: %s", 
+                    length(files), out_dir))
+  }
+  
+  # 3) Setup temporary DuckDB (Disk-backed to avoid RAM overflow on large history)
+  #    Using a temp file ensures we don't eat up RAM if the pivot is huge.
+  dbdir <- tempfile("bogota_duck_", fileext = ".db")
+  con   <- DBI::dbConnect(duckdb::duckdb(dbdir = dbdir))
+  
+  # Ensure clean exit
+  on.exit({
+    DBI::dbDisconnect(con, shutdown = TRUE)
+    unlink(dbdir, force = TRUE)
+  }, add = TRUE)
+  
+  # Optimizations for DuckDB
+  DBI::dbExecute(con, "PRAGMA memory_limit='8GB';") 
+  DBI::dbExecute(con, paste0("PRAGMA threads=", parallel::detectCores() - 1, ";"))
+  
+  # 4) Create Staging Table (Long Format)
+  #    We store data as: datetime, station, year, parameter, value
+  DBI::dbExecute(con, 
+                 "CREATE TABLE staging (
+       datetime TIMESTAMP, 
+       station VARCHAR, 
+       year INTEGER, 
+       param VARCHAR, 
+       value DOUBLE
+    );"
+  )
+  
+  # 5) Loop: Read Excel (R) -> Pivot Long (R) -> Append to DuckDB
+  #    We do this because `read_excel` inside DuckDB is less robust for this specific 
+  #    file header pattern than your custom R function.
+  
+  total_rows <- 0
+  
+  for (f in files) {
+    # A) Read using your custom robust reader
+    #    (Assumes bogota_read_one_xlsx is loaded in environment)
+    df <- tryCatch(
+      bogota_read_one_xlsx(f, tz = tz, verbose = FALSE),
+      error = function(e) {
+        warning("Failed to read: ", basename(f), " - ", e$message)
+        return(NULL)
+      }
+    )
+    
+    if (is.null(df) || nrow(df) == 0) next
+    
+    # B) Filter year early if needed
+    df <- df[df$year %in% years, ]
+    if (nrow(df) == 0) next
+    
+    # C) Convert from Wide (Station specific) to Long (Generic)
+    #    This solves the schema mismatch (e.g., Station A has PM2.5, Station B doesn't)
+    #    Exclude datetime, station, year from pivoting
+    df_long <- tidyr::pivot_longer(
+      df,
+      cols      = -c(datetime, station, year),
+      names_to  = "param",
+      values_to = "value",
+      values_drop_na = TRUE
+    )
+    
+    # D) Write to DuckDB staging
+    if (nrow(df_long) > 0) {
+      duckdb::dbAppendTable(con, "staging", df_long)
+      total_rows <- total_rows + nrow(df_long)
+    }
+    
+    if (isTRUE(verbose)) message("   ↳ Processed: ", basename(f))
+  }
+  
+  if (total_rows == 0) stop("No data was successfully loaded into staging.")
+  if (isTRUE(verbose)) message("💾 Staging complete. Total observations: ", total_rows)
+  
+  # 6) Construct Output Path
+  dataset_path <- file.path(out_dir, paste0(out_name, "_dataset"))
+  if (dir.exists(dataset_path)) unlink(dataset_path, recursive = TRUE)
+  
+  # 7) Define the Pivot SQL query
+  #    We explicitly map the known variables to ensure columns exist in Parquet 
+  #    even if data is missing for a specific year.
+  #    Note: Added common meteorological vars + pollutants based on your normalizer.
+  
+  sql_pivot <- "
+    COPY (
+      SELECT 
+        datetime,
+        station,
+        year,
+        -- Pollutants
+        AVG(CASE WHEN param = 'pm10'    THEN value END) AS pm10,
+        AVG(CASE WHEN param = 'pm25'    THEN value END) AS pm25,
+        AVG(CASE WHEN param = 'ozone'   THEN value END) AS ozone,
+        AVG(CASE WHEN param = 'no'      THEN value END) AS no,
+        AVG(CASE WHEN param = 'no2'     THEN value END) AS no2,
+        AVG(CASE WHEN param = 'nox'     THEN value END) AS nox,
+        AVG(CASE WHEN param = 'co'      THEN value END) AS co,
+        AVG(CASE WHEN param = 'so2'     THEN value END) AS so2,
+        -- Meteorology
+        AVG(CASE WHEN param = 'temp'        THEN value END) AS temperature,
+        AVG(CASE WHEN param = 'rh'          THEN value END) AS rh,
+        AVG(CASE WHEN param = 'pressure'    THEN value END) AS pressure,
+        AVG(CASE WHEN param = 'radiation'   THEN value END) AS radiation,
+        AVG(CASE WHEN param = 'precipitacion' THEN value END) AS precipitation,
+        AVG(CASE WHEN param = 'vel_viento'  THEN value END) AS wind_speed,
+        AVG(CASE WHEN param = 'dir_viento'  THEN value END) AS wind_dir
+      FROM staging
+      GROUP BY datetime, station, year
+      ORDER BY datetime, station
+    ) TO '%s' (
+      FORMAT PARQUET, 
+      PARTITION_BY (year), 
+      COMPRESSION 'SNAPPY', 
+      OVERWRITE_OR_IGNORE TRUE
+    );
+  "
+  
+  # 8) Execute the Write
+  query <- sprintf(sql_pivot, dataset_path)
+  
+  if (isTRUE(verbose)) message("🧱 Pivoting and writing partitioned Parquet...")
+  DBI::dbExecute(con, query)
+  
+  # 9) Optional Cleanup
+  if (isTRUE(cleanup)) {
+    if (isTRUE(verbose)) message("🧹 Cleaning up source .xlsx files...")
+    unlink(files)
+  }
+  
+  if (isTRUE(verbose)) message("✅ Done! Dataset at: ", dataset_path)
+  
+  # 10) Return Lazy Arrow Connection
+  arrow::open_dataset(dataset_path)
+}
+
+
 # --------------------------------------------------------------------------------------------
 # Function: bogota_merge_downloads
 # @Arg       : downloads_folder — string; directory containing *.xlsx exports
@@ -1172,9 +2001,9 @@ bogota_missing_matrix <- function(merged_tbl,
 # @Output    : list with $bogota and $cundinamarca
 #              - dir_extracted (folder containing only CSV files)
 #              - files_index   (tibble with file, size, type)
-# @Purpose   : Fast extract master ZIP (system tools), fix mojibake on disk,
-#              locate dep. 11 & 25 packages, unpack, then unpack the *CSV.zip*
-#              inside each and leave only the CSV files directly in the folder.
+# @Purpose   : Fast extract master ZIP, fix mojibake, unpack dept 11 & 25,
+#              unpack *CSV.zip* inside, and FLATTEN structure (CSVs to root).
+#              Fixed to handle re-runs gracefully without "copy to self" errors.
 # @Written_on: 22/10/2025
 # @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
@@ -1186,31 +2015,20 @@ bogota_filter_harmonize_census <- function(
 ) {
   if (!file.exists(census_zip)) stop("Master ZIP not found: ", census_zip)
   for (pkg in c("tibble", "tools")) {
-    if (!requireNamespace(pkg, quietly = TRUE)) {
-      stop("Package '", pkg, "' is required.")
-    }
+    if (!requireNamespace(pkg, quietly = TRUE)) stop("Package '", pkg, "' is required.")
   }
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
   
   # ---- helpers ----------------------------------------------------------------
-  # fix_visible_glyphs()
-  # Purpose : Replace mojibaked glyphs produced by some unzip tools (macOS/Finder)
-  #           with the intended Spanish accented characters. Works on *valid*
-  #           UTF-8 strings; avoids byte-level surgery to prevent invalid UTF-8.
-  # Mapping : †→á, °→í, ¢→ó, §→ñ, Ç→é
+  
   fix_visible_glyphs <- function(x) {
     repl <- c("†" = "á", "°" = "í", "¢" = "ó", "§" = "ñ", "Ç" = "é")
     for (k in names(repl)) x <- gsub(k, repl[[k]], x, fixed = TRUE)
     x
   }
   
-  # rename_tree_utf8()
-  # Purpose : Walk a directory tree deepest-first and rename each basename
-  #           applying fix_visible_glyphs(). This normalizes files/dirs *on disk*.
   rename_tree_utf8 <- function(root) {
-    paths <- list.files(
-      root, recursive = TRUE, include.dirs = TRUE, full.names = TRUE
-    )
+    paths <- list.files(root, recursive = TRUE, include.dirs = TRUE, full.names = TRUE)
     paths <- paths[order(nchar(paths), decreasing = TRUE)]
     for (p in paths) {
       new_base <- fix_visible_glyphs(basename(p))
@@ -1223,8 +2041,6 @@ bogota_filter_harmonize_census <- function(
     invisible(root)
   }
   
-  # make_index_tbl()
-  # Purpose : Return a tibble index of files in a folder (recursive).
   make_index_tbl <- function(root) {
     files <- list.files(root, recursive = TRUE, full.names = TRUE)
     if (!length(files)) {
@@ -1235,9 +2051,6 @@ bogota_filter_harmonize_census <- function(
     )
   }
   
-  # sys_extract_all()
-  # Purpose : Fast, robust extraction using system tools. On macOS uses `ditto`
-  #           (same engine as Finder/Archive Utility). Else, uses `unzip -o`.
   sys_extract_all <- function(zipfile, exdir, overwrite = FALSE, quiet = FALSE) {
     if (dir.exists(exdir) && overwrite) unlink(exdir, recursive = TRUE, force = TRUE)
     dir.create(exdir, recursive = TRUE, showWarnings = FALSE)
@@ -1248,18 +2061,13 @@ bogota_filter_harmonize_census <- function(
     status  <- 1L
     
     if (is_mac && has_dit) {
-      args <- c("-x", "-k",
-                shQuote(normalizePath(zipfile)),
-                shQuote(normalizePath(exdir)))
-      status <- system2("ditto", args,
-                        stdout = if (quiet) FALSE else "",
+      args <- c("-x", "-k", shQuote(normalizePath(zipfile)), shQuote(normalizePath(exdir)))
+      status <- system2("ditto", args, stdout = if (quiet) FALSE else "",
                         stderr = if (quiet) FALSE else "")
     } else if (has_unz) {
-      args <- c("-o", if (quiet) "-qq" else NULL,
-                shQuote(normalizePath(zipfile)),
-                "-d", shQuote(normalizePath(exdir)))
-      status <- system2("unzip", args,
-                        stdout = if (quiet) FALSE else "",
+      args   <- c("-o", if (quiet) "-qq" else NULL,
+                  shQuote(normalizePath(zipfile)), "-d", shQuote(normalizePath(exdir)))
+      status <- system2("unzip", args, stdout = if (quiet) FALSE else "",
                         stderr = if (quiet) FALSE else "")
     } else {
       utils::unzip(zipfile, exdir = exdir, overwrite = TRUE)
@@ -1274,15 +2082,14 @@ bogota_filter_harmonize_census <- function(
   if (!dir.exists(master_dir) || isTRUE(overwrite)) {
     if (!quiet) message("📦 Extracting master ZIP → ", master_dir)
     sys_extract_all(census_zip, master_dir, overwrite = TRUE, quiet = quiet)
-    rename_tree_utf8(master_dir)  # normalize names from the extractor
+    rename_tree_utf8(master_dir) 
   } else if (!quiet) {
     message("↪︎ Master already extracted: ", master_dir)
   }
   
   # ---- 2) Locate department ZIPs by numeric prefix (11 & 25) ------------------
-  all_zips <- list.files(
-    master_dir, pattern = "\\.[Zz][Ii][Pp]$", recursive = TRUE, full.names = TRUE
-  )
+  all_zips <- list.files(master_dir, pattern = "\\.[Zz][Ii][Pp]$", recursive = TRUE,
+                         full.names = TRUE)
   if (!length(all_zips)) stop("No .zip files found under: ", master_dir)
   
   bf <- basename(all_zips)
@@ -1297,26 +2104,20 @@ bogota_filter_harmonize_census <- function(
   
   pick_by_code <- function(code) {
     cand <- which(codes == sprintf("%02d", as.integer(code)))
-    if (!length(cand)) {
-      stop("Could not locate ZIP for code ", code,
-           ". Sample: ", paste(utils::head(bf_fix, 10), collapse = " | "))
-    }
+    if (!length(cand)) stop("Could not locate ZIP for code ", code)
     cand[which.min(nchar(bf[cand]))]
   }
   
-  idx_b <- pick_by_code(11)
-  idx_c <- pick_by_code(25)
+  bogota_zip_src       <- all_zips[pick_by_code(11)]
+  cundinamarca_zip_src <- all_zips[pick_by_code(25)]
   
-  bogota_zip_src       <- all_zips[idx_b]
-  cundinamarca_zip_src <- all_zips[idx_c]
-  
-  # Paths we’ll extract into
   bog_dir <- file.path(out_dir, "11.Bogotá")
   cun_dir <- file.path(out_dir, "25. Cundinamarca")
   
   # ---- 3) Extract each dept ZIP, then extract CSV.zip and keep only CSVs -----
   dept_extract_csv_only <- function(zip_src, label, tgt_dir) {
-    # 3a) Extract department package (contains CSV.zip/DTA.zip/SAV.zip)
+    
+    # 3a) Extract department package
     if (!dir.exists(tgt_dir) || isTRUE(overwrite)) {
       if (dir.exists(tgt_dir)) unlink(tgt_dir, recursive = TRUE, force = TRUE)
       if (!quiet) message("📤 Extracting ", label, " → ", tgt_dir)
@@ -1326,46 +2127,60 @@ bogota_filter_harmonize_census <- function(
       message("↪︎ Using existing folder: ", tgt_dir)
     }
     
-    # 3b) Find the *CSV.zip* inside the dept folder
-    csv_zip <- list.files(
-      tgt_dir, pattern = "CSV\\.[Zz][Ii][Pp]$", full.names = TRUE, ignore.case = TRUE
-    )
-    if (!length(csv_zip)) {
-      # Fallback: maybe CSVs are loose; collect them if present
-      csvs_fallback <- list.files(tgt_dir, pattern = "\\.csv$", recursive = TRUE,
-                                  full.names = TRUE, ignore.case = TRUE)
-      if (!length(csvs_fallback)) {
-        stop("No CSV.zip and no .csv files found inside: ", tgt_dir)
-      }
-      # Move fallback CSVs to tgt_dir root with normalized names
-      for (f in csvs_fallback) {
-        file.copy(f, file.path(tgt_dir, fix_visible_glyphs(basename(f))),
-                  overwrite = TRUE)
-      }
-    } else {
-      # 3c) Extract CSV.zip to a staging dir, then move only *.csv to tgt_dir root
+    # 3b) Look for *CSV.zip* inside
+    csv_zip <- list.files(tgt_dir, pattern = "CSV\\.[Zz][Ii][Pp]$", full.names = TRUE,
+                          ignore.case = TRUE)
+    
+    if (length(csv_zip) > 0) {
+      # Case A: Found a CSV.zip. Extract to stage, move to root.
       stage <- file.path(tgt_dir, "_csv_stage")
       sys_extract_all(csv_zip[1], stage, overwrite = TRUE, quiet = quiet)
       rename_tree_utf8(stage)
-      csvs <- list.files(stage, pattern = "\\.csv$", recursive = TRUE,
-                         full.names = TRUE, ignore.case = TRUE)
+      
+      csvs <- list.files(stage, pattern = "\\.csv$", recursive = TRUE, full.names = TRUE,
+                         ignore.case = TRUE)
       if (!length(csvs)) stop("CSV.zip contained no .csv files: ", csv_zip[1])
+      
       for (f in csvs) {
-        file.copy(f, file.path(tgt_dir, fix_visible_glyphs(basename(f))),
-                  overwrite = TRUE)
+        dest <- file.path(tgt_dir, fix_visible_glyphs(basename(f)))
+        # Only copy if we aren't copying a file onto itself (unlikely here, but safe)
+        if (normalizePath(f, mustWork = FALSE) != normalizePath(dest, mustWork = FALSE)) {
+          file.copy(f, dest, overwrite = TRUE)
+        }
       }
       unlink(stage, recursive = TRUE, force = TRUE)
+      
+    } else {
+      # Case B: Fallback (ZIP missing, maybe already extracted?). Look for ANY CSVs.
+      csvs_fallback <- list.files(tgt_dir, pattern = "\\.csv$", recursive = TRUE,
+                                  full.names = TRUE, ignore.case = TRUE)
+      
+      if (!length(csvs_fallback)) {
+        stop("No CSV.zip and no .csv files found inside: ", tgt_dir)
+      }
+      
+      # Move fallback CSVs to tgt_dir root (Flattening)
+      for (f in csvs_fallback) {
+        dest <- file.path(tgt_dir, fix_visible_glyphs(basename(f)))
+        
+        # --- FIX IS HERE: Check if source != destination ---
+        # If the file is already at the root with the correct name, skip copy to avoid error.
+        if (normalizePath(f, mustWork = FALSE) != normalizePath(dest, mustWork = FALSE)) {
+          file.copy(f, dest, overwrite = TRUE)
+        }
+      }
     }
     
-    # 3d) Remove any ZIPs left in tgt_dir (CSV/DTA/SAV) and any subfolders
+    # 3d) Cleanup: Remove leftover ZIPs
     zips_left <- list.files(tgt_dir, pattern = "\\.[Zz][Ii][Pp]$",
                             full.names = TRUE, recursive = TRUE)
     if (length(zips_left)) file.remove(zips_left)
     
-    # Remove all subdirectories (leave only the CSV files at root)
+    # Cleanup: Remove subdirectories (flattening complete)
     subdirs <- list.dirs(tgt_dir, recursive = TRUE, full.names = TRUE)
-    subdirs <- subdirs[subdirs != tgt_dir]
+    subdirs <- subdirs[subdirs != tgt_dir] # Don't delete the root itself
     if (length(subdirs)) {
+      # Sort by length desc to delete deepest first
       subdirs <- subdirs[order(nchar(subdirs), decreasing = TRUE)]
       for (d in subdirs) unlink(d, recursive = TRUE, force = TRUE)
     }
@@ -1376,30 +2191,19 @@ bogota_filter_harmonize_census <- function(
   idx_bog <- dept_extract_csv_only(bogota_zip_src, "Bogotá (11)", bog_dir)
   idx_cun <- dept_extract_csv_only(cundinamarca_zip_src, "Cundinamarca (25)", cun_dir)
   
-  # 3e) Ensure the top-level copies of the department ZIPs do not remain in out_dir
-  #     (You asked to remove the zips extracted from the census_zip.)
-  #     We never copied them to out_dir in this version; nothing to remove here.
-  
-  # ---- 4) Build indexes (should list only the CSVs) ---------------------------
+  # ---- 4) Build indexes -------------------------------------------------------
   bogota_files       <- make_index_tbl(bog_dir)
   cundinamarca_files <- make_index_tbl(cun_dir)
   
   if (!quiet) {
     message("🧾 Bogotá CSVs: ", sum(tolower(bogota_files$type) == "csv"),
-            " | Cundinamarca CSVs: ",
-            sum(tolower(cundinamarca_files$type) == "csv"))
+            " | Cundinamarca CSVs: ", sum(tolower(cundinamarca_files$type) == "csv"))
   }
   
   # ---- 5) Return --------------------------------------------------------------
   list(
-    bogota = list(
-      dir_extracted = bog_dir,
-      files_index   = bogota_files
-    ),
-    cundinamarca = list(
-      dir_extracted = cun_dir,
-      files_index   = cundinamarca_files
-    )
+    bogota = list(dir_extracted = bog_dir, files_index = bogota_files),
+    cundinamarca = list(dir_extracted = cun_dir, files_index = cundinamarca_files)
   )
 }
 
