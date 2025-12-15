@@ -31,6 +31,13 @@ source(here::here("src","city_specific", "bogota.R"))
 # ============================================================================================
 colombia <- ne_states(country = "Colombia", returnclass = "sf")
 
+# Apply function to create Selenium server and download the data for metro bogota
+download_logs_stations_metro_bogota <- sisaire_download_hourly_data(
+  base_url     = bogota_cfg$base_url_sisaire,
+  target_depts = bogota_cfg$which_states,
+  years_range  = bogota_cfg$years,
+  subdir       = file.path("bogota", "metro_area_ground_stations_hourly"))
+
 # Show parameters imported on src/city_specific_bogota.R
 print(bogota_cfg$base_url_shp)
 print(bogota_cfg$base_url_census)
@@ -66,18 +73,26 @@ table_states_to_download <- table_state_metro_distances(
   overwrite_tex = TRUE
 ) # change cdmx_cfg$which_states if necessary! Depending on result
 
-# Apply function to generate and save dataframe with stations and their location
+# Apply function to generate and save dataframe with stations and their location in Bogota
 rmcab_dir <- bogota_scrape_rmcab_station_table(
   page_url      = bogota_cfg$url_station_shp,
   parse_coords  = TRUE,
   harmonize_map = bogota_cfg$station_nme_map,
   dedupe        = TRUE,
   verbose       = TRUE,
-  out_dir       = here::here(bogota_cfg$out_dir, "pollution_ground_stations", "Bogota"),
-  out_name      = "stations_location_info",
+  out_dir       = here::here(bogota_cfg$out_dir, "geospatial_data", "ground_stations",
+                             "bogota"),
+  out_name      = "bogota_stations_location",
   write_rds     = FALSE,
-  write_csv     = TRUE
+  write_csv     = TRUE,
+  write_parquet = FALSE
 )
+
+# Apply function to download excel files with stations and their location for boundary area
+logs_sisaire_metadata_boundary <- sisaire_download_department_metadata(
+  base_url     = bogota_cfg$base_url_sisaire,
+  timeout_page = 25,
+  subdir       = file.path("bogota", "stations_metadata"))
 
 # Apply function to create Selenium server and download the data for Bogota
 download_logs_station_bogota <- bogota_download_station_data(
@@ -90,8 +105,14 @@ download_logs_station_bogota <- bogota_download_station_data(
   timeout_page  = 30,
   timeout_btn   = 30,
   timeout_dl    = 400,
-  subdir        = file.path("Bogota", "Ground_stations")
+  subdir        = file.path("bogota", "ground_stations")
 )
+
+# Apply function to create Selenium server and download the data for metro bogota
+download_logs_stations_metro_bogota <- sisaire_download_hourly_data(
+  base_url     = bogota_cfg$base_url_sisaire,
+  target_depts = bogota_cfg$which_states,
+  years_range  = bogota_cfg$years)
 
 # Apply function to download Census data for the metro area
 census <- bogota_download_census_data(
