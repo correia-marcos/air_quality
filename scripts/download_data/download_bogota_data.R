@@ -92,9 +92,6 @@ download_logs_station_bogota <- bogota_download_station_data(
   base_url      = bogota_cfg$base_url_rmcab,
   start_year    = min(bogota_cfg$years),
   end_year      = max(bogota_cfg$years),
-  container     = TRUE,
-  stations_idx  = NULL,
-  max_attempts  = 3,
   timeout_page  = 30,
   timeout_btn   = 30,
   timeout_dl    = 400,
@@ -112,8 +109,7 @@ download_logs_stations_metro_bogota <- sisaire_download_hourly_data(
 census <- bogota_download_census_data(
   type            = "AMPLIADO",
   url             = bogota_cfg$base_url_census,
-  download_folder = here::here(bogota_cfg$dl_dir, "census")
-)
+  download_folder = here::here(bogota_cfg$dl_dir, "census"))
 
 # Print a success message for when running inside Docker Container
 cat("Script from the IDB projected executed successfully in the Docker container!\n")

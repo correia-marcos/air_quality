@@ -70,7 +70,7 @@ station_in_cdmx <- cdmx_scrape_station_catalog(
   out_dir       = here::here(cdmx_cfg$out_dir,
                              "geospatial_data",
                              "ground_stations",
-                             "CDMX"),
+                             "cdmx"),
   out_name      = "cdmx_station_location",
   write_parquet = FALSE,
   write_csv     = TRUE,
