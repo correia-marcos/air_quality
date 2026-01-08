@@ -2260,6 +2260,10 @@ cdmx_scrape_states_merge <- function(
     }
   }
   
+  # Making sure the type the column in station_in_cdmx
+  station_in_cdmx <- station_in_cdmx %>% 
+    mutate(id_station = as.character(id_station))
+  
   # ---- 1) Start / reuse Selenium ---------------------------------------------------------
   close_on_exit <- FALSE
   if (is.null(session)) {
