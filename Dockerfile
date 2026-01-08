@@ -25,6 +25,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
     build-essential git curl ca-certificates pkg-config cmake libgit2-dev \
+    default-jdk \
     gdal-bin libgdal-dev libproj-dev proj-bin proj-data \
     libgeos-dev libudunits2-dev libsqlite3-dev \
     libxml2-dev libssl-dev libcurl4-openssl-dev \
@@ -99,6 +100,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
     curl git ca-certificates locales tzdata tini \
+    default-jdk \
     # geospatial runtime
     gdal-bin libgdal-dev libproj-dev proj-bin proj-data \
     libgeos-dev libudunits2-0 libsqlite3-0 \
