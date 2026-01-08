@@ -49,10 +49,8 @@ metro_area <- cdmx_download_metro_area(
   overwrite_zip     = FALSE,
   overwrite_gpkg    = TRUE,
   quiet             = FALSE,
-  out_file          = here::here(cdmx_cfg$out_dir, 
-                                 "geospatial_data",
-                                 "metro_areas",
-                                 "cdmx_metro.gpkg"))
+  out_file          = here::here(cdmx_cfg$out_dir, "geospatial_data", "cdmx",
+                                 "cdmx_area_metro.gpkg"))
 
 # Apply function to save a LaTeX table of the states that we must download stations data
 table_states_to_download <- table_state_metro_distances(
@@ -67,10 +65,7 @@ table_states_to_download <- table_state_metro_distances(
 # Apply function to gen/save table with stations and their location - inside CDMX
 station_in_cdmx <- cdmx_scrape_station_catalog(
   page_url      = cdmx_cfg$url_loc_stations_cdmx,
-  out_dir       = here::here(cdmx_cfg$out_dir,
-                             "geospatial_data",
-                             "ground_stations",
-                             "cdmx"),
+  out_dir       = here::here(cdmx_cfg$dl_dir, "ground_stations_geolocation"),
   out_name      = "cdmx_station_location",
   write_parquet = FALSE,
   write_csv     = TRUE,
@@ -82,10 +77,7 @@ all_stations <- cdmx_scrape_states_merge(
   station_in_cdmx = station_in_cdmx,
   base_url        = cdmx_cfg$url_loc_stations_others,
   states          = cdmx_cfg$which_states,
-  out_dir         = here::here(cdmx_cfg$out_dir,
-                               "geospatial_data",
-                               "ground_stations",
-                               "cdmx"),
+  out_dir         = here::here(cdmx_cfg$dl_dir, "ground_stations_geolocation"),
   out_name        = "all_station_location",
   write_parquet   = FALSE,
   write_csv       = TRUE,
