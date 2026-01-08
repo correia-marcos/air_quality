@@ -19,6 +19,9 @@ source(here::here("src", "general_utilities", "config_utils_validation_old_versi
 # I: Import  data
 # ============================================================================================
 # Import the raw panel of ground stations
+bogota_metro_old  <- here::here("data", "_legacy", "cities_shapefiles(old)", "Bogota_metro")
+bogota_metro_old  <- st_read(bogota_metro_old)
+
 bogota_stations_new <- read_parquet(here::here("data", "raw",
                                                "pollution_ground_stations",
                                                "Bogota",
