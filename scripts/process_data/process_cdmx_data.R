@@ -22,14 +22,14 @@ source(here::here("src","city_specific", "cdmx.R"))
 # ============================================================================================
 # I: Import  data
 # ============================================================================================
-# Define the output folders
-outdir_pollution  <- here::here(cdmx_cfg$out_dir, "air_monitoring_stations")
+# Define the output general folders
+outdir_pollution  <- here::here(cdmx_cfg$out_dir, "monitoring_stations")
 outdir_geospatial <- here::here(cdmx_cfg$out_dir, "geospatial_data")
+outdir_stations   <- here::here(cdmx_cfg$dl_dir, "ground_stations_geolocation")
 
-# Define the file's location
-all_station_csv   <- here::here(outdir_geospatial, "ground_stations", "CDMX",
-                                "all_station_location.csv")
-cdmx_metro        <- here::here(outdir_geospatial, "metro_areas", "cdmx_metro.gpkg")
+# Define the file's specific location
+all_station_csv   <- here::here(outdir_stations, "all_station_location.csv")
+cdmx_metro        <- here::here(outdir_geospatial, "cdmx", "cdmx_metro.gpkg")
 
 # Open station location and other spatial data
 station_location <- read.csv(all_station_csv)
@@ -43,14 +43,9 @@ stations_kept <- cdmx_filter_stations_in_metro(
   station_location = station_location,
   metro_area       = metro_area,
   radius_km        = 20,             # change if needed
-  lon_col          = "lon",
-  lat_col          = "lat",
-  stations_epsg    = 4326,
   dissolve         = TRUE,
   verbose          = TRUE,
-  out_file         = here::here("data", "interim", "spatial_filtered_stations",
-                                "CDMX_stations.gpkg"),
-)
+  out_file         = here::here(outdir_geospatial, "cdmx", "cdmx_stations_buffer_metro.gpkg"))
 
 # Get list with unique stations inside the buffer (20 km) metro area
 stations_to_keep = unique(stations_kept$code)
@@ -63,13 +58,14 @@ cdmx_stations_data <- cdmx_merge_pollution_csvs(
   stations_keep_codes  = stations_to_keep,
   cleanup              = FALSE,
   out_dir              = outdir_pollution,
-  out_name             = "cdmx_metro_buffer_stations",
+  out_name             = "cdmx_metro",
   write_parquet        = TRUE,
   write_rds            = FALSE,
   write_csv            = FALSE,
   verbose              = TRUE,
   engine               = "auto"
 )
+
 
 # ============================================================================================
 # III: Save  data

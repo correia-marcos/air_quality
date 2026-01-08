@@ -24,21 +24,31 @@ source(here::here("src","city_specific", "bogota.R"))
 # ============================================================================================
 # I: Import  data
 # ============================================================================================
-# Define the output folders
-outdir_pollution  <- here::here(bogota_cfg$out_dir, "air_monitoring_stations")
+# Define the output general folders
+outdir_pollution  <- here::here(bogota_cfg$out_dir, "monitoring_stations")
 outdir_geospatial <- here::here(bogota_cfg$out_dir, "geospatial_data")
-
-# Define the files to read
-bogota_metro_gpkg <- here::here(outdir_geospatial, "metro_areas", "bogota_metro.gpkg")
-bogota_metro_old  <- here::here("data", "_legacy", "cities_shapefiles(old)", "Bogota_metro")
+outdir_stations   <- here::here(bogota_cfg$dl_dir, "ground_stations_geolocation")
+outdir_metadata   <- here::here(bogota_cfg$dl_dir, "stations_metadata")
+  
+# Define the file's specific location
+bogota_metro_gpkg   <- here::here(outdir_geospatial, "bogota", "bogota_area_metro.gpkg")
+bogota_stations_csv <- here::here(outdir_stations, "bogota_stations_location.csv")
 
 # Read the geospatial data
 bogota_metro      <- st_read(bogota_metro_gpkg)
-bogota_metro_old  <- st_read(bogota_metro_old)
+stations_bogota   <- read.csv(bogota_stations_csv)
 
 # ============================================================================================
 # II: Process  data
 # ============================================================================================
+# Apply function to filter the stations in the metro area + 20 km radius
+stations_kept <- bogota_filter_stations_in_metro(
+  stations_df_1 = stations_bogota,
+  metadata_dir  = outdir_metadata,
+  radius_km     = 20,
+  metro_area    = bogota_metro,
+  out_file      = here::here(outdir_geospatial, "bogota", "bogota_stations_buffer_metro.gpkg"))
+
 # Apply function to merge all downloaded file into DUCKDB database
 bogota_stations_data <- bogota_process_xlsx_to_parquet(
   downloads_folder = here::here(bogota_cfg$dl_dir, "ground_stations"),
@@ -53,10 +63,4 @@ res <- bogota_filter_harmonize_census(
   overwrite  = FALSE,
   quiet      = FALSE
 )
-
-
-
-# ============================================================================================
-# III: Save  data
-# ============================================================================================
 
