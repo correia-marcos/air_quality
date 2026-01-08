@@ -247,8 +247,8 @@ bogota_scrape_rmcab_station_table <- function(
     out_dir,
     out_name,
     write_rds     = FALSE,
-    write_parquet = TRUE,
-    write_csv     = FALSE
+    write_parquet = FALSE,
+    write_csv     = TRUE
 ) {
   # Ensure output folder exists
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
@@ -662,7 +662,7 @@ sisaire_download_department_metadata <- function(
 }
 
 
-# --------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------
 # Function: sisaire_download_hourly_data
 #
 # @Arg      : base_url      — string; The base URL for the SISAIRE query page.
@@ -673,13 +673,20 @@ sisaire_download_department_metadata <- function(
 # @Arg      : container     — logical; TRUE if running inside a Docker Selenium container.
 # @Arg      : subdir        — string; Subdirectory within downloads to save files.
 # @Arg      : timeout       — integer; Timeout in seconds for page loads (default 180).
+#
 # @Output   : tibble; A log containing: dept, param, start, end, status, file.
+#
 # @Purpose  : Robustly scrape hourly air quality data from the SISAIRE/IDEAM legacy app.
 #             Uses advanced Selenium strategies to bypass PrimeFaces/JSF limitations:
 #             1. "Direct Injection": Manipulates hidden <select> via JS.
-#             2. "Nuclear Clicks": Uses JS events to bypass Selenium interception.
-#             3. "Lazy Load Handling": Waits for AJAX signals.
-#             4. "State Recovery": Handles 'No Data' gracefully.
+#             2. "Adaptive Retry": Increases wait times dynamically if the server lags.
+#             3. "Session Recovery": Forces a browser refresh if a specific date chunk
+#                fails, preventing "zombie" sessions.
+# ----------------------------------------------------------------------------------------
+# @Updates  : Robustly scrape hourly air quality data.
+#             [UPDATE] Fixed "False Positive No Data" bug by clearing old Growl 
+#             messages before every new query.
+#             [UPDATE] Improved Date Injection with .blur() to ensure server sync.
 # --------------------------------------------------------------------------------------
 sisaire_download_hourly_data <- function(
     base_url = bogota_cfg$base_url_sisaire,
@@ -691,7 +698,7 @@ sisaire_download_hourly_data <- function(
     timeout = 180
 ) {
   
-  # 0) Setup Directories
+  # 0) Directories & Docker Setup (Standard) -------------------------------------------
   downloads_folder <- Sys.getenv("DOWNLOADS_DIR", here::here("data", "downloads"))
   dir.create(downloads_folder, recursive = TRUE, showWarnings = FALSE)
   final_dir <- file.path(downloads_folder, subdir)
@@ -705,18 +712,11 @@ sisaire_download_hourly_data <- function(
                        "TMPR_AIR_10CM", "VViento", "DViento", "P", "RGlobal")
   }
   
-  # 1) Docker / Selenium Setup
   if (!container) {
     message("🚀 Starting local Selenium on 4445…")
-    cid <- system(
-      paste("docker run -d -p 4445:4444 --shm-size=2g", 
-            "selenium/standalone-firefox:4.34.0-20250717"),
-      intern = TRUE
-    )
-    on.exit(
-      try(system(sprintf("docker rm -f %s", cid), intern = TRUE), silent = TRUE),
-      add = TRUE
-    )
+    cid <- system(paste("docker run -d -p 4445:4444 --shm-size=2g", 
+                        "selenium/standalone-firefox:4.34.0-20250717"), intern = TRUE)
+    on.exit(try(system(sprintf("docker rm -f %s", cid), intern=TRUE), silent=TRUE), add=TRUE)
     selenium_host <- "localhost"; selenium_port <- 4445L
   } else {
     selenium_host <- "selenium";  selenium_port <- 4444L
@@ -733,8 +733,7 @@ sisaire_download_hourly_data <- function(
         "browser.download.useDownloadDir" = TRUE,
         "browser.helperApps.neverAsk.saveToDisk" = paste(
           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          "application/octet-stream", "text/csv", "text/plain", 
-          "application/csv", sep = ","
+          "application/octet-stream", "text/csv", "text/plain", "application/csv", sep=","
         )
       )
     ),
@@ -747,7 +746,7 @@ sisaire_download_hourly_data <- function(
   )
   on.exit(session$close(), add = TRUE)
   
-  # --- HELPER: Wait for Loading Spinner ---
+  # --- HELPERS ------------------------------------------------------------------------
   wait_for_spinner <- function() {
     Sys.sleep(0.5)
     session$execute_script("
@@ -759,7 +758,6 @@ sisaire_download_hourly_data <- function(
     Sys.sleep(1)
   }
   
-  # --- HELPER: Safe Navigation ---
   safe_navigate <- function(url) {
     for(attempt in 1:10) { 
       try({
@@ -771,7 +769,6 @@ sisaire_download_hourly_data <- function(
         }
         return(TRUE) 
       }, silent = TRUE) -> nav_res
-      
       if (!inherits(nav_res, "try-error")) return(TRUE)
       message(sprintf("      ⚠️ Server down (Attempt %d/10). Waiting 60s...", attempt))
       Sys.sleep(60) 
@@ -779,7 +776,6 @@ sisaire_download_hourly_data <- function(
     stop("❌ Critical: Server is completely unreachable after 10 attempts.")
   }
   
-  # --- HELPER: Internal Wait ---
   wait_for_xpath <- function(xpath, s_time=30) {
     t0 <- Sys.time()
     while(as.numeric(difftime(Sys.time(), t0, units="secs")) < s_time) {
@@ -790,7 +786,6 @@ sisaire_download_hourly_data <- function(
     stop("Timeout waiting for element: ", xpath)
   }
   
-  # --- HELPER: Direct Injection ---
   pf_select_option <- function(widget_id, label_text) {
     input_id <- paste0(widget_id, "_input")
     js_code <- sprintf("
@@ -824,116 +819,68 @@ sisaire_download_hourly_data <- function(
     wait_for_spinner()
   }
   
-  # --- HELPER: Setup Form (Adaptive Version) ---
   setup_form <- function(dept, param) {
-    # Initial Wait Times
-    w_table   <- 10
-    w_confirm <- 30
-    
-    # Adaptive Loop (3 Attempts)
+    w_table <- 10; w_confirm <- 30
     for (attempt in 1:3) {
-      
-      # Try the sequence (Dept -> Stations -> Validate)
       res_seq <- tryCatch({
-        
-        # 1. DNS / URL Check (Fast check inside loop)
-        curr_url <- try(session$current_url(), silent=TRUE)
-        if (!inherits(curr_url, "try-error") && grepl("about:neterror", curr_url)) {
-          stop("DNS Error encountered inside setup.")
-        }
-        
-        # 2. Select Department
-        # We re-select every attempt to ensure clean state
         pf_select_option("filtroForm\\:departamentoSel", dept)
-        
-        # Dept Validation
         dept_val <- session$execute_script(
           "return document.getElementById('filtroForm:departamentoSel_input').value;"
         )
         if (is.null(dept_val) || dept_val == "" || dept_val == "0") {
-          Sys.sleep(2)
+          Sys.sleep(3)
           pf_select_option("filtroForm\\:departamentoSel", dept)
         }
-        
-        # 3. Open Stations Dropdown
         trigger_sel <- '//*[@id="filtroForm:estacionesSel"]/ul'
         session$find_element("xpath", trigger_sel)$click()
         
-        # ADAPTIVE WAIT 1: Table Loading
-        message(sprintf("      ⏳ Waiting %ds for station table (Attempt %d)...", w_table, attempt))
+        message(sprintf("      ⏳ Waiting %ds for station table (Attempt %d)...", 
+                        w_table, attempt))
         Sys.sleep(w_table)
         
-        # Verify Visibility
         panel_sel <- "#filtroForm\\:estacionesSel_panel"
-        vis <- session$execute_script(sprintf("return $( '%s' ).is(':visible');", panel_sel))
-        if (!isTRUE(vis)) stop("Station panel not visible after wait.")
-        
-        # 4. Click 'Select All'
         header_sel <- paste0(panel_sel, " .ui-selectcheckboxmenu-header .ui-chkbox-box")
         chk_all <- session$find_element("css selector", header_sel)
         chk_all$click()
         
-        # ADAPTIVE WAIT 2: Confirmation / AJAX Load
         message(sprintf("      ⏳ Waiting %ds for 'Select All' confirmation...", w_confirm))
         Sys.sleep(w_confirm)
-        wait_for_spinner() # Extra spinner check
+        wait_for_spinner()
         
-        # 5. Close Panel
         session$find_element("css selector", "body")$send_keys(keys$escape)
         Sys.sleep(2)
         
-        # 6. Critical Validation: Did Dept turn blank?
         final_dept_val <- session$execute_script(
           "return document.getElementById('filtroForm:departamentoSel_input').value;"
         )
         if (is.null(final_dept_val) || final_dept_val == "" || final_dept_val == "0") {
-          stop("Critical: Department reset to blank after selecting stations.")
+          stop("Critical: Dept reset to blank.")
         }
-        
-        # If we got here, Success!
         TRUE 
-        
-      }, error = function(e) {
-        message("      ⚠️ Adaptive Step Failed: ", e$message)
-        return(FALSE)
-      })
+      }, error = function(e) { return(FALSE) })
       
-      # Exit loop on success
       if (isTRUE(res_seq)) {
-        # Proceed to Parameter Selection (outside adaptive loop as it's usually stable)
-        # But wrapped in tryCatch for safety
         try({
           pf_select_option("filtroForm\\:contaminanteSel", param)
           trigger_par <- '//*[@id="filtroForm:contaminanteSel"]/div[3]'
           try(session$find_element("xpath", trigger_par)$click(), silent=TRUE)
           try(session$find_element("xpath", trigger_par)$click(), silent=TRUE)
-          
           Sys.sleep(2)
           session$find_element("css selector", "body")$send_keys(keys$escape)
-          session$execute_script("if(document.activeElement){document.activeElement.blur();}")
-          Sys.sleep(1)
           return(TRUE)
         }) -> res_param
-        
         if(isTRUE(res_param)) return(TRUE)
       }
-      
-      # If Failed: Prepare for Next Attempt
-      message("      🔄 Increasing adaptive waits (+40s) and retrying...")
-      w_table   <- w_table + 40
-      w_confirm <- w_confirm + 40
-      
-      # Reset UI state (Escape + Refresh logic handled by re-selection at top of loop)
+      w_table <- w_table + 30; w_confirm <- w_confirm + 30
       session$find_element("css selector", "body")$send_keys(keys$escape)
-      Sys.sleep(2)
     }
-    
-    return(FALSE) # Failed after 3 attempts
+    return(FALSE) 
   }
   
   log <- list()
   
-  # 2) Main Loop
+  # 4) Main Execution Loop
+  # ------------------------------------------------------------------------------------
   for (dept in target_depts) {
     message(sprintf("\n📍 DEPT: %s", dept))
     safe_navigate(base_url)
@@ -941,75 +888,97 @@ sisaire_download_hourly_data <- function(
     for (param in target_params) {
       message(sprintf("   🔹 Param: %s", param))
       
-      setup_ok <- FALSE
-      # We rely on the internal adaptive loop, so we reduce outer retries 
-      # or keep them as a "hard reset" fallback.
-      for(s_att in 1:2) { 
-        if(setup_form(dept, param)) { setup_ok <- TRUE; break }
+      if (!setup_form(dept, param)) {
         message("      ❌ Hard Setup Failure. Refreshing page...")
         safe_navigate(base_url)
+        if(!setup_form(dept, param)) { message("      ❌ Skipping Param: ", param); next }
       }
-      if(!setup_ok) { message("      ❌ Skipping Param: ", param); next }
       
-      # --- DATE PROCESSING (Unchanged) ---
       session$execute_script("document.getElementById('filtroForm:labelFIniLimite').click();")
       Sys.sleep(2) 
       input_start <- session$find_element("css selector", "#filtroForm\\:fechaIni_input")
       start_val   <- input_start$get_attribute("value")
       
-      if (is.null(start_val) || start_val == "") {
-        message("      ⚠️ No data start date found."); next
-      }
-      
+      if (is.null(start_val) || start_val == "") { 
+        message("      ⚠️ No data start date."); next }
       d_start_avail <- as.Date(start_val)
       d_end_limit   <- as.Date(paste0(max(years_range), "-12-31"))
       message(sprintf("      📅 Data available from: %s", d_start_avail))
       
       curr_start <- d_start_avail
+      step_unit  <- "1 year" 
       
       while (curr_start < d_end_limit) {
-        next_year_date <- seq(curr_start, by = "1 year", length.out = 2)[2]
-        curr_end <- min(d_end_limit, next_year_date - 1)
+        
+        next_date_cand <- seq(curr_start, by = step_unit, length.out = 2)[2]
+        curr_end <- min(d_end_limit, next_date_cand - 1)
+        
         if (curr_start > Sys.Date()) break
         
         status <- "ok"
         f_path <- NA_character_
         chunk_attempt <- 0
+        resize_triggered <- FALSE
         
         repeat {
           chunk_attempt <- chunk_attempt + 1
           if (chunk_attempt > 3) { status <- "failed"; break }
           
+          if (chunk_attempt > 1) {
+            message(sprintf("      ⚠️ Retry #%d. Refreshing session...", chunk_attempt))
+            try(session$navigate("about:blank"), silent = TRUE)
+            Sys.sleep(1)
+            safe_navigate(base_url)
+            if(!setup_form(dept, param)) { status <- "failed"; break }
+          }
+          
           try({
             s_start <- format(curr_start, "%Y-%m-%d")
             s_end   <- format(curr_end,   "%Y-%m-%d")
             
+            # [FIX 1] Aggressive Date Injection (+ .blur())
+            # We trigger 'change' AND 'blur' to ensure the server sees the update
             js_dates <- sprintf("
-              $('#filtroForm\\\\:fechaIni_input').val('%s').trigger('change');
-              $('#filtroForm\\\\:fechaFin_input').val('%s').trigger('change');
+              var start = $('#filtroForm\\\\:fechaIni_input');
+              var end   = $('#filtroForm\\\\:fechaFin_input');
+              start.val('%s').trigger('change').trigger('blur');
+              end.val('%s').trigger('change').trigger('blur');
             ", s_start, s_end)
             session$execute_script(js_dates)
             Sys.sleep(1)
-            
             wait_for_spinner()
+            
+            # Force Hourly
             trigger_time <- '//*[@id="filtroForm:tipoSel"]/div[3]/span'
             tm_trigger <- wait_for_xpath(trigger_time, 30)
-            
             pf_select_option("filtroForm\\:tipoSel", "Hora")
             tm_trigger$click()
             tm_trigger$click()
             
-            message("      🔎 Clicking Consultar...")
+            session$find_element("css selector", "body")$send_keys(keys$escape)
+            Sys.sleep(1)
+            
+            # [FIX 2] Clear OLD Growl messages (Stale State Fix)
+            # This prevents us from reading an error from the previous loop iteration
             session$execute_script("
-               var btn = document.getElementById('filtroForm:btnConsultar');
-               if(btn) btn.click();
+               $('.ui-growl-item-container').remove(); 
+               $('.ui-growl').html('');
             ")
             
-            result_found <- FALSE
-            Sys.sleep(3)
+            message(sprintf("      🔎 Querying: %s to %s", s_start, s_end))
+            session$execute_script(
+              "document.getElementById('filtroForm:btnConsultar').click();")
             
+            # [FIX 3] Wait for the NEW request to start. We wait 2s, then check for spinner. 
+            # If spinner is there, we wait for it to finish.
+            Sys.sleep(2)
+            wait_for_spinner()
+            
+            result_found <- FALSE
+            
+            # Polling Loop
             for(p_wait in 1:300) {
-              if (p_wait == 60 || p_wait == 120) {
+              if (p_wait %in% c(60, 120, 200)) {
                 message("      💤 Server sleepy. Clicking Consultar again...")
                 session$execute_script(
                   "document.getElementById('filtroForm:btnConsultar').click();")
@@ -1020,14 +989,33 @@ sisaire_download_hourly_data <- function(
                  if (g && window.getComputedStyle(g).opacity > 0.9) return g.innerText;
                  return null;
               ")
-              if (!is.null(growl_txt) && grepl("No se encontraron resultados",
-                                               growl_txt, ignore.case=T)) {
-                message(sprintf("      ⚠️ No data: %s [%s]", param, s_start))
-                status <- "no_data"
-                result_found <- TRUE
-                break
+              
+              if (!is.null(growl_txt)) {
+                # Case A: Too Many Rows (65k limit) -> TRIGGER RESIZE
+                if (grepl("65526|mayor a|excede|No es posible descargar",
+                          growl_txt, ignore.case=TRUE)) {
+                  message("      📉 OVERFLOW ERROR: Chunk too big. Resizing to 3 months...")
+                  resize_triggered <- TRUE
+                  result_found <- TRUE
+                  break 
+                }
+                # Case B: Standard No Data
+                if (grepl("No se encontraron resultados", growl_txt, ignore.case=T)) {
+                  message(sprintf("      ⚠️ No data: %s [%s]", param, s_start))
+                  status <- "no_data"
+                  result_found <- TRUE
+                  break
+                }
+                # Case C: Generic Server Error
+                if (grepl("error|servidor|fallo|contacte", growl_txt, ignore.case=T)) {
+                  message("      ❌ Server Error Detected: ", growl_txt)
+                  status <- "server_error"
+                  result_found <- TRUE 
+                  break
+                }
               }
               
+              # Check CSV
               js_click_csv <- "
                  var xpath = \"//a[.//span[contains(@class, 'fa-file-text-o')]]\";
                  var res = document.evaluate(xpath, document, null, 
@@ -1037,47 +1025,51 @@ sisaire_download_hourly_data <- function(
                  return false;
                "
               was_clicked <- session$execute_script(js_click_csv)
-              
               if (isTRUE(was_clicked)) {
                 Sys.sleep(5)
-                files_now <- list.files(downloads_folder, full.names=T)
-                recent <- any(difftime(Sys.time(),
-                                       file.info(files_now)$mtime, units="secs") < 10)
-                if (!recent) {
-                  message("      🖱️ CSV clicked but no download. Double-tapping...")
-                  session$execute_script(js_click_csv)
+                files_now <- list.files(downloads_folder, full.names = TRUE)
+                if (!any(difftime(Sys.time(),
+                                  file.info(files_now)$mtime, units="secs") < 10)) {
+                  session$execute_script(js_click_csv) # Double tap
                 }
-                result_found <- TRUE
-                status <- "downloading"
-                break
+                result_found <- TRUE; status <- "downloading"; break
               }
               Sys.sleep(1)
             }
             
-            if (!result_found) stop("Timed out (300s) waiting for results.")
-            if (status == "no_data") break 
-            
-            dl_file <- wait_for_new_download(
-              downloads_folder, character(0), "\\.(csv|txt)$", 120, quiet_sec = 1
-            )
-            
-            san_dept  <- sanitize_name(dept)
-            san_param <- sanitize_name(param)
-            out_name  <- sprintf("%s_%s_%s_%s.csv", san_dept, san_param, curr_start, curr_end)
-            dest      <- file.path(final_dir, out_name)
-            
-            if (file.exists(dest)) unlink(dest)
-            file.copy(dl_file, dest)
-            unlink(dl_file)
-            f_path <- dest
-            message(sprintf("      ⬇️  Saved: %s", out_name))
+            # Handle Results
+            if (resize_triggered) {
+              step_unit <- "3 months"
+              status <- "resize"
+            } else if (!result_found) {
+              message("      ⏰ Timeout waiting for results.")
+              status <- "timeout"
+            } else if (status == "downloading") {
+              dl_file <- wait_for_new_download(
+                downloads_folder, character(0), "\\.(csv|txt)$", 120)
+              san_dept  <- sanitize_name(dept); san_param <- sanitize_name(param)
+              out_name  <- sprintf("%s_%s_%s_%s.csv", san_dept, san_param, s_start, s_end)
+              dest      <- file.path(final_dir, out_name)
+              if (file.exists(dest)) unlink(dest)
+              file.copy(dl_file, dest); unlink(dl_file)
+              f_path <- dest
+              message(sprintf("      ⬇️  Saved: %s", out_name))
+            }
             
           }, silent = FALSE) -> chunk_res
           
+          if (status == "resize") break 
           if (!inherits(chunk_res, "try-error") && status %in% c("ok","downloading")) break
           if (status == "no_data") break
+          
+          message("      ⚠️ Chunk failed (Status: ", status, "). Preparing retry...")
           Sys.sleep(5) 
         } 
+        
+        if (status == "resize") {
+          message("      🔄 Restarting query with smaller chunk size (3 months)...")
+          next 
+        }
         
         log[[length(log)+1]] <- tibble::tibble(
           dept = dept, param = param, start = curr_start, end = curr_end, 
@@ -1089,23 +1081,18 @@ sisaire_download_hourly_data <- function(
           try(session$navigate("about:blank"), silent = TRUE)
           Sys.sleep(1)
           try({ safe_navigate(base_url) }, silent=TRUE)
-          Sys.sleep(5)
-          if(!setup_form(dept, param)) {
-            message("      ❌ Critical: Could not recover session.")
-            break
-          }
+          if(!setup_form(dept, param)) { message("      ❌ Critical Recovery Fail"); break }
         }
+        
         curr_start <- curr_end + 1
       } 
     }
-    message("   🧊 Dept finished. Cooling down for 30s...")
+    message("   🧊 Dept finished. Cooling down...")
     Sys.sleep(30)
   }
   
-  # --- FINAL CLEANUP ---
-  message("🧹 Cleaning up 'sisaire' temp files...")
-  garbage <- list.files(downloads_folder,
-                        pattern = "sisaire", full.names = TRUE, ignore.case = TRUE)
+  message("🧹 Cleaning up temp files...")
+  garbage <- list.files(downloads_folder, pattern="sisaire", full.names=T, ignore.case=T)
   if(length(garbage) > 0) unlink(garbage, force=TRUE)
   
   dplyr::bind_rows(log)
@@ -1727,6 +1714,160 @@ bogota_read_one_xlsx <- function(path, tz = "America/Bogota", verbose = FALSE) {
     message(msg)
   }
   dat
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: bogota_filter_stations_in_metro
+# @Arg       : stations_df_1    — The pre-loaded dataframe (Source I: Bogotá local stations)
+# @Arg       : metadata_dir     — Path to folder with Excel files (Source II: Cundinamarca..)
+# @Arg       : metro_area       — sf (MULTI)POLYGON of the metropolitan area
+# @Arg       : radius_km        — numeric; max distance to keep (default 20)
+# @Arg       : stations_epsg    — EPSG for lon/lat (default 4326 WGS84)
+# @Arg       : out_file         — where to write the cropped GeoPackage
+# @Arg       : overwrite_gpkg   — logical; overwrite output GeoPackage if exists
+# @Arg       : dissolve         — logical; TRUE unions metro polygons (default TRUE)
+# @Output    : sf POINT data.frame of unique stations inside/near metro_area
+# @Purpose   : Merges pre-loaded station data with external Excel metadata files,
+#              standardizes coordinates, and spatially filters them.
+# --------------------------------------------------------------------------------------------
+bogota_filter_stations_in_metro <- function(
+    stations_df_1,
+    metadata_dir,
+    metro_area,
+    radius_km      = 20,
+    stations_epsg  = 4326,
+    out_file       = here::here("data", "raw", "geospatial_data", "bogota", "stations.gpkg"),
+    overwrite_gpkg = TRUE,
+    dissolve       = TRUE
+) {
+  
+  # 0) Dependency Checks
+  if (!inherits(metro_area, "sf")) stop("'metro_area' must be an sf object.")
+  if (!dir.exists(metadata_dir)) stop("Metadata directory not found: ", metadata_dir)
+  
+  # Ensure output directory exists
+  dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
+  
+  message("🔄 Starting Data Integration...")
+  
+  # PART I: Process Pre-loaded Dataframe (Bogotá D.C. Stations)
+  # ----------------------------------------------------------------------------
+  df1_clean <- stations_df_1 |>
+    dplyr::select(
+      station_name = station,
+      code,
+      altitude_m,
+      height_m,
+      locality,
+      zone_type,
+      station_type,
+      address,
+      lat, 
+      lon
+    ) |>
+    dplyr::mutate(source = "RMCAB - Bogota")
+  
+  message("   ✅ Loaded ", nrow(df1_clean), " stations from primary dataframe.")
+  
+  # PART II: Process Excel Files (Surrounding Depts)
+  # ----------------------------------------------------------------------------
+  # Note: Keeping readWorksheetFromFile (XLConnect) per user requirement
+  xl_files <- list.files(metadata_dir, pattern = "\\.xls$", full.names = TRUE)
+  xl_files <- xl_files[!grepl("bogota_d_c", basename(xl_files), ignore.case = TRUE)]
+  
+  if (length(xl_files) == 0) {
+    warning("No .xlsx/.xls files found (excluding bogota_d_c).")
+    df2_clean <- data.frame()
+  } else {
+    message("   📂 Found ", length(xl_files), " external metadata files. Processing...")
+    
+    df2_clean <- purrr::map_dfr(xl_files, function(f) {
+      # XLConnect dependency
+      # Ensure 'XLConnect' is loaded: library(XLConnect)
+      raw_xl <- XLConnect::readWorksheetFromFile(f, sheet = 1, startRow = 10)
+      
+      clean_xl <- raw_xl |>
+        dplyr::select(
+          station_name = `Estación`,
+          address      = `Dirección`,
+          first_date   = `Fecha.primer.registro`,
+          last_date    = `Fecha.último.registro`,
+          lat          = `Latitud`,
+          lon          = `Longitud`
+        ) |>
+        dplyr::mutate(
+          lat = as.numeric(lat),
+          lon = as.numeric(lon),
+          source = paste0("SISAIRE - ", file_path_sans_ext(basename(f)))
+        ) |>
+        dplyr::distinct(station_name, .keep_all = TRUE) |>
+        tidyr::drop_na(lat, lon)
+      
+      return(clean_xl)
+    })
+    
+    message("   ✅ Loaded ", nrow(df2_clean), " unique stations from Excel files.")
+  }
+  
+  # PART III: Merge and Spatial Conversion
+  # ----------------------------------------------------------------------------
+  all_stations <- dplyr::bind_rows(df1_clean, df2_clean)
+  if (nrow(all_stations) == 0) stop("No stations found in either source.")
+  
+  stations_sf <- sf::st_as_sf(
+    all_stations,
+    coords = c("lon", "lat"),
+    crs = stations_epsg
+  )
+  
+  # PART IV: Spatial Filter (Radius Logic)
+  # ----------------------------------------------------------------------------
+  message("🔄 Applying Spatial Filter (Radius: ", radius_km, "km)...")
+  
+  # 1. Prepare Metro Polygon
+  metro_valid <- sf::st_make_valid(metro_area)
+  if (dissolve) metro_valid <- sf::st_union(metro_valid)
+  
+  # 2. Build Safe AEQD Projection (THE FIX)
+  # We convert to WGS84 first so st_centroid gives us degrees (e.g. -74.0, 4.6),
+  # ensuring the PROJ string is valid.
+  metro_wgs <- sf::st_transform(metro_valid, 4326)
+  cen       <- sf::st_coordinates(sf::st_centroid(metro_wgs))
+  
+  # "The Ruler": Azimuthal Equidistant centered on Bogotá
+  aeqd_proj <- sprintf(
+    "+proj=aeqd +lat_0=%f +lon_0=%f +units=m +datum=WGS84 +no_defs",
+    cen[2], cen[1]
+  )
+  
+  # 3. Transform everything to Meters using that Ruler
+  metro_m    <- sf::st_transform(metro_valid, aeqd_proj)
+  stations_m <- sf::st_transform(stations_sf, aeqd_proj)
+  
+  # 4. Filter "From the Walls"
+  # st_is_within_distance measures from the closest edge of the polygon.
+  radius_m   <- radius_km * 1000
+  within_idx <- sf::st_is_within_distance(stations_m, metro_m, dist = radius_m)
+  keep_mask  <- lengths(within_idx) > 0
+  
+  stations_final <- stations_sf[keep_mask, ]
+  
+  message("    Filter Stats: Input=", nrow(stations_sf), 
+          " -> Output=", nrow(stations_final), 
+          " (Dropped ", nrow(stations_sf) - nrow(stations_final), ")")
+  
+  # PART V: Save Output
+  # ----------------------------------------------------------------------------
+  if (file.exists(out_file) && !overwrite_gpkg) {
+    message("↪︎ Output exists and overwrite=FALSE. Skipping write.")
+  } else {
+    if (file.exists(out_file)) unlink(out_file)
+    sf::st_write(stations_final, out_file, quiet = TRUE, append = FALSE)
+    message("💾 Saved GeoPackage: ", out_file)
+  }
+  
+  return(stations_final)
 }
 
 
