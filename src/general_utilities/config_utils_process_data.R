@@ -32,7 +32,8 @@ pkgs <- c(
   "tibble",
   "tidyr",
   "tools",
-  "rlang")
+  "rlang",
+  "XLConnect")
 
 # Strict check: fail fast if something isn't in the project library
 ensure_installed <- function(pkgs) {

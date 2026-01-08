@@ -29,6 +29,7 @@ pkgs <- c(
   "rnaturalearth",
   "rnaturalearthdata",
   "rnaturalearthhires",
+  "sp",
   "sf",
   "showtext",
   "terra",
