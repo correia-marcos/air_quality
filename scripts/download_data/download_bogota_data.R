@@ -49,8 +49,8 @@ metro_area <- bogota_download_metro_area(
   base_url          = bogota_cfg$base_url_shp,
   keep_municipality = bogota_cfg$cities_in_metro,
   download_dir      = here::here(bogota_cfg$dl_dir, "metro_area"),
-  out_file          = here::here(bogota_cfg$out_dir, "geospatial_data", "metro_areas",
-                                 "bogota_metro.gpkg"),
+  out_file          = here::here("data", "raw", "geospatial_data", "bogota",
+                                 "bogota_area_metro.gpkg"),
   overwrite_zip     = FALSE,
   overwrite_gpkg    = TRUE,
   quiet             = FALSE
@@ -73,15 +73,12 @@ rmcab_dir <- bogota_scrape_rmcab_station_table(
   harmonize_map = bogota_cfg$station_nme_map,
   dedupe        = TRUE,
   verbose       = TRUE,
-  out_dir       = here::here(bogota_cfg$out_dir, "geospatial_data", "ground_stations",
-                             "bogota"),
+  out_dir       = here::here(bogota_cfg$dl_dir, "ground_stations_geolocation"),
   out_name      = "bogota_stations_location",
-  write_rds     = FALSE,
   write_csv     = TRUE,
-  write_parquet = FALSE
 )
 
-# Apply function to download excel files with stations and their location for boundary area
+# Apply function to download excel files with stations and their geo-location metro area
 logs_sisaire_metadata_boundary <- sisaire_download_department_metadata(
   base_url     = bogota_cfg$base_url_sisaire,
   timeout_page = 25,
@@ -103,7 +100,11 @@ download_logs_stations_metro_bogota <- sisaire_download_hourly_data(
   base_url     = bogota_cfg$base_url_sisaire,
   target_depts = bogota_cfg$which_states,
   years_range  = bogota_cfg$years,
-  subdir       = file.path("bogota", "metro_area_ground_stations_hourly"))
+  subdir       = file.path("bogota", "metro_ground_stations_hourly"))
+
+write.csv(download_logs_stations_metro_bogota,
+          file = here::here(bogota_cfg$dl_dir, "metro_stations_log.csv"),
+          row.names = FALSE)
 
 # Apply function to download Census data for the metro area
 census <- bogota_download_census_data(
