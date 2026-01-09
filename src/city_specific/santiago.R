@@ -25,7 +25,8 @@ santiago_cfg <- list(
   years            = 2000L:2023L,
   dl_dir           = here::here("data", "downloads", "santiago"),
   out_dir          = here::here("data", "raw"),
-  which_states     = c("Metro"),
+  which_states     = c("Libertador General Bernardo O'Higgins", "Metropolitana de Santiago",
+                       "Valparaíso"),
   cities_in_metro  = c("Buin", "Calera de Tango", "Cerrillos", "Cerro Navia", "Colina",
                        "Conchalí", "El Bosque", "El Monte", "Estación Central", "Huechuraba", 
                        "Independencia", "Isla de Maipo", "La Cisterna", "La Florida",
@@ -268,4 +269,320 @@ santiago_download_metro_area <- function(
   
   invisible(sf_out)
 }
+
+
+# --------------------------------------------------------------------------------------------
+# Function: santiago_download_pollution_ui
+#
+# @Arg       : states            — character vector; List of states to scrape.
+#                                  Defaults to santiago_cfg$which_states.
+# @Arg       : base_url          — string; Base URL (sinca main page).
+# @Arg       : parameters        — character vector; Pollutants to download.
+#                                  (PM10, PM2.5, NO2, CO, O3, SO2)
+# @Arg       : years_range       — numeric vector; Used to calculate the 'Until' date.
+# @Arg       : subdir            — string; Sub-path for saving files.
+# @Arg       : container         — logical; Use Docker Selenium?
+# @Arg       : quiet             — logical; Suppress messages.
+#
+# @Output    : tibble; Log of downloaded files.
+# @Purpose   : Scrapes hourly pollution data from SINCA using the UI Wizard.
+# --------------------------------------------------------------------------------------------
+santiago_download_pollution <- function(
+    states       = santiago_cfg$which_states,
+    base_url     = santiago_cfg$base_url_sinca,
+    parameters   = c("PM10", "PM2.5", "NO2", "CO", "O3", "SO2"),
+    years_range  = santiago_cfg$years,
+    subdir       = "pollution/santiago_hourly",
+    container    = TRUE,
+    quiet        = FALSE
+) {
+  
+  # 1) Directory Setup (User provided snippet) -------------------------------------------
+  downloads_root <- Sys.getenv("DOWNLOADS_DIR", here::here("data", "downloads"))
+  dir.create(downloads_root, recursive = TRUE, showWarnings = FALSE)
+  
+  is_abs <- function(p) grepl("^(/|[A-Za-z]:[/\\\\])", p)
+  normalize_safe <- function(p) {
+    out <- try(normalizePath(p, winslash = "/", mustWork = FALSE), silent = TRUE)
+    if (inherits(out, "try-error")) p else out
+  }
+  
+  target_dir <- downloads_root # Default
+  if (!is.null(subdir)) {
+    subdir_norm <- normalize_safe(subdir)
+    target_dir  <- if (is_abs(subdir)) subdir_norm else file.path(downloads_root, subdir)
+    dir.create(target_dir, recursive = TRUE, showWarnings = FALSE)
+    message("✔️  Downloads Root: ", downloads_root)
+    message("📂 Target Subdir  : ", target_dir)
+  }
+  
+  # Map English Params to SINCA Table Title Attributes
+  # Note: "Material particulado MP 2,5" uses a comma in title
+  param_map <- list(
+    "PM10"  = "Material particulado MP 10",
+    "PM2.5" = "Material particulado MP 2,5", 
+    "NO2"   = "Dióxido de nitrógeno",
+    "CO"    = "Monóxido de carbono",
+    "O3"    = "Ozono", # Sometimes "Ozono.-"
+    "SO2"   = "Dióxido de azufre"
+  )
+  
+  # 2) Selenium Start --------------------------------------------------------------------
+  if (!quiet) message("🚀 Starting Selenium...")
+  
+  if (!container) {
+    cid <- system(paste("docker run -d -p 4445:4444 --shm-size=2g", 
+                        "selenium/standalone-firefox:4.34.0-20250717"), intern = TRUE)
+    on.exit(try(system(sprintf("docker rm -f %s", cid), intern=TRUE), silent=TRUE), add=TRUE)
+    selenium_host <- "localhost"; selenium_port <- 4445L
+  } else {
+    selenium_host <- "selenium";  selenium_port <- 4444L
+  }
+  
+  # Map container download path
+  download_dir_container <- if (container) "/home/seluser/Downloads" else downloads_root
+  
+  caps <- list(
+    browserName = "firefox",
+    "moz:firefoxOptions" = list(
+      prefs = list(
+        "browser.download.folderList" = 2L,
+        "browser.download.dir" = download_dir_container,
+        "browser.download.useDownloadDir" = TRUE,
+        "browser.helperApps.neverAsk.saveToDisk" = 
+          "application/vnd.ms-excel,text/csv,text/html,text/plain"
+      )
+    )
+  )
+  
+  session <- selenium::SeleniumSession$new(
+    browser = "firefox", host = selenium_host, port = selenium_port, 
+    capabilities = caps, timeout = 120
+  )
+  on.exit(try(session$close(), silent=TRUE), add = TRUE)
+  
+  log <- list()
+  
+  # Calculate "Hasta" date (End of range + 1 year, Jan 1st)
+  # Example: Range ends 2023 -> 240101
+  end_year <- max(years_range)
+  date_hasta_str <- sprintf("%s0101", substr(as.character(end_year + 1), 3, 4))
+  
+  # 3) Loop States
+  # --------------------------------------------------------------------------------------
+  
+  for (state_name in states) {
+    if (!quiet) message(sprintf("\n📍 STATE: %s", state_name))
+    
+    # Navigate Base
+    session$navigate(base_url)
+    Sys.sleep(3)
+    
+    # Click "Información histórica" (Expand menu)
+    try({
+      menu_link <- session$find_element(
+        "xpath", "//a[contains(text(), 'Información histórica')]")
+      menu_link$click()
+    }, silent=TRUE)
+    Sys.sleep(1)
+    
+    # Click Specific State
+    # Note: State names in config might differ slightly from text (accents, spaces).
+    # We try strict match first, then partial.
+    content <- "//li/a[contains(translate(text(), 'áéíóúÁÉÍÓÚ', 'aeiouAEIOU'), '%s')]"
+    xpath_state <- sprintf(content, 
+                           stringi::stri_trans_general(state_name, "Latin-ASCII"))
+    
+    # Fallback to simple text match if fancy translate fails
+    el_state <- try(session$find_element("xpath", xpath_state), silent=TRUE)
+    if (inherits(el_state, "try-error")) {
+      xpath_simple <- sprintf("//li/a[contains(text(), '%s')]", state_name)
+      el_state <- try(session$find_element("xpath", xpath_simple), silent=TRUE)
+    }
+    
+    if (inherits(el_state, "try-error")) {
+      message("   ⚠️  Could not find state link: ", state_name)
+      next
+    }
+    
+    el_state$click()
+    
+    if (!quiet) message("   ⏳ Waiting for table...")
+    Sys.sleep(5) # Wait for page load
+    
+    # 4) Parse Table Headers (Map Columns)
+    # ------------------------------------------------------------------------------------
+    # Identify which columns correspond to which pollutants
+    headers <- session$find_elements("css selector", "#tablaRegional thead th")
+    col_map <- list()
+    
+    for (i in seq_along(headers)) {
+      title_attr <- headers[[i]]$get_attribute("title")
+      if (is.null(title_attr)) next
+      
+      # Match against our param_map
+      for (p_code in names(param_map)) {
+        # Flexible match (startsWith to handle "Ozono.-")
+        if (grepl(param_map[[p_code]], title_attr, fixed = TRUE) || 
+            (p_code == "O3" && grepl("Ozono", title_attr))) {
+          col_map[[p_code]] <- i
+        }
+      }
+    }
+    
+    # Count stations (rows in body)
+    rows <- session$find_elements("css selector", "#tablaRegional tbody tr")
+    if (!quiet) message(sprintf("   📊 Found %d stations.", length(rows)))
+    
+    # 5) Loop Stations
+    # ------------------------------------------------------------------------------------
+    # We iterate by Index to avoid stale element reference
+    for (r_idx in seq_along(rows)) {
+      
+      # Re-find row (DOM refreshes)
+      row <- session$find_element("xpath", sprintf("//*[@id='tablaRegional']/tbody/tr[%d]",
+                                                   r_idx))
+      
+      # Extract Name
+      # Usually inside <th><a>...</a>
+      st_name <- tryCatch({
+        row$find_element("css selector", "th a")$get_text()
+      }, error = function(e) "Unknown")
+      
+      if (!quiet) message(sprintf("   🔹 Station: %s", st_name))
+      
+      # 6) Loop Parameters
+      # ----------------------------------------------------------------------------------
+      for (param in parameters) {
+        col_idx <- col_map[[param]]
+        if (is.null(col_idx)) next # Param not in this table
+        
+        # Find the cell (td)
+        # Use XPath relative to the specific row index
+        cell_xpath <- sprintf("//*[@id='tablaRegional']/tbody/tr[%d]/td[%d]",
+                              r_idx, col_idx - 1) 
+        # Note: 'td' index is often shifted because the first column is 'th' (Station Name)
+        # Usually: th, td, td, td... so column index N in header corresponds to td[N-1]
+        
+        cell <- try(session$find_element("xpath", cell_xpath), silent = TRUE)
+        if (inherits(cell, "try-error")) next
+        
+        # Check if "iframe" icon exists (class='iframe')
+        # This indicates data is available
+        icon_link <- try(cell$find_element("css selector", "a.iframe"), silent = TRUE)
+        
+        if (!inherits(icon_link, "try-error")) {
+          # Data Exists!
+          if (!quiet) message("      🖱️  Opening Wizard for: ", param)
+          
+          # Click to open Fancybox
+          icon_link$click()
+          
+          # Wait for Modal (User req: 20s, but we can poll)
+          Sys.sleep(5) 
+          
+          # 7) Modal Interaction (Wizard)
+          # ------------------------------------------------------------------------------
+          tryCatch({
+            # A. Switch to Iframe inside Fancybox
+            # Usually id="fancybox-frame"
+            frames <- session$find_elements("id", "fancybox-frame")
+            if (length(frames) > 0) {
+              session$switch_to_frame(frames[[1]])
+            } else {
+              stop("Could not find fancybox iframe")
+            }
+            
+            # B. Set Time Resolution (registro horario)
+            # Find options containing "horario"
+            # Value usually ends in ".horario.horario.ic"
+            # We look for text "registro horario"
+            res_select <- session$find_element("id", "ic")
+            res_opts   <- res_select$find_elements("tag name", "option")
+            
+            found_res <- FALSE
+            for (opt in res_opts) {
+              if (grepl("registro horario", opt$get_text(), ignore.case = TRUE)) {
+                opt$click()
+                found_res <- TRUE
+                break
+              }
+            }
+            if (!found_res) warning("      ⚠️  'Registro horario' option not found.")
+            
+            # C. Set End Date (Hasta)
+            # ID: "to" or name="to". User said format YYMMDD.
+            input_to <- session$find_element("name", "to")
+            input_to$clear()
+            input_to$send_keys(date_hasta_str)
+            
+            # D. Click "Texto" (Download)
+            # <a href="javascript:Open('txt');">Texto</a>
+            if (!quiet) message("      ⬇️  Clicking 'Texto'...")
+            
+            # Execute JS directly is safer than finding the link by text
+            session$execute_script("Open('txt');")
+            
+            # E. Wait for Download
+            got_file <- FALSE
+            for (w in 1:60) { # Wait up to 60s
+              files <- list.files(downloads_root, full.names = TRUE)
+              # Look for recent 'apub' or .txt/.csv files 
+              # (SINCA often downloads as 'apub.htmlindico2.cgi') We verify size > 0
+              cands <- files[difftime(Sys.time(), file.info(files)$mtime, units="secs") < 10]
+              
+              if (length(cands) > 0) {
+                # It might download as a weird CGI name or "descarga.txt"
+                # We assume the most recent file is ours
+                raw_file <- cands[1]
+                
+                # Check if download finished (size stable)
+                if (file.info(raw_file)$size > 0) {
+                  # Rename and Move
+                  san_st <- gsub("[^A-Za-z0-9]", "", st_name)
+                  san_p  <- gsub("[^A-Za-z0-9]", "", param)
+                  new_name <- file.path(target_dir, 
+                                        sprintf("SINCA_%s_%s_%s_%s.csv", 
+                                                state_name, san_st, san_p, date_hasta_str))
+                  
+                  if (file.exists(new_name)) unlink(new_name)
+                  file.rename(raw_file, new_name)
+                  
+                  log[[length(log)+1]] <- list(state=state_name, station=st_name, 
+                                               param=param, file=new_name, status="OK")
+                  got_file <- TRUE
+                  break
+                }
+              }
+              Sys.sleep(1)
+            }
+            if(!got_file) message("      ❌ Download timeout.")
+            
+            # F. Cleanup: Switch back and Close
+            session$switch_to_parent_frame() # Exit iframe
+            
+          }, error = function(e) {
+            message("      ❌ Error inside wizard: ", e$message)
+            try(session$switch_to_parent_frame(), silent=TRUE)
+          })
+          
+          # Close Fancybox (Click X)
+          close_btn <- try(session$find_element("id", "fancybox-close"), silent=TRUE)
+          if (!inherits(close_btn, "try-error")) {
+            close_btn$click()
+          } else {
+            # Panic Button: Refresh page if close fails
+            session$refresh()
+            Sys.sleep(3) 
+          }
+          Sys.sleep(2) # Cooldown between params
+        }
+      } # End Param Loop
+    } # End Station Loop
+  } # End State Loop
+  
+  message("✅ Process Complete.")
+  return(dplyr::bind_rows(log))
+}
+
 
