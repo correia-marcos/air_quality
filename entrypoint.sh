@@ -2,8 +2,9 @@
 set -euo pipefail
 
 USER_NAME="${USER:-rstudio}"
-PASS="${PASSWORD:-secret123}"
+PASS="${PASSWORD:-replication}"
 
+# 1. User Setup
 # The rocker/rstudio image already has 'rstudio' user; keep this idempotent
 if ! id -u "$USER_NAME" >/dev/null 2>&1; then
   useradd -m -s /bin/bash "$USER_NAME" || true
@@ -11,24 +12,17 @@ if ! id -u "$USER_NAME" >/dev/null 2>&1; then
 fi
 echo "${USER_NAME}:${PASS}" | chpasswd
 
+# 2. Permissions Fix (The Safe Version)
+# We try to set ownership, but we force success (|| true) so it doesn't crash 
+# on external drives/macOS volumes that block 'chown'.
 mkdir -p /usr/local/lib/R/renv-cache
-# Only chown if ownership is wrong to avoid startup delays
-if [ -d "/usr/local/lib/R/renv-cache" ]; then
-    CURRENT_OWNER=$(stat -c '%U' /usr/local/lib/R/renv-cache)
-    if [ "$CURRENT_OWNER" != "$USER_NAME" ]; then
-        echo "Fixing permissions on renv-cache..."
-        chown -R "${USER_NAME}":staff /usr/local/lib/R/renv-cache
-    fi
-else
-    mkdir -p /usr/local/lib/R/renv-cache
-    chown "${USER_NAME}":staff /usr/local/lib/R/renv-cache
-fi
+chown -R "${USER_NAME}":staff /usr/local/lib/R/renv-cache || true
 
 echo "Entrypoint args: $*"
 echo "R: $(which R) | Rscript: $(which Rscript)"
 R -q -e "cat('R_LIBS_USER=', Sys.getenv('R_LIBS_USER'), '\n', sep='')"
 
-# 1) Batch runner: run a sequence of R scripts
+# 3. Batch runner: run a sequence of R scripts
 if [ "${1:-}" = "run" ]; then
   shift
   if [ "$#" -eq 0 ]; then
@@ -41,13 +35,13 @@ if [ "${1:-}" = "run" ]; then
   exit 0
 fi
 
-# 2) Shell
+# 4. Shell
 if [ "${1:-}" = "bash" ]; then
   echo "Dropping to bash shell..."
   exec bash
 fi
 
-# 3) RStudio Server
+# 5. RStudio Server
 if [ "$#" -eq 0 ] || [ "${1:-}" = "rserver" ]; then
   echo "Starting RStudio Server in foreground..."
   exec rserver \
@@ -59,6 +53,6 @@ if [ "$#" -eq 0 ] || [ "${1:-}" = "rserver" ]; then
     --server-daemonize=0
 fi
 
-# 4) Fallback
+# 6. Fallback
 echo "Executing custom command: $*"
 exec "$@"

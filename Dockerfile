@@ -87,9 +87,7 @@ RUN chown -R rstudio:rstudio /air_monitoring
 # 4. Trampoline: Force RStudio to load the project profile
 RUN echo "source('/air_monitoring/.Rprofile')" >> /home/rstudio/.Rprofile
 
-# ----------------------------------------------------------------------
-# 4.1: APPLY RSTUDIO PREFERENCES (The Fix)
-# ----------------------------------------------------------------------
+# 4.1: APPLY RSTUDIO PREFERENCES
 # Create the config folder structure
 RUN mkdir -p /home/rstudio/.config/rstudio
 
@@ -98,7 +96,6 @@ COPY rstudio-prefs.json /home/rstudio/.config/rstudio/rstudio-prefs.json
 
 # CRITICAL: Ensure 'rstudio' user owns the config, or it will be ignored
 RUN chown -R rstudio:rstudio /home/rstudio/.config
-# ----------------------------------------------------------------------
 
 # 5. Runtime Config
 EXPOSE 8787
