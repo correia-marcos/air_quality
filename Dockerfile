@@ -12,6 +12,7 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends \
     build-essential git curl ca-certificates pkg-config cmake \
     default-jdk \
+    libfreetype6-dev \
     # Geospatial Stack
     gdal-bin libgdal-dev libproj-dev proj-bin proj-data \
     libgeos-dev libudunits2-dev libsqlite3-dev \
@@ -55,9 +56,11 @@ COPY .Rprofile .Rprofile
 COPY renv/activate.R renv/activate.R
 COPY renv/settings.json renv/settings.json
 
-# 3. Restore Packages
-#    (Note: This relies on your updated local renv.lock containing all packages)
+# 3. Disable symlinks so packages are physically copied
+ENV RENV_CONFIG_CACHE_SYMLINKS=FALSE
 ENV RENV_PATHS_LIBRARY=/air_monitoring/renv/library
+
+# 4. Restore Packages
 RUN R -e "install.packages('renv', repos='https://cran.rstudio.com/')" \
  && R -s -e "renv::restore(clean = TRUE)"
 
@@ -71,6 +74,7 @@ ENV DEBIAN_FRONTEND=noninteractive TZ=UTC
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gdal-bin libgdal-dev libproj-dev proj-bin libgeos-dev libudunits2-0 \
     default-jdk pandoc libicu74 libarchive13 \
+    libfreetype6-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /air_monitoring
