@@ -75,26 +75,39 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /air_monitoring
 
-# 1. Copy the restored library from Builder (The heavy lifting)
+# 1. Copy the restored library from Builder
 COPY --from=builder /air_monitoring /air_monitoring
 
-# 2. Copy the rest of the code (The frequent changes)
-#    This includes your UPDATED .Rprofile
+# 2. Copy the rest of the code
 COPY . .
 
-# 3. Fix Permissions
+# 3. Fix Permissions for the project
 RUN chown -R rstudio:rstudio /air_monitoring
 
 # 4. Trampoline: Force RStudio to load the project profile
-#    This connects /home/rstudio (start) -> /air_monitoring (project)
 RUN echo "source('/air_monitoring/.Rprofile')" >> /home/rstudio/.Rprofile
+
+# ----------------------------------------------------------------------
+# 4.1: APPLY RSTUDIO PREFERENCES (The Fix)
+# ----------------------------------------------------------------------
+# Create the config folder structure
+RUN mkdir -p /home/rstudio/.config/rstudio
+
+# Copy the preferences file
+COPY rstudio-prefs.json /home/rstudio/.config/rstudio/rstudio-prefs.json
+
+# CRITICAL: Ensure 'rstudio' user owns the config, or it will be ignored
+RUN chown -R rstudio:rstudio /home/rstudio/.config
+# ----------------------------------------------------------------------
 
 # 5. Runtime Config
 EXPOSE 8787
 
 # Copy Entrypoint
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+# Ensure entrypoint is executable (sometimes permissions get lost)
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
+# Use the SIMPLIFIED entrypoint logic (S6 overlay)
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["/init"]
