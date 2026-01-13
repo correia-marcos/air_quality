@@ -78,27 +78,23 @@ table_states_to_download <- table_state_metro_distances(
   overwrite_tex = TRUE
 ) # change cdmx_cfg$which_states if necessary! Depending on result
 
+# Apply function to create Selenium server and download station data + save logs
+logs_sinca_stations_hourly_data <- santiago_download_pollution(
+  base_url = santiago_cfg$base_url_sinca,
+  subdir   = file.path("santiago", "ground_stations"))
+write.csv(logs_sinca_stations_hourly_data, row.names = FALSE,
+          file = here::here(santiago_cfg$dl_dir, "log_sinca_ground_stations.csv"))
 
-# Apply function to generate and save dataframe with stations and their location in Bogota
-
-
-# Apply function to download excel files with stations and their geo-location metro area
-logs_sisaire_metadata_boundary <- sisaire_download_department_metadata(
-  base_url     = bogota_cfg$base_url_sisaire,
-  timeout_page = 25,
-  subdir       = file.path("bogota", "stations_metadata"))
-
-# Apply function to create Selenium server and download the data for Bogota
-
-  
-# Apply function to create Selenium server and download the data for metro bogota
-
+# Apply function to create Selenium server and download the stations metadata
+logs_sinca_stations_metadata    <- santiago_download_station_info(
+  base_url = santiago_cfg$base_url_sinca,
+  subdir   = file.path("santiago", "stations_metadata"))
 
 # Apply function to download Census data for the metro area
-census <- bogota_download_census_data(
-  type            = "AMPLIADO",
-  url             = bogota_cfg$base_url_census,
-  download_folder = here::here(bogota_cfg$dl_dir, "census"))
+census <- santiago_download_census_data(
+  type            = "geo_location",
+  url             = santiago_cfg$base_url_census,
+  download_folder = here::here(santiago_cfg$dl_dir, "census"))
 
 # Print a success message for when running inside Docker Container
 cat("Script from the IDB projected executed successfully in the Docker container!\n")
