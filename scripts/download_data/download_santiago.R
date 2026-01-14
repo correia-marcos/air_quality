@@ -4,7 +4,7 @@
 # @Goal: Download all required data for the metro area of Santiago
 # 
 # @Description: This functions uses previous created functions on city specific src  utilities 
-# to download all the necessary data for the project. It is based on download three major 
+# to download all the necessary data for the project. It is based on downloading three major 
 # sources:
 #     1 - Geo-referenced administrative data to construct the metro area of Santiago
 #           obs: This function download data for the country and then filter metro area
