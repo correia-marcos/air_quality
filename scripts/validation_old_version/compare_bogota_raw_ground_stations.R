@@ -18,15 +18,6 @@ source(here::here("src", "general_utilities", "config_utils_validation_old_versi
 # ============================================================================================
 # I: Import  data
 # ============================================================================================
-# Import the raw panel of ground stations
-bogota_metro_old  <- here::here("data", "_legacy", "cities_shapefiles(old)", "Bogota_metro")
-bogota_metro_old  <- st_read(bogota_metro_old)
-
-bogota_stations_new <- read_parquet(here::here("data", "raw",
-                                               "pollution_ground_stations",
-                                               "Bogota",
-                                               "bogota_stations_2000_2023.parquet"))
-
 # Define the directory with legacy data
 legacy_dir         <- here::here("data", "_legacy", "pollution", "Bogota")
 
@@ -42,6 +33,17 @@ station_map <- c(
   "San Cristobal"              = "SanCristobal"
 )
 
+# Define the output general folders
+l_bogota_shp <- here::here("data", "_legacy", "cities_shapefiles(old)", "Bogota_metro")
+bogota_shp   <- here::here("data", "raw", "geospatial_data", "bogota", "bogota_area_metro.gpkg")
+bogota_data  <- here::here("data", "raw", "monitoring_stations", "bogota_metro_dataset")
+
+# Import the raw panel of ground stations
+legacy_bogota_metro <- sf::st_read(l_bogota_shp)
+bogota_metro        <- sf::st_read(bogota_shp)
+bogota_stations_new <- open_dataset(bogota_data) %>% 
+  filter(source_type == "RMCAB")
+
 # ============================================================================================
 # II: Process  data
 # ============================================================================================
@@ -55,9 +57,10 @@ legacy_raw <- read_legacy_period_csvs(
 bogota_old <- prepare_legacy_bogota(
   legacy_df     = legacy_raw,
   rename_map    = station_map,
-  tz            = "America/Bogota",
+  tz            = "UTC",
   verbose       = TRUE) %>%
-  arrange(station, datetime)
+  arrange(station, datetime) %>% 
+  filter(year == 2023)
 
 # Apply function to harmonize the new dataframe making it like the legacy one
 # - restrict to 2002–2023 and shift hour (+1)
@@ -66,8 +69,9 @@ bogota_new <- prepare_new_bogota_like_legacy(
   rename_map    = station_map,
   year_keep     = 2002:2023,
   hour_shift    = 0L,                    # ← your earlier manual +1 hour
-  tz            = "America/Bogota"
+  tz            = "UTC"
 ) %>%
+  filter(year == 2023) %>%
   arrange(station, datetime)
 
 # Apply function to Compare both datasets
@@ -89,15 +93,34 @@ differences       <- res$diffs_long
 
 # Quick check on the non missing data
 differences_no_na <- differences %>%
-  filter(within_tol == FALSE)
+  filter(within_tol == FALSE) %>% 
+  filter(year == 2023)
+
+# Are there big differences?
+big_diff <- differences_no_na %>% 
+  filter(absv >= 1) 
+#  Nope!
+
+# Quick check on the missing data for PM10
+differences_na_pm10 <- differences %>%
+  filter(is.na(value_old)) %>%
+  filter(year == 2023) %>%
+  filter(variable == "pm10")
+
+# Quick check on the missing data for PM2.5
+differences_na_pm25 <- differences %>%
+  filter(is.na(value_old)) %>%
+  filter(year == 2023) %>%
+  filter(variable == "pm25")
 
 # Quick check on the missing data from before
 new_only <- res$only_new %>%
   distinct(station, year, month, day, hour) %>%
-  arrange(station, year, month, day, hour)
+  arrange(station, year, month, day, hour) %>% 
+  filter(year == 2023)
 
-# Check the rows that exist only on the old data
-old_only <- res$only_old
+no_dec <- differences_na_pm10 %>% 
+  filter(month != 12)
 # ============================================================================================
 # III: Save  data
 # ============================================================================================
