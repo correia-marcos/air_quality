@@ -18,7 +18,8 @@ pkgs <- c(
   "here",
   "lubridate",
   "readr",
-  "tidyr"
+  "tidyr",
+  "sf"
 )
 
 # Strict check: fail fast if something isn't in the project library
@@ -78,7 +79,7 @@ harmonize_station_names <- function(df, rename_map = c(), drop_stations = charac
 # --------------------------------------------------------------------------------------------
 build_time_parts <- function(df, tz = "America/Bogota", hour_shift = 0L) {
   stopifnot("datetime" %in% names(df))
-  dt <- lubridate::with_tz(df$datetime, tzone = tz)
+  dt <- lubridate::force_tz(df$datetime, tzone = tz)
   if (hour_shift != 0L) dt <- dt + lubridate::hours(hour_shift)
   df$year  <- as.integer(lubridate::year(dt))
   df$month <- as.integer(lubridate::month(dt))
@@ -262,12 +263,13 @@ prepare_new_bogota_like_legacy <- function(
     hour_shift = 0L,
     tz = "America/Bogota"
 ) {
-  df <- new_df |>
+  df <- new_df %>% 
+    collect() %>% 
     dplyr::transmute(
       station,
       datetime = as.POSIXct(.data$datetime, tz = tz),
       pm10     = pm10, 
-      pm25     = `pm2.5`,
+      pm25     = pm25,
       ozone    = ozone,
       co       = co,
       no2      = no2
