@@ -21,9 +21,11 @@ pkgs <- c(
   "exactextractr",
   "foreach",
   "here",
+  "janitor",
   "lubridate",
   "memuse",
   "readr",
+  "rio",
   "rnaturalearth",
   "rnaturalearthdata",
   "sf",
@@ -33,7 +35,8 @@ pkgs <- c(
   "tidyr",
   "tools",
   "rlang",
-  "XLConnect")
+  "XLConnect",
+  "XML")
 
 # Strict check: fail fast if something isn't in the project library
 ensure_installed <- function(pkgs) {
