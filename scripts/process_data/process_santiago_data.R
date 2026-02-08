@@ -1,45 +1,48 @@
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-# @Goal: Process and standardize air quality and census data for Bogota.
+# @Goal: Process all downloaded data from the metro area of Ciudad de México ground stations. 
+# The idea here is to transform the initial data CMDX's metro area - with all theirs specifics
+# into a format that is standard for all cities we assess in the project.
 # 
 # @Description: This script transforms raw monitoring, geospatial, and census data into a 
 #   project-standard format. It includes: (1) Spatial filtering of ground stations within a 
-#   20km metropolitan buffer; (2) Consolidation of RMCAB and SISAIRE raw measurements into 
-#   Parquet format; (3) Extraction and harmonization of 2005 Colombian Census microdata (Basic 
-#   and Extended) to integrate socio-economic indicators into the analysis.
+#   20km metropolitan buffer; (2) Consolidation of SIMAT and SINAICA raw measurements into 
+#   Parquet format; (3) Extraction and harmonization of 2020 Mexican Census microdata (
+#   Extended) to integrate socio-economic indicators into the analysis.
 # 
 # @Summary: 
 #   I.   Setup: Load dependencies, utility functions, and city-specific config.
 #   II.  Import: Read raw geospatial boundaries and station location files.
 #   III. Pollution: Filter stations by buffer and convert data to Parquet.
-#   IV.  Census: Extract and harmonize both Basic and Extended 2005 microdata.
+#   IV.  Census: Extract and harmonize the Extended 2020 microdata.
 # 
-# @Date: January 2026
+# @Date: Oct 2025
 # @Author: Marcos
 # ============================================================================================
 
 # Get all libraries and functions
 source(here::here("src", "general_utilities", "config_utils_process_data.R"))
 source(here::here("src","city_specific", "registry.R"))
-source(here::here("src","city_specific", "bogota.R"))
+source(here::here("src","city_specific", "santiago.R"))
 
 # ============================================================================================
 # I: Import  data
 # ============================================================================================
 # Define the output general folders
-outdir_pollution  <- here::here(bogota_cfg$out_dir, "monitoring_stations")
-outdir_geospatial <- here::here(bogota_cfg$out_dir, "geospatial_data")
-outdir_stations   <- here::here(bogota_cfg$dl_dir, "ground_stations_geolocation")
-outdir_metadata   <- here::here(bogota_cfg$dl_dir, "stations_metadata")
+outdir_pollution  <- here::here(santiago_cfg$out_dir, "monitoring_stations")
+outdir_geospatial <- here::here(santiago_cfg$out_dir, "geospatial_data")
+outdir_metadata   <- here::here(santiago_cfg$dl_dir, "stations_metadata")
 
 # Define the file's specific location
-bogota_stations_csv   <- here::here(outdir_stations, "bogota_stations_location.csv")
-bogota_metro_gpkg     <- here::here(outdir_geospatial, "bogota", "bogota_area_metro.gpkg")
+santiago_stations_csv   <- here::here(outdir_metadata,
+                                      "SINCA_metadata_stations_20260113_1616.csv")
+santiago_metro_gpkg     <- here::here(outdir_geospatial, "santiago",
+                                      "gran_santiago_area.gpkg")
 
-# Read the geospatial data
-stations_bogota   <- read.csv(bogota_stations_csv)
-bogota_metro      <- st_read(bogota_metro_gpkg)
+# Open station location and other spatial data
+station_location <- read.csv(santiago_stations_csv)
+metro_area       <- sf::st_read(santiago_metro_gpkg)
 
 # ============================================================================================
 # II: Process  data

@@ -2,19 +2,26 @@
 # IDB: Air monitoring
 # ============================================================================================
 # @Goal: Process all downloaded data from the metro area of Ciudad de México ground stations. 
-# The idea here is to transform the initial data Bogota's metro area - with all theirs specifics
+# The idea here is to transform the initial data CMDX's metro area - with all theirs specifics
 # into a format that is standard for all cities we assess in the project.
 # 
-# @Description: 
+# @Description: This script transforms raw monitoring, geospatial, and census data into a 
+#   project-standard format. It includes: (1) Spatial filtering of ground stations within a 
+#   20km metropolitan buffer; (2) Consolidation of SIMAT and SINAICA raw measurements into 
+#   Parquet format; (3) Extraction and harmonization of 2020 Mexican Census microdata (
+#   Extended) to integrate socio-economic indicators into the analysis.
 # 
 # @Summary: 
-#   I.   Load libraries, utility functions and necessary data
-#   II.  
-#   III. 
+#   I.   Setup: Load dependencies, utility functions, and city-specific config.
+#   II.  Import: Read raw geospatial boundaries and station location files.
+#   III. Pollution: Filter stations by buffer and convert data to Parquet.
+#   IV.  Census: Extract and harmonize the Extended 2020 microdata.
 # 
-# @Date: May 2025
+# @Date: Oct 2025
 # @Author: Marcos
 # ============================================================================================
+
+# Get all libraries and functions
 source(here::here("src", "general_utilities", "config_utils_process_data.R"))
 source(here::here("src","city_specific", "registry.R"))
 source(here::here("src","city_specific", "cdmx.R"))
@@ -47,27 +54,28 @@ stations_kept <- cdmx_filter_stations_in_metro(
   verbose          = TRUE,
   out_file         = here::here(outdir_geospatial, "cdmx", "cdmx_stations_buffer_metro.gpkg"))
 
-# Get list with unique stations inside the buffer (20 km) metro area
-stations_to_keep = unique(stations_kept$code)
-
 # Apply function to merge all downloaded file into a single tidy dataframe
-cdmx_stations_data <- cdmx_merge_pollution_csvs(
-  downloads_folder     = here::here(cdmx_cfg$dl_dir, "Ground_stations"),
+cdmx_stations_data <- cdmx_merge_pollution_data(
+  primary_data_dir     =  here::here(cdmx_cfg$dl_dir, "ground_stations"),
+  secondary_data_dir   =  here::here(cdmx_cfg$dl_dir, "ground_stations_raw_missing_data"),
+  stations_sf          = stations_kept,
   tz                   = "America/Mexico_City",
   years                = cdmx_cfg$years,
-  stations_keep_codes  = stations_to_keep,
-  cleanup              = FALSE,
   out_dir              = outdir_pollution,
   out_name             = "cdmx_metro",
-  write_parquet        = TRUE,
-  write_rds            = FALSE,
-  write_csv            = FALSE,
-  verbose              = TRUE,
-  engine               = "auto"
 )
 
+# Apply function to unpack the census data (unzip and filter) then read and process
+process_cdmx_census <- mexico_filter_census(
+  census_dir = here::here(cdmx_cfg$dl_dir, "census"),
+  out_dir    = here::here("data", "raw", "census", "cdmx", "CPV2020_EXTENDED"),
+  overwrite  = FALSE,
+  quiet      = FALSE
+)
+process_harmonize_census <- mexico_harmonize_census_data(
+  extract_index = process_cdmx_census,
+  metro_codes  = cdmx_cfg$cities_in_metro,
+  out_dir      = here::here("data", "interim", "census", "cdmx_extended"))
 
-# ============================================================================================
-# III: Save  data
-# ============================================================================================
-# Save the raw data of ground stations
+# Print a success message for when running inside Docker Container
+cat("Script from the IDB projected executed successfully in the Docker container!\n")
