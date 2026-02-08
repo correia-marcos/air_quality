@@ -42,26 +42,35 @@ print(bogota_cfg$years)
 # I: Download data
 # ============================================================================================
 # Apply function to download shapefiles for Bogotá metro area - municipality level
-metro_area <- bogota_download_metro_area(
+metro_area_2005 <- bogota_download_metro_area(
   level        = "mpio",
   mgn_year     = 2005,
   base_url     = bogota_cfg$base_url_shp,
   download_dir = here::here(bogota_cfg$dl_dir, "metro_area"),
   out_file     = here::here("data", "raw", "geospatial_data", "bogota",
-                            "bogota_area_metro.gpkg"))
+                            "bogota_area_metro_2005.gpkg"))
 
 # Apply function to download shapefiles for Bogotá metro area - Urban block + rural sections
-metro_area_census_tracts <- bogota_download_metro_area(
+metro_area_mzn_2005 <- bogota_download_metro_area(
   level        = "manzana",
   mgn_year     = 2005,
   base_url     = bogota_cfg$base_url_shp,
   download_dir = here::here(bogota_cfg$dl_dir, "metro_area"),
   out_file     = here::here("data", "raw", "geospatial_data", "bogota",
-                            "bogota_area_metro_census_tracts.gpkg")
+                            "bogota_area_metro_census_tracts_2005.gpkg")
 )
 
+# Apply function to download shapefiles for Bogotá metro area - munici level 2018
+metro_area_2018 <- bogota_download_metro_area(
+  level             = "mpio",
+  mgn_year          = 2018,
+  base_url          = bogota_cfg$base_url_shp,
+  download_dir      = here::here(bogota_cfg$dl_dir, "metro_area"),
+  out_file          = here::here("data", "raw", "geospatial_data", "bogota",
+                                 "bogota_area_metro_2018.gpkg"))
+
 # Apply function to download shapefiles for Bogotá metro area - Urban block 2018
-metro_area_mgn_2018 <- bogota_download_metro_area(
+metro_area_mzn_2018 <- bogota_download_metro_area(
   level             = "manzana",
   mgn_year          = 2018,
   base_url          = bogota_cfg$base_url_shp,
@@ -72,7 +81,7 @@ metro_area_mgn_2018 <- bogota_download_metro_area(
 # Apply function to save a LaTeX table of the states that we must download stations data
 table_states_to_download <- table_state_metro_distances(
   national_states_sf = colombia,
-  metro_area_sf = metro_area,
+  metro_area_sf = metro_area_2018,
   save_latex_table = TRUE,
   caption = "Administrative states and distance to metropolitan area (in Km)",
   out_file = here::here("results", "tables", "states_to_get_stations", "bogota.tex"),
@@ -119,16 +128,24 @@ write.csv(download_logs_stations_metro_bogota,
           file = here::here(bogota_cfg$dl_dir, "metro_stations_log.csv"),
           row.names = FALSE)
 
-# Apply function to download Census data for the metro area - Basic one
+# Apply function to download the 2005 Census data for the metro area - Basic one
 census_basico   <- bogota_download_census_data(
+  year            = 2005,
   type            = "BASICO",
   url             = bogota_cfg$base_url_census,
   download_folder = here::here(bogota_cfg$dl_dir, "census"))
 
-# Apply function to download Census data for the metro area - Extended one
+# Apply function to download the 2005 Census data for the metro area - Extended one
 census_ampliado <- bogota_download_census_data(
+  year            = 2005,
   type            = "AMPLIADO",
   url             = bogota_cfg$base_url_census,
+  download_folder = here::here(bogota_cfg$dl_dir, "census"))
+
+# Apply function to download the 2018 Census data for the metro area - Extended one
+census_ampliado <- bogota_download_census_data(
+  year            = 2018,
+  url             = bogota_cfg$base_new_census,
   download_folder = here::here(bogota_cfg$dl_dir, "census"))
 
 # Print a success message for when running inside Docker Container
