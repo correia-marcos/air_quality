@@ -3249,9 +3249,9 @@ cdmx_download_remaining_raw_sinaica <- function(
   enrich <- try(jsonlite::fromJSON(state_json), silent = TRUE)
   if (!inherits(enrich, "try-error") && length(enrich)) {
     e <- as.data.frame(enrich, stringsAsFactors = FALSE)
-    names(e) <- c("red_text","station_text","state_text","state_slug")
+    names(e) <- c("red_text", "station_text", "state_text", "state_slug")
     idx <- merge(
-      idx, e, by = c("red_text","station_text"), all.x = TRUE, sort = FALSE
+      idx, e, by = c("red_text", "station_text"), all.x = TRUE, sort = FALSE
     )
   } else {
     idx$state_text <- NA_character_
@@ -3587,38 +3587,128 @@ cdmx_download_census_data <- function(
 # ============================================================================================
 
 # ============================================================================================
+# Helper: .read_xls_xml (NATIVE XLS PARSER using XML package)
+# --------------------------------------------------------------------------------------------
+# Implements the user's discovered logic: htmlParse -> //table/row -> xmlToDataFrame
+# ============================================================================================
+.read_xls_xml <- function(path) {
+  if (!requireNamespace("XML", quietly = TRUE)) {
+    warning("Package 'XML' is required for .xls parsing.")
+    return(NULL)
+  }
+  
+  # 1. Fast parse (treat as HTML for speed/lenience)
+  doc <- XML::htmlParse(path)
+  ns  <- c(ss = "urn:schemas-microsoft-com:office:spreadsheet")
+  
+  # 2. Extract rows directly
+  # We grab all rows. xmlToDataFrame will initially treat them all as data.
+  nodes <- XML::getNodeSet(doc, "//table/row", namespaces = ns)
+  
+  if (length(nodes) == 0) return(NULL)
+  
+  # 3. Convert to Matrix/DF (All strings at this point)
+  # stringsAsFactors = FALSE is crucial
+  nodes <- nodes[-2]
+  df <- XML::xmlToDataFrame(nodes, stringsAsFactors = FALSE)
+  
+  # 4. Handle Headers (User logic: Row 1 is header)
+  # We promote the first row to column names
+  if (nrow(df) > 0) {
+    names(df) <- as.character(df[1, ])
+    df <- df[-1, , drop = FALSE]
+  }
+  
+  # 5. Clean "Empty" rows (User logic: Row 2 was empty)
+  # Instead of hardcoding removal of row 2 (which might vary by file),
+  # we filter out rows where key columns are empty or NA.
+  # We look for 'Fecha' or 'Date' or 'Valor' to ensure it's a data row.
+  
+  # Identify key columns loosely
+  col_fecha <- grep("Fecha|Date", names(df), ignore.case = TRUE, value = TRUE)[1]
+  col_val   <- grep("Valor|Value", names(df), ignore.case = TRUE, value = TRUE)[1]
+  
+  if (!is.na(col_fecha) && !is.na(col_val)) {
+    df <- df[nzchar(trimws(df[[col_fecha]])) & nzchar(trimws(df[[col_val]])), ]
+  }
+  
+  return(df)
+}
+
+
+# ============================================================================================
+# Helper: .prepare_station_lookup (Prepare Station Lookup Table from SF Object)
+# ============================================================================================
+.prepare_station_lookup <- function(stations_sf) {
+  if (is.null(stations_sf)) return(NULL)
+  
+  if (!requireNamespace("stringi", quietly = TRUE)) {
+    stop("Package 'stringi' is required for station name matching.")
+  }
+  
+  smca_map <- c(
+    "EDOMEX"   = "mexico_state",
+    "HGO"      = "hidalgo",
+    "CDMX"     = "cdmx",
+    "MOR"      = "morelos",
+    "GUE"      = "guerrero",
+    "MICH"     = "michoacan",
+    "TLAX"     = "tlaxcala",
+    "PUE"      = "puebla",
+    "QRO"      = "queretaro"
+  )
+  
+  lookup <- stations_sf |>
+    dplyr::mutate(
+      entity_clean = trimws(as.character(entity)),
+      smca_slug = dplyr::recode(entity_clean, !!!smca_map, .default = NA_character_),
+      st_slug = station,
+      st_slug = gsub(" ", "_", st_slug),
+      st_slug = gsub("\\.", "", st_slug),
+      st_slug = tolower(st_slug),
+      st_slug = stringi::stri_trans_general(st_slug, id = "Latin-ASCII"),
+      lookup_key = paste0(smca_slug, "__", st_slug)
+    ) |>
+    dplyr::filter(!is.na(smca_slug)) |>
+    dplyr::select(lookup_key, code, station_name_official = station) |>
+    sf::st_drop_geometry() |>
+    dplyr::distinct(lookup_key, .keep_all = TRUE)
+  
+  return(lookup)
+}
+
+# ============================================================================================
 # Helper: MEMORY engine (RAM-path; now writes per-year partitioned Parquet)
 # --------------------------------------------------------------------------------------------
-# @Arg  : csvs                 — character vector of CSV paths (already discovered)
-# @Arg  : years                — integer vector of years to keep
-# @Arg  : tz                   — Olson tz for final relabel (clock preserved)
-# @Arg  : out_dir, out_name    — output location; Parquet goes to:
-#                                 file.path(out_dir, paste0(out_name, "_dataset"))
-#                                 with partition "year=YYYY/"
-# @Arg  : write_parquet        — logical; write partitioned dataset if TRUE
-# @Arg  : write_rds, write_csv — optional single-file artifacts (full table)
-# @Arg  : cleanup              — logical; remove source CSVs after success
-# @Arg  : verbose              — logical; print progress
-# @Arg  : stations_keep_codes  — NULL or vector of station codes to keep
-# @Return: If write_parquet=TRUE → Arrow Dataset handle to the dataset folder.
-#          Else → tibble (in-memory).
-# @Steps : (0) helpers, (1) read/longify (early station filter),
-#          (2) filter years + map parámetros, (3) aggregate + pivot wide,
-#          (4) canonical station_code, (5) hourly skeleton,
-#          (6) join skeleton, (7) tz relabel,
-#          (8) write artifacts (partitioned Parquet, optional RDS/CSV),
-#          (9) optional cleanup, (10) return result.
+# @Arg  : csvs             — character vector of CSV paths (Type 1 structure)
+# @Arg  : new_source_files — character vector of XLSX paths (Type 2 structure)
+# @Arg  : station_lookup   — Dataframe (lookup_key, code, official_name)
+#                            from .prepare_station_lookup().
+# @Arg  : years            — integer vector of years to keep
+# @Arg  : tz               — Olson tz for final relabel (clock preserved)
+# @Arg  : out_dir, out_name— output location; Parquet goes to:
+#                            file.path(out_dir, paste0(out_name, "_dataset"))
+# @Arg  : write_parquet    — logical; write partitioned dataset if TRUE
+# @Arg  : write_rds, ...   — optional single-file artifacts
+# @Arg  : cleanup          — logical; remove source files after success
+# @Arg  : verbose          — logical; print progress
+# @Arg  : stations_keep_codes — vector of codes to keep (Legacy filter)
+# @Return: Arrow Dataset handle (if write_parquet=T) or Tibble (in-memory)
 # ============================================================================================
 .cdmx_merge_memory_engine <- function(
-    csvs, years, tz, out_dir, out_name,
+    csvs, 
+    new_source_files = NULL,
+    station_lookup = NULL,
+    years, tz, out_dir, out_name,
     write_parquet, write_rds, write_csv,
     cleanup, verbose, stations_keep_codes = NULL
 ) {
   if (isTRUE(verbose)) message("Engine: memory (RAM intensive).")
   
-  # ---- (0) tiny helpers ------------------------------------------------------
+  # --- [Helpers] --------------------------------------------------------------
   `%||%` <- function(a, b) if (!is.null(a)) a else b
   .tnb <- function(x) trimws(gsub("\u00A0", " ", x, fixed = TRUE))
+  
   .guess_from_file <- function(base) {
     b <- tolower(base)
     if (grepl("pm10", b)) return("PM10")
@@ -3629,11 +3719,12 @@ cdmx_download_census_data <- function(
     if (grepl("monoxido.*carbono|\\bco\\b", b)) return("CO")
     NA_character_
   }
+  
   .map_param <- function(p) {
     k <- toupper(.tnb(p))
     dplyr::case_when(
       k %in% c("PM10","PARTICULAS MENORES A 10 MICRAS") ~ "pm10",
-      k %in% c("PM2.5","PM2,5","PARTICULAS MENORES A 2.5") ~ "pm2.5",
+      k %in% c("PM2.5","PM2,5","PARTICULAS MENORES A 2.5") ~ "pm25",
       k %in% c("OZONO","O3") ~ "ozone",
       k %in% c("DIOXIDO DE NITROGENO","NO2") ~ "no2",
       k %in% c("OXIDOS DE NITROGENO","NOX") ~ "nox",
@@ -3651,22 +3742,56 @@ cdmx_download_census_data <- function(
       TRUE ~ NA_character_
     )
   }
+  
   .mean_na <- function(x) {
     if (all(is.na(x))) return(NA_real_)
     suppressWarnings(mean(x, na.rm = TRUE))
   }
   
-  # ---- (1) read/longify with early station filter ---------------------------
-  warn_log <- list()
-  read_one <- function(path) {
-    if (isTRUE(verbose)) message("… ", basename(path))
+  # Filename Metadata Parser (Consistent with DuckDB engine)
+  .parse_filename_meta <- function(path, type = c("csv", "spreadsheet")) {
+    fname <- basename(path)
+    parts <- strsplit(fname, "__")[[1]]
+    if (length(parts) < 4) return(NULL)
     
+    if (type == "csv") {
+      smca_slug <- parts[1]; st_slug <- parts[3]
+    } else {
+      # For xls/xlsx: smca(1)__red(2)__par(3)__station(4)__year(5)
+      smca_slug <- parts[1]; st_slug <- parts[4]
+    }
+    
+    file_key <- paste0(smca_slug, "__", st_slug)
+    
+    if (!is.null(station_lookup)) {
+      match_row <- station_lookup[station_lookup$lookup_key == file_key, ]
+      if (nrow(match_row) == 1) {
+        return(list(code = match_row$code, 
+                    name = match_row$station_name_official))
+      } else {
+        return(NULL) 
+      }
+    }
+    return(list(code = substr(toupper(gsub("_", "", st_slug)), 1, 3),
+                name = st_slug))
+  }
+  
+  # ---- (1) Read Logic --------------------------------------------------------
+  warn_log <- list()
+  
+  # A) Read CSV
+  read_one_csv <- function(path) {
+    # 1. Check Metadata
+    meta <- .parse_filename_meta(path, type = "csv")
+    if (is.null(meta)) return(NULL) 
+    
+    if (isTRUE(verbose)) message("… CSV: ", basename(path))
+    
+    # 2. Read
     wtxt <- character()
     df <- withCallingHandlers(
       readr::read_csv(
-        file   = path,
-        locale = readr::locale(encoding = "Latin1",
-                               decimal_mark = ".", grouping_mark = ","),
+        file = path, locale = readr::locale(encoding = "Latin1"),
         show_col_types = FALSE, progress = FALSE
       ),
       warning = function(w) {
@@ -3674,43 +3799,42 @@ cdmx_download_census_data <- function(
         invokeRestart("muffleWarning")
       }
     )
-    if (length(wtxt)) {
-      warn_log[[length(warn_log) + 1L]] <<- list(
-        file = basename(path), warnings = unique(wtxt)
-      )
-    }
     if (!ncol(df)) return(NULL)
     names(df) <- .tnb(names(df))
     
-    # "- - - -" placeholders → NA (strings only)
-    df <- dplyr::mutate(
-      df,
-      dplyr::across(where(is.character), ~ dplyr::na_if(.x, "- - - -"))
-    )
+    # Clean placeholders
+    df <- dplyr::mutate(df, dplyr::across(where(is.character), 
+                                          ~ dplyr::na_if(.x, "- - - -")))
     
-    pcol <- intersect(c("Parámetro","Parametro","parametro"), names(df))
+    # Identify Parameter
+    pcol <- intersect(c("Parámetro", "Parametro", "parametro"), names(df))
     if (!length(pcol)) {
       df$parametro <- .guess_from_file(basename(path))
       pcol <- "parametro"
     }
-    if (!all(c("Fecha","Hora") %in% names(df))) return(NULL)
+    if (!all(c("Fecha", "Hora") %in% names(df))) return(NULL)
     
+    # Identify Stations (Columns that are "Code : Name")
+    meta_cols <- c("Fecha", "Hora", "Unidad", "Parámetro", "Parametro", "parametro")
     st_cols <- setdiff(
-      names(df)[grepl("\\s:\\s", names(df), perl = TRUE)],
-      c("Parámetro","Parametro","parametro","Fecha","Hora","Unidad")
+      names(df)[grepl("\\s:\\s", names(df), perl = TRUE)], meta_cols
     )
     if (!length(st_cols)) return(NULL)
     
-    keep <- intersect(c(pcol[1], "Fecha","Hora","Unidad", st_cols), names(df))
+    keep <- intersect(c(pcol[1], "Fecha", "Hora", "Unidad", st_cols), names(df))
     df   <- df[, keep, drop = FALSE]
     
     long <- tidyr::pivot_longer(
-      df,
-      cols = dplyr::all_of(st_cols),
-      names_to = "station_label",
-      values_to = "value"
+      df, cols = dplyr::all_of(st_cols),
+      names_to = "station_label", values_to = "value"
     )
     
+    # Extract Code/Name from Header OR use Metadata
+    # For CSVs, headers usually contain specific station codes.
+    # We prioritize the lookup metadata for consistency if available, 
+    # but CSVs often contain MULTIPLE stations per file.
+    # If station_lookup is used, we usually process single-station files.
+    # If this is a multi-station file, we stick to header parsing.
     sp <- t(vapply(
       strsplit(long$station_label, "\\s:\\s", perl = TRUE),
       function(x) c(x[1] %||% NA_character_, x[2] %||% NA_character_),
@@ -3719,29 +3843,34 @@ cdmx_download_census_data <- function(
     station_code <- .tnb(sp[, 1])
     station_name <- .tnb(sp[, 2])
     
-    # Early filter by station codes (if provided)
-    if (!is.null(stations_keep_codes)) {
+    # Use metadata override if it looks like a single-station file logic 
+    # matched by strict lookup, OR filter results based on lookup codes.
+    if (!is.null(station_lookup)) {
+      # Filter: Keep only rows where the header code matches one of our kept codes
+      valid_codes <- unique(station_lookup$code)
+      ok <- station_code %in% valid_codes
+      if (!any(ok)) return(NULL)
+      long <- long[ok, , drop = FALSE]
+      station_code <- station_code[ok]
+      station_name <- station_name[ok]
+    } else if (!is.null(stations_keep_codes)) {
       keep_set <- unique(stats::na.omit(stations_keep_codes))
-      ok <- !is.na(station_code) & station_code %in% keep_set
+      ok <- station_code %in% keep_set
       if (!any(ok)) return(NULL)
       long <- long[ok, , drop = FALSE]
       station_code <- station_code[ok]
       station_name <- station_name[ok]
     }
     
-    long$value <- suppressWarnings(
-      readr::parse_number(
-        as.character(long$value),
-        locale = readr::locale(decimal_mark = ".", grouping_mark = ",")
-      )
-    )
+    long$value <- suppressWarnings(readr::parse_number(
+      as.character(long$value), locale = readr::locale(grouping_mark = ",")
+    ))
     
+    # Time Parsing
     hr <- suppressWarnings(as.integer(long$Hora))
     hr[is.na(hr)] <- 0L
-    dt_chr <- sprintf(
-      "%s %02d:00:00", as.character(as.Date(long$Fecha)),
-      pmax(0L, pmin(23L, hr))
-    )
+    dt_chr <- sprintf("%s %02d:00:00", as.character(as.Date(long$Fecha)),
+                      pmax(0L, pmin(23L, hr)))
     dt_utc <- as.POSIXct(dt_chr, tz = "UTC")
     
     tibble::tibble(
@@ -3754,17 +3883,82 @@ cdmx_download_census_data <- function(
     )
   }
   
-  pieces <- lapply(csvs, read_one)
-  pieces <- Filter(Negate(is.null), pieces)
+  # B) Read XLSX (New Support)
+  read_one_spreadsheet <- function(path) {
+    # 1. Check Metadata
+    meta <- .parse_filename_meta(path, type = "spreadsheet")
+    if (is.null(meta)) return(NULL)
+    
+    if (isTRUE(verbose)) message("… Sheet: ", basename(path))
+    
+    # 2. Select Reader based on extension
+    df <- NULL
+    if (grepl("\\.xlsx$", path, ignore.case = TRUE)) {
+      df <- tryCatch(readxl::read_xlsx(path), error = function(e) NULL)
+    } else if (grepl("\\.xls$", path, ignore.case = TRUE)) {
+      # USE NEW XML PARSER
+      df <- tryCatch(.read_xls_xml(path), error = function(e) NULL)
+    }
+    
+    if (is.null(df) || nrow(df) == 0) return(NULL)
+    
+    names(df) <- .tnb(names(df))
+    
+    # Rename cols
+    df <- dplyr::rename_with(df, ~"parametro", .cols = dplyr::matches("Par.metro|Parametro"))
+    df <- dplyr::rename_with(df, ~"date_raw", .cols = dplyr::matches("Fecha"))
+    df <- dplyr::rename_with(df, ~"hour_raw", .cols = dplyr::matches("Hora"))
+    df <- dplyr::rename_with(df, ~"val", .cols = dplyr::matches("Valor"))
+    
+    df <- df |>
+      dplyr::filter(!is.na(date_raw), !is.na(hour_raw), !is.na(val)) |>
+      dplyr::mutate(
+        hour_int = as.integer(sub(":.*", "", hour_raw)),
+        # Safe UTC handling
+        date_dt = as.POSIXct(date_raw, format = "%Y-%m-%d", tz = "UTC"),
+        datetime_utc = date_dt + (hour_int * 3600),
+        
+        year_int = as.integer(format(datetime_utc, "%Y")),
+        value_clean = as.numeric(val), # Handles string->numeric from XML
+        
+        st_code = meta$code,
+        st_name = meta$name
+      ) |>
+      dplyr::filter(year_int %in% years)
+    
+    if (nrow(df) == 0) return(NULL)
+    
+    tibble::tibble(
+      datetime     = df$datetime_utc,
+      station      = df$st_name,
+      station_code = df$st_code,
+      year         = df$year_int,
+      parametro    = as.character(df$parametro),
+      value        = df$value_clean
+    )
+  }
+  
+  # ---- (2) Execute Reads ----------------------------------------------------
+  pieces <- list()
+  
+  if (length(csvs) > 0) {
+    pieces <- c(pieces, Filter(Negate(is.null), lapply(csvs, read_one_csv)))
+  }
+  
+  if (!is.null(new_source_files) && length(new_source_files) > 0) {
+    pieces <- c(pieces,
+                Filter(Negate(is.null), lapply(new_source_files, read_one_spreadsheet)))
+  }
+  
   if (!length(pieces)) stop("No usable rows after parsing.")
   long_all <- dplyr::bind_rows(pieces)
   
-  # ---- (2) keep years + map parámetros --------------------------------------
+  # ---- (3) Map parameters ---------------------------------------------------
   long_all <- long_all[long_all$year %in% years, , drop = FALSE]
   long_all$.__var <- .map_param(long_all$parametro)
   long_all <- long_all[!is.na(long_all$.__var), , drop = FALSE]
   
-  # ---- (3) aggregate duplicates; pivot to wide ------------------------------
+  # ---- (4) Aggregate & Pivot ------------------------------------------------
   aggr <- long_all |>
     dplyr::group_by(datetime, station, station_code, year, .__var) |>
     dplyr::summarise(value = .mean_na(value), .groups = "drop")
@@ -3777,16 +3971,12 @@ cdmx_download_census_data <- function(
     values_fn   = .mean_na
   )
   
-  # Remove NaN (keep POSIXct intact)
-  wide <- dplyr::mutate(
-    wide,
-    dplyr::across(
-      tidyselect::where(~ is.double(.x) && !inherits(.x, "POSIXt")),
-      ~ ifelse(is.nan(.x), NA_real_, .x)
-    )
-  )
+  wide <- dplyr::mutate(wide, dplyr::across(
+    tidyselect::where(~ is.double(.x) && !inherits(.x, "POSIXt")),
+    ~ ifelse(is.nan(.x), NA_real_, .x)
+  ))
   
-  # ---- (4) canonical station_code per station -------------------------------
+  # ---- (5) Canonical Station Code -------------------------------------------
   st_ref <- wide |>
     dplyr::filter(!is.na(station_code), nzchar(station_code)) |>
     dplyr::count(station, station_code, sort = TRUE) |>
@@ -3795,25 +3985,20 @@ cdmx_download_census_data <- function(
     dplyr::ungroup() |>
     dplyr::select(station, station_code)
   
-  # ---- (5) hourly skeleton across requested span ----------------------------
+  # ---- (6) Hourly Skeleton --------------------------------------------------
   t0  <- as.POSIXct(sprintf("%04d-01-01 00:00:00", min(years)), tz = "UTC")
   t1  <- as.POSIXct(sprintf("%04d-12-31 23:00:00", max(years)), tz = "UTC")
   hrs <- seq(t0, t1, by = "1 hour")
   
   stations <- sort(unique(wide$station))
-  if (!length(stations)) stop("No stations found after reshaping.")
-  
   skel <- tidyr::expand_grid(station = stations, datetime = hrs)
   skel$year <- as.integer(format(skel$datetime, "%Y", tz = "UTC"))
   
-  # ---- (6) join skeleton ← st_ref ← wide ------------------------------------
   wide_full <- skel |>
     dplyr::left_join(st_ref, by = "station") |>
-    dplyr::left_join(
-      wide, by = c("station","station_code","datetime","year")
-    )
+    dplyr::left_join(wide, by = c("station","station_code","datetime","year"))
   
-  # ---- (7) tz relabel (preserve clock times) --------------------------------
+  # ---- (7) TZ Relabel -------------------------------------------------------
   if (!identical(tz, "UTC")) {
     if (!requireNamespace("lubridate", quietly = TRUE)) {
       stop("Package 'lubridate' is required for tz relabeling.")
@@ -3821,32 +4006,24 @@ cdmx_download_census_data <- function(
     wide_full$datetime <- lubridate::force_tz(wide_full$datetime, tz)
   }
   
-  # ---- (8) write artifacts ---------------------------------------------------
-  # 8a) partitioned Parquet dataset when requested
+  # ---- (8) Write Artifacts --------------------------------------------------
   if (isTRUE(write_parquet) && !missing(out_dir) && !missing(out_name)) {
-    if (!requireNamespace("arrow", quietly = TRUE)) {
-      stop("Package 'arrow' is required for Parquet output.")
-    }
+    if (!requireNamespace("arrow", quietly = TRUE)) stop("Need 'arrow'.")
     base <- file.path(out_dir, paste0(out_name, "_dataset"))
     dir.create(base, recursive = TRUE, showWarnings = FALSE)
     
-    # Write per-year dataset (overwrite if exists)
     arrow::write_dataset(
-      dataset                 = wide_full,
-      path                    = base,
-      format                  = "parquet",
-      partitioning            = "year",
-      existing_data_behavior  = "overwrite",
-      compression             = "zstd"
+      dataset = wide_full, path = base, format = "parquet",
+      partitioning = "year", existing_data_behavior = "overwrite",
+      compression = "zstd"
     )
     if (isTRUE(verbose)) {
-      n_pq <- length(list.files(base, pattern = "\\.parquet$", recursive = TRUE))
-      message("🧱 Wrote partitioned dataset → ", base,
-              " (files: ", n_pq, ")")
+      n_pq <- length(list.files(base, pattern = "\\.parquet$", recursive = T))
+      message("🧱 Wrote partitioned dataset → ", base, " (files: ", n_pq, ")")
     }
     ds <- arrow::open_dataset(base)
     
-    # Optional extras (single-file RDS/CSV of the full table)
+    # Optional single files
     if (isTRUE(write_rds)) {
       rds <- file.path(out_dir, paste0(out_name, ".rds"))
       saveRDS(wide_full, rds, compress = "xz")
@@ -3857,8 +4034,6 @@ cdmx_download_census_data <- function(
       readr::write_csv(wide_full, csv)
       if (isTRUE(verbose)) message("📝 Wrote CSV → ", csv)
     }
-    
-    # Optional cleanup of raw CSVs
     if (isTRUE(cleanup)) {
       if (isTRUE(verbose)) message("🧹 Removing source CSVs…")
       invisible(lapply(csvs, function(f) try(unlink(f), TRUE)))
@@ -3866,25 +4041,18 @@ cdmx_download_census_data <- function(
     return(ds)
   }
   
-  # 8b) if not writing Parquet, still allow RDS/CSV
+  # If not writing parquet but output requested
   if (isTRUE(write_rds) && !missing(out_dir) && !missing(out_name)) {
     rds <- file.path(out_dir, paste0(out_name, ".rds"))
     saveRDS(wide_full, rds, compress = "xz")
     if (isTRUE(verbose)) message("💾 Wrote RDS → ", rds)
   }
-  if (isTRUE(write_csv) && !missing(out_dir) && !missing(out_name)) {
-    csv <- file.path(out_dir, paste0(out_name, ".csv"))
-    readr::write_csv(wide_full, csv)
-    if (isTRUE(verbose)) message("📝 Wrote CSV → ", csv)
-  }
   
-  # ---- (9) optional cleanup of CSVs -----------------------------------------
   if (isTRUE(cleanup)) {
     if (isTRUE(verbose)) message("🧹 Removing source CSVs…")
     invisible(lapply(csvs, function(f) try(unlink(f), TRUE)))
   }
   
-  # ---- (10) return in-memory tibble -----------------------------------------
   wide_full
 }
 
@@ -3892,95 +4060,38 @@ cdmx_download_census_data <- function(
 # ============================================================================================
 # Helper: DUCKDB engine (disk-backed; UNPIVOT; partitioned Parquet dataset)
 # --------------------------------------------------------------------------------------------
-# Notes:
-#  • Writes to "<out_name>_dataset/year=YYYY/*.parquet" (SNAPPY by default).
-#  • Applies stations_keep_codes inside the UNPIVOT INSERT (early prune).
-#  • Copies one year at a time to reduce peak memory and avoid long COPY stalls.
+# @Arg  : csvs             — character vector of CSV paths (Type 1 structure)
+# @Arg  : new_source_files — character vector of XLSX/XLS paths (Type 2)
+# @Arg  : station_lookup   — Dataframe (lookup_key, code, official_name)
+#                            used for XLSX filename matching.
+# @Arg  : years            — integer vector of years to keep
+# @Arg  : tz               — Olson tz for final output metadata
+# @Arg  : out_dir, out_name— output location
+# @Arg  : cleanup          — logical; remove source files after success
+# @Arg  : run_parallel     — logical; enable DuckDB multi-threading
+# @Arg  : verbose          — logical; print progress
+# @Return: Arrow Dataset handle to the dataset folder.
+# @Steps : (1) Setup DB & Staging table, (2) Insert CSVs (with metadata parse),
+#          (3) Insert XLSXs (with metadata parse & strict lookup), 
+#          (4) Map parameters & Aggregate, (5) Pivot & Write Parquet.
 # ============================================================================================
 .cdmx_merge_duckdb_engine <- function(
-    csvs, years, tz, out_dir, out_name, cleanup, run_parallel,
-    verbose, stations_keep_codes = NULL
+    csvs, 
+    new_source_files = NULL, 
+    station_lookup = NULL, 
+    years, tz, out_dir, out_name, cleanup, run_parallel, 
+    verbose
 ) {
-  if (isTRUE(verbose))
-    message("Engine: duckdb (disk-backed, readr pre-clean).")
-  if (!requireNamespace("duckdb", quietly = TRUE) ||
-      !requireNamespace("DBI", quietly = TRUE)) {
-    stop("Packages 'duckdb' and 'DBI' are required for duckdb engine.")
-  }
-  if (utils::packageVersion("duckdb") < "0.9.2") {
-    stop("DuckDB >= 0.9.2 is required for UNPIVOT.")
-  }
-  if (missing(out_dir) || missing(out_name)) {
-    stop("duckdb engine requires out_dir and out_name.")
-  }
-  if (!requireNamespace("arrow", quietly = TRUE)) {
-    stop("Package 'arrow' is required to open the dataset.")
-  }
-  if (!requireNamespace("readr", quietly = TRUE)) {
-    stop("Package 'readr' is required for pre-cleaning CSVs.")
-  }
-  if (!requireNamespace("dplyr", quietly = TRUE)) {
-    stop("Package 'dplyr' is required for pre-cleaning CSVs.")
-  }
+  if (isTRUE(verbose)) message("Engine: duckdb (Mixed Wide-CSV + Strict XLSX).")
   
-  `%||%` <- function(a, b) if (!is.null(a)) a else b
-  .tnb <- function(x) trimws(gsub("\u00A0", " ", x, fixed = TRUE))
-  .dq  <- function(id) sprintf('"%s"', gsub('"', '""', id))
-  .ds  <- function(s)  sprintf("'%s'", gsub("'", "''", s))
-  .guess_from_file <- function(base) {
-    b <- tolower(base)
-    if (grepl("pm10", b)) return("PM10")
-    if (grepl("pm2_5|pm2\\.5", b)) return("PM2.5")
-    if (grepl("dioxido_de_nitrogeno|\\bno2\\b", b)) return("NO2")
-    if (grepl("dioxido_de_azufre|\\bso2\\b", b)) return("SO2")
-    if (grepl("ozono|\\bo3\\b", b)) return("O3")
-    if (grepl("monoxido.*carbono|\\bco\\b", b)) return("CO")
-    NA_character_
-  }
+  # --- [Checks & Setup] -------------------------------------------------------
+  if (!requireNamespace("duckdb", quietly = TRUE) || 
+      !requireNamespace("DBI", quietly = TRUE)) stop("Need 'duckdb' & 'DBI'.")
+  if (utils::packageVersion("duckdb") < "0.9.2") stop("DuckDB >= 0.9.2.")
+  if (!requireNamespace("arrow", quietly = TRUE)) stop("Need 'arrow'.")
+  if (!requireNamespace("readxl", quietly = TRUE)) stop("Need 'readxl'.")
   
-  # --- (0) pre-clean one CSV → temp UTF-8 file + header info
-  .preclean_to_utf8 <- function(path) {
-    wtxt <- character()
-    df <- withCallingHandlers(
-      readr::read_csv(
-        file   = path,
-        locale = readr::locale(encoding = "Latin1",
-                               decimal_mark = ".", grouping_mark = ","),
-        show_col_types = FALSE, progress = FALSE
-      ),
-      warning = function(w) {
-        wtxt <<- c(wtxt, conditionMessage(w))
-        invokeRestart("muffleWarning")
-      }
-    )
-    if (!ncol(df)) return(NULL)
-    
-    # Normalize header & cells; convert dash/space/NBSP soup to NA
-    names(df) <- .tnb(names(df))
-    nb <- "\u00A0"
-    is_chr <- vapply(df, is.character, logical(1))
-    if (any(is_chr)) {
-      df[is_chr] <- lapply(df[is_chr], function(x) {
-        x <- gsub(nb, " ", x, fixed = TRUE)
-        x <- trimws(x)
-        x[x == ""] <- NA_character_
-        # Any combo of hyphens/spaces/NBSP only → NA
-        x[grepl("^[-\\s\u00A0]+$", x)] <- NA_character_
-        x
-      })
-    }
-    
-    # Write a temporary UTF-8 CSV (readr writes NA as empty)
-    tmp <- tempfile("cdmx_utf8_", fileext = ".csv")
-    readr::write_csv(df, tmp, na = "")
-    list(
-      path = tmp,
-      hdr_raw = names(df),   # post-clean raw names
-      warn = unique(wtxt)
-    )
-  }
-  
-  # ---- step 1: connect + PRAGMAs + temp dir ---------------------------------
+  # --- [Step 1: DB Connection] ------------------------------------------------
   dbdir <- tempfile("cdmx_duck_")
   con <- DBI::dbConnect(duckdb::duckdb(dbdir = dbdir, read_only = FALSE))
   on.exit({
@@ -3990,370 +4101,357 @@ cdmx_download_census_data <- function(
   
   thr <- if (run_parallel) max(1L, (parallel::detectCores() - 2)) else 1L
   DBI::dbExecute(con, sprintf("PRAGMA threads=%d;", thr))
-  DBI::dbExecute(con, "PRAGMA memory_limit='6GB';")
+  DBI::dbExecute(con, "PRAGMA memory_limit='8GB';") 
   
-  tdir <- file.path(tempdir(), sprintf("_duck_tmp_%s", Sys.getpid()))
-  dir.create(tdir, recursive = TRUE, showWarnings = FALSE)
-  DBI::dbExecute(con, sprintf("PRAGMA temp_directory=%s;", .ds(tdir)))
-  on.exit(try(unlink(tdir, recursive = TRUE, force = TRUE), silent = TRUE),
-          add = TRUE)
+  # --- [Step 2: Create Staging] -----------------------------------------------
+  DBI::dbExecute(con, paste0(
+    "CREATE TABLE staging_long(",
+    "datetime TIMESTAMP, station VARCHAR, station_code VARCHAR, ",
+    "year INTEGER, parametro VARCHAR, value DOUBLE);"
+  ))
   
-  # ---- step 1b: detect TZ support (AT TIME ZONE) -----------------------------
-  tz_sql <- .ds(tz)
-  tz_supported <- tryCatch({
-    DBI::dbGetQuery(
-      con,
-      paste0(
-        "SELECT (TIMESTAMP '2000-01-01 00:00:00' AT TIME ZONE ", tz_sql,
-        ") IS NOT NULL AS ok;"
-      )
-    )$ok[[1]] %||% FALSE
-  }, error = function(e) FALSE)
+  # --- [Helpers] --------------------------------------------------------------
+  `%||%` <- function(a, b) if (!is.null(a)) a else b
+  .tnb <- function(x) trimws(gsub("\u00A0", " ", x, fixed = TRUE))
+  .dq  <- function(id) sprintf('"%s"', gsub('"', '""', id))
+  .ds  <- function(s)  sprintf("'%s'", gsub("'", "''", s))
   
-  if (isTRUE(verbose)) {
-    msg <- if (tz_supported)
-      sprintf("TZ conversion enabled via AT TIME ZONE (%s).", tz) else
-        "TZ conversion not available; storing naive local timestamps."
-    message(msg)
-  }
-  
-  # ---- step 2: staging table -------------------------------------------------
-  DBI::dbExecute(
-    con,
-    paste0(
-      "CREATE TABLE staging_long(",
-      "datetime TIMESTAMP, station VARCHAR, station_code VARCHAR, ",
-      "year INTEGER, parametro VARCHAR, value DOUBLE);"
-    )
-  )
-  
-  # ---- step 3: insert per-CSV via UNPIVOT (pre-cleaned UTF-8) ---------------
-  ylist <- paste(sort(unique(years)), collapse = ",")
-  
-  keep_sql <- ""
-  if (!is.null(stations_keep_codes)) {
-    ks <- unique(stats::na.omit(stations_keep_codes))
-    ks <- ks[nzchar(ks)]
-    if (length(ks)) {
-      inlist <- paste(vapply(ks, .ds, character(1)), collapse = ",")
-      keep_sql <- paste0(
-        " AND NULLIF(REGEXP_EXTRACT(st, '^(.*?)\\s*:\\s*', 1), '') IN (",
-        inlist, ")"
-      )
+  # XLSX Filename Parser (Strict Entity+Station matching)
+  .parse_xlsx_meta <- function(path) {
+    fname <- basename(path)
+    parts <- strsplit(fname, "__")[[1]]
+    if (length(parts) < 4) return(NULL)
+    
+    # XLSX Formula: smca(1)__red(2)__par(3)__station(4)__year(5)
+    smca_slug <- parts[1]
+    st_slug   <- parts[4]
+    file_key  <- paste0(smca_slug, "__", st_slug)
+    
+    if (!is.null(station_lookup)) {
+      match_row <- station_lookup[station_lookup$lookup_key == file_key, ]
+      if (nrow(match_row) == 1) {
+        return(list(code = match_row$code, 
+                    name = match_row$station_name_official))
+      }
+      return(NULL) # Skip if not strictly matched
     }
+    # Fallback (Legacy)
+    return(list(code = substr(toupper(gsub("_", "", st_slug)), 1, 3),
+                name = st_slug))
   }
   
-  insert_one <- function(path) {
-    # 0) pre-clean to UTF-8 temp file
+  # --- [Step 3A: CSV Logic (Wide Format)] -------------------------------------
+  .preclean_to_utf8 <- function(path) {
+    wtxt <- character()
+    df <- withCallingHandlers(
+      readr::read_csv(
+        file = path, 
+        locale = readr::locale(encoding = "Latin1", decimal_mark = ".", 
+                               grouping_mark = ","),
+        show_col_types = FALSE, progress = FALSE
+      ),
+      warning = function(w) {
+        wtxt <<- c(wtxt, conditionMessage(w))
+        invokeRestart("muffleWarning")
+      }
+    )
+    if (!ncol(df)) return(NULL)
+    names(df) <- .tnb(names(df))
+    nb <- "\u00A0"
+    is_chr <- vapply(df, is.character, logical(1))
+    if (any(is_chr)) {
+      df[is_chr] <- lapply(df[is_chr], function(x) {
+        x <- gsub(nb, " ", x, fixed = TRUE)
+        x <- trimws(x)
+        x[x == ""] <- NA_character_
+        x[grepl("^[-\\s\u00A0]+$", x)] <- NA_character_
+        x
+      })
+    }
+    tmp <- tempfile("cdmx_utf8_", fileext = ".csv")
+    readr::write_csv(df, tmp, na = "")
+    list(path = tmp, hdr_raw = names(df), warn = unique(wtxt))
+  }
+  
+  insert_one_csv <- function(path) {
+    # 1. Pre-clean to UTF8
     pc <- .preclean_to_utf8(path)
     if (is.null(pc)) return(0L)
+    
     tmp <- pc$path
     cr  <- pc$hdr_raw
     ct  <- .tnb(cr)
     
-    # 1) find core columns
     f_i <- which(ct == "Fecha")[1]
     h_i <- which(ct == "Hora")[1]
     if (is.na(f_i) || is.na(h_i)) return(0L)
     fecha_q <- .dq(cr[f_i])
     hora_q  <- .dq(cr[h_i])
     
-    # parámetro source (existing column or filename guess) → param_src
+    # Parameter detection
     p_i <- which(ct %in% c("Parámetro","Parametro","parametro"))[1]
     if (!is.na(p_i)) {
       param_sel <- paste0(.dq(cr[p_i]), " AS param_src")
     } else {
-      g <- .guess_from_file(basename(path))
-      param_sel <- if (is.na(g)) "NULL AS param_src"
-      else paste0(.ds(g), " AS param_src")
+      # Fallback: CSV filename part 4 (Network_Part3_Part4)
+      parts <- strsplit(basename(path), "__")[[1]]
+      g <- if(length(parts)>=4) parts[4] else "unknown"
+      param_sel <- paste0(.ds(g), " AS param_src")
     }
     
-    # station columns: anything "CODE : Name", excluding metadata
-    meta <- ct %in% c("Fecha","Hora","Unidad","Parámetro",
-                      "Parametro","parametro")
-    st_cols <- cr[grepl("^[^:]+\\s*:\\s*.+$", ct, perl = TRUE) & !meta]
-    if (!length(st_cols)) return(0L)
-    unp_in <- paste(vapply(st_cols, .dq, character(1)), collapse = ",")
+    # 2. Identify Valid Station Columns (Format: "CODE : Name")
+    meta_cols <- c("Fecha","Hora","Unidad","Parámetro","Parametro","parametro")
+    potential_st_cols <- setdiff(cr, meta_cols)
     
-    # Optional prebuilt station filter
-    keep_sql <- ""
-    if (!is.null(stations_keep_codes)) {
-      ks <- unique(stats::na.omit(stations_keep_codes))
-      ks <- ks[nzchar(ks)]
-      if (length(ks)) {
-        inlist <- paste(vapply(ks, .ds, character(1)), collapse = ",")
-        keep_sql <- paste0(
-          " AND NULLIF(REGEXP_EXTRACT(st, '^(.*?)\\s*:\\s*', 1), '') ",
-          "IN (", inlist, ")"
-        )
+    # STRICT FILTER: Keep only columns where the CODE exists in our lookup
+    valid_st_cols <- character()
+    
+    if (!is.null(station_lookup)) {
+      valid_codes <- unique(station_lookup$code)
+      for (col in potential_st_cols) {
+        # Extract code "ACO" from "ACO : Acolman"
+        code_part <- trimws(strsplit(col, ":")[[1]][1])
+        if (code_part %in% valid_codes) {
+          valid_st_cols <- c(valid_st_cols, col)
+        }
       }
+    } else {
+      # No lookup provided? Keep all columns that look like stations
+      valid_st_cols <- potential_st_cols[grepl(":", potential_st_cols)]
     }
     
-    # 2) common FROM/WHERE block (so we can COUNT then INSERT)
+    if (length(valid_st_cols) == 0) return(0L) # No matching stations in file
+    
+    unp_in <- paste(vapply(valid_st_cols, .dq, character(1)), collapse=",")
+    
+    # Timezone check
+    tz_sql <- .ds(tz)
+    tz_supported <- tryCatch({
+      DBI::dbGetQuery(con, paste0(
+        "SELECT (TIMESTAMP '2000-01-01' AT TIME ZONE ", tz_sql, 
+        ") IS NOT NULL AS ok;"
+      ))$ok[[1]] %||% FALSE
+    }, error = function(e) FALSE)
+    
+    ylist <- paste(sort(unique(years)), collapse=",")
+    
+    # Query Construction
     from_where <- paste0(
-      "FROM (",
-      "  SELECT ",
-      "    *, ",
-      "    ", param_sel, ", ",
-      "    COALESCE(",
-      "      STRPTIME(", fecha_q, ",'%Y-%m-%d'), ",
-      "      STRPTIME(SPLIT_PART(", fecha_q, ",' ',1),'%Y-%m-%d'), ",
-      "      STRPTIME(", fecha_q, ",'%Y/%m/%d'), ",
-      "      STRPTIME(SPLIT_PART(", fecha_q, ",' ',1),'%Y/%m/%d'), ",
-      "      STRPTIME(", fecha_q, ",'%d/%m/%Y'), ",
-      "      STRPTIME(SPLIT_PART(", fecha_q, ",' ',1),'%d/%m/%Y'), ",
-      "      STRPTIME(", fecha_q, ",'%d-%m-%Y'), ",
-      "      STRPTIME(SPLIT_PART(", fecha_q, ",' ',1),'%d-%m-%Y'), ",
-      "      STRPTIME(", fecha_q, ",'%m/%d/%Y'), ",
-      "      STRPTIME(SPLIT_PART(", fecha_q, ",' ',1),'%m/%d/%Y'), ",
-      "      STRPTIME(", fecha_q, ",'%m-%d-%Y'), ",
-      "      STRPTIME(SPLIT_PART(", fecha_q, ",' ',1),'%m-%d-%Y'), ",
-      "      STRPTIME(", fecha_q, ",'%d.%m.%Y'), ",
-      "      STRPTIME(", fecha_q, ",'%Y.%m.%d') ",
-      "    ) AS d, ",
-      "    GREATEST(0, LEAST(23, ",
-      "      TRY_CAST(SUBSTR(TRIM(", hora_q, "),1,2) AS INTEGER))) AS h ",
-      "  FROM read_csv_auto(",
-      .ds(tmp),
-      "    , HEADER=TRUE, ALL_VARCHAR=TRUE, SAMPLE_SIZE=200000, ",
-      "      ENCODING='utf-8', IGNORE_ERRORS=TRUE",
-      "  )",
-      ") t ",
+      "FROM (SELECT *, ", param_sel, ", ",
+      " COALESCE(STRPTIME(", fecha_q, ",'%Y-%m-%d'), ",
+      "          STRPTIME(", fecha_q, ",'%d/%m/%Y')) AS d, ",
+      " GREATEST(0, LEAST(23, TRY_CAST(SUBSTR(TRIM(", hora_q, 
+      "),1,2) AS INTEGER))) AS h ",
+      " FROM read_csv_auto(", .ds(tmp), 
+      ", HEADER=TRUE, ALL_VARCHAR=TRUE, ENCODING='utf-8', ",
+      "IGNORE_ERRORS=TRUE)) t ",
       "UNPIVOT INCLUDE NULLS (val FOR st IN (", unp_in, ")) u ",
       "WHERE d IS NOT NULL ",
-      "  AND EXTRACT(YEAR FROM (CAST(d AS TIMESTAMP) + ",
-      "      (h * INTERVAL 1 HOUR))) IN (", ylist, ")",
-      keep_sql
-      # keep val even if NULL so skeleton can later fill the panel
-      # if you want to skip empty cells: add " AND val IS NOT NULL"
+      " AND EXTRACT(YEAR FROM (CAST(d AS TIMESTAMP) + ",
+      "(h * INTERVAL 1 HOUR))) IN (", ylist, ")"
     )
     
-    # 3) dry-run count (how many rows would be inserted)
-    count_sql <- paste0("SELECT COUNT(*) AS n ", from_where, ";")
-    n_cand <- DBI::dbGetQuery(con, count_sql)[["n"]]
-    if (isTRUE(verbose)) {
-      message("   → candidate rows in ", basename(path), ": ",
-              format(n_cand, big.mark = ","))
-    }
-    if (!is.finite(n_cand) || n_cand <= 0) return(0L)
-    
-    # 4) real insert; compute reliable delta by counting table n before/after
-    n_before <- DBI::dbGetQuery(
-      con, "SELECT COUNT(*) AS n FROM staging_long;"
-    )[["n"]]
-    
-    # Build datetime expr: UTC (tz-supported) or naive (fallback)
     dt_expr <- if (tz_supported) {
-      paste0(
-        "CAST((CAST(d AS TIMESTAMP) + (h * INTERVAL 1 HOUR)) ",
-        "     AT TIME ZONE ", tz_sql, " AS TIMESTAMP)"
-      )
+      paste0("CAST((CAST(d AS TIMESTAMP) + (h * INTERVAL 1 HOUR)) ",
+             "AT TIME ZONE ", tz_sql, " AS TIMESTAMP)")
     } else {
       "CAST(d AS TIMESTAMP) + (h * INTERVAL 1 HOUR)"
     }
     
+    # INSERT: Parse station code/name from the column header string
     insert_sql <- paste0(
-      "INSERT INTO staging_long ",
-      "SELECT ",
-      "  ", dt_expr, " AS datetime, ",
-      "  COALESCE(",
-      "    NULLIF(REGEXP_EXTRACT(st, '^.*?\\s*:\\s*(.*)$', 1), ''), st",
-      "  ) AS station, ",
-      "  NULLIF(REGEXP_EXTRACT(st, '^(.*?)\\s*:\\s*', 1), '') ",
-      "    AS station_code, ",
-      "  EXTRACT(YEAR FROM (CAST(d AS TIMESTAMP) + ",
-      "        (h * INTERVAL 1 HOUR))) AS year, ",
-      "  param_src AS parametro, ",
-      "  TRY_CAST(REPLACE(TRIM(val), ',', '') AS DOUBLE) AS value ",
-      from_where,
-      ";"
+      "INSERT INTO staging_long SELECT ", dt_expr, " AS datetime, ",
+      # Extract Name (after colon)
+      "COALESCE(NULLIF(REGEXP_EXTRACT(st, '^.*?\\s*:\\s*(.*)$', 1), ''), st) ",
+      "AS station, ",
+      # Extract Code (before colon)
+      "NULLIF(REGEXP_EXTRACT(st, '^(.*?)\\s*:\\s*', 1), '') AS station_code, ",
+      "EXTRACT(YEAR FROM (CAST(d AS TIMESTAMP) + (h * INTERVAL 1 HOUR))) ",
+      "AS year, param_src AS parametro, ",
+      "TRY_CAST(REPLACE(TRIM(val), ',', '') AS DOUBLE) AS value ",
+      from_where, ";"
     )
-    DBI::dbExecute(con, insert_sql)
     
-    n_after <- DBI::dbGetQuery(
-      con, "SELECT COUNT(*) AS n FROM staging_long;"
-    )[["n"]]
-    as.integer(n_after - n_before)
+    DBI::dbExecute(con, insert_sql)
+    return(1L)
   }
   
+  # --- [Step 3B: XLSX Logic (Single Station)] ---------------------------------
+  insert_spreadsheet <- function(path) {
+    
+    # 1. Parse Metadata
+    meta <- .parse_xlsx_meta(path)
+    if (is.null(meta)) return(0L) 
+    
+    # 2. Read File (Logic Branch)
+    df <- NULL
+    
+    if (grepl("\\.xlsx$", path, ignore.case = TRUE)) {
+      # Standard XLSX
+      df <- tryCatch(readxl::read_xlsx(path), error = function(e) NULL)
+    } else if (grepl("\\.xls$", path, ignore.case = TRUE)) {
+      # New XML-XLS Parser
+      df <- tryCatch(.read_xls_xml(path), error = function(e) NULL)
+    }
+    
+    if (is.null(df) || nrow(df) == 0) return(0L)
+    
+    # 3. Clean & Standardize
+    names(df) <- .tnb(names(df))
+    df <- dplyr::rename_with(df, ~"parametro", .cols = dplyr::matches("Par.metro|Parametro"))
+    df <- dplyr::rename_with(df, ~"date_raw",  .cols = dplyr::matches("Fecha"))
+    df <- dplyr::rename_with(df, ~"hour_raw",  .cols = dplyr::matches("Hora"))
+    df <- dplyr::rename_with(df, ~"val",       .cols = dplyr::matches("Valor"))
+    
+    df <- df |>
+      dplyr::filter(!is.na(date_raw), !is.na(hour_raw), !is.na(val)) |>
+      dplyr::mutate(
+        hour_int = as.integer(sub(":.*", "", hour_raw)),
+        
+        # Parse Dates (XML returns strings, so we must be robust)
+        date_dt = as.POSIXct(date_raw, format = "%Y-%m-%d", tz = "UTC"),
+        datetime_utc = date_dt + (hour_int * 3600),
+        
+        year_int = as.integer(format(datetime_utc, "%Y")),
+        value_clean = as.numeric(val), # Ensure numeric
+        
+        st_code = meta$code,
+        st_name = meta$name
+      ) |>
+      dplyr::filter(year_int %in% years)
+    
+    if (nrow(df) == 0) return(0L)
+    
+    # 4. Write to DuckDB
+    DBI::dbWriteTable(con, "temp_xlsx_load", df |> 
+                        dplyr::select(datetime_utc, st_name, st_code, year_int, 
+                                      parametro, value_clean), 
+                      append = FALSE, overwrite = TRUE)
+    
+    DBI::dbExecute(con, paste0(
+      "INSERT INTO staging_long SELECT datetime_utc, st_name, st_code, ",
+      "year_int, parametro, value_clean FROM temp_xlsx_load"
+    ))
+    return(nrow(df))
+  }
+  
+  # --- [Step 3C: Execution] ---------------------------------------------------
   total_ins <- 0L
-  for (pth in csvs) {
-    ins <- tryCatch(insert_one(pth), error = function(e) {
-      if (isTRUE(verbose)) message("   ! insert error: ", conditionMessage(e))
-      0L
-    })
-    total_ins <- total_ins + as.integer(ins %||% 0L)
-    if (isTRUE(verbose)) {
-      message("… ", basename(pth), " | inserted=",
-              as.integer(ins %||% 0L))
+  
+  # CSVs
+  if (length(csvs) > 0) {
+    if (isTRUE(verbose)) message("--> Processing CSVs (Wide Format)...")
+    for (pth in csvs) {
+      ins <- tryCatch(insert_one_csv(pth), error = function(e) 0L)
+      total_ins <- total_ins + ins
     }
   }
   
-  n_rows <- DBI::dbGetQuery(
-    con, "SELECT COUNT(*) n FROM staging_long;"
-  )[["n"]]
-  if (!n_rows) stop("No rows loaded into staging_long.")
+  # XLSXs
+  if (!is.null(new_source_files) && length(new_source_files) > 0) {
+    if (isTRUE(verbose)) message("--> Processing XLSX sources (Single Stn)...")
+    for (f in new_source_files) {
+      n <- insert_spreadsheet(f)
+      total_ins <- total_ins + n
+      if (isTRUE(verbose) && n > 0) {
+        message(sprintf("   + %s: %d rows", basename(f), n))
+      }
+    }
+  }
   
-  # ---- step 4: map parámetros; aggregate; station ref ------------------------
-  DBI::dbExecute(
-    con,
-    paste0(
-      "CREATE TABLE long_mapped AS ",
-      "SELECT datetime, station, station_code, year, ",
-      "CASE ",
-      "WHEN UPPER(TRIM(parametro)) IN ",
-      "('PM10','PARTICULAS MENORES A 10 MICRAS') THEN 'pm10' ",
-      "WHEN UPPER(TRIM(parametro)) IN ",
-      "('PM2.5','PM2,5','PARTICULAS MENORES A 2.5') THEN 'pm2.5' ",
-      "WHEN UPPER(TRIM(parametro)) IN ('OZONO','O3') THEN 'ozone' ",
-      "WHEN UPPER(TRIM(parametro)) IN ('DIOXIDO DE NITROGENO','NO2') ",
-      "THEN 'no2' ",
-      "WHEN UPPER(TRIM(parametro)) IN ('OXIDOS DE NITROGENO','NOX') ",
-      "THEN 'nox' ",
-      "WHEN UPPER(TRIM(parametro)) IN ('MONOXIDO DE NITROGENO','NO') ",
-      "THEN 'no' ",
-      "WHEN UPPER(TRIM(parametro)) IN ('MONOXIDO DE CARBONO','CO') ",
-      "THEN 'co' ",
-      "WHEN UPPER(TRIM(parametro)) IN ('DIOXIDO DE AZUFRE','SO2') ",
-      "THEN 'so2' ",
-      "WHEN UPPER(TRIM(parametro)) IN ('DIOXIDO DE CARBONO','CO2') ",
-      "THEN 'co2' ",
-      "WHEN UPPER(TRIM(parametro)) IN ('TEMPERATURA','TEMP') ",
-      "THEN 'temperatura' ",
-      "WHEN UPPER(TRIM(parametro)) IN ('HUMEDAD RELATIVA','RH') ",
-      "THEN 'rh' ",
-      "WHEN UPPER(TRIM(parametro)) IN ",
-      "('VELOCIDAD DEL VIENTO','VEL VIENTO') THEN 'vel viento' ",
-      "WHEN UPPER(TRIM(parametro)) IN ",
-      "('DIRECCION DEL VIENTO','DIR VIENTO') THEN 'dir viento' ",
-      "WHEN UPPER(TRIM(parametro)) IN ",
-      "('PRESION BAROMETRICA','PRESION BARO') THEN 'presion baro' ",
-      "WHEN UPPER(TRIM(parametro)) IN ('PRECIPITACION','LLUVIA') ",
-      "THEN 'precipitacion' ",
-      "WHEN UPPER(TRIM(parametro)) IN ('RADIACION','RADIACION SOLAR') ",
-      "THEN 'radiation' ",
-      "ELSE NULL END AS var, value ",
-      "FROM staging_long WHERE parametro IS NOT NULL;"
-    )
-  )
+  # --- [Step 4: Mapping] ------------------------------------------------------
+  DBI::dbExecute(con, paste0(
+    "CREATE TABLE long_mapped AS SELECT datetime, station, station_code, year, ",
+    "CASE ",
+    "WHEN UPPER(TRIM(parametro)) IN ",
+    "  ('PM10','PARTICULAS MENORES A 10 MICRAS') THEN 'pm10' ",
+    "WHEN UPPER(TRIM(parametro)) IN ",
+    "  ('PM2.5','PM2,5','PARTICULAS MENORES A 2.5') THEN 'pm25' ",
+    "WHEN UPPER(TRIM(parametro)) IN ('OZONO','O3') THEN 'ozone' ",
+    "WHEN UPPER(TRIM(parametro)) IN ('DIOXIDO DE NITROGENO','NO2') THEN 'no2' ",
+    "WHEN UPPER(TRIM(parametro)) IN ('DIOXIDO DE AZUFRE','SO2') THEN 'so2' ",
+    "WHEN UPPER(TRIM(parametro)) IN ('MONOXIDO DE CARBONO','CO') THEN 'co' ",
+    "ELSE NULL END AS var, value ",
+    "FROM staging_long WHERE parametro IS NOT NULL;"
+  ))
   
-  DBI::dbExecute(
-    con,
-    paste0(
-      "CREATE TABLE aggr AS ",
-      "SELECT datetime, station, station_code, year, var, ",
-      "AVG(value) AS value ",
-      "FROM long_mapped WHERE var IS NOT NULL ",
-      "GROUP BY 1,2,3,4,5;"
-    )
-  )
+  DBI::dbExecute(con, paste0(
+    "CREATE TABLE aggr AS SELECT datetime, station, station_code, year, var, ",
+    "AVG(value) AS value FROM long_mapped WHERE var IS NOT NULL ",
+    "GROUP BY 1,2,3,4,5;"
+  ))
   
-  DBI::dbExecute(
-    con,
-    paste0(
-      "CREATE TABLE st_ref AS ",
-      "SELECT station, station_code FROM (",
-      "SELECT station, station_code, COUNT(*) AS n, ",
-      "ROW_NUMBER() OVER(",
-      "  PARTITION BY station ORDER BY COUNT(*) DESC",
-      ") AS rn ",
-      "FROM aggr ",
-      "WHERE station_code IS NOT NULL AND station_code <> '' ",
-      "GROUP BY 1,2) t WHERE rn = 1;"
-    )
-  )
+  # Ref: Pick canonical Code for each Name to handle slight variations
+  DBI::dbExecute(con, paste0(
+    "CREATE TABLE st_ref AS SELECT station, station_code FROM (",
+    "SELECT station, station_code, COUNT(*) AS n, ",
+    "ROW_NUMBER() OVER(PARTITION BY station ORDER BY COUNT(*) DESC) AS rn ",
+    "FROM aggr WHERE station_code IS NOT NULL AND station_code <> '' ",
+    "GROUP BY 1,2) t WHERE rn = 1;"
+  ))
   
-  # ---- step 5: stream pivot → per-year Parquet (SNAPPY) ----------------------
+  # --- [Step 5: Write Parquet] ------------------------------------------------
   parquet_codec <- "SNAPPY"
   base <- file.path(out_dir, paste0(out_name, "_dataset"))
   dir.create(base, recursive = TRUE, showWarnings = FALSE)
   
   yrs <- sort(unique(years))
+  tz_sql <- .ds(tz)
+  tz_supported <- tryCatch({
+    DBI::dbGetQuery(con, paste0(
+      "SELECT (TIMESTAMP '2000-01-01' AT TIME ZONE ", tz_sql, 
+      ") IS NOT NULL AS ok;"
+    ))$ok[[1]] %||% FALSE
+  }, error = function(e) FALSE)
+  
   for (yy in yrs) {
     if (isTRUE(verbose)) message(sprintf("→ Writing year %d …", yy))
-    DBI::dbExecute(
-      con,
-      sprintf("CREATE TEMP TABLE aggr_y AS
-               SELECT * FROM aggr WHERE year = %d;", yy)
-    )
-    outdir_y <- file.path(base, paste0(sprintf("year=%d", yy), ".parquet"))
-    if (dir.exists(outdir_y)) unlink(outdir_y, recursive = TRUE, force = TRUE)
+    DBI::dbExecute(con, sprintf(
+      "CREATE TEMP TABLE aggr_y AS SELECT * FROM aggr WHERE year = %d;", yy
+    ))
     
-    # Skeleton: LOCAL → UTC if tz_supported; else naive local hours
     hours_sql <- if (tz_supported) {
-      paste0(
-        "SELECT CAST((gs.ts AT TIME ZONE ", .ds(tz), ") AS TIMESTAMP) ",
-        "AS datetime FROM generate_series(",
-        "TIMESTAMP '", yy, "-01-01 00:00:00', ",
-        "TIMESTAMP '", yy, "-12-31 23:00:00', ",
-        "INTERVAL 1 HOUR) AS gs(ts)"
-      )
+      paste0("SELECT CAST((gs.ts AT TIME ZONE ", tz_sql, ") AS TIMESTAMP) ",
+             "AS datetime FROM generate_series(TIMESTAMP '", 
+             yy, "-01-01 00:00:00', TIMESTAMP '", 
+             yy, "-12-31 23:00:00', INTERVAL 1 HOUR) AS gs(ts)")
     } else {
-      paste0(
-        "SELECT gs.ts AS datetime FROM generate_series(",
-        "TIMESTAMP '", yy, "-01-01 00:00:00', ",
-        "TIMESTAMP '", yy, "-12-31 23:00:00', ",
-        "INTERVAL 1 HOUR) AS gs(ts)"
-      )
+      paste0("SELECT gs.ts AS datetime FROM generate_series(TIMESTAMP '", 
+             yy, "-01-01 00:00:00', TIMESTAMP '", 
+             yy, "-12-31 23:00:00', INTERVAL 1 HOUR) AS gs(ts)")
     }
     
     sql_copy_y <- paste0(
       "COPY (",
       "WITH stations AS (SELECT DISTINCT station FROM aggr_y), ",
       "hours AS (", hours_sql, "), ",
-      "sk AS (SELECT s.station, h.datetime ",
-      "       FROM stations s CROSS JOIN hours h) ",
-      "SELECT ",
-      "  sk.datetime, sk.station, sr.station_code, ", yy, " AS year, ",
-      "  AVG(CASE WHEN a.var='pm2.5'        THEN a.value END) AS \"pm2.5\", ",
-      "  AVG(CASE WHEN a.var='pm10'         THEN a.value END) AS pm10, ",
-      "  AVG(CASE WHEN a.var='no'           THEN a.value END) AS no, ",
-      "  AVG(CASE WHEN a.var='no2'          THEN a.value END) AS no2, ",
-      "  AVG(CASE WHEN a.var='co'           THEN a.value END) AS co, ",
-      "  AVG(CASE WHEN a.var='co2'          THEN a.value END) AS co2, ",
-      "  AVG(CASE WHEN a.var='nox'          THEN a.value END) AS nox, ",
-      "  AVG(CASE WHEN a.var='so2'          THEN a.value END) AS so2, ",
-      "  AVG(CASE WHEN a.var='ozone'        THEN a.value END) AS ozone, ",
-      "  AVG(CASE WHEN a.var='presion baro' THEN a.value END) ",
-      "    AS \"presion baro\", ",
-      "  AVG(CASE WHEN a.var='rh'           THEN a.value END) AS rh, ",
-      "  AVG(CASE WHEN a.var='vel viento'   THEN a.value END) ",
-      "    AS \"vel viento\", ",
-      "  AVG(CASE WHEN a.var='dir viento'   THEN a.value END) ",
-      "    AS \"dir viento\", ",
-      "  AVG(CASE WHEN a.var='precipitacion' THEN a.value END) ",
-      "    AS precipitacion, ",
-      "  AVG(CASE WHEN a.var='radiation'    THEN a.value END) ",
-      "    AS radiation, ",
-      "  AVG(CASE WHEN a.var='temperatura'  THEN a.value END) ",
-      "    AS temperatura ",
+      "sk AS (SELECT s.station, h.datetime FROM stations s ",
+      "       CROSS JOIN hours h) ",
+      "SELECT sk.datetime, sk.station, sr.station_code, ", yy, " AS year, ",
+      " AVG(CASE WHEN a.var='pm25' THEN a.value END) AS pm25, ",
+      " AVG(CASE WHEN a.var='pm10' THEN a.value END) AS pm10, ",
+      " AVG(CASE WHEN a.var='no2' THEN a.value END) AS no2, ",
+      " AVG(CASE WHEN a.var='so2' THEN a.value END) AS so2, ",
+      " AVG(CASE WHEN a.var='co' THEN a.value END) AS co, ",
+      " AVG(CASE WHEN a.var='ozone' THEN a.value END) AS ozone ",
       "FROM sk ",
       "LEFT JOIN st_ref sr ON sk.station = sr.station ",
       "LEFT JOIN aggr_y a ON sk.station = a.station ",
-      " AND COALESCE(sr.station_code, a.station_code) = a.station_code ",
-      " AND sk.datetime = a.datetime ",
-      "GROUP BY 1,2,3 ",
-      "ORDER BY sk.station, sk.datetime ",
-      ") TO ",
-      .ds(base),
-      " (FORMAT PARQUET, COMPRESSION ", parquet_codec,
+      "  AND COALESCE(sr.station_code, a.station_code) = a.station_code ",
+      "  AND sk.datetime = a.datetime ",
+      "GROUP BY 1,2,3 ORDER BY sk.station, sk.datetime ",
+      ") TO ", .ds(base), " (FORMAT PARQUET, COMPRESSION ", parquet_codec, 
       ", PARTITION_BY (year), OVERWRITE_OR_IGNORE TRUE);"
     )
     
     DBI::dbExecute(con, sql_copy_y)
     DBI::dbExecute(con, "DROP TABLE aggr_y;")
-    if (isTRUE(verbose)) message(sprintf("✓ Year %d done.", yy))
   }
   
-  n_pq <- length(list.files(base, pattern = "\\.parquet$", recursive = TRUE))
-  if (isTRUE(verbose)) message(sprintf("Parquet files written: %d", n_pq))
-  if (n_pq == 0) stop("No Parquet files were written.")
-  
-  ds <- arrow::open_dataset(base)
   if (isTRUE(cleanup)) {
     invisible(lapply(csvs, function(f) try(unlink(f), TRUE)))
   }
-  ds
+  arrow::open_dataset(base)
 }
 
 
@@ -4362,13 +4460,15 @@ cdmx_download_census_data <- function(
 # ============================================================================================
 
 # ============================================================================================
-# Function: cdmx_merge_pollution_csvs
-# @Arg  : downloads_folder  — folder with .csv files (recursive = TRUE)
-# @Arg  : tz                — Olson tz for final relabel (default "America/Mexico_City")
-# @Arg  : years             — integer vector of years to keep (UTC/local)
-# @Arg  : cleanup           — remove source CSVs after success (default FALSE)
-# @Arg  : out_dir, out_name — output location (dataset goes to "<name>_dataset/")
-# @Arg  : write_parquet     — TRUE → write Parquet artifacts
+# Function: cdmx_merge_pollution_data
+# @Arg  : primary_data_dir   — folder with .csv files 
+# @Arg  : secondary_data_dir — folder with .xls/xlsx files
+# @Arg  : stations_sf        — sf dataframe containing stations' info
+# @Arg  : tz                 — Olson tz for final relabel (default "America/Mexico_City")
+# @Arg  : years              — integer vector of years to keep (UTC/local)
+# @Arg  : cleanup            — remove source CSVs after success (default FALSE)
+# @Arg  : out_dir, out_name  — output location (dataset goes to "<name>_dataset/")
+# @Arg  : write_parquet      — TRUE → write Parquet artifacts
 #                             • memory: per-year partitioned dataset via {arrow}
 #                             • duckdb: per-year partitioned dataset via COPY
 # @Arg  : write_rds, write_csv — optional single-file extras (memory engine)
@@ -4382,76 +4482,70 @@ cdmx_download_census_data <- function(
 # @Written_on: 20/08/2025
 # @Written_by: Marcos Paulo
 # ============================================================================================
-cdmx_merge_pollution_csvs <- function(
-    downloads_folder,
-    tz               = "America/Mexico_City",
-    years            = 2000:2023,
-    cleanup          = FALSE,
+cdmx_merge_pollution_data <- function(
+    primary_data_dir,        
+    secondary_data_dir = NULL,
+    stations_sf = NULL,
+    tz = "America/Mexico_City",
+    years = 2000:2023,
+    cleanup = FALSE,
     out_dir,
     out_name,
-    write_parquet    = TRUE,
-    write_rds        = FALSE,
-    write_csv        = FALSE,
-    verbose          = TRUE,
-    engine           = c("auto","duckdb","memory"),
-    stations_keep_codes = NULL
+    write_parquet = TRUE,
+    verbose = TRUE,
+    engine = "duckdb"
 ) {
-  engine <- match.arg(engine)
   
-  # ---- (1) discover CSV files -----------------------------------------------
-  csvs <- list.files(
-    downloads_folder, pattern = "\\.csv$", full.names = TRUE, recursive = TRUE
-  )
-  if (!length(csvs)) stop("No CSV files found under: ", downloads_folder)
-  yrs <- sort(unique(years))
-  
-  # ---- (2) RAM detection + engine rule --------------------------------------
-  if (!requireNamespace("memuse", quietly = TRUE)) {
-    stop("Package 'memuse' is required for RAM detection.")
-  }
-  ram_gb <- memuse::Sys.meminfo()[1]$totalram@size
-  run_parallel <- (ram_gb > 31)
-  
-  if (engine == "auto") {
-    engine <- if (ram_gb > 64) "memory" else "duckdb"
-  }
-  if (isTRUE(verbose)) {
-    message(sprintf("Engine=%s | RAM=%.1f GB | years=%d | parallel=%s",
-                    engine, ram_gb, length(yrs),
-                    ifelse(run_parallel, "yes", "no")))
+  # 1. Prepare Lookup
+  st_lookup <- NULL
+  if (!is.null(stations_sf)) {
+    st_lookup <- .prepare_station_lookup(stations_sf)
+    if(verbose) message(sprintf("Generated lookup for %d valid stations.", nrow(st_lookup)))
   }
   
-  # ---- (3A) memory engine ----------------------------------------------------
-  if (engine == "memory") {
-    return(
-      .cdmx_merge_memory_engine(
-        csvs                = csvs,
-        years               = yrs,
-        tz                  = tz,
-        out_dir             = out_dir,
-        out_name            = out_name,
-        write_parquet       = write_parquet,
-        write_rds           = write_rds,
-        write_csv           = write_csv,
-        cleanup             = cleanup,
-        verbose             = verbose,
-        stations_keep_codes = stations_keep_codes
-      )
+  # 2. Discover Files
+  csvs <- list.files(primary_data_dir, pattern = "\\.csv$", 
+                     full.names = TRUE, recursive = TRUE)
+  
+  new_files <- character()
+  if (!is.null(secondary_data_dir) && dir.exists(secondary_data_dir)) {
+    # Match both .xls and .xlsx
+    new_files <- list.files(secondary_data_dir, pattern = "\\.xls$|\\.xlsx$", 
+                            full.names = TRUE, recursive = TRUE)
+  }
+  
+  if (length(csvs) == 0 && length(new_files) == 0) stop("No data files found.")
+  
+  # 3. Run Engine
+  # We now pass the raw XLS/XLSX files directly to the engines
+  if (engine == "duckdb") {
+    .cdmx_merge_duckdb_engine(
+      csvs = csvs,
+      new_source_files = new_files,
+      station_lookup = st_lookup,
+      years = years,
+      tz = tz,
+      out_dir = out_dir,
+      out_name = out_name,
+      cleanup = cleanup,
+      run_parallel = TRUE,
+      verbose = verbose
+    )
+  } else {
+    .cdmx_merge_memory_engine(
+      csvs = csvs,
+      new_source_files = new_files,
+      station_lookup = st_lookup,
+      years = years,
+      tz = tz,
+      out_dir = out_dir,
+      out_name = out_name,
+      write_parquet = write_parquet,
+      write_rds = TRUE, write_csv = FALSE,
+      cleanup = cleanup,
+      verbose = verbose
     )
   }
-  
-  # ---- (3B) duckdb engine ----------------------------------------------------
-  .cdmx_merge_duckdb_engine(
-    csvs                = csvs,
-    years               = yrs,
-    tz                  = tz,
-    out_dir             = out_dir,
-    out_name            = out_name,
-    cleanup             = cleanup,
-    run_parallel        = run_parallel,
-    verbose             = verbose,
-    stations_keep_codes = stations_keep_codes
-  )
 }
 
 
@@ -4567,4 +4661,372 @@ cdmx_filter_stations_in_metro <- function(
   }
 
   return(out)
+}
+
+
+# -----------------------------------------------------------------------------
+# Function: mexico_filter_census
+# @Arg       : census_dir  — folder containing Censo2020_CA_*.zip files
+# @Arg       : out_dir     — where to write the extracted PersonasXX.csv files
+# @Arg       : overwrite   — re-extract if output file exists (default FALSE)
+# @Arg       : quiet       — suppress messages (default FALSE)
+# @Output    : tibble with columns: file, size, type, state_zip
+# @Purpose   : Scan folder for Mexico Census 2020 Zips (CSV format), locate 
+#              the "Personas" file inside each, and extract it directly to
+#              out_dir (flattening structure).
+# @Written_on: 05/09/2025
+# @Written_by: Marcos Paulo
+# -----------------------------------------------------------------------------
+mexico_filter_census <- function(
+    census_dir = here::here("data", "downloads", "census_mx"),
+    out_dir    = here::here("data", "raw", "census", "Mexico_2020"),
+    overwrite  = FALSE,
+    quiet      = FALSE
+) {
+  # --- 1. Checks and Setup ----------------------------------------------------
+  if (!dir.exists(census_dir)) stop("Census source dir not found: ", census_dir)
+  
+  for (pkg in c("tibble", "tools", "utils")) {
+    if (!requireNamespace(pkg, quietly = TRUE)) {
+      stop("Package '", pkg, "' is required.")
+    }
+  }
+  
+  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+  
+  # --- 2. Locate Source Zips --------------------------------------------------
+  # Pattern matches "Censo2020_CA_" + any state code + "_csv.zip"
+  zip_files <- list.files(
+    census_dir, 
+    pattern    = "Censo2020_CA_.*_csv\\.zip$", 
+    full.names = TRUE, 
+    ignore.case = TRUE
+  )
+  
+  if (length(zip_files) == 0) {
+    stop("No census ZIP files found in: ", census_dir)
+  }
+  
+  if (!quiet) {
+    message("🔎 Found ", length(zip_files), " ZIPs in source directory.")
+  }
+  
+  extracted_files <- character()
+  
+  # --- 3. Process Each Zip ----------------------------------------------------
+  for (zip_path in zip_files) {
+    zip_name <- basename(zip_path)
+    
+    # List contents of the ZIP without extracting
+    # unzip(list=TRUE) returns a dataframe with Name, Length, Date
+    zip_contents <- utils::unzip(zip_path, list = TRUE)
+    
+    # Find the "Personas" file (usually in 'conjunto_de_datos/' subfolder)
+    # We look for 'Personas' followed by digits (the state code) and .csv
+    target_row <- grep(
+      pattern = "Personas[0-9]+\\.[Cc][Ss][Vv]$", 
+      x       = zip_contents$Name, 
+      value   = FALSE
+    )
+    
+    if (length(target_row) == 0) {
+      warning("⚠️  Skipping ", zip_name, ": 'Personas' CSV not found inside.")
+      next
+    }
+    
+    # Get the full internal path (e.g., "conjunto_de_datos/Personas09.csv")
+    file_internal <- zip_contents$Name[target_row[1]]
+    file_base     <- basename(file_internal)
+    dest_path     <- file.path(out_dir, file_base)
+    
+    # Check overwrite condition
+    if (file.exists(dest_path) && !isTRUE(overwrite)) {
+      if (!quiet) message("↪︎ Skipped (exists): ", file_base)
+      extracted_files <- c(extracted_files, dest_path)
+      next
+    }
+    
+    # Extract ONLY that specific file
+    # junkpaths = TRUE flattens the structure (drops 'conjunto_de_datos/')
+    if (!quiet) message("📦 Extracting ", file_base, " from ", zip_name)
+    
+    tryCatch({
+      utils::unzip(
+        zipfile   = zip_path,
+        files     = file_internal,
+        exdir     = out_dir,
+        junkpaths = TRUE,
+        overwrite = TRUE
+      )
+      extracted_files <- c(extracted_files, dest_path)
+    }, error = function(e) {
+      warning("❌ Failed to extract ", file_base, ": ", e$message)
+    })
+  }
+  
+  # --- 4. Build Index ---------------------------------------------------------
+  if (length(extracted_files) == 0) {
+    if (!quiet) message("ℹ️  No files were extracted or found.")
+    return(tibble::tibble(
+      file = character(), 
+      size = numeric(), 
+      type = character()
+    ))
+  }
+  
+  # Standardize paths and get info
+  extracted_files <- normalizePath(extracted_files, mustWork = FALSE)
+  info <- file.info(extracted_files)
+  
+  index <- tibble::tibble(
+    file = extracted_files,
+    size = info$size,
+    type = tools::file_ext(extracted_files)
+  )
+  
+  if (!quiet) {
+    message("✅ Process complete. ", nrow(index), " files available in output.")
+  }
+  
+  return(index)
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: mexico_harmonize_census_data
+# @Arg extract_index: Tibble output from mexico_filter_census (file list)
+# @Arg metro_codes  : Vector of "SSMMM" strings (State+Muni) to keep. 
+#                     If NULL, keeps all.
+# @Arg out_dir      : Where to save the processed individual and collapsed data
+# @Arg quiet        : Suppress progress messages
+#
+# @Output           : Saves CSV files; returns list of processed dataframes
+# @Purpose          : Replicates Stata logic: Harmonizes education (escoacum), 
+#                     creates labor/demographic dummies, filters adults (25+), 
+#                     and collapses to municipality level (CVE_MUN).
+#
+# @Written_on       : 05/02/2026
+# @Written_by       : Marcos Paulo
+# --------------------------------------------------------------------------------------------
+mexico_harmonize_census_data <- function(
+    extract_index,
+    metro_codes = NULL,
+    out_dir     = here::here("data", "working_data", "Mexico_2020"),
+    quiet       = FALSE
+) {
+  
+  # --- 1. Checks & Setup -----------------------------------------------------
+  if (!requireNamespace("dplyr", quietly = TRUE)) stop("dplyr required.")
+  if (!requireNamespace("vroom", quietly = TRUE)) stop("vroom required.")
+  if (!requireNamespace("stringr", quietly = TRUE)) stop("stringr required.")
+  
+  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+  
+  # --- 2. Helper: Stata Education Logic Replica ------------------------------
+  # Applies the exact 'replace' cascade found in the Stata code.
+  harmonize_education_mx <- function(df) {
+    # Ensure inputs are numeric to match Stata behavior
+    df <- df %>%
+      dplyr::mutate(
+        ac = as.numeric(ESCOACUM), # escoacum
+        na = as.numeric(NIVACAD),  # nivacad
+        es = as.numeric(ESCOLARI)  # escolari
+      )
+    
+    # We use a temporary vector 'val' to mimic Stata's sequential replacement
+    val <- rep(NA_real_, nrow(df))
+    
+    # 1. Base rule: 0 to 12
+    # replace escolaridad = escoacum if (escoacum >= 0 & escoacum <= 12)
+    val <- ifelse(df$ac >= 0 & df$ac <= 12, df$ac, val)
+    
+    # 2. Technical corrections (mapping to 12)
+    # replace escolaridad = 12 if escoacum == 13 & nivacad == 7 (etc)
+    mask_tech_12 <- (df$ac == 13 & df$na %in% c(7, 8, 9))
+    val[mask_tech_12] <- 12
+    
+    # 3. Technical corrections (mapping to 13-16)
+    # replace escolaridad = 13 if nivacad == 8 & escolari == 1 (etc)
+    val[df$na == 8 & df$es == 1] <- 13
+    val[df$na == 8 & df$es == 2] <- 14
+    val[df$na == 8 & df$es == 3] <- 15
+    val[df$na == 8 & df$es == 4] <- 16
+    
+    # 4. Base rule: 13 to 17 and 18 to 19
+    # replace escolaridad = escoacum if ...
+    val <- ifelse(df$ac >= 13 & df$ac <= 17, df$ac, val)
+    val <- ifelse(df$ac >= 18 & df$ac <= 19, df$ac, val)
+    
+    # 5. Professional / Bachelor complete
+    val[df$na == 12] <- 17
+    
+    # 6. Master's Logic (nivacad == 13)
+    val[df$na == 13 & df$es == 1] <- 18
+    val[df$na == 13 & df$es %in% 2:6] <- 19
+    
+    # 7. Previous level cleanup (nivacad 11 -> 17)
+    val[df$na == 11 & df$es %in% 6:8] <- 17
+    val[df$na == 10 & df$es == 6]     <- 17
+    
+    # 8. PhD Logic (nivacad == 14)
+    val[df$na == 14 & df$es == 1] <- 20
+    val[df$na == 14 & df$es == 2] <- 21
+    val[df$na == 14 & df$es == 3] <- 22
+    val[df$na == 14 & df$es >= 4] <- 23
+    
+    # 9. Missing handling
+    val[df$es == 99] <- NA_real_
+    val[df$ac == 99] <- NA_real_
+    val[df$ac == 0]  <- 0
+    
+    # Assign back and create derived dummies
+    df %>%
+      dplyr::mutate(
+        escolaridad = val,
+        no_education = as.numeric(escolaridad == 0),
+        high_school_incomplete = as.numeric(escolaridad >= 1 & escolaridad <= 11),
+        high_school_complete   = as.numeric(escolaridad == 12),
+        college_incomplete     = as.numeric(escolaridad >= 13 & escolaridad <= 16),
+        college_complete       = as.numeric(escolaridad == 17),
+        graduate_educ          = as.numeric(escolaridad >= 18)
+      ) %>%
+      dplyr::select(-ac, -na, -es) # Remove temps
+  }
+  
+  # --- 3. Processing Pipeline ------------------------------------------------
+  process_mx_file <- function(path) {
+    if (!quiet) message("📖 Processing: ", basename(path))
+    
+    # Read raw (all chars for safety)
+    raw <- vroom::vroom(
+      path, 
+      col_types = vroom::cols(.default = "c"), 
+      show_col_types = FALSE,
+      delim = ",",
+      trim_ws = TRUE,
+      na = c("", " ", "NA", "999") # 999 is often NA in age
+    ) %>% 
+      dplyr::rename_with(toupper)
+    
+    # Core transformation
+    df <- raw %>%
+      dplyr::mutate(
+        # ID Generation: ENT (2) + MUN (3)
+        CVE_MUN = as.numeric(sprintf(
+          "%02d%03d", 
+          as.numeric(ENT), 
+          as.numeric(MUN)
+        )),
+        
+        # Demographics
+        # Stata: sexo==3 is Women (In MX census: 1=Hombre, 3=Mujer)
+        women = as.numeric(SEXO == "3"),
+        
+        # Stata: hh_head = parentesco==101
+        hh_head = as.numeric(PARENTESCO == "101"),
+        hh_head_women = as.numeric(hh_head == 1 & women == 1),
+        
+        # Stata: indigena = perte_indigena==1 (clean 9s)
+        pi = as.numeric(PERTE_INDIGENA),
+        indigena = dplyr::case_when(
+          pi == 1 ~ 1,
+          pi == 9 ~ NA_real_,
+          TRUE ~ 0 # Stata implies 0 if not 1 and not 9/missing
+        ),
+        
+        # Age & Adult filter
+        edad_num = as.numeric(EDAD),
+        adult = as.numeric(edad_num >= 25),
+        
+        # Labor: conact specific codes
+        # 10-20 range usually implies working/job
+        ca = as.numeric(CONACT),
+        employed = as.numeric(ca %in% c(10, 20, 13, 14, 15, 16, 17, 18, 19)),
+        
+        # Income
+        ingtrmen = as.numeric(INGTRMEN),
+        
+        # Weights
+        factor = as.numeric(FACTOR)
+      ) %>%
+      harmonize_education_mx()
+    
+    # Filter Metro Area (If codes provided)
+    if (!is.null(metro_codes)) {
+      df <- df %>% dplyr::filter(CVE_MUN %in% metro_codes)
+    }
+    
+    # Return specific columns to save memory
+    df %>%
+      dplyr::select(
+        CVE_MUN, FACTOR = factor,
+        escolaridad, no_education, high_school_incomplete, 
+        high_school_complete, college_incomplete, college_complete, 
+        graduate_educ, employed, ingtrmen, 
+        edad = edad_num, adult, indigena, women, 
+        hh_head, hh_head_women
+      )
+  }
+  
+  # --- 4. Execution Loop -----------------------------------------------------
+  file_list <- extract_index$file
+  
+  if (length(file_list) == 0) stop("No files found in index.")
+  
+  # Map over all files and bind
+  all_census <- dplyr::bind_rows(lapply(file_list, process_mx_file))
+  
+  if (nrow(all_census) == 0) {
+    warning("Resulting dataframe is empty (Check metro_codes?).")
+    return(NULL)
+  }
+  
+  # --- 5. Aggregation (Collapse) ---------------------------------------------
+  if (!quiet) message("📉 Collapsing to Municipality level (Adults 25+)...")
+  
+  # Define variables to sum/mean exactly like Stata
+  collapse_data <- all_census %>%
+    dplyr::filter(adult == 1) %>%
+    dplyr::group_by(CVE_MUN) %>%
+    dplyr::summarise(
+      # Count (sum of weights)
+      n = sum(FACTOR, na.rm = TRUE),
+      
+      # Mean variables
+      escolaridad = weighted.mean(escolaridad, FACTOR, na.rm = TRUE),
+      ingtrmen    = weighted.mean(ingtrmen, FACTOR, na.rm = TRUE),
+      
+      # Sum variables (weighted count of condition)
+      dplyr::across(
+        c(no_education, high_school_incomplete, high_school_complete,
+          college_incomplete, college_complete, graduate_educ, employed),
+        ~ sum(.x * FACTOR, na.rm = TRUE)
+      )
+    ) %>%
+    # Calculate shares
+    dplyr::mutate(
+      dplyr::across(
+        c(no_education, high_school_incomplete, high_school_complete,
+          college_incomplete, college_complete, graduate_educ, employed),
+        ~ .x / n,
+        .names = "share_{.col}_pop"
+      )
+    )
+  
+  # --- 6. Export -------------------------------------------------------------
+  if (!quiet) message("💾 Saving outputs to: ", out_dir)
+  
+  vroom::vroom_write(
+    all_census, 
+    file.path(out_dir, "census_metro_individual_2020.csv"), 
+    delim = ","
+  )
+  
+  vroom::vroom_write(
+    collapse_data, 
+    file.path(out_dir, "collapse_metro_area_2020.csv"), 
+    delim = ","
+  )
+  
+  return(list(individual = all_census, collapsed = collapse_data))
 }
