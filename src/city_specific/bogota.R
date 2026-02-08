@@ -24,6 +24,7 @@ bogota_cfg <- list(
   base_url_rmcab   = "http://rmcab.ambientebogota.gov.co/Report/stationreport",
   base_url_sisaire = "http://sisaire.ideam.gov.co/ideam-sisaire-web/consultas.xhtml",
   base_url_census  = "https://microdatos.dane.gov.co/index.php/catalog/421/get-microdata",
+  base_new_census  = "https://microdatos.dane.gov.co/index.php/catalog/643/get-microdata",
   years            = 2000L:2023L,
   dl_dir           = here::here("data", "downloads", "bogota"),
   out_dir          = here::here("data", "raw"),
@@ -46,8 +47,7 @@ bogota_cfg <- list(
 # --------------------------------------------------------------------------------------------
 # Function: bogota_download_metro_area
 # @Arg level            : "mpio", "depto", or "manzana". 
-#                         Note: "manzana" in 2005 includes rural sections for full coverage.
-# @Arg mgn_year         : 2005 or 2018. Determines the source ZIP and processing logic.
+# @Arg mgn_year         : 2018 or 2005. 
 # @Arg base_url         : base URL of DANE geoportal files.
 # @Arg municipality_codes: character vector of 5-digit codes (e.g. "11001").
 # @Arg download_dir     : where to save the ZIP.
@@ -58,62 +58,79 @@ bogota_cfg <- list(
 #
 # @Output               : Writes a GeoPackage; returns (invisibly) the sf object.
 # @Purpose              : Download admin boundaries and crop to the Bogotá metro area.
-#                         If year=2005 and level=manzana, it merges urban and rural layers.
+#                         Specially handles 2018 Manzana by downloading BOTH Urban and Rural ZIPs.
 #
-# @Written_on           : 20/08/2025
+# @Written_on           : 20/08/2025 (Updated 08/02/2026)
 # @Written_by           : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 bogota_download_metro_area <- function(
-    level              = c("mpio", "depto", "manzana"),
-    mgn_year           = c(2018, 2005),
-    base_url           = bogota_cfg$base_url_shp,
-    municipality_codes = bogota_cfg$city_code_metro,
-    download_dir       = here::here("data", "downloads", "Administrative", "Colombia"),
-    out_file           = here::here("data", "raw", "admin", "Colombia", "bogota_metro.gpkg"),
-    overwrite_zip      = FALSE,
-    overwrite_gpkg     = TRUE,
-    quiet              = FALSE
+    level                  = c("mpio", "depto", "manzana"),
+    mgn_year               = c(2018, 2005),
+    base_url               = bogota_cfg$base_url_shp,
+    municipality_codes     = bogota_cfg$city_code_metro,
+    download_dir           = here::here("data", "downloads", "Administrative", "Colombia"),
+    out_file               = here::here("data", "raw", "admin", "Colombia", "bogota.gpkg"),
+    overwrite_zip          = FALSE,
+    overwrite_gpkg         = TRUE,
+    quiet                  = FALSE
 ) {
   
   level    <- match.arg(tolower(level), c("mpio", "depto", "manzana"))
   mgn_year <- as.numeric(match.arg(as.character(mgn_year), c("2018", "2005")))
   
-  # 1) Define ZIP name based on year and level
+  # ----------------------------------------------------------------------------
+  # 1) Define ZIP names based on year and level
+  # ----------------------------------------------------------------------------
   if (mgn_year == 2018) {
-    zip_name <- switch(level,
-                       "mpio"    = "SHP_MGN2018_INTGRD_MPIO.zip",
-                       "depto"   = "SHP_MGN2018_INTGRD_DEPTO.zip",
-                       "manzana" = "SHP_MGN2018_INTGRD_MANZ.zip")
+    if (level == "manzana") {
+      # 2018 requires TWO files for full coverage at the block/sector level
+      zip_names <- c("SHP_MGN2018_INTGRD_MANZ.zip",   # Urban
+                     "SHP_MGN2018_INTGRD_SECCR.zip")  # Rural Sections
+    } else {
+      zip_names <- switch(level,
+                          "mpio"  = "SHP_MGN2018_INTGRD_MPIO.zip",
+                          "depto" = "SHP_MGN2018_INTGRD_DEPTO.zip")
+    }
   } else {
-    # 2005 data usually comes in a single national ZIP
-    zip_name <- "SHP_MGN2005_COLOMBIA.zip"
+    # 2005 data usually comes in a single national ZIP for all levels
+    zip_names <- "SHP_MGN2005_COLOMBIA.zip"
   }
   
-  zip_url  <- file.path(base_url, zip_name)
-  zip_path <- file.path(download_dir, zip_name)
   dir.create(download_dir, recursive = TRUE, showWarnings = FALSE)
   
-  # 2) Download
-  if (file.exists(zip_path) && !overwrite_zip) {
-    if (!quiet) message("↪︎ ZIP already present: ", basename(zip_path))
-  } else {
-    if (!quiet) message("⬇️  Downloading ", zip_name, " ...")
-    req <- httr::RETRY("GET", zip_url, httr::write_disk(zip_path, overwrite = TRUE), 
-                       times = 5, httr::timeout(3600))
-    if (httr::status_code(req) != 200L) stop("Download failed.")
-  }
-  
-  # 3) Extract
+  # Temporary directory for extraction (unique per run)
   exdir <- file.path(tempdir(), paste0("col_shp_", level, "_", mgn_year))
   if (dir.exists(exdir)) unlink(exdir, recursive = TRUE)
   dir.create(exdir)
-  if (!quiet) message("📦 Extracting archive...")
-  archive::archive_extract(zip_path, dir = exdir)
   
-  # 4) Processing
+  # 2) Loop Download & Extract
+  # ----------------------------------------------------------------------------
+  for (zip_name in zip_names) {
+    zip_url  <- file.path(base_url, zip_name)
+    zip_path <- file.path(download_dir, zip_name)
+    
+    # Download
+    if (file.exists(zip_path) && !overwrite_zip) {
+      if (!quiet) message("↪︎ ZIP already present: ", zip_name)
+    } else {
+      if (!quiet) message("⬇️  Downloading ", zip_name, " ...")
+      req <- httr::RETRY("GET", zip_url, httr::write_disk(zip_path, overwrite = TRUE), 
+                         times = 5, httr::timeout(3600))
+      if (httr::status_code(req) != 200L) stop("Download failed for: ", zip_name)
+    }
+    
+    # Extract into the same temp folder (files usually have distinct names)
+    if (!quiet) message("📦 Extracting ", zip_name, "...")
+    archive::archive_extract(zip_path, dir = exdir)
+  }
+  
+  # 3) Processing Logic
+  # ----------------------------------------------------------------------------
+  
   if (mgn_year == 2005) {
+    # --- 2005 LOGIC (Single Zip) ---
     if (level == "manzana") {
-      if (!quiet) message("🧩 Merging 2005 Urban Manzanas and Rural Sections...")
+      if (!quiet) message("🧩 [2005] Merging Urban Manzanas and Rural Sections...")
       
       path_mza   <- list.files(exdir, pattern = "MGN_Manzana\\.shp$",
                                recursive = TRUE, full.names = TRUE)
@@ -145,7 +162,7 @@ bogota_download_metro_area <- function(
       g_sel <- dplyr::bind_rows(u_processed, r_processed)
       
     } else {
-      # 2005 Mpio or Depto
+      # 2005 Mpio/Depto
       pattern <- if(level == "mpio") "MGN_Municipio\\.shp$" else "MGN_Departamento\\.shp$"
       target_shp <- list.files(exdir, pattern = pattern, recursive = TRUE, full.names = TRUE)
       
@@ -160,21 +177,86 @@ bogota_download_metro_area <- function(
     }
     
   } else {
-    # 2018 Logic
-    shp_files <- list.files(exdir, pattern = "\\.shp$", recursive = TRUE, full.names = TRUE)
-    target_shp <- shp_files[which.max(file.info(shp_files)$size)]
+    # --- 2018 LOGIC (Dual Zips for Manzana) ---
     
-    g_sel <- sf::st_read(target_shp, quiet = TRUE) %>%
-      dplyr::filter(MPIO_CDPMP %in% municipality_codes)
+    if (level == "manzana") {
+      if (!quiet) message("🧩 [2018] Merging Urban Manzanas and Rural Sections...")
+      
+      # 1. Identify Urban File (MANZ)
+      path_mza <- list.files(exdir, pattern = "(?i)MANZ.*\\.shp$",
+                             recursive = TRUE, full.names = TRUE)
+      # 2. Identify Rural File (SECCR / SECCION)
+      # The 2018 rural zip usually contains a file with 'SECCION' or 'SECCR' in name
+      path_rural <- list.files(exdir, pattern = "(?i)(SECCION|SECCR).*\\.shp$",
+                               recursive = TRUE, full.names = TRUE)
+      
+      # Process Urban
+      if (length(path_mza) > 0) {
+        path_mza <- path_mza[which.max(file.info(path_mza)$size)] # Robustness
+        
+        u_processed <- sf::st_read(path_mza, quiet = TRUE) %>%
+          dplyr::rename_with(toupper) %>%
+          dplyr::mutate(
+            MPIO_FULL = as.character(MPIO_CDPMP), # 2018 code is concatenated
+            TIPO      = "Urban Block",
+            GEO_ID    = as.character(COD_DANE_A)  # Unique ID
+          ) %>%
+          dplyr::filter(MPIO_FULL %in% municipality_codes) %>%
+          dplyr::select(MPIO_FULL, TIPO, GEO_ID, dplyr::everything())
+      } else {
+        warning("2018 Urban Manzana shapefile not found.")
+        u_processed <- NULL
+      }
+      
+      # Process Rural
+      if (length(path_rural) > 0) {
+        path_rural <- path_rural[which.max(file.info(path_rural)$size)] # Robustness
+        
+        r_processed <- sf::st_read(path_rural, quiet = TRUE) %>%
+          dplyr::rename_with(toupper) %>%
+          dplyr::mutate(
+            MPIO_FULL = as.character(MPIO_CDPMP),
+            TIPO      = "Rural Section",
+            GEO_ID    = as.character(SECR_CCNCT)
+          ) %>%
+          dplyr::filter(MPIO_FULL %in% municipality_codes) %>%
+          dplyr::select(MPIO_FULL, TIPO, GEO_ID, dplyr::everything())
+      } else {
+        if(!quiet) warning("⚠️ 2018 Rural Sections shapefile not found in extracted folder.")
+        r_processed <- NULL
+      }
+      
+      g_sel <- dplyr::bind_rows(u_processed, r_processed)
+      
+    } else {
+      # 2018 Mpio or Depto
+      pattern <- if(level == "mpio") "(?i)MPIO.*\\.shp$" else "(?i)DEPTO.*\\.shp$"
+      target_shp <- list.files(exdir, pattern = pattern, recursive = TRUE, full.names = TRUE)
+      
+      if(length(target_shp) == 0) stop("Shapefile not found for level: ", level)
+      target_shp <- target_shp[which.max(file.info(target_shp)$size)]
+      
+      g_sel <- sf::st_read(target_shp, quiet = TRUE) %>%
+        dplyr::rename_with(toupper) %>%
+        dplyr::mutate(
+          MPIO_FULL = if("MPIO_CDPMP" %in% names(.)) as.character(MPIO_CDPMP) 
+          else paste0(DPTO_CCDGO, MPIO_CCDGO)
+        ) %>%
+        dplyr::filter(MPIO_FULL %in% municipality_codes) %>%
+        dplyr::select(MPIO_FULL, dplyr::everything())
+    }
   }
   
-  # 5) Export
-  if (nrow(g_sel) == 0) stop("No features found for provided codes.")
+  # 4) Export
+  # ----------------------------------------------------------------------------
+  if (is.null(g_sel) || nrow(g_sel) == 0) stop("No features found for provided codes.")
   
   if (!quiet) message("💾 Writing GeoPackage → ", basename(out_file))
   sf::st_write(g_sel, out_file, delete_dsn = overwrite_gpkg, quiet = TRUE)
   
+  # Cleanup temp files
   unlink(exdir, recursive = TRUE)
+  
   invisible(g_sel)
 }
 
@@ -648,11 +730,6 @@ sisaire_download_department_metadata <- function(
 #             3. "Session Recovery": Forces a browser refresh if a specific date chunk
 #                fails, preventing "zombie" sessions.
 # ----------------------------------------------------------------------------------------
-# @Updates  : Robustly scrape hourly air quality data.
-#             [UPDATE] Fixed "False Positive No Data" bug by clearing old Growl 
-#             messages before every new query.
-#             [UPDATE] Improved Date Injection with .blur() to ensure server sync.
-# --------------------------------------------------------------------------------------
 sisaire_download_hourly_data <- function(
     base_url = bogota_cfg$base_url_sisaire,
     target_depts = bogota_cfg$which_states,
@@ -1452,102 +1529,189 @@ bogota_find_resource_census <- function(url, type = c("BASICO","AMPLIADO")) {
 
 # --------------------------------------------------------------------------------------------
 # Function: bogota_download_census_data
-# @Arg       : type            — "BASICO" or "AMPLIADO"
-# @Arg       : url             — catalog page (default: get-microdata version)
-# @Arg       : download_folder — where to save ZIP (e.g., here('data','downloads','Census'))
-# @Arg       : overwrite       — logical; re-download if file exists (default FALSE)
-# @Arg       : retries         — integer; max HTTP retries (default 5)
-# @Arg       : quiet           — logical; suppress progress (default FALSE)
-# @Output    : tibble with columns: type, file_path, bytes, status
-# @Purpose   : Resolve the direct download link and fetch CG2005 microdata ZIP robustly.
-#              If server enforces reCAPTCHA (HTTP 401/403), returns status 'captcha_required'.
-# @Written_on: 21/08/2025
+# @Arg year            : 2005 or 2018.
+# @Arg type            : [2005 Only] "BASICO" or "AMPLIADO".
+# @Arg regions         : [2018 Only] Regions to fetch (e.g. Bogota).
+# @Arg url             : Catalog URL. Defaults based on year if NULL.
+# @Arg download_folder : Where to save ZIPs.
+# @Arg overwrite       : Logical; re-download if file exists.
+# @Arg retries         : Integer; max HTTP retries.
+# @Arg quiet           : Logical; suppress progress.
+#
+# @Output              : Tibble with cols: year, target, file_path, bytes.
+# @Purpose             : Download Census microdata.
+#                        - 2005: Single national ZIP via helper.
+#                        - 2018: Scrapes download links for specific regions.
+#
+# @Written_on          : 21/08/2025 (Updated 08/02/2026)
 # --------------------------------------------------------------------------------------------
 bogota_download_census_data <- function(
-    type,
-    url             = "https://microdatos.dane.gov.co/index.php/catalog/421/get-microdata",
-    download_folder = here::here('data', 'downloads', 'Census'),
+    year            = 2018,
+    type            = "BASICO",
+    regions         = c("Bogota", "Cundinamarca"),
+    url             = NULL,
+    download_folder = here::here("data", "downloads", "Census"),
     overwrite       = FALSE,
     retries         = 5,
     quiet           = FALSE
 ) {
+  
+  year <- as.numeric(year)
   dir.create(download_folder, recursive = TRUE, showWarnings = FALSE)
   
-  # I) Resolve which resource to fetch
-  res  <- bogota_find_resource_census(url = url, type = type)
-  dest <- file.path(download_folder, res$filename)
-  
-  if (file.exists(dest) && !isTRUE(overwrite)) {
-    if (!quiet) message("↪︎ Already present: ", basename(dest), " (skip).")
-    sz <- suppressWarnings(file.size(dest))
-    return(tibble::tibble(
-      type      = toupper(type),
-      file_path = normalizePath(dest),
-      bytes     = sz,
-      status    = "cached"
-    ))
+  # 1) Set default URLs
+  if (is.null(url)) {
+    if (year == 2005) {
+      url <- paste0("https://microdatos.dane.gov.co/index.php/catalog/421/",
+                    "get-microdata")
+    } else {
+      url <- paste0("https://microdatos.dane.gov.co/index.php/catalog/643/",
+                    "get-microdata")
+    }
   }
   
-  # II) Robust download (direct GET to the /download/<id> link)
-  ua <- httr::user_agent(
-    sprintf("R (%s) / IDB-AirMonitoring", paste(R.version$platform, R.version$version.string))
-  )
-  rq <- httr::RETRY(
-    verb = "GET",
-    url  = res$href,
-    ua,
-    httr::add_headers(Referer = url),
-    httr::write_disk(path = dest, overwrite = TRUE),
-    httr::progress(type = if (quiet) "none" else "down"),
-    times = as.integer(retries),
-    terminate_on = c(200L),
-    quiet = quiet,
-    httr::timeout(60 * 120)  # up to 2h wall time; BASICO is ~2.4 GB
-  )
+  targets <- list()
   
-  code <- httr::status_code(rq)
-  
-  # III) Handle captcha/authorization scenarios gracefully
-  if (code %in% c(401L, 403L)) {
-    if (file.exists(dest)) unlink(dest)
-    warning("Server returned ", code, " (likely requires reCAPTCHA). ",
-            "Open the page in a browser and use the 'Descargar' button, then try again.")
-    return(tibble::tibble(
-      type      = toupper(type),
-      file_path = NA_character_,
-      bytes     = NA_real_,
-      status    = "captcha_required"
-    ))
+  # LOGIC FOR 2005 (Legacy Single File)
+  # ---------------------------------------------------------------------------
+  if (year == 2005) {
+    # Assuming 'bogota_find_resource_census' exists in your environment
+    res <- bogota_find_resource_census(url = url, type = type)
+    
+    targets[[1]] <- list(
+      name     = toupper(type),
+      filename = res$filename,
+      href     = res$href
+    )
+    
+  } else if (year == 2018) {
+    # LOGIC FOR 2018 (Scrape Regional Links)
+    # -------------------------------------------------------------------------
+    if (!quiet) message("🔎 Scraping 2018 Catalog for download links...")
+    
+    ua <- httr::user_agent(
+      sprintf("R (%s) / IDB-AirMonitoring", 
+              paste(R.version$platform, R.version$version.string))
+    )
+    
+    page_req <- httr::GET(url, ua)
+    if (httr::status_code(page_req) != 200) {
+      stop("Failed to access 2018 catalog page.")
+    }
+    
+    # Parse content
+    page_content <- httr::content(page_req, "text", encoding = "UTF-8")
+    
+    # Find links for each requested region
+    for (reg in regions) {
+      # Regex explanation:
+      # 1. Look for title="..." containing the Region name
+      # 2. Look ahead for onclick="..."
+      # 3. Capture the 2nd argument of mostrarModal('file', 'URL')
+      pat <- paste0(
+        "title=\"[^\"]*", reg, "[^\"]*\".*?",
+        "onclick=\"mostrarModal\\('[^']+'\\s*,\\s*'([^']+)"
+      )
+      
+      match_info <- regexec(pat, page_content, ignore.case = TRUE)
+      extracted  <- regmatches(page_content, match_info)[[1]]
+      
+      if (length(extracted) < 2) {
+        warning("⚠️ Could not find download link for region: ", reg)
+        next
+      }
+      
+      clean_url <- trimws(extracted[2])
+      
+      targets[[length(targets) + 1]] <- list(
+        name     = reg,
+        filename = paste0(year, "_", reg, ".zip"),
+        href     = clean_url
+      )
+    }
+    
+    if (length(targets) == 0) {
+      stop("No valid download links found for requested regions.")
+    }
   }
   
-  if (code != 200L) {
-    if (file.exists(dest)) unlink(dest)
-    warning("Download failed with HTTP ", code, " for ", res$href)
-    return(tibble::tibble(
-      type      = toupper(type),
-      file_path = NA_character_,
-      bytes     = NA_real_,
-      status    = paste0("http_", code)
-    ))
+  # Execute downloads loop
+  # ---------------------------------------------------------------------------
+  results_list <- list()
+  
+  for (t in targets) {
+    dest <- file.path(download_folder, t$filename)
+    
+    # A) Check Cache
+    if (file.exists(dest) && !isTRUE(overwrite)) {
+      if (!quiet) message("↪︎ [", t$name, "] Already present (skip).")
+      sz <- suppressWarnings(file.size(dest))
+      
+      results_list[[length(results_list) + 1]] <- tibble::tibble(
+        year      = year,
+        target    = t$name,
+        file_path = normalizePath(dest),
+        bytes     = sz,
+        status    = "cached"
+      )
+      next
+    }
+    
+    # B) Download
+    if (!quiet) message("⬇️  [", t$name, "] Downloading...")
+    
+    ua_str <- sprintf("R (%s) / IDB-Air", R.version$version.string)
+    
+    rq <- httr::RETRY(
+      verb = "GET",
+      url  = t$href,
+      httr::user_agent(ua_str),
+      httr::add_headers(Referer = url),
+      httr::write_disk(path = dest, overwrite = TRUE),
+      httr::progress(type = if (quiet) "none" else "down"),
+      times = as.integer(retries),
+      terminate_on = c(200L),
+      quiet = quiet,
+      httr::timeout(7200) # 2 hours
+    )
+    
+    code <- httr::status_code(rq)
+    
+    # C) Handle Status
+    st_msg <- "ok"
+    
+    if (code %in% c(401L, 403L)) {
+      if (file.exists(dest)) unlink(dest)
+      warning("Server returned ", code, " (Captcha required?) for ", t$name)
+      st_msg <- "captcha_required"
+      
+    } else if (code != 200L) {
+      if (file.exists(dest)) unlink(dest)
+      warning("Download failed HTTP ", code, " for ", t$name)
+      st_msg <- paste0("http_", code)
+      
+    } else {
+      # Size check
+      bytes <- suppressWarnings(file.size(dest))
+      if (is.na(bytes) || bytes < 1e6) {
+        warning("File too small: ", dest)
+        st_msg <- "size_warning"
+      } else {
+        if (!quiet) message("✅ Complete: ", basename(dest))
+      }
+    }
+    
+    # D) Save Result
+    results_list[[length(results_list) + 1]] <- tibble::tibble(
+      year      = year,
+      target    = t$name,
+      file_path = if (st_msg == "ok") normalizePath(dest) else NA_character_,
+      bytes     = if (file.exists(dest)) file.size(dest) else NA_real_,
+      status    = st_msg
+    )
   }
   
-  # IV) Basic validation
-  bytes <- suppressWarnings(file.size(dest))
-  if (is.na(bytes) || bytes < 1e6) {
-    warning("Downloaded file seems too small: ", dest, " (", bytes, " bytes)")
-  }
-  
-  if (!quiet) {
-    message("✅ Downloaded ", basename(dest),
-            " (", format(structure(bytes, class = "object_size")), ")")
-  }
-  
-  tibble::tibble(
-    type      = toupper(type),
-    file_path = normalizePath(dest),
-    bytes     = bytes,
-    status    = "ok"
-  )
+  dplyr::bind_rows(results_list)
 }
 
 
@@ -2222,7 +2386,7 @@ bogota_missing_matrix <- function(merged_tbl,
 
 
 # --------------------------------------------------------------------------------------------
-# Function: bogota_filter_harmonize_census
+# Function: bogota_filter_census
 # @Arg       : census_zip   — path to CG2005_AMPLIADO.zip
 # @Arg       : out_dir      — where to write selected dept folders with CSVs
 # @Arg       : overwrite    — re-extract if output exists (default FALSE)
