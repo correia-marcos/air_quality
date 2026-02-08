@@ -35,7 +35,7 @@ outdir_metadata   <- here::here(bogota_cfg$dl_dir, "stations_metadata")
 
 # Define the file's specific location
 bogota_stations_csv   <- here::here(outdir_stations, "bogota_stations_location.csv")
-bogota_metro_gpkg     <- here::here(outdir_geospatial, "bogota", "bogota_area_metro.gpkg")
+bogota_metro_gpkg     <- here::here(outdir_geospatial, "bogota", "bogota_area_metro_2018.gpkg")
 
 # Read the geospatial data
 stations_bogota   <- read.csv(bogota_stations_csv)
@@ -50,7 +50,8 @@ stations_kept <- bogota_filter_stations_in_metro(
   metadata_dir  = outdir_metadata,
   radius_km     = 20,
   metro_area    = bogota_metro,
-  out_file      = here::here(outdir_geospatial, "bogota", "bogota_stations_buffer_metro.gpkg"))
+  out_file      = here::here(outdir_geospatial, "bogota",
+                             "bogota_2018_stations_buffer_metro.gpkg"))
 
 # Apply function to merge all downloaded file of Bogota metro area into DUCKDB database
 bogota_stations_data <- bogota_process_stations_data_to_parquet(
