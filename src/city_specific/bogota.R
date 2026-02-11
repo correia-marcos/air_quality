@@ -640,10 +640,13 @@ sisaire_download_department_metadata <- function(
         xpath_query <- sprintf("//a[contains(text(), '%s')]", target_text)
         
         row_link <- wait_for(session, "xpath", xpath_query, timeout_page)
+        # Making a double click for Bogotá DC case - very slow / bugged
+        if (dept == "Bogotá D.C.") row_link$click()
+        Sys.sleep(3)
         row_link$click()
         
         # Wait for Detail View
-        Sys.sleep(60)
+        Sys.sleep(80)
         wait_ready(session, timeout_page)
         
         # --- CRITICAL FIX: CLEAN SLATE ---
