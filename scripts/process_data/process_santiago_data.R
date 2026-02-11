@@ -1,21 +1,21 @@
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-# @Goal: Process all downloaded data from the metro area of Ciudad de México ground stations. 
-# The idea here is to transform the initial data CMDX's metro area - with all theirs specifics
-# into a format that is standard for all cities we assess in the project.
+# @Goal: Process all downloaded data from the metro area of Santiago ground stations. 
+# The idea here is to transform the downloaded Santiago's metro area data - with all theirs 
+# specificities into a format that is standard for all cities we assess in the project.
 # 
 # @Description: This script transforms raw monitoring, geospatial, and census data into a 
 #   project-standard format. It includes: (1) Spatial filtering of ground stations within a 
-#   20km metropolitan buffer; (2) Consolidation of SIMAT and SINAICA raw measurements into 
-#   Parquet format; (3) Extraction and harmonization of 2020 Mexican Census microdata (
-#   Extended) to integrate socio-economic indicators into the analysis.
+#   20km metropolitan buffer; (2) Consolidation of SINCA raw measurements into 
+#   Parquet format; (3) Extraction and harmonization of 2017 and 2024 Chilean Census microdata 
+#   to integrate socio-economic indicators into the analysis.
 # 
 # @Summary: 
 #   I.   Setup: Load dependencies, utility functions, and city-specific config.
 #   II.  Import: Read raw geospatial boundaries and station location files.
 #   III. Pollution: Filter stations by buffer and convert data to Parquet.
-#   IV.  Census: Extract and harmonize the Extended 2020 microdata.
+#   IV.  Census: Extract and harmonize the 2017 / 2024 microdata.
 # 
 # @Date: Oct 2025
 # @Author: Marcos
@@ -48,12 +48,12 @@ metro_area       <- sf::st_read(santiago_metro_gpkg)
 # II: Process  data
 # ============================================================================================
 # Apply function to filter the stations in the metro area + 20 km radius
-stations_kept <- bogota_filter_stations_in_metro(
-  stations_df_1 = stations_bogota,
-  metadata_dir  = outdir_metadata,
+stations_kept <- santiago_filter_stations_in_metro(
+  stations_df   = station_location,
   radius_km     = 20,
-  metro_area    = bogota_metro,
-  out_file      = here::here(outdir_geospatial, "bogota", "bogota_stations_buffer_metro.gpkg"))
+  metro_area    = metro_area,
+  out_file      = here::here(outdir_geospatial, "santiago",
+                             "santiago_stations_buffer_metro.gpkg"))
 
 # Apply function to merge all downloaded file of Bogota metro area into DUCKDB database
 bogota_stations_data <- bogota_process_stations_data_to_parquet(
