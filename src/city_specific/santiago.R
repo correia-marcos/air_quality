@@ -599,8 +599,8 @@ santiago_download_pollution <- function(
             ok <- file.copy(downloaded_file, dest, overwrite = TRUE)
             if (ok) {
               unlink(downloaded_file)
-              log[[length(log)+1]] <- list(state=job$state, 
-                                           station=job$station, param=job$param, file=dest, status="OK")
+              log[[length(log)+1]] <- list(state=job$state, station=job$station,
+                                           param=job$param, file=dest, status="OK")
               message("     ✅ Done.")
               success <- TRUE # Breaks the while loop
             } else {
@@ -869,7 +869,7 @@ santiago_download_station_info <- function(
 }
 
 
-# ------------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------
 # Function: santiago_download_census_data
 #
 # @Arg       : type            — string; The dataset to download. Options:
@@ -890,7 +890,7 @@ santiago_download_station_info <- function(
 #
 # @Written_by: Marcos Paulo
 # @Written_on: 10/12/2025
-# ------------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------
 santiago_download_census_data <- function(
     type            = "geo_location",
     url             = santiago_cfg$base_url_census,
@@ -1036,3 +1036,127 @@ santiago_download_census_data <- function(
     ))
   })
 }
+
+
+# ============================================================================================
+#  Bogotá-specific functions - processing data ans its helpers
+# ============================================================================================
+
+# --------------------------------------------------------------------------------------------
+# Function: santiago_filter_stations_in_metro
+# @Arg       : stations_df    — The raw dataframe (station_location)
+# @Arg       : metro_area     — sf (MULTI)POLYGON of the metropolitan area
+# @Arg       : radius_km      — numeric; max distance to keep (default 20)
+# @Arg       : out_file       — where to write the cropped GeoPackage
+# @Arg       : overwrite_gpkg — logical; overwrite output GeoPackage if exists
+# @Arg       : dissolve       — logical; TRUE unions metro polygons (default TRUE)
+# 
+# @Output    : sf POINT data.frame of unique stations inside/near metro_area
+# @Purpose   : Parses text UTM coordinates, converts to sf, and spatially filters.
+# --------------------------------------------------------------------------------------------
+santiago_filter_stations_in_metro <- function(
+    stations_df,
+    metro_area,
+    radius_km      = 20,
+    out_file       = here::here("data", "raw", "geospatial_data", "santiago", "stations.gpkg"),
+    overwrite_gpkg = TRUE,
+    dissolve       = TRUE
+) {
+  
+  # 0) Dependency & Input Checks
+  if (!inherits(metro_area, "sf")) stop("'metro_area' must be an sf object.")
+  
+  # Ensure output directory exists
+  dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
+  
+  message("🔄 Starting Santiago Data Integration...")
+  
+  # PART I: Process & Parse Coordinates
+  # ----------------------------------------------------------------------------
+  # Input format example: "346716 E 6233063 N"
+  # Logic: Extract the first number as X (Easting), second as Y (Northing).
+  # EPSG for Chile (Zone 19S): 32719
+  
+  df_clean <- stations_df |>
+    # 1. Remove rows with empty coords
+    tidyr::drop_na(coordenadas_utm) |>
+    dplyr::filter(coordenadas_utm != "") |>
+    
+    # 2. Extract numeric parts using regex
+    # We capture all digits, assuming the first group is Easting, second is Northing
+    dplyr::mutate(
+      utm_x_str = stringr::str_extract(coordenadas_utm, "^\\d+"),
+      utm_y_str = stringr::str_extract(coordenadas_utm, "\\d+(?=\\s*N$)"), # Digits before 'N'
+      
+      # Fallback regex if the specific structure varies slightly (just grabs 1st and 2nd number)
+      utm_x = as.numeric(ifelse(is.na(utm_x_str), 
+                                stringr::str_split_fixed(coordenadas_utm, "\\D+", 4)[,1], 
+                                utm_x_str)),
+      utm_y = as.numeric(ifelse(is.na(utm_y_str), 
+                                stringr::str_split_fixed(coordenadas_utm, "\\D+", 4)[,2], 
+                                utm_y_str))
+    ) |>
+    
+    # 3. Clean and Reorder Columns (source_url last)
+    dplyr::select(-utm_x_str, -utm_y_str) |>
+    dplyr::relocate(source_url, .after = dplyr::last_col())
+  
+  message("   ✅ Parsed coordinates for ", nrow(df_clean), " stations.")
+  
+  # PART II: Spatial Conversion
+  # ----------------------------------------------------------------------------
+  # Chile is UTM Zone 19S => EPSG:32719
+  stations_sf <- sf::st_as_sf(
+    df_clean,
+    coords = c("utm_x", "utm_y"),
+    crs = 32719 
+  )
+  
+  # PART III: Spatial Filter (Radius Logic)
+  # ----------------------------------------------------------------------------
+  message("🔄 Applying Spatial Filter (Radius: ", radius_km, "km)...")
+  
+  # 1. Prepare Metro Polygon
+  metro_valid <- metro_area %>% 
+    sf::st_cast("MULTIPOLYGON") %>%
+    sf::st_make_valid()
+  if (dissolve) metro_valid <- sf::st_union(metro_valid)
+  
+  # 2. Build Safe AEQD Projection (Same robustness logic as Bogota)
+  # Center on the metro area to create a perfect metric ruler
+  metro_wgs <- sf::st_transform(metro_valid, 4326)
+  cen       <- sf::st_coordinates(sf::st_centroid(metro_wgs))
+  
+  aeqd_proj <- sprintf(
+    "+proj=aeqd +lat_0=%f +lon_0=%f +units=m +datum=WGS84 +no_defs",
+    cen[2], cen[1]
+  )
+  
+  # 3. Transform everything to Meters using that Ruler
+  metro_m    <- sf::st_transform(metro_valid, aeqd_proj)
+  stations_m <- sf::st_transform(stations_sf, aeqd_proj)
+  
+  # 4. Filter
+  radius_m   <- radius_km * 1000
+  within_idx <- sf::st_is_within_distance(stations_m, metro_m, dist = radius_m)
+  keep_mask  <- lengths(within_idx) > 0
+  
+  stations_final <- stations_sf[keep_mask, ]
+  
+  message("     Filter Stats: Input=", nrow(stations_sf), 
+          " -> Output=", nrow(stations_final), 
+          " (Dropped ", nrow(stations_sf) - nrow(stations_final), ")")
+  
+  # PART IV: Save Output
+  # ----------------------------------------------------------------------------
+  if (file.exists(out_file) && !overwrite_gpkg) {
+    message("↪︎ Output exists and overwrite=FALSE. Skipping write.")
+  } else {
+    if (file.exists(out_file)) unlink(out_file)
+    sf::st_write(stations_final, out_file, quiet = TRUE, append = FALSE)
+    message("💾 Saved GeoPackage: ", out_file)
+  }
+  
+  return(stations_final)
+}
+
