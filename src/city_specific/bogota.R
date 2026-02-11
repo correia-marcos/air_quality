@@ -28,7 +28,7 @@ bogota_cfg <- list(
   years            = 2000L:2023L,
   dl_dir           = here::here("data", "downloads", "bogota"),
   out_dir          = here::here("data", "raw"),
-  which_states     = c("Cundinamarca", "Bogotá D.C.", "Huila", "Meta", "Tolima"),
+  which_states     = c("Bogotá D.C.", "Cundinamarca", "Huila", "Meta", "Tolima"),
   cities_in_metro  = c("Bogotá DC", "Bojacá", "Cajicá", "Chía", "Cota", "El Rosal",
                        "Facatativá", "Funza", "Fusagasugá", "Gachancipá", "La Calera", "Madrid",
                        "Mosquera", "Sibaté", "Soacha", "Sopó", "Subachoque", "Tabio", "Tenjo",
@@ -623,7 +623,8 @@ sisaire_download_department_metadata <- function(
         
         # A. Navigate 
         nav_to_dept_search()
-        
+        Sys.sleep(15)
+
         # B. Filter Table
         input_sel <- "input[id*='calTablaCantEst'][id*='filter']"
         inp <- wait_for(session, "css selector", input_sel, timeout_page)
@@ -741,7 +742,6 @@ sisaire_download_hourly_data <- function(
 ) {
   
   # 0) Directories & Docker Setup
-  # ---------------------------------------------------------------------------
   downloads_folder <- Sys.getenv("DOWNLOADS_DIR", 
                                  here::here("data", "downloads"))
   dir.create(downloads_folder, recursive = TRUE, showWarnings = FALSE)
@@ -758,7 +758,6 @@ sisaire_download_hourly_data <- function(
   }
   
   # 1) Docker / Selenium Connection
-  # ---------------------------------------------------------------------------
   if (!container) {
     message("🚀 Starting local Selenium on 4445...")
     img <- "selenium/standalone-firefox:4.34.0-20250717"
@@ -771,10 +770,8 @@ sisaire_download_hourly_data <- function(
     selenium_host <- "selenium";  selenium_port <- 4444L
   }
   
-  # Path inside the container vs host
   dl_dir_cont <- if (container) "/home/seluser/Downloads" else downloads_folder
   
-  # Mime types to accept automatically
   mimes <- paste(
     "text/csv", "application/csv", "text/plain", 
     "application/vnd.ms-excel", sep = ","
@@ -799,9 +796,18 @@ sisaire_download_hourly_data <- function(
   )
   on.exit(session$close(), add = TRUE)
   
-  # --- NEW DYNAMIC HELPERS ---------------------------------------------------
+  # --- HELPERS ---------------------------------------------------------------
   
-  # [FIX] Waits for a spinner (#loading or #loadingResults) to be HIDDEN
+  # Helper to close floating menus preventing clicks
+  close_overlays <- function() {
+    try(session$find_element("css selector", "body")$send_keys(keys$escape), 
+        silent=TRUE)
+    Sys.sleep(0.5)
+    # Click neutral label to blur
+    try(session$execute_script("document.querySelector('label').click();"), 
+        silent=TRUE)
+  }
+  
   wait_spinner_hidden <- function(spin_id, timeout_sec = 60) {
     js_check <- sprintf("
       var el = document.getElementById('%s');
@@ -816,20 +822,27 @@ sisaire_download_hourly_data <- function(
       if (isTRUE(hidden)) return(TRUE)
       
       if (as.numeric(difftime(Sys.time(), t0, units = "secs")) > timeout_sec) {
-        warning("⚠️ Spinner ", spin_id, " didn't hide in time.") 
         return(FALSE)
       }
       Sys.sleep(0.5)
     }
   }
   
-  # Checks if the main app spinner (#loading) is active
   wait_for_main_spinner <- function() {
     Sys.sleep(0.2)
     wait_spinner_hidden("loading", timeout_sec = 30)
   }
   
-  # Helper to select options via JS to bypass overlay issues
+  wait_for_xpath <- function(xpath, s_time=30) {
+    t0 <- Sys.time()
+    while(as.numeric(difftime(Sys.time(), t0, units="secs")) < s_time) {
+      el <- try(session$find_element("xpath", xpath), silent=TRUE)
+      if (!inherits(el, "try-error")) return(el)
+      Sys.sleep(0.5)
+    }
+    stop("Timeout waiting for element: ", xpath)
+  }
+  
   pf_select_option <- function(widget_id, label_text) {
     input_id <- paste0(widget_id, "_input")
     js_code <- sprintf("
@@ -860,17 +873,18 @@ sisaire_download_hourly_data <- function(
   }
   
   setup_form <- function(dept, param) {
-    # Logic: Select Dept -> Wait Station Table -> Select All -> Select Param
     for (attempt in 1:3) {
       tryCatch({
+        close_overlays()
+        
         # 1. Select Department
         pf_select_option("filtroForm\\:departamentoSel", dept)
         
-        # 2. Open Station Dropdown to check if loaded
+        # 2. Open Station Dropdown
         trigger_sel <- '//*[@id="filtroForm:estacionesSel"]/ul'
         wait_for(session, "xpath", trigger_sel, timeout = 10)$click()
         
-        # 3. Wait for "Select All" checkbox (Dynamic, no hard sleep)
+        # 3. Wait for "Select All"
         p_sel <- "#filtroForm\\:estacionesSel_panel"
         chk_sel <- paste0(p_sel, 
                           " .ui-selectcheckboxmenu-header .ui-chkbox-box")
@@ -879,19 +893,21 @@ sisaire_download_hourly_data <- function(
                       silent = TRUE)
         if (inherits(chk_el, "try-error")) stop("Station list didn't load.")
         
-        # 4. Click Select All
         chk_el$click()
         wait_for_main_spinner()
         
-        # Close dropdown
-        session$find_element("css selector", "body")$send_keys(keys$escape)
-        Sys.sleep(1)
+        close_overlays() 
+        message("    Waiting for the table of stations to dropdown.")
+        Sys.sleep(2)
+        wait_for_main_spinner()
         
-        # 5. Select Parameter
+        # 4. Select Parameter
         pf_select_option("filtroForm\\:contaminanteSel", param)
+        wait_for_main_spinner()
         
-        # Verify param is actually set (sometimes UI reverts)
-        js_chk <- "return document.getElementById('filtroForm:contaminanteSel_input').value"
+        # Verify
+        js_chk <-
+          "return document.getElementById('filtroForm:contaminanteSel_input').value"
         curr_param <- session$execute_script(js_chk)
         
         if (!is.null(curr_param) && curr_param != "0" && curr_param != "") {
@@ -901,8 +917,8 @@ sisaire_download_hourly_data <- function(
         message("   ⚠️ Setup attempt ", attempt, " failed: ", e$message)
       })
       
-      # Reset for retry
-      session$find_element("css selector", "body")$send_keys(keys$escape)
+      close_overlays()
+      wait_for_main_spinner()
       Sys.sleep(2)
     }
     return(FALSE) 
@@ -932,22 +948,22 @@ sisaire_download_hourly_data <- function(
         }
       }
       
+      close_overlays()
+      wait_for_main_spinner()
+      
       # Prepare Dates
       lbl_id <- "document.getElementById('filtroForm:labelFIniLimite').click();"
       session$execute_script(lbl_id)
+      Sys.sleep(2)
       
       inp_sel <- "#filtroForm\\:fechaIni_input"
       input_start <- try(session$find_element("css selector", inp_sel), 
                          silent = TRUE)
       
-      if (inherits(input_start, "try-error")) { 
-        message("      ⚠️ Page broken."); next 
-      }
+      if (inherits(input_start, "try-error")) { message("      ⚠️ Broken."); next }
       
       start_val <- input_start$get_attribute("value")
-      if (is.null(start_val) || start_val == "") { 
-        message("      ⚠️ No data start date."); next 
-      }
+      if (is.null(start_val) || start_val == "") { message("      ⚠️ No data."); next }
       
       d_start_avail <- as.Date(start_val)
       d_end_limit   <- as.Date(paste0(max(years_range), "-12-31"))
@@ -972,110 +988,125 @@ sisaire_download_hourly_data <- function(
           chunk_attempt <- chunk_attempt + 1
           if (chunk_attempt > 3) { status <- "failed"; break }
           
-          # Recovery on retry
           if (chunk_attempt > 1) {
             message("      ⚠️ Retry #", chunk_attempt, ". Refreshing...")
             session$navigate(base_url)
             if (!setup_form(dept, param)) { status <- "failed"; break }
+            close_overlays()
           }
           
           try({
             s_start <- format(curr_start, "%Y-%m-%d")
             s_end   <- format(curr_end,   "%Y-%m-%d")
             
-            # 1. Inject Dates
-            # We trigger 'change' AND 'blur' to ensure the server sees it
+            # Inject Dates
             js_dates <- sprintf(paste0(
               "$('#filtroForm\\\\:fechaIni_input').val('%s')",
               ".trigger('change').trigger('blur');",
               "$('#filtroForm\\\\:fechaFin_input').val('%s')",
               ".trigger('change').trigger('blur');"
             ), s_start, s_end)
-            
             session$execute_script(js_dates)
             wait_for_main_spinner()
+            close_overlays() 
             
-            # 2. Select Hourly (Persistent)
+            # Select Hourly
+            trigger_time <- '//*[@id="filtroForm:tipoSel"]/div[3]/span'
+            tm_trigger <- wait_for_xpath(trigger_time, 30)
             pf_select_option("filtroForm\\:tipoSel", "Hora")
+            tm_trigger$click() # Refresh UI
+            tm_trigger$click()
+            close_overlays()
             
-            # 3. Clean Growl & Click Consultar (PERSISTENT CLICKER)
             session$execute_script("$('.ui-growl-item-container').remove();")
-            
             message(sprintf("      🔎 Query: %s to %s", s_start, s_end))
             
-            # Double-tap logic for Consultar
-            btn_js <- "document.getElementById('filtroForm:btnConsultar').click()"
+            # Click Consultar Initial
+            btn_js <-
+              "document.getElementById('filtroForm:btnConsultar').click()"
             session$execute_script(btn_js)
             
-            # Wait 2s, check if spinner appeared. If not, click again.
-            Sys.sleep(2)
-            chk_spin <- 
-              "return document.getElementById('loadingResults').style.display !== 'none';"
-            is_loading <- session$execute_script(chk_spin)
-            
-            if (isFALSE(is_loading)) {
-              # Click again if spinner didn't appear
-              session$execute_script(btn_js)
-            }
-            
-            # Now wait for RESULTS spinner to finish
-            wait_spinner_hidden("loadingResults", timeout_sec = 120)
-            
-            # 4. Check Results
             result_found <- FALSE
             
-            # Quick check for Growl errors immediately after spinner hides
-            js_growl <- "
-               var g = document.querySelector('div.ui-growl-item-container');
-               return (g) ? g.innerText : null;"
-            growl_txt <- session$execute_script(js_growl)
-            
-            if (!is.null(growl_txt)) {
-              if (grepl("65526|mayor a|excede", growl_txt, ignore.case = T)) {
-                message("      📉 Chunk too big. Resizing...")
-                resize_triggered <- TRUE; result_found <- TRUE
-              } else if (grepl("No se encontraron", growl_txt, ignore.case = T)) {
-                message("      ⚠️ No data."); status <- "no_data"
-                result_found <- TRUE
-              } else {
-                status <- "server_error"; result_found <- TRUE
+            # --- POLLING LOOP (Replaces simple wait) ---
+            for(p_wait in 1:300) {
+              
+              # Sleepy Server Logic: Re-click if taking too long
+              if (p_wait %in% c(60, 120, 200)) {
+                message("       💤 Server sleepy. Clicking Consultar again...")
+                session$execute_script(btn_js)
               }
+              
+              # 1. Check Growl
+              js_growl <- "
+                 var g = document.querySelector('div.ui-growl-item-container');
+                 return (g) ? g.innerText : null;"
+              growl_txt <- session$execute_script(js_growl)
+              
+              if (!is.null(growl_txt)) {
+                if (grepl("65526|mayor a|excede", growl_txt, ignore.case=T)) {
+                  message("       📉 Chunk too big. Resizing...")
+                  resize_triggered <- TRUE
+                  result_found <- TRUE
+                  Sys.sleep(20)
+                  break
+                }
+                if (grepl("No se encontraron", growl_txt, ignore.case=T)) {
+                  message("       ⚠️ No data."); status <- "no_data"
+                  result_found <- TRUE; break
+                }
+                if (grepl("error|servidor|fallo", growl_txt, ignore.case=T)) {
+                  status <- "server_error"; result_found <- TRUE; break
+                }
+              }
+              
+              # 2. Check CSV Button
+              js_click_csv <- "
+                 var xp = \"//a[.//span[contains(@class, 'fa-file-text-o')]]\";
+                 var res = document.evaluate(xp, document, null, 
+                           XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+                 var el = res.singleNodeValue;
+                 if (el) { el.click(); return true; }
+                 return false;
+              "
+              was_clicked <- session$execute_script(js_click_csv)
+              
+              if (isTRUE(was_clicked)) {
+                # Double tap check
+                Sys.sleep(5)
+                fnow <- list.files(downloads_folder, full.names=TRUE)
+                if (!any(difftime(Sys.time(), 
+                                  file.info(fnow)$mtime, units="secs") < 10)) {
+                  session$execute_script(js_click_csv)
+                }
+                result_found <- TRUE; status <- "downloading"; break
+              }
+              
+              Sys.sleep(1)
             }
             
-            # If no error yet, look for CSV button
-            if (!result_found) {
-              # Find CSV button
-              xp_csv <- "//a[.//span[contains(@class, 'fa-file-text-o')]]"
-              btn_csv <- try(session$find_element("xpath", xp_csv), silent=T)
+            # --- END POLLING ---
+            
+            if (status == "downloading") {
+              dl_file <- try(wait_for_new_download(
+                downloads_folder, character(0), "\\.(csv|txt)$", 10, 120
+              ), silent = TRUE)
               
-              if (!inherits(btn_csv, "try-error")) {
-                # JS Click is safer for overlays
-                session$execute_script("arguments[0].click();", list(btn_csv))
-                
-                # Wait for file
-                dl_file <- try(wait_for_new_download(
-                  downloads_folder, character(0), "\\.(csv|txt)$", 10, 60
-                ), silent = TRUE)
-                
-                if (!inherits(dl_file, "try-error")) {
-                  result_found <- TRUE
-                  status <- "downloading" # Actually finished
-                  
-                  # Move file
-                  san_dept  <- sanitize_name(dept)
-                  san_param <- sanitize_name(param)
-                  out_name  <- sprintf("%s_%s_%s_%s.csv", 
-                                       san_dept, san_param, s_start, s_end)
-                  dest      <- file.path(final_dir, out_name)
-                  if (file.exists(dest)) unlink(dest)
-                  file.copy(dl_file, dest); unlink(dl_file)
-                  f_path <- dest
-                  message("      ⬇️  Saved: ", out_name)
-                }
+              if (!inherits(dl_file, "try-error")) {
+                san_dept  <- sanitize_name(dept)
+                san_param <- sanitize_name(param)
+                out_name  <- sprintf("%s_%s_%s_%s.csv", 
+                                     san_dept, san_param, s_start, s_end)
+                dest      <- file.path(final_dir, out_name)
+                if (file.exists(dest)) unlink(dest)
+                file.copy(dl_file, dest); unlink(dl_file)
+                f_path <- dest
+                message("       ⬇️  Saved: ", out_name)
               } else {
-                # No CSV button found and no error message -> Likely timeout
-                status <- "timeout"
+                status <- "timeout_dl"
               }
+            } else if (!result_found && !resize_triggered) {
+              status <- "timeout_query"
             }
             
           }) -> try_res
@@ -1085,6 +1116,7 @@ sisaire_download_hourly_data <- function(
           if (status == "failed") break
           
           message("      ⚠️ Retry logic engaged (Status: ", status, ")")
+          close_overlays()
           Sys.sleep(5)
         }
         
@@ -1094,13 +1126,11 @@ sisaire_download_hourly_data <- function(
           next
         }
         
-        # Log result
         log[[length(log) + 1]] <- tibble::tibble(
           dept = dept, param = param, start = curr_start, end = curr_end, 
           status = status, file = f_path
         )
         
-        # If successful download, reset session to keep memory clean
         if (status == "downloading") {
           message("      ♻️  Resetting session...")
           session$navigate("about:blank"); Sys.sleep(0.5)
