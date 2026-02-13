@@ -46,7 +46,7 @@ bogota_metro      <- st_read(bogota_metro_gpkg)
 # ============================================================================================
 # Apply function to filter the stations in the metro area + 20 km radius
 stations_kept <- bogota_filter_stations_in_metro(
-  stations_df_1 = stations_bogota,
+  rmcab_df      = stations_bogota,
   metadata_dir  = outdir_metadata,
   radius_km     = 20,
   metro_area    = bogota_metro,
@@ -63,29 +63,41 @@ bogota_stations_data <- bogota_process_stations_data_to_parquet(
   out_name       = "bogota_metro"
 )
 
-# Apply function to unpack the extended census data (unzip and filter) then read and process
-process_extended <- bogota_filter_census(
+# Apply function to unpack & filter the 2005 extended census data, then read and process
+process_extended <- bogota_filter_census_2005(
   census_zip = here::here(bogota_cfg$dl_dir, "census", "CG2005_AMPLIADO.zip"),
   out_dir    = here::here("data", "raw", "census", "bogota", "CG2005_EXTENDED"),
   overwrite  = TRUE,
   quiet      = FALSE)
-process_harmonize_extended <- bogota_harmonize_census_data(
+process_harmonize_extended <- bogota_harmonize_census_2005_data(
   extract_list = process_extended,
   metro_codes  = bogota_cfg$city_code_metro,
-  out_dir      = here::here("data", "interim", "census", "bogota_extended"))
+  out_dir      = here::here("data", "interim", "census", "bogota_extended_2005"))
 
-# Apply function to unpack the basic census data (unzip and filter) then read and process
-process_basic <- bogota_filter_census(
+# Apply function to unpack & filter the 2005 basic census data, then read and process
+process_basic <- bogota_filter_census_2005(
   census_zip = here::here(bogota_cfg$dl_dir, "census", "CG2005_BASICO.zip"),
   out_dir    = here::here("data", "raw", "census", "bogota", "CG2005_BASIC"),
   overwrite  = FALSE,
   quiet      = FALSE
 )
-process_harmonize_basic <- bogota_harmonize_census_data(
+process_harmonize_basic <- bogota_harmonize_census_2005_data(
   extract_list = process_basic,
   is_extended  = FALSE,
   metro_codes  = bogota_cfg$city_code_metro,
-  out_dir      = here::here("data", "interim", "census", "bogota_basic"))
+  out_dir      = here::here("data", "interim", "census", "bogota_basic_2005"))
+
+# Apply function to unpack & filter the 2005 basic census data, then read and process
+process_2018 <- bogota_filter_census_2018(
+  census_folder = here::here(bogota_cfg$dl_dir, "census"),
+  out_dir       = here::here("data", "raw", "census", "bogota", "CNPV_2018"),
+  overwrite     = FALSE,
+  quiet         = FALSE
+)
+process_harmonize_2018 <- bogota_harmonize_census_2018_data(
+  extract_paths = process_2018,
+  metro_codes   = bogota_cfg$city_code_metro,
+  out_dir       = here::here("data", "interim", "census", "bogota_2018"))
 
 # Print a success message for when running inside Docker Container
 cat("Script from the IDB projected executed successfully in the Docker container!\n")
