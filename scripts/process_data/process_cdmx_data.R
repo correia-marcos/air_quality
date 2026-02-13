@@ -75,7 +75,7 @@ process_cdmx_census <- mexico_filter_census(
 process_harmonize_census <- mexico_harmonize_census_data(
   extract_index = process_cdmx_census,
   metro_codes  = cdmx_cfg$cities_in_metro,
-  out_dir      = here::here("data", "interim", "census", "cdmx_extended"))
+  out_dir      = here::here("data", "interim", "census", "cdmx_extended_2020"))
 
 # Print a success message for when running inside Docker Container
 cat("Script from the IDB projected executed successfully in the Docker container!\n")
