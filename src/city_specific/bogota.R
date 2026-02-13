@@ -1859,146 +1859,221 @@ bogota_read_one_xlsx <- function(path, tz = "America/Bogota", verbose = FALSE) {
 
 # --------------------------------------------------------------------------------------------
 # Function: bogota_filter_stations_in_metro
-# @Arg       : stations_df_1    — The pre-loaded dataframe (Source I: Bogotá local stations)
-# @Arg       : metadata_dir     — Path to folder with Excel files (Source II: Cundinamarca..)
-# @Arg       : metro_area       — sf (MULTI)POLYGON of the metropolitan area
+# @Arg       : rmcab_df         — Pre-loaded dataframe (RMCAB - Source I)
+# @Arg       : metadata_dir     — Folder with Excel files (SISAIRE - Source II)
+# @Arg       : metro_area       — sf polygon of the metropolitan area
 # @Arg       : radius_km        — numeric; max distance to keep (default 20)
-# @Arg       : stations_epsg    — EPSG for lon/lat (default 4326 WGS84)
-# @Arg       : out_file         — where to write the cropped GeoPackage
-# @Arg       : overwrite_gpkg   — logical; overwrite output GeoPackage if exists
-# @Arg       : dissolve         — logical; TRUE unions metro polygons (default TRUE)
-# @Output    : sf POINT data.frame of unique stations inside/near metro_area
-# @Purpose   : Merges pre-loaded station data with external Excel metadata files,
-#              standardizes coordinates, and spatially filters them.
+# @Arg       : stations_epsg    — EPSG for lon/lat (default 4326)
+# @Arg       : out_file         — output GeoPackage path
+# @Arg       : overwrite_gpkg   — logical; overwrite if exists
+# @Arg       : dissolve         — logical; TRUE unions metro polygons
+# @Output    : sf POINT data.frame
+# @Purpose   : Merges RMCAB (Master) with SISAIRE (Dates), handles specific 
+#              name mismatches, and spatially filters.
+# @Written_on: 25/10/2025
+# @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 bogota_filter_stations_in_metro <- function(
-    stations_df_1,
+    rmcab_df,
     metadata_dir,
     metro_area,
     radius_km      = 20,
     stations_epsg  = 4326,
-    out_file       = here::here("data", "raw", "geospatial_data", "bogota", "stations.gpkg"),
+    out_file       = here::here("data", "raw", "geospatial_data", 
+                                "bogota", "stations.gpkg"),
     overwrite_gpkg = TRUE,
     dissolve       = TRUE
 ) {
   
+  # --- HELPER: Normalize Station Names ---
+  standardize_name <- function(x) {
+    # 1. Basic Cleanup: Uppercase, Trim
+    x <- toupper(trimws(x))
+    # 2. Remove Accents: "BOGOTÁ" -> "BOGOTA"
+    x <- stringi::stri_trans_general(x, id = "Latin-ASCII")
+    # 3. Remove Quotes (e.g. "USME" -> USME)
+    x <- gsub('"', '', x)
+    x
+  }
+  
+  # --- HELPER: Manual Name Corrections ---
+  # Resolves tricky mismatches (SISAIRE Name -> RMCAB Standard Name)
+  apply_manual_mappings <- function(x) {
+    dplyr::case_when(
+      # Map 'P_CAMI - FONTIBÓN' -> 'FONTIBON' to match RMCAB
+      grepl("CAMI.*FONTIBON", x) ~ "FONTIBON",
+      
+      # Map 'CARVAJAL - SEVILLANA' -> 'CARVAJAL-SEVILLANA' (Hyphen spacing)
+      x == "CARVAJAL - SEVILLANA" ~ "CARVAJAL-SEVILLANA",
+      
+      # Ensure 'SAN CRISTOBAL' matches (usually fine, but being safe)
+      x == "SAN CRISTOBAL" ~ "SAN CRISTOBAL",
+      
+      # Ensure 'USAQUEN' matches
+      x == "USAQUEN" ~ "USAQUEN",
+      
+      # Default: Keep as is
+      TRUE ~ x
+    )
+  }
+  
   # 0) Dependency Checks
   if (!inherits(metro_area, "sf")) stop("'metro_area' must be an sf object.")
-  if (!dir.exists(metadata_dir)) stop("Metadata directory not found: ", metadata_dir)
+  if (!dir.exists(metadata_dir)) stop("Metadata dir not found: ", metadata_dir)
   
-  # Ensure output directory exists
   dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
+  message("🔄 Starting Data Integration (RMCAB + SISAIRE)...")
   
-  message("🔄 Starting Data Integration...")
-  
-  # PART I: Process Pre-loaded Dataframe (Bogotá D.C. Stations)
-  # ----------------------------------------------------------------------------
-  df1_clean <- stations_df_1 |>
+  # PART I: Process RMCAB (Primary Source)
+  # ---------------------------------------------------------------------------
+  df1_clean <- rmcab_df |>
     dplyr::select(
       station_name = station,
-      code,
-      altitude_m,
-      height_m,
-      locality,
-      zone_type,
-      station_type,
-      address,
-      lat, 
-      lon
+      code, altitude_m, height_m, locality, 
+      zone_type, station_type, address, lat, lon
     ) |>
-    dplyr::mutate(source = "RMCAB - Bogota")
+    dplyr::mutate(
+      source = "RMCAB",
+      # Standardize RMCAB names
+      join_id = standardize_name(station_name)
+    )
   
-  message("   ✅ Loaded ", nrow(df1_clean), " stations from primary dataframe.")
+  message("   ✅ Loaded ", nrow(df1_clean), " stations from RMCAB.")
   
-  # PART II: Process Excel Files (Surrounding Depts)
-  # ----------------------------------------------------------------------------
-  # Note: Keeping readWorksheetFromFile (XLConnect) per user requirement
+  # PART II: Process SISAIRE (Secondary Source)
+  # ---------------------------------------------------------------------------
   xl_files <- list.files(metadata_dir, pattern = "\\.xls$", full.names = TRUE)
-  xl_files <- xl_files[!grepl("bogota_d_c", basename(xl_files), ignore.case = TRUE)]
   
   if (length(xl_files) == 0) {
-    warning("No .xlsx/.xls files found (excluding bogota_d_c).")
+    warning("No .xlsx/.xls files found.")
     df2_clean <- data.frame()
   } else {
-    message("   📂 Found ", length(xl_files), " external metadata files. Processing...")
+    message("   📂 Found ", length(xl_files), " SISAIRE files. Processing...")
     
     df2_clean <- purrr::map_dfr(xl_files, function(f) {
-      # XLConnect dependency
-      # Ensure 'XLConnect' is loaded: library(XLConnect)
       raw_xl <- XLConnect::readWorksheetFromFile(f, sheet = 1, startRow = 10)
       
       clean_xl <- raw_xl |>
         dplyr::select(
           station_name = `Estación`,
-          address      = `Dirección`,
+          address_sis  = `Dirección`,
           first_date   = `Fecha.primer.registro`,
           last_date    = `Fecha.último.registro`,
-          lat          = `Latitud`,
-          lon          = `Longitud`
+          lat_sis      = `Latitud`,
+          lon_sis      = `Longitud`
         ) |>
         dplyr::mutate(
-          lat = as.numeric(lat),
-          lon = as.numeric(lon),
-          source = paste0("SISAIRE - ", file_path_sans_ext(basename(f)))
+          lat_sis = as.numeric(lat_sis),
+          lon_sis = as.numeric(lon_sis),
+          source_sis = paste0("SISAIRE-", tools::file_path_sans_ext(basename(f)))
         ) |>
-        dplyr::distinct(station_name, .keep_all = TRUE) |>
-        tidyr::drop_na(lat, lon)
+        # Rule 1: Ignore invalid dates
+        dplyr::filter(!is.na(first_date) & !is.na(last_date)) |>
+        dplyr::filter((first_date != "") & (last_date != "")) |>
+        tidyr::drop_na(lat_sis, lon_sis) |>
+        # Rule 2: Standardize & Apply Manual Fixes
+        dplyr::mutate(
+          temp_id = standardize_name(station_name),
+          join_id = apply_manual_mappings(temp_id)
+        )
       
       return(clean_xl)
     })
     
-    message("   ✅ Loaded ", nrow(df2_clean), " unique stations from Excel files.")
+    # Deduplicate: If multiple SISAIRE entries map to same ID (e.g. wrong Fontibon),
+    # we prefer the one that matched our manual mapping or has recent data.
+    # Note: 'P_CAMI - FONTIBON' became 'FONTIBON'. The "wrong" 'FONTIBON' stays 'FONTIBON'.
+    # This creates a collision. We must pick the BEST match.
+    
+    # Simplification: The manual mapping fixed P_CAMI -> FONTIBON.
+    # We now have two rows with join_id = "FONTIBON".
+    # We keep the one that matches RMCAB coordinates best?
+    # Or simply deduplicate by taking the most recent one.
+    
+    df2_clean <- df2_clean |>
+      dplyr::arrange(join_id, desc(last_date)) |>
+      dplyr::distinct(join_id, .keep_all = TRUE)
+    
+    message("   ✅ Loaded ", nrow(df2_clean), " valid stations from SISAIRE.")
   }
   
-  # PART III: Merge and Spatial Conversion
-  # ----------------------------------------------------------------------------
-  all_stations <- dplyr::bind_rows(df1_clean, df2_clean)
-  if (nrow(all_stations) == 0) stop("No stations found in either source.")
+  # PART III: Intelligent Merge
+  # ---------------------------------------------------------------------------
+  if (nrow(df2_clean) > 0) {
+    
+    # A) Join overlapping (RMCAB + SISAIRE Dates)
+    df1_enriched <- df1_clean |>
+      dplyr::left_join(
+        df2_clean |> dplyr::select(join_id, first_date, last_date, source_sis), 
+        by = "join_id"
+      ) |>
+      dplyr::mutate(
+        source = ifelse(!is.na(source_sis), 
+                        paste(source, source_sis, sep = " + "), 
+                        source)
+      ) |>
+      dplyr::select(-source_sis)
+    
+    # B) Add new stations (SISAIRE only)
+    df_new <- df2_clean |>
+      dplyr::filter(!join_id %in% df1_clean$join_id) |>
+      dplyr::select(
+        station_name, 
+        address = address_sis, 
+        lat = lat_sis, 
+        lon = lon_sis,
+        first_date, 
+        last_date,
+        source = source_sis,
+        join_id
+      )
+    
+    all_stations <- dplyr::bind_rows(df1_enriched, df_new)
+    
+  } else {
+    all_stations <- df1_clean
+  }
   
+  all_stations <- dplyr::select(all_stations, -join_id)
+  
+  message("   📊 Merged Total: ", nrow(all_stations), " stations.")
+  
+  # PART IV: Spatial Conversion & Filter
+  # ---------------------------------------------------------------------------
   stations_sf <- sf::st_as_sf(
     all_stations,
     coords = c("lon", "lat"),
     crs = stations_epsg
   )
   
-  # PART IV: Spatial Filter (Radius Logic)
-  # ----------------------------------------------------------------------------
   message("🔄 Applying Spatial Filter (Radius: ", radius_km, "km)...")
   
-  # 1. Prepare Metro Polygon
   metro_valid <- sf::st_make_valid(metro_area)
   if (dissolve) metro_valid <- sf::st_union(metro_valid)
   
-  # 2. Build Safe AEQD Projection (THE FIX)
-  # We convert to WGS84 first so st_centroid gives us degrees (e.g. -74.0, 4.6),
-  # ensuring the PROJ string is valid.
   metro_wgs <- sf::st_transform(metro_valid, 4326)
   cen       <- sf::st_coordinates(sf::st_centroid(metro_wgs))
   
-  # "The Ruler": Azimuthal Equidistant centered on Bogotá
   aeqd_proj <- sprintf(
     "+proj=aeqd +lat_0=%f +lon_0=%f +units=m +datum=WGS84 +no_defs",
     cen[2], cen[1]
   )
   
-  # 3. Transform everything to Meters using that Ruler
   metro_m    <- sf::st_transform(metro_valid, aeqd_proj)
   stations_m <- sf::st_transform(stations_sf, aeqd_proj)
-  
-  # 4. Filter "From the Walls"
-  # st_is_within_distance measures from the closest edge of the polygon.
   radius_m   <- radius_km * 1000
+  
   within_idx <- sf::st_is_within_distance(stations_m, metro_m, dist = radius_m)
   keep_mask  <- lengths(within_idx) > 0
   
   stations_final <- stations_sf[keep_mask, ]
   
-  message("    Filter Stats: Input=", nrow(stations_sf), 
+  message("     Filter Stats: Input=", nrow(stations_sf), 
           " -> Output=", nrow(stations_final), 
           " (Dropped ", nrow(stations_sf) - nrow(stations_final), ")")
   
-  # PART V: Save Output
-  # ----------------------------------------------------------------------------
+  # PART V: Save
+  # ---------------------------------------------------------------------------
   if (file.exists(out_file) && !overwrite_gpkg) {
     message("↪︎ Output exists and overwrite=FALSE. Skipping write.")
   } else {
@@ -2011,46 +2086,55 @@ bogota_filter_stations_in_metro <- function(
 }
 
 
-# ---------------------------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------
 # Function: bogota_process_stations_data_to_parquet
 #
-# @Arg      : rmcab_folder         — string; folder containing RMCAB .xlsx files.
-# @Arg      : sisaire_folder       — string; folder containing SISAIRE .csv files.
-# @Arg      : stations_sf          — sf object; Spatial registry of stations to keep. 
-#                                    Must have column 'station_name'.
-# @Arg      : out_dir              — string; base output directory.
-# @Arg      : out_name             — string; name of the dataset (default "bogota_metro_air").
-# @Arg      : years                — int vector; years to filter/keep (default 2008:2024).
-# @Arg      : include_bogota_sisaire — logical; if TRUE, includes "bogota" files from SISAIRE.
-#                                      Default FALSE (prevents duplication with RMCAB).
-# @Arg      : tz                   — string; Olson timezone (default "America/Bogota").
-# @Arg      : verbose              — logical; print progress messages?
+# @Arg       : rmcab_folder       — string; folder containing RMCAB .xlsx files.
+# @Arg       : sisaire_folder     — string; folder containing SISAIRE .csv files.
+# @Arg       : stations_sf        — sf object; Spatial registry of stations to keep. 
+# @Arg       : out_dir            — string; base output directory.
+# @Arg       : out_name           — string; name of the dataset.
+# @Arg       : years              — int vector; years to filter (default 2008:2024).
+# @Arg       : tz                 — string; Olson timezone (default "America/Bogota").
+# @Arg       : verbose            — logical; print progress messages?
 #
-# @Output   : Arrow Dataset connection.
+# @Output    : Arrow Dataset connection.
 #
-# @Purpose  : Unified ingestion pipeline for Bogota Metro Area air quality.
-#             1. Ingests RMCAB (Excel) data.
-#             2. Ingests SISAIRE (CSV) data (Cundinamarca, etc.).
-#             3. Normalizes all variable names (pm2.5 -> pm25) to a common schema.
-#             4. Filters SISAIRE stations against the provided spatial index (stations_sf).
-#             5. Pivots and writes to Partitioned Parquet via DuckDB.
-#
-# @Written_on: 08/09/2025
+# @Purpose   : Ingests RMCAB and SISAIRE, prioritizes RMCAB values, fills gaps 
+#              with SISAIRE, generates a discrepancy report, and saves to Parquet.
+# @Written_on: 12/12/2025
 # @Written_by: Marcos Paulo
-# ---------------------------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------
 bogota_process_stations_data_to_parquet <- function(
     rmcab_folder,
     sisaire_folder,
     stations_sf,
     out_dir,
-    out_name               = "bogota_metro_air",
-    years                  = bogota_cfg$years,
-    include_bogota_sisaire = FALSE,
-    tz                     = bogota_cfg$tz,
-    verbose                = TRUE
+    out_name        = "bogota_metro_air",
+    years           = bogota_cfg$years,
+    tz              = bogota_cfg$tz,
+    verbose         = TRUE
 ) {
+  
+  # --- HELPER: Normalize Names (Same as spatial function) ---
+  standardize_name <- function(x) {
+    x <- toupper(trimws(x))
+    x <- stringi::stri_trans_general(x, id = "Latin-ASCII")
+    gsub('"', '', x)
+  }
+  
+  apply_manual_mappings <- function(x) {
+    dplyr::case_when(
+      grepl("CAMI.*FONTIBON", x) ~ "FONTIBON",
+      x == "CARVAJAL - SEVILLANA" ~ "CARVAJAL-SEVILLANA",
+      x == "SAN CRISTOBAL" ~ "SAN CRISTOBAL",
+      x == "USAQUEN" ~ "USAQUEN",
+      TRUE ~ x
+    )
+  }
+  
   # 1) Check Dependencies
-  req_pkgs <- c("duckdb", "DBI", "arrow", "tidyr", "dplyr", "readr", "stringr", "sf")
+  req_pkgs <- c("duckdb", "DBI", "arrow", "tidyr", "dplyr", "readr", "stringi", "sf")
   for(p in req_pkgs) {
     if (!requireNamespace(p, quietly = TRUE)) stop(paste("Package", p, "required."))
   }
@@ -2059,11 +2143,13 @@ bogota_process_stations_data_to_parquet <- function(
   if (!inherits(stations_sf, "sf") || !"station_name" %in% names(stations_sf)) {
     stop("'stations_sf' must be an sf object with a 'station_name' column.")
   }
-  # Create a clean look-up vector for filtering
-  valid_stations <- unique(tolower(trimws(stations_sf$station_name)))
+  
+  # Create lookup list (normalized)
+  valid_stations_raw <- unique(stations_sf$station_name)
+  valid_stations_norm <- apply_manual_mappings(standardize_name(valid_stations_raw))
   
   # 3) Setup DuckDB
-  if (verbose) message("⬜️ Starting Unified Engine...")
+  if (verbose) message("⬜️ Starting Unified Engine (DuckDB)...")
   
   dbdir <- tempfile("bogota_unified_", fileext = ".db")
   con   <- DBI::dbConnect(duckdb::duckdb(dbdir = dbdir))
@@ -2072,67 +2158,46 @@ bogota_process_stations_data_to_parquet <- function(
     unlink(dbdir, force = TRUE)
   }, add = TRUE)
   
-  # Optimization
   DBI::dbExecute(con, "PRAGMA memory_limit='8GB';") 
   DBI::dbExecute(con, paste0("PRAGMA threads=", parallel::detectCores() - 1, ";"))
   
-  # Create Staging Table
-  # Note: Added 'source_type' to track RMCAB vs SISAIRE origin
-  DBI::dbExecute(con, "CREATE TABLE staging (
-       datetime TIMESTAMP, 
-       station VARCHAR, 
-       year INTEGER, 
-       param VARCHAR, 
-       value DOUBLE,
-       source_type VARCHAR
-    );"
-  )
+  # Create TWO Staging Tables to handle the merge logic
+  DBI::dbExecute(con, "CREATE TABLE staging_rmcab (
+       datetime TIMESTAMP, station VARCHAR, year INTEGER, param VARCHAR, value DOUBLE
+    );")
   
-  total_rows <- 0
+  DBI::dbExecute(con, "CREATE TABLE staging_sisaire (
+       datetime TIMESTAMP, station VARCHAR, year INTEGER, param VARCHAR, value DOUBLE
+    );")
   
   # ----------------------------------------------------------------------------
-  # PHASE A: Process RMCAB (Excel)
+  # PHASE A: Process RMCAB (Excel) -> staging_rmcab
   # ----------------------------------------------------------------------------
   xlsx_files <- list.files(rmcab_folder, pattern = "\\.xlsx$", full.names = TRUE)
+  count_rmcab <- 0
   
   if (length(xlsx_files) > 0) {
-    if (verbose) message(sprintf("📂 Processing %d RMCAB Excel files...",
-                                 length(xlsx_files)))
+    if (verbose) message(sprintf("📂 Processing %d RMCAB Excel files...", length(xlsx_files)))
     
-    # Internal map for RMCAB -> DB Schema
-    # Fixes the pm2.5 -> pm25 issue specifically for RMCAB files
     rmcab_map <- c(
-      "pm2.5"         = "pm25",
-      "pm10"          = "pm10",
-      "o3"            = "ozone", 
-      "no"            = "no",
-      "no2"           = "no2",
-      "nox"           = "nox",
-      "co"            = "co",
-      "so2"           = "so2",
-      "temperatura"   = "temp",
-      "rh"            = "rh",
-      "presion baro"  = "pressure",
-      "radiation"     = "radiation",
-      "precipitacion" = "precipitation",
-      "vel viento"    = "vel_viento",
-      "dir viento"    = "dir_viento"
+      "pm2.5" = "pm25", "pm10" = "pm10", "o3" = "ozone", "no" = "no", 
+      "no2" = "no2", "nox" = "nox", "co" = "co", "so2" = "so2", 
+      "temperatura" = "temp", "rh" = "rh", "presion baro" = "pressure",
+      "radiation" = "radiation", "precipitacion" = "precipitation",
+      "vel viento" = "vel_viento", "dir viento" = "dir_viento"
     )
     
     for (f in xlsx_files) {
-      # Use your robust reader
       df <- tryCatch(
         bogota_read_one_xlsx(f, tz = tz, verbose = FALSE),
         error = function(e) { warning("Skip Excel: ", basename(f)); return(NULL) }
       )
       if (is.null(df) || nrow(df) == 0) next
       
-      # Filter Year
       df <- df[df$year %in% years, ]
       if (nrow(df) == 0) next
       
-      # Normalize Column Names (The Fix for Question 2)
-      # We rename columns in R before pivoting
+      # Rename columns
       curr_cols <- names(df)
       for (raw_name in names(rmcab_map)) {
         if (raw_name %in% curr_cols) {
@@ -2142,157 +2207,184 @@ bogota_process_stations_data_to_parquet <- function(
       
       # Pivot
       df_long <- tidyr::pivot_longer(
-        df,
-        cols       = -c(datetime, station, year),
-        names_to   = "param",
-        values_to  = "value",
-        values_drop_na = TRUE
+        df, cols = -c(datetime, station, year),
+        names_to = "param", values_to = "value", values_drop_na = TRUE
       )
       
       if (nrow(df_long) > 0) {
-        df_long$source_type <- "RMCAB"
-        duckdb::dbAppendTable(con, "staging", df_long)
-        total_rows <- total_rows + nrow(df_long)
+        # Normalize station names for joining
+        df_long$station <- apply_manual_mappings(standardize_name(df_long$station))
+        
+        # Filter valid stations
+        df_long <- df_long[df_long$station %in% valid_stations_norm, ]
+        
+        if(nrow(df_long) > 0) {
+          duckdb::dbAppendTable(con, "staging_rmcab", df_long)
+          count_rmcab <- count_rmcab + nrow(df_long)
+        }
       }
     }
-  } else {
-    if (verbose) message("⚠️ No RMCAB files found.")
   }
   
   # ----------------------------------------------------------------------------
-  # PHASE B: Process SISAIRE (CSV)
+  # PHASE B: Process SISAIRE (CSV) -> staging_sisaire
   # ----------------------------------------------------------------------------
   csv_files <- list.files(sisaire_folder, pattern = "\\.csv$", full.names = TRUE)
+  count_sisaire <- 0
   
   if (length(csv_files) > 0) {
     if (verbose) message(sprintf("📂 Processing %d SISAIRE CSV files...", length(csv_files)))
     
-    # SISAIRE Map -> DB Schema
     sisaire_map <- c(
-      "PM2.5"         = "pm25", 
-      "PM10"          = "pm10", 
-      "O3"            = "ozone", 
-      "NO2"           = "no2", 
-      "CO"            = "co",
-      "SO2"           = "so2",
-      "TMPR.AIR.10CM" = "temp",
-      "P"             = "pressure",
-      "RGlobal"       = "radiation",
-      "VViento"       = "vel_viento",
-      "DViento"       = "dir_viento"
+      "PM2.5" = "pm25", "PM10" = "pm10", "O3" = "ozone", "NO2" = "no2", 
+      "CO" = "co", "SO2" = "so2", "TMPR.AIR.10CM" = "temp", "P" = "pressure",
+      "RGlobal" = "radiation", "VViento" = "vel_viento", "DViento" = "dir_viento"
     )
     
     for (f in csv_files) {
       fname <- basename(f)
-
-      # 1. Check Bogota Filter
-      if (!include_bogota_sisaire && grepl("^bogota", tolower(fname))) {
-        # Skip if file starts with 'bogota' and we didn't ask for it
-        next 
-      }
       
-      # 2. Identify Variable from Filename or Header
-      # Strategy: Read header first to find the value column
-      # SISAIRE header: Estacion, Fecha.inicial, Fecha.final, [VARIABLE]
+      # Determine Variable
       raw_header <- names(read.csv(f, nrows = 1))
       val_col    <- setdiff(raw_header, c("Estacion", "Fecha.inicial", "Fecha.final"))
+      if (length(val_col) == 0) next
       
-      if (length(val_col) == 0) { warning("No data col in: ", fname); next }
-      
-      # Map the variable name
       db_var <- sisaire_map[[ val_col[1] ]]
-      if (is.null(db_var)) {
-        # If new variable appears (e.g. unknown), normalize it or skip
-        # For now, we lowercase and use as is if not in map
-        db_var <- tolower(val_col[1]) 
-      }
+      if (is.null(db_var)) db_var <- tolower(val_col[1])
       
-      # 3. Read Data (using readr/data.table for speed, fallback base)
+      # Read
       dt <- read.csv(f, stringsAsFactors = FALSE)
+      if(nrow(dt) == 0) next
       
-      # 4. Standardize Columns
-      # Rename 'Estacion' -> 'station', 'Fecha.inicial' -> 'datetime'
+      # Normalize
       dt <- dt |> 
         dplyr::rename(station = Estacion, raw_time = Fecha.inicial, value = !!val_col[1]) |>
         dplyr::select(station, raw_time, value)
       
-      # 5. Filter Stations (Strict Matching)
-      # We normalize both sides to lowercase/trimmed for matching
-      dt <- dt |>
-        dplyr::filter(tolower(trimws(station)) %in% valid_stations)
+      # Station Normalization (CRITICAL STEP)
+      dt$station <- apply_manual_mappings(standardize_name(dt$station))
       
-      if (nrow(dt) == 0) next 
+      # Filter stations
+      dt <- dt[dt$station %in% valid_stations_norm, ]
+      if(nrow(dt) == 0) next
       
-      # 6. Parse DateTime (Robust)
-      # SISAIRE format: "YYYY-MM-DD HH:MM" (e.g., 2016-12-22 23:00)
-      # We assume they are local time Bogota
+      # Parse Time
       dt$datetime <- lubridate::ymd_hm(dt$raw_time, tz = tz, quiet = TRUE)
-      
-      # Drop parsing failures
       dt <- dt[!is.na(dt$datetime), ]
-      if (nrow(dt) == 0) next
       
-      # 7. Add Metadata
       dt$year  <- lubridate::year(dt$datetime)
       dt$param <- db_var
-      dt$source_type <- "SISAIRE"
-      
-      # Filter Years again
       dt <- dt[dt$year %in% years, ]
       
-      # 8. Append to DuckDB
-      # Select only matching columns
-      final_chk <- dt |> dplyr::select(datetime, station, year, param, value, source_type)
+      final_chk <- dt |> dplyr::select(datetime, station, year, param, value)
       
       if (nrow(final_chk) > 0) {
-        duckdb::dbAppendTable(con, "staging", final_chk)
-        total_rows <- total_rows + nrow(final_chk)
+        duckdb::dbAppendTable(con, "staging_sisaire", final_chk)
+        count_sisaire <- count_sisaire + nrow(final_chk)
       }
     }
   }
   
-  # ----------------------------------------------------------------------------
-  # PHASE C: Pivot & Write
-  # ----------------------------------------------------------------------------
+  if (count_rmcab == 0 && count_sisaire == 0) stop("No valid data found.")
+  if (verbose) message("💾 Staging: RMCAB=", count_rmcab, " rows | SISAIRE=",
+                       count_sisaire, " rows")
   
-  if (total_rows == 0) stop("No data found in RMCAB or SISAIRE folders.")
-  if (verbose) message("💾 Staging complete. Total rows: ", total_rows)
+  # ----------------------------------------------------------------------------
+  # PHASE C: Comparison & Reporting
+  # ----------------------------------------------------------------------------
+  report_dir <- file.path(out_dir, "bogota_rmcab_sisaire_comparison")
+  dir.create(report_dir, recursive = TRUE, showWarnings = FALSE)
+  
+  # Comparison Query: Find overlaps and calculate diffs
+  # We join on Station, DateTime, Param
+  sql_diff <- "
+    SELECT 
+      r.station,
+      r.param,
+      COUNT(*) as overlap_count,
+      AVG(ABS(r.value - s.value)) as mean_abs_diff,
+      MAX(ABS(r.value - s.value)) as max_abs_diff
+    FROM staging_rmcab r
+    INNER JOIN staging_sisaire s 
+      ON r.station = s.station 
+      AND r.datetime = s.datetime 
+      AND r.param = s.param
+    GROUP BY r.station, r.param
+    ORDER BY mean_abs_diff DESC;
+  "
+  
+  diff_df <- DBI::dbGetQuery(con, sql_diff)
+  
+  # Save Report
+  diff_file <- file.path(report_dir, "discrepancy_summary.csv")
+  readr::write_csv(diff_df, diff_file)
+  
+  total_overlaps <- sum(diff_df$overlap_count)
+  if (verbose) {
+    message("📊 Discrepancy Check:")
+    message("   Overlapping Data Points: ", format(total_overlaps, big.mark=","))
+    message("   Detailed report saved to: ", diff_file)
+  }
+  
+  # ----------------------------------------------------------------------------
+  # PHASE D: Merge & Pivot (Coalesce Logic)
+  # ----------------------------------------------------------------------------
+  # We use FULL OUTER JOIN to get:
+  # 1. RMCAB only (keep RMCAB)
+  # 2. SISAIRE only (keep SISAIRE)
+  # 3. Both (keep RMCAB via COALESCE)
+  
+  DBI::dbExecute(con, "CREATE TABLE staging_merged AS
+    SELECT 
+      COALESCE(r.datetime, s.datetime) as datetime,
+      COALESCE(r.station, s.station) as station,
+      COALESCE(r.year, s.year) as year,
+      COALESCE(r.param, s.param) as param,
+      -- PRIORITY LOGIC: Use RMCAB if present, else SISAIRE
+      COALESCE(r.value, s.value) as value,
+      CASE 
+        WHEN r.value IS NOT NULL AND s.value IS NOT NULL THEN 'Both (RMCAB kept)'
+        WHEN r.value IS NOT NULL THEN 'RMCAB'
+        ELSE 'SISAIRE'
+      END as source_origin
+    FROM staging_rmcab r
+    FULL OUTER JOIN staging_sisaire s
+      ON r.station = s.station 
+      AND r.datetime = s.datetime 
+      AND r.param = s.param;
+  ")
   
   # Output Path
   dataset_path <- file.path(out_dir, paste0(out_name, "_dataset"))
   if (dir.exists(dataset_path)) unlink(dataset_path, recursive = TRUE)
   
-  # Pivot Query (Updated for Normalized Schema)
-  # Note: Since we normalized 'pm2.5' -> 'pm25' BEFORE inserting,
-  #       we just query for 'pm25' here.
+  # Pivot Query on the MERGED table
   sql_pivot <- "
     COPY (
       SELECT 
         datetime,
         station,
         year,
-        source_type, -- Kept for lineage (might cause split rows if stn has both sources)
-        -- Pollutants
-        AVG(CASE WHEN param = 'pm10'    THEN value END) AS pm10,
-        AVG(CASE WHEN param = 'pm25'    THEN value END) AS pm25, -- Captures normalized input
-        AVG(CASE WHEN param = 'ozone'   THEN value END) AS ozone,
-        AVG(CASE WHEN param = 'no'      THEN value END) AS no,
-        AVG(CASE WHEN param = 'no2'     THEN value END) AS no2,
-        AVG(CASE WHEN param = 'nox'     THEN value END) AS nox,
-        AVG(CASE WHEN param = 'co'      THEN value END) AS co,
-        AVG(CASE WHEN param = 'so2'     THEN value END) AS so2,
-        -- Meteorology
-        AVG(CASE WHEN param = 'temp'        THEN value END) AS temperature,
-        AVG(CASE WHEN param = 'rh'          THEN value END) AS rh,
-        AVG(CASE WHEN param = 'pressure'    THEN value END) AS pressure,
-        AVG(CASE WHEN param = 'radiation'   THEN value END) AS radiation,
+        -- Aggregations to handle potential duplicates (though logic should prevent them)
+        AVG(CASE WHEN param = 'pm10'          THEN value END) AS pm10,
+        AVG(CASE WHEN param = 'pm25'          THEN value END) AS pm25,
+        AVG(CASE WHEN param = 'ozone'         THEN value END) AS ozone,
+        AVG(CASE WHEN param = 'no'            THEN value END) AS no,
+        AVG(CASE WHEN param = 'no2'           THEN value END) AS no2,
+        AVG(CASE WHEN param = 'nox'           THEN value END) AS nox,
+        AVG(CASE WHEN param = 'co'            THEN value END) AS co,
+        AVG(CASE WHEN param = 'so2'           THEN value END) AS so2,
+        AVG(CASE WHEN param = 'temp'          THEN value END) AS temperature,
+        AVG(CASE WHEN param = 'rh'            THEN value END) AS rh,
+        AVG(CASE WHEN param = 'pressure'      THEN value END) AS pressure,
+        AVG(CASE WHEN param = 'radiation'     THEN value END) AS radiation,
         AVG(CASE WHEN param = 'precipitation' THEN value END) AS precipitation,
-        AVG(CASE WHEN param = 'vel_viento'  THEN value END) AS wind_speed,
-        AVG(CASE WHEN param = 'dir_viento'  THEN value END) AS wind_dir
-      FROM staging
-      -- Group by source_type too if you want to distinguish rows
-      -- Or remove it from GROUP BY to merge sources (taking AVG of overlaps)
-      GROUP BY datetime, station, year, source_type
+        AVG(CASE WHEN param = 'vel_viento'    THEN value END) AS wind_speed,
+        AVG(CASE WHEN param = 'dir_viento'    THEN value END) AS wind_dir,
+        -- Track dominant source for lineage
+        FIRST(source_origin) as primary_source
+      FROM staging_merged
+      GROUP BY datetime, station, year
       ORDER BY station, datetime
     ) TO '%s' (
       FORMAT PARQUET, 
@@ -2397,7 +2489,7 @@ bogota_missing_matrix <- function(merged_tbl,
 
 
 # --------------------------------------------------------------------------------------------
-# Function: bogota_filter_census
+# Function: bogota_filter_census_2005
 # @Arg       : census_zip   — path to CG2005_AMPLIADO.zip
 # @Arg       : out_dir      — where to write selected dept folders with CSVs
 # @Arg       : overwrite    — re-extract if output exists (default FALSE)
@@ -2411,7 +2503,7 @@ bogota_missing_matrix <- function(merged_tbl,
 # @Written_on: 22/10/2025
 # @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
-bogota_filter_census <- function(
+bogota_filter_census_2005 <- function(
     census_zip = here::here(bogota_cfg$dl_dir, "census", "CG2005_AMPLIADO.zip"),
     out_dir    = here::here("data", "raw", "census", "Bogota", "CG2005"),
     overwrite  = FALSE,
@@ -2613,7 +2705,7 @@ bogota_filter_census <- function(
 
 
 # --------------------------------------------------------------------------------------------
-# Function: bogota_harmonize_census_data
+# Function: bogota_harmonize_census_2005_data
 # @Arg extract_list : List output from bogota_filter_harmonize_census
 # @Arg is_extended  : Logical; True (Default) if the census data is the extended version
 # @Arg metro_codes  : Vector of municipality codes for Cundinamarca filtering
@@ -2627,7 +2719,7 @@ bogota_filter_census <- function(
 # @Written_on       : 21/01/2026
 # @Written_by       : Marcos Paulo
 # --------------------------------------------------------------------------------------------
-bogota_harmonize_census_data <- function(
+bogota_harmonize_census_2005_data <- function(
     extract_list,
     is_extended  = TRUE,
     metro_codes  = bogota_cfg$city_code_metro,
@@ -2819,6 +2911,299 @@ bogota_harmonize_census_data <- function(
   vroom::vroom_write(collapse_data, file.path(out_dir, 
                                               paste0("collapse_metro_area_", prefix, ".csv")), 
                      delim = ",")
+  
+  return(list(individual = all_census, collapsed = collapse_data))
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: bogota_filter_census_2018
+# @Arg      : census_folder  — Path to folder containing "2018_Bogota.zip", etc.
+# @Arg      : out_dir        — Where to write selected CSVs
+# @Arg      : overwrite      — Re-extract if output exists (default FALSE)
+# @Arg      : quiet          — Suppress messages (default FALSE)
+# @Output   : list with $bogota and $cundinamarca paths
+# @Purpose  : Handles the specific nested structure of DANE 2018:
+#             1. 2018_Bogota.zip (Outer)
+#             2. Unpacks to folder
+#             3. Finds *CSV.zip (Inner)
+#             4. Extracts *5PER* (Persons) and *MGN* (Geo) CSVs.
+# @Written_on       : 01/02/2026
+# @Written_by       : Marcos Paulo
+# --------------------------------------------------------------------------------------------
+bogota_filter_census_2018 <- function(
+    census_folder = here::here(bogota_cfg$dl_dir, "census_2018"),
+    out_dir       = here::here("data", "raw", "census", "Bogota", "CNPV2018"),
+    overwrite     = FALSE,
+    quiet         = FALSE
+) {
+  
+  if (!dir.exists(census_folder)) stop("Census folder not found: ", census_folder)
+  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+  
+  # --- Helpers ---
+  sys_extract <- function(zipfile, exdir) {
+    # Simple unzip wrapper
+    utils::unzip(zipfile, exdir = exdir, overwrite = TRUE)
+  }
+  
+  process_dept_2018 <- function(zip_name, dept_name, target_dir) {
+    
+    full_zip_path <- file.path(census_folder, zip_name)
+    if (!file.exists(full_zip_path)) {
+      if (!quiet) message("⚠️ ZIP not found: ", zip_name, " (Skipping)")
+      return(NULL)
+    }
+    
+    if (dir.exists(target_dir) && !overwrite) {
+      if (!quiet) message("↪︎ Using existing folder: ", target_dir)
+      return(target_dir)
+    }
+    
+    # 1. Extract Outer ZIP to Temp
+    temp_outer <- file.path(tempdir(), paste0("outer_", dept_name))
+    if (dir.exists(temp_outer)) unlink(temp_outer, recursive = TRUE)
+    dir.create(temp_outer, showWarnings = FALSE)
+    
+    if (!quiet) message("📦 Extracting Outer ZIP: ", zip_name)
+    sys_extract(full_zip_path, temp_outer)
+    
+    # 2. Find Inner CSV ZIP
+    # Usually named like "11_Bogota_CSV.zip" inside a subfolder
+    inner_zips <- list.files(temp_outer, pattern = "CSV\\.zip$", 
+                             recursive = TRUE, full.names = TRUE, ignore.case = TRUE)
+    
+    if (length(inner_zips) == 0) stop("No *CSV.zip found inside ", zip_name)
+    
+    # 3. Extract Inner ZIP to Temp
+    temp_inner <- file.path(tempdir(), paste0("inner_", dept_name))
+    if (dir.exists(temp_inner)) unlink(temp_inner, recursive = TRUE)
+    dir.create(temp_inner, showWarnings = FALSE)
+    
+    if (!quiet) message("   ↳ Extracting Inner ZIP: ", basename(inner_zips[1]))
+    sys_extract(inner_zips[1], temp_inner)
+    
+    # 4. Locate Target CSVs (PER = Persons, MGN = Manzanas/Geo)
+    # Pattern is loose to handle DANE inconsistency (case, extra chars)
+    csv_files <- list.files(temp_inner, pattern = "\\.CSV$", 
+                            recursive = TRUE, full.names = TRUE)
+    
+    target_csvs <- csv_files[grepl("5PER|MGN", basename(csv_files), ignore.case = TRUE)]
+    
+    if (length(target_csvs) == 0) stop("No PER or MGN csvs found in ", zip_name)
+    
+    # 5. Move to Final Directory
+    if (dir.exists(target_dir)) unlink(target_dir, recursive = TRUE)
+    dir.create(target_dir, recursive = TRUE)
+    
+    for (f in target_csvs) {
+      file.copy(f, file.path(target_dir, basename(f)))
+    }
+    
+    # Cleanup
+    unlink(temp_outer, recursive = TRUE)
+    unlink(temp_inner, recursive = TRUE)
+    
+    return(target_dir)
+  }
+  
+  # --- Execution ---
+  
+  # 1. Bogota (11)
+  # Look for zip starting with 2018...Bogota...zip
+  bog_zip <- list.files(census_folder, pattern = "2018.*Bogot.*\\.zip$", ignore.case = TRUE)
+  if(length(bog_zip) == 0) bog_zip <- "2018_Bogota.zip" else bog_zip <- bog_zip[1]
+  
+  path_bog <- process_dept_2018(bog_zip, "bogota", file.path(out_dir, "11.Bogota"))
+  
+  # 2. Cundinamarca (25)
+  cun_zip <- list.files(census_folder, pattern = "2018.*Cundinamarca.*\\.zip$",
+                        ignore.case = TRUE)
+  if(length(cun_zip) == 0) cun_zip <- "2018_Cundinamarca.zip" else cun_zip <- cun_zip[1]
+  
+  path_cun <- process_dept_2018(cun_zip, "cundinamarca",
+                                file.path(out_dir, "25.Cundinamarca"))
+  
+  return(list(bogota = path_bog, cundinamarca = path_cun))
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: bogota_harmonize_census_2018_data
+# @Arg extract_paths : List output from bogota_filter_census_2018
+# @Arg metro_codes   : Vector of municipality codes for filtering (first 5 digits)
+# @Arg out_dir       : Where to save processed data
+# @Arg quiet         : Suppress progress messages
+#
+# @Output            : Saves CSV files; returns list of processed dataframes
+# @Purpose           : 1. Merges Person (PER) and Geo (MGN) files on COD_ENCUESTAS.
+#                      2. Filters for Metro Area using COD_DANE_ANM.
+#                      3. Harmonizes Education (Years), Age, Sex, Work.
+#                      4. Collapses to Manzana/Block level.
+# @Written_on       : 01/02/2026
+# @Written_by       : Marcos Paulo
+# --------------------------------------------------------------------------------------------
+bogota_harmonize_census_2018_data <- function(
+    extract_paths,
+    metro_codes = bogota_cfg$city_code_metro,
+    out_dir     = here::here("data", "working_data"),
+    quiet       = FALSE
+) {
+  
+  if (!requireNamespace("vroom", quietly = TRUE)) stop("vroom required.")
+  if (!requireNamespace("dplyr", quietly = TRUE)) stop("dplyr required.")
+  
+  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+  
+  # --- Helper: Education Mapping 2018 ---
+  # Maps P_NIVEL_ANOSR (1-10) to approximate Years of Schooling
+  map_education_2018 <- function(x) {
+    dplyr::case_when(
+      x == 10 ~ 0,  # Ninguno
+      x == 1  ~ 0,  # Preescolar
+      x == 2  ~ 5,  # Básica primaria (Assuming completion)
+      x == 3  ~ 9,  # Básica secundaria
+      x == 4  ~ 11, # Media academica
+      x == 5  ~ 11, # Media tecnica
+      x == 6  ~ 13, # Normalista
+      x == 7  ~ 14, # Técnica profesional o Tecnológica (Avg 13-15)
+      x == 8  ~ 17, # Universitario
+      x == 9  ~ 19, # Esp/Maest/Doc (Avg 18-23, conservative 19)
+      TRUE    ~ NA_real_
+    )
+  }
+  
+  # --- Processing Logic ---
+  process_dept_files <- function(folder) {
+    if (is.null(folder)) return(NULL)
+    
+    # Identify files
+    files <- list.files(folder, full.names = TRUE)
+    f_per <- files[grepl("5PER", basename(files))][1]
+    f_mgn <- files[grepl("MGN", basename(files))][1]
+    
+    if (is.na(f_per) || is.na(f_mgn)) {
+      warning("Missing PER or MGN file in: ", folder)
+      return(NULL)
+    }
+    
+    if (!quiet) message("📖 Reading: ", basename(f_per), " + ", basename(f_mgn))
+    
+    # 1. Read Persons (Selected Columns only to save RAM)
+    # Note: Added FACTOR/F_EXP check, but defaulting to 1 if missing
+    df_per <- vroom::vroom(
+      f_per, 
+      col_types = vroom::cols(.default = "c"),
+      show_col_types = FALSE
+    ) %>%
+      dplyr::select(
+        COD_ENCUESTAS, 
+        P_SEXO, 
+        P_EDADR, 
+        P_NIVEL_ANOSR, 
+        P_TRABAJO
+        # Add FACTOR here if it exists in your specific CSV version
+      )
+    
+    # 2. Read Geo (Selected Columns)
+    df_mgn <- vroom::vroom(
+      f_mgn, 
+      col_types = vroom::cols(.default = "c"), 
+      show_col_types = FALSE
+    ) %>%
+      dplyr::select(COD_ENCUESTAS, COD_DANE_ANM)
+    
+    # 3. Join & Filter
+    joined <- df_per %>%
+      dplyr::inner_join(df_mgn, by = "COD_ENCUESTAS") %>%
+      # Extract Muni Code (First 5 chars of COD_DANE_ANM)
+      dplyr::mutate(MUNI_CODE = stringr::str_sub(COD_DANE_ANM, 1, 5)) %>%
+      dplyr::filter(MUNI_CODE %in% metro_codes)
+    
+    # 4. Harmonize Variables
+    joined <- joined %>%
+      dplyr::mutate(
+        # Geo ID
+        GEO_ID = COD_DANE_ANM,
+        
+        # Sex (1=Man, 2=Woman)
+        women = as.numeric(P_SEXO == "2"),
+        
+        # Age (Bins to Numeric Midpoint)
+        # Group 6 is 25-29. 
+        # Formula: (Group - 1)*5 + 2.5 gives midpoint (e.g., Grp 1 -> 2.5)
+        raw_group = as.numeric(P_EDADR),
+        edad = (raw_group - 1) * 5 + 2.5,
+        adult = as.numeric(raw_group >= 6), # 25+ years old
+        
+        # Education
+        escolaridad = map_education_2018(as.numeric(P_NIVEL_ANOSR)),
+        
+        # Education Dummies
+        no_education         = as.numeric(escolaridad == 0),
+        high_school_complete = as.numeric(escolaridad %in% 11:12),
+        college_complete     = as.numeric(escolaridad == 17),
+        graduate_educ        = as.numeric(escolaridad >= 18),
+        
+        # Work
+        # 1=Worked paid, 2=Worked unpaid. (3=Has job but didn't work?)
+        # 2005 used 1 & 2. We stick to that for consistency.
+        employed = ifelse(adult == 1, 
+                          as.numeric(P_TRABAJO %in% c("1", "2")), 
+                          NA_real_),
+        
+        # Expansion Factor 
+        # (Defaulting to 1 as 2018 is full census, unless weighting column exists)
+        fe = 1 
+      )
+    
+    return(joined)
+  }
+  
+  # --- Execute ---
+  if (!quiet) message("🔄 Processing Bogotá...")
+  df_bog <- process_dept_files(extract_paths$bogota)
+  
+  if (!quiet) message("🔄 Processing Cundinamarca...")
+  df_cun <- process_dept_files(extract_paths$cundinamarca)
+  
+  all_census <- dplyr::bind_rows(df_bog, df_cun)
+  
+  # --- Collapse/Aggregate ---
+  if (!quiet) message("∑  Collapsing to Block level (Adults only)...")
+  
+  collapse_data <- all_census %>%
+    dplyr::filter(adult == 1) %>%
+    dplyr::group_by(GEO_ID) %>%
+    dplyr::summarise(
+      n = sum(fe, na.rm = TRUE),
+      escolaridad_avg = weighted.mean(escolaridad, fe, na.rm = TRUE),
+      
+      # Weighted shares
+      dplyr::across(
+        c(no_education, high_school_complete, college_complete, 
+          graduate_educ, employed, women),
+        ~ sum(.x * fe, na.rm = TRUE) / sum(fe, na.rm = TRUE),
+        .names = "share_{.col}_pop"
+      )
+    )
+  
+  # --- Export ---
+  if (!quiet) message("💾 Saving files...")
+  
+  vroom::vroom_write(
+    all_census, 
+    file.path(out_dir, "census_2018_metro_individual.csv"), 
+    delim = ","
+  )
+  
+  vroom::vroom_write(
+    collapse_data, 
+    file.path(out_dir, "census_2018_metro_collapsed.csv"), 
+    delim = ","
+  )
+  
+  if (!quiet) message("✅ Done.")
   
   return(list(individual = all_census, collapsed = collapse_data))
 }
