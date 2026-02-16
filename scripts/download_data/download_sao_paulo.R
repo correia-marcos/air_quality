@@ -40,7 +40,7 @@ print(sao_paulo_cfg$out_dir)
 # ============================================================================================
 # I: Download data
 # ============================================================================================
-# Apply function to download shapefiles for Gran Santiago area
+# Apply function to download shapefiles for São Paulo metro area
 sao_paulo_metro <- sao_paulo_download_metro_area(
   type              = "municipalities",
   base_url          = sao_paulo_cfg$base_url_shp,
