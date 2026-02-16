@@ -43,11 +43,25 @@ print(santiago_cfg$out_dir)
 # Apply function to download shapefiles for Gran Santiago area
 gran_santiago <- santiago_download_metro_area(
   type              = "gran_santiago",
+  level             = "mpio",
   base_url          = santiago_cfg$base_url_shp,
   keep_municipality = santiago_cfg$cities_in_metro,
   download_dir      = here::here(santiago_cfg$dl_dir, "metro_area"),
   out_file          = here::here(santiago_cfg$out_dir, "geospatial_data",
-                                 "santiago", "gran_santiago_area.gpkg"),
+                                 "santiago", "gran_santiago_area_2024.gpkg"),
+  overwrite_zip     = FALSE,
+  container         = TRUE,
+  overwrite_gpkg    = TRUE,
+  quiet             = FALSE
+)
+gran_santiago_census_tracksa <- santiago_download_metro_area(
+  type              = "gran_santiago",
+  level             = "manzana",
+  base_url          = santiago_cfg$base_url_shp,
+  keep_municipality = santiago_cfg$cities_in_metro,
+  download_dir      = here::here(santiago_cfg$dl_dir, "metro_area"),
+  out_file          = here::here(santiago_cfg$out_dir, "geospatial_data",
+                                 "santiago", "gran_santiago_area_2024_census_tracts.gpkg"),
   overwrite_zip     = FALSE,
   container         = TRUE,
   overwrite_gpkg    = TRUE,
@@ -57,11 +71,25 @@ gran_santiago <- santiago_download_metro_area(
 # Apply function to download shapefiles for Santiago metro area
 santiago_metro <- santiago_download_metro_area(
   type              = "metro_santiago",
+  level             = "mpio",
   base_url          = santiago_cfg$base_url_shp,
   keep_municipality = santiago_cfg$cities_in_metro,
   download_dir      = here::here(santiago_cfg$dl_dir, "metro_area"),
   out_file          = here::here(santiago_cfg$out_dir, "geospatial_data",
-                                 "santiago", "santiago_metro_area.gpkg"),
+                                 "santiago", "santiago_metro_area_2024.gpkg"),
+  overwrite_zip     = FALSE,
+  container         = TRUE,
+  overwrite_gpkg    = TRUE,
+  quiet             = FALSE
+)
+santiago_metro_census_tracts <- santiago_download_metro_area(
+  type              = "metro_santiago",
+  level             = "manzana",
+  base_url          = santiago_cfg$base_url_shp,
+  keep_municipality = santiago_cfg$cities_in_metro,
+  download_dir      = here::here(santiago_cfg$dl_dir, "metro_area"),
+  out_file          = here::here(santiago_cfg$out_dir, "geospatial_data",
+                                 "santiago", "santiago_metro_area_2024_census_tracts.gpkg"),
   overwrite_zip     = FALSE,
   container         = TRUE,
   overwrite_gpkg    = TRUE,
@@ -90,10 +118,16 @@ logs_sinca_stations_metadata    <- santiago_download_station_info(
   base_url = santiago_cfg$base_url_sinca,
   subdir   = file.path("santiago", "stations_metadata"))
 
-# Apply function to download Census data for the metro area
-census <- santiago_download_census_data(
+# Apply function to download the 2017 Census microdata for the metro area
+census_2017 <- santiago_download_census_data(
   type            = "geo_location",
-  url             = santiago_cfg$base_url_census,
+  year            = 2017,
+  download_folder = here::here(santiago_cfg$dl_dir, "census"))
+
+# Apply function to download the 2017 Census microdata for the metro area
+census_2024 <- santiago_download_census_data(
+  type = "people",
+  year = 2024,
   download_folder = here::here(santiago_cfg$dl_dir, "census"))
 
 # Print a success message for when running inside Docker Container

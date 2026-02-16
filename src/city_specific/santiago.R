@@ -22,6 +22,7 @@ santiago_cfg <- list(
   base_url_shp     = "https://censo2024.ine.gob.cl/resultados/",
   base_url_sinca   = "https://sinca.mma.gob.cl/index.php/redes",
   base_url_census  = "https://www.ine.gob.cl/docs/default-source",
+  base_new_census  = "https://storage.googleapis.com/bktdescargascenso2024/",
   years            = 2000L:2023L,
   dl_dir           = here::here("data", "downloads", "santiago"),
   out_dir          = here::here("data", "raw"),
@@ -47,6 +48,8 @@ santiago_cfg <- list(
 # Function: santiago_download_metro_area
 #
 # @Arg       : type              — string; "metro_santiago" (Decree 337) or "gran_santiago".
+# @Arg       : level             — string; "mpio" (Administrative/Urban Zones) or 
+#                                  "manzana" (Census Blocks).
 # @Arg       : base_url          — string; INE Census 2024 results URL.
 # @Arg       : keep_municipality — character vector; List of Comunas for Metro Area.
 #                                  (Default: santiago_cfg$cities_in_metro)
@@ -62,13 +65,15 @@ santiago_cfg <- list(
 #
 # @Purpose   : Scrapes the INE Censo 2024 website to download the national cartography
 #              (via Selenium) and filters it to represent Santiago.
-#              - "gran_santiago": Uses 'Limite_Urbano_CPV24' layer (Urban Footprint).
-#              - "metro_santiago": Uses 'Distrital_CPV24' layer (Admin Boundaries).
+#              - "gran_santiago": Uses 'Limite_Urbano_CPV24' to define the area.
+#              - "metro_santiago": Uses 'Distrital_CPV24' to define the area.
+#              - If level="manzana", it joins these definitions with 'Manzanas_CPV24'.
 #
 # @Written_on: 25/10/2025
 # --------------------------------------------------------------------------------------------
 santiago_download_metro_area <- function(
     type              = c("metro_santiago", "gran_santiago"),
+    level             = c("mpio", "manzana"),
     base_url          = santiago_cfg$base_url_shp,
     keep_municipality = santiago$cities_in_metro,
     download_dir      = here::here("data", "downloads", "Administrative", "Chile"),
@@ -79,7 +84,8 @@ santiago_download_metro_area <- function(
     quiet             = FALSE
 ) {
   
-  type <- match.arg(tolower(type), c("metro_santiago", "gran_santiago"))
+  type  <- match.arg(tolower(type), c("metro_santiago", "gran_santiago"))
+  level <- match.arg(tolower(level), c("mpio", "manzana"))
   
   # 1) Define Paths
   root_dl_dir <- here::here("data", "downloads")
@@ -176,8 +182,10 @@ santiago_download_metro_area <- function(
     download_success <- FALSE
     for (i in 1:900) { # 15 mins max
       if (file.exists(zip_landing_path)) {
+        # Check for .part files (firefox temporary download file)
         parts <- list.files(root_dl_dir, pattern = "\\.part$", full.names = TRUE)
         if (length(parts) == 0) {
+          # Check size stability (simple check > 100MB)
           if (file.info(zip_landing_path)$size > 100 * 1024^2) {
             
             if (!quiet) message("   📦 Moving file to: ", zip_target_path)
@@ -213,13 +221,14 @@ santiago_download_metro_area <- function(
   
   # 3) Extraction
   # ------------------------------------------------------------------------------------
-  if (!quiet) message("📦 Extracting Data...")
+  if (!quiet) message("📦 Extracting Data (this may take a moment)...")
   exdir <- file.path(tempdir(), "santiago_carto_2024")
   if (dir.exists(exdir)) unlink(exdir, recursive = TRUE, force = TRUE)
   dir.create(exdir)
   
   utils::unzip(zip_target_path, exdir = exdir)
   
+  # Locate GPKG
   gpkg_found <- file.path(exdir, "Cartografia_censo2024_Pais.gpkg")
   if (!file.exists(gpkg_found)) {
     candidates <- list.files(exdir, pattern = "Cartografia_censo2024_Pais\\.gpkg$", 
@@ -232,29 +241,87 @@ santiago_download_metro_area <- function(
   
   # 4) Processing
   # ------------------------------------------------------------------------------------
+  sf_out <- NULL
+  
   if (type == "gran_santiago") {
-    target_layer <- "Limite_Urbano_CPV24"
-    if (!quiet) message("🗺️  Reading Layer: ", target_layer)
-    sf_layer <- sf::st_read(gpkg_found, layer = target_layer, quiet = TRUE)
+    # --- Case A: Gran Santiago (Urban Footprint) ---
     
-    if (!"LOCALIDAD" %in% names(sf_layer)) stop("Column 'LOCALIDAD' missing.")
-    sf_out <- sf_layer |> dplyr::filter(LOCALIDAD == "GRAN SANTIAGO")
+    layer_admin <- "Limite_Urbano_CPV24"
+    if (!quiet) message("🗺️  Reading Admin Layer: ", layer_admin)
+    
+    # 1. Load Admin Layer to find the Entity ID for Gran Santiago
+    sf_admin <- sf::st_read(gpkg_found, layer = layer_admin, quiet = TRUE)
+    
+    # Filter for Gran Santiago
+    # Note: INE attributes can vary (LOCALIDAD vs NOM_LOCALIDAD), check generically if needed
+    col_loc <- grep("LOCALIDAD", names(sf_admin), value = TRUE, ignore.case = TRUE)[2]
+    
+    if (is.na(col_loc)) stop("Column 'LOCALIDAD' missing in layer ", layer_admin)
+    
+    sf_filtered <- sf_admin[sf_admin[[col_loc]] == "GRAN SANTIAGO", ]
+    
+    if (nrow(sf_filtered) == 0) stop("Could not find 'GRAN SANTIAGO' in ", layer_admin)
+    
+    # 2. Return based on Level
+    if (level == "mpio") {
+      # If level is mpio/admin, we return the Urban Limit polygon itself
+      sf_out <- sf_filtered
+      
+    } else {
+      # If level is manzana, we use ID_ENTIDAD to fetch blocks
+      target_ids <- unique(as.character(sf_filtered$ID_ENTIDAD))
+      
+      if (!quiet) message(
+        "🧱  Reading Block Layer: Manzanas_CPV24 (filtering by ID_ENTIDAD)...")
+      
+      # Use SQL query to speed up reading if supported, otherwise read & filter
+      # Manzanas layer is heavy, reading filtered is better if possible.
+      # st_read supports SQL for GPKG.
+      
+      query <- sprintf("SELECT * FROM Manzanas_CPV24 WHERE ID_ENTIDAD IN ('%s')", 
+                       paste(target_ids, collapse = "','"))
+      
+      sf_out <- sf::st_read(gpkg_found, query = query, quiet = TRUE)
+    }
     
   } else {
-    target_layer <- "Distrital_CPV24"
-    if (!quiet) message("🗺️  Reading Layer: ", target_layer)
-    sf_layer <- sf::st_read(gpkg_found, layer = target_layer, quiet = TRUE)
+    # --- Case B: Metro Santiago (Administrative Districts) ---
     
-    if (!"COMUNA" %in% names(sf_layer)) stop("Column 'COMUNA' missing.")
+    layer_admin <- "Distrital_CPV24"
+    if (!quiet) message("🗺️  Reading Admin Layer: ", layer_admin)
     
-    norm_name <- function(x) toupper(x)
+    # 1. Load Admin Layer to find District IDs belonging to the Comunas
+    sf_admin <- sf::st_read(gpkg_found, layer = layer_admin, quiet = TRUE)
+    
+    col_comuna <- grep("COMUNA", names(sf_admin), value = TRUE, ignore.case = TRUE)[1]
+    if (is.na(col_comuna)) stop("Column 'COMUNA' missing in layer ", layer_admin)
+    
+    norm_name <- function(x) toupper(chartr("áéíóú", "AEIOU", x))
     target_comunas_norm <- norm_name(keep_municipality)
     
-    sf_out <- sf_layer |> 
-      dplyr::filter(norm_name(COMUNA) %in% target_comunas_norm)
+    sf_filtered <- sf_admin[norm_name(sf_admin[[col_comuna]]) %in% target_comunas_norm, ]
     
-    if (nrow(sf_out) == 0) stop("No Comunas matched.")
-    if (!quiet) message("🔎 Matched ", length(unique(sf_out$COMUNA)), " Comunas.")
+    if (nrow(sf_filtered) == 0) stop("No Comunas matched for Metro Santiago.")
+    if (!quiet) message("🔎 Matched ", length(unique(sf_filtered[[col_comuna]])), " Comunas.")
+    
+    # 2. Return based on Level
+    if (level == "mpio") {
+      # Return the District polygons
+      sf_out <- sf_filtered
+      
+    } else {
+      # If level is manzana, we use ID_DISTRITO to fetch blocks
+      # ID_DISTRITO connects Distrital_CPV24 with Manzanas_CPV24
+      target_ids <- unique(as.character(sf_filtered$ID_DISTRITO))
+      
+      if (!quiet) message(
+        "🧱  Reading Block Layer: Manzanas_CPV24 (filtering by ID_DISTRITO)...")
+      
+      query <- sprintf("SELECT * FROM Manzanas_CPV24 WHERE ID_DISTRITO IN ('%s')", 
+                       paste(target_ids, collapse = "','"))
+      
+      sf_out <- sf::st_read(gpkg_found, query = query, quiet = TRUE)
+    }
   }
   
   # 5) Save
@@ -637,7 +704,7 @@ santiago_download_pollution <- function(
 }
 
 
-# ------------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------
 # Function: santiago_download_station_info
 #
 # @Arg       : states          — character vector; List of states to scrape.
@@ -659,7 +726,7 @@ santiago_download_pollution <- function(
 #
 # @Written_by: Marcos Paulo
 # @Written_on: 13/12/2025
-# ------------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------
 santiago_download_station_info <- function(
     states       = santiago_cfg$which_states,
     base_url     = santiago_cfg$base_url_sinca,
@@ -869,170 +936,224 @@ santiago_download_station_info <- function(
 }
 
 
-# --------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # Function: santiago_download_census_data
 #
-# @Arg       : type            — string; The dataset to download. Options:
-#                                "geo_location" (default), "houses",
-#                                "families", "people".
-# @Arg       : url             — string; name of the webpage with hrefs.
-# @Arg       : download_folder — string; Path to save the RAR file.
+# @Arg       : type            — string; The dataset to download.
+#                                Options: "people", "homes", "households",
+#                                "geo_location".
+# @Arg       : year            — integer; Census year (2017 or 2024).
+#                                Defaults to 2017.
+# @Arg       : url             — string; OPTIONAL. Direct URL to download.
+#                                If provided, it overrides 'type'/'year'.
+#                                Useful if INE changes their links.
+# @Arg       : download_folder — string; Root path to save the ZIP file.
 #                                Defaults to "data/downloads/santiago/census".
 # @Arg       : overwrite       — logical; Re-download if file exists?
-# @Arg       : retries         — integer; Max HTTP retries (default 5).
 # @Arg       : quiet           — logical; Suppress progress bars?
 #
 # @Output    : tibble; Log containing type, file_path, bytes, and status.
 #
-# @Purpose   : Downloads 2017 Chilean Census microdata (CSV inside RAR).
-#              Uses direct HTTP links from the INE website, bypassing the
-#              need for Selenium.
+# @Purpose   : Downloads Chilean Census microdata.
+#              1. Checks for a direct URL override.
+#              2. Looks up stable defaults for 2017 (INE Archive) and
+#                 2024 (Google Storage Buckets).
+#              3. Downloads the file using httr with User-Agent headers.
+#              4. Validates the file size to avoid broken HTML downloads.
 #
 # @Written_by: Marcos Paulo
-# @Written_on: 10/12/2025
-# --------------------------------------------------------------------------------------------
+# @Written_on: 16/01/2026
+# -----------------------------------------------------------------------------
 santiago_download_census_data <- function(
-    type            = "geo_location",
-    url             = santiago_cfg$base_url_census,
+    type            = "people",
+    year            = 2017,
+    url             = NULL,
     download_folder = file.path("data", "downloads", "santiago", "census"),
     overwrite       = FALSE,
-    retries         = 5,
     quiet           = FALSE
 ) {
   
-  # 1) Define URL Mapping ------------------------------------------------------
-  # We map the user-friendly 'type' to the exact INE download URL and specific
-  # filename to ensure consistency.
-  
-  # Base part of the URL for readability (though full links are used below)
-  base_ine <- url
-  
-  url_map <- list(
-    "geo_location" = list(
-      url  = paste0(base_ine, "/censo-de-poblacion-y-vivienda/bbdd/censo-2017/",
-                    "csv/csv-identificaci%C3%B3n-geogr%C3%A1fica-censo-2017.rar",
-                    "?sfvrsn=1ae6f56c_2&download=true"),
-      file = "chile_census_2017_geo_location.rar"
+  # 1) Define Defaults Dictionary ---------------------------------------------
+  # This map holds the best-known URLs for each year/type combination.
+  defaults_map <- list(
+    "2017" = list(
+      "people" = list(
+        url  = paste0(
+          "https://www.ine.gob.cl/docs/default-source/censos/censo-2017/",
+          "base-de-datos/microdatos-censo-2017/csv/",
+          "microdato_censo2017_personas.csv.zip"
+        ),
+        file = "chile_census_2017_people.zip"
+      ),
+      "homes" = list(
+        url  = paste0(
+          "https://www.ine.gob.cl/docs/default-source/censos/censo-2017/",
+          "base-de-datos/microdatos-censo-2017/csv/",
+          "microdato_censo2017_viviendas.csv.zip"
+        ),
+        file = "chile_census_2017_homes.zip"
+      ),
+      "households" = list(
+        url  = paste0(
+          "https://www.ine.gob.cl/docs/default-source/censos/censo-2017/",
+          "base-de-datos/microdatos-censo-2017/csv/",
+          "microdato_censo2017_hogares.csv.zip"
+        ),
+        file = "chile_census_2017_households.zip"
+      ),
+      "geo_location" = list(
+        url  = paste0(
+          "https://www.ine.gob.cl/docs/default-source/geodatos-abiertos/",
+          "cartografia/censo-2017/siedu/shp/microdatos_manzana.zip"
+        ),
+        file = "chile_census_2017_geo_location.zip"
+      )
     ),
-    "houses" = list(
-      url  = paste0(base_ine, "/censo-de-poblacion-y-vivienda/bbdd/censo-2017/",
-                    "csv/csv-viviendas-censo-2017.rar",
-                    "?sfvrsn=d741a14a_2&download=true"),
-      file = "chile_census_2017_houses.rar"
-    ),
-    "families" = list(
-      url  = paste0(base_ine, "/censo-de-poblacion-y-vivienda/bbdd/censo-2017/",
-                    "csv/csv-hogares-censo-2017.rar",
-                    "?sfvrsn=4f1ab5d3_2&download=true"),
-      file = "chile_census_2017_families.rar"
-    ),
-    "people" = list(
-      url  = paste0(base_ine, "/censo-de-poblacion-y-vivienda/bbdd/censo-2017/",
-                    "csv/csv-personas-censo-2017.rar",
-                    "?sfvrsn=60c6e91c_2&download=true"),
-      file = "chile_census_2017_people.rar"
+    "2024" = list(
+      "people" = list(
+        url  = paste0(
+          "https://storage.googleapis.com/bktdescargascenso2024/",
+          "personas_censo2024.zip"
+        ),
+        file = "chile_census_2024_people.zip"
+      ),
+      "homes" = list(
+        url  = paste0(
+          "https://storage.googleapis.com/bktdescargascenso2024/",
+          "viviendas_censo2024.zip"
+        ),
+        file = "chile_census_2024_homes.zip"
+      ),
+      "households" = list(
+        url  = paste0(
+          "https://storage.googleapis.com/bktdescargascenso2024/",
+          "hogares_censo2024.zip"
+        ),
+        file = "chile_census_2024_households.zip"
+      ),
+      "geo_location" = list(
+        url  = paste0(
+          "https://storage.googleapis.com/bktdescargascenso2024/",
+          "Datos_agregados/Base_manzana_entidad_CPV24.zip"
+        ),
+        file = "chile_census_2024_geo_location.zip"
+      )
     )
   )
   
-  # 2) Validate Input ----------------------------------------------------------
-  if (!type %in% names(url_map)) {
-    stop("Invalid type: '", type, "'. Options: ", 
-         paste(names(url_map), collapse=", "))
+  # 2) Determine Target URL and Filename --------------------------------------
+  target_url  <- url
+  target_file <- NULL
+  year_char   <- as.character(year)
+  
+  # Logic: If user provided a URL, use it. Otherwise, look in dictionary.
+  if (!is.null(url)) {
+    # Try to guess a clean filename from the user's custom URL
+    clean_name  <- basename(sub("\\?.*$", "", url))
+    target_file <- paste0("custom_", year, "_", clean_name)
+    
+  } else {
+    # Check if year exists in map
+    if (year_char %in% names(defaults_map)) {
+      # Check if type exists in year
+      if (type %in% names(defaults_map[[year_char]])) {
+        def <- defaults_map[[year_char]][[type]]
+        target_url  <- def$url
+        target_file <- def$file
+      }
+    }
   }
   
-  # Prepare Paths
-  target_info <- url_map[[type]]
-  
-  # Create directory if it doesn't exist
-  if (!dir.exists(download_folder)) {
-    dir.create(download_folder, recursive = TRUE)
+  # 3) Sanity Checks ----------------------------------------------------------
+  if (is.null(target_url)) {
+    stop(
+      "\n❌ No URL found for Year: ", year, ", Type: '", type, "'.\n",
+      "   Please provide a custom 'url' argument or check the type."
+    )
   }
   
-  dest_path <- file.path(download_folder, target_info$file)
+  # Ensure target directory exists
+  final_folder <- file.path(download_folder, year_char)
+  if (!dir.exists(final_folder)) {
+    dir.create(final_folder, recursive = TRUE, showWarnings = FALSE)
+  }
   
-  # 3) Check Existing File -----------------------------------------------------
-  if (file.exists(dest_path) && !isTRUE(overwrite)) {
-    if (!quiet) message("↪︎ File already exists: ", basename(dest_path), 
-                        " (skipping).")
-    
-    bytes <- suppressWarnings(file.size(dest_path))
-    
+  dest_path <- file.path(final_folder, target_file)
+  
+  # 4) Check Existing Files ---------------------------------------------------
+  if (file.exists(dest_path) && !overwrite) {
+    if (!quiet) {
+      message("↪︎  File exists: ", basename(dest_path), " (Skipping)")
+    }
     return(dplyr::tibble(
-      type      = type,
-      file_path = normalizePath(dest_path),
-      bytes     = bytes,
-      status    = "cached"
+      year   = year,
+      type   = type,
+      file   = normalizePath(dest_path),
+      bytes  = file.size(dest_path),
+      status = "cached"
     ))
   }
   
-  # 4) Robust Download (httr) --------------------------------------------------
-  if (!quiet) message("⬇️ Downloading ", type, " data from INE...")
+  # 5) Perform Download -------------------------------------------------------
+  if (!quiet) message("⬇️  Downloading to: ", dest_path)
+  if (!quiet) message("🔗 Source: ", substr(target_url, 1, 60), "...")
   
-  # Set User Agent to avoid being blocked as a bot
-  ua <- httr::user_agent(
-    sprintf("R/%s (AirQualityResearch)", paste(R.version$major, R.version$minor, sep="."))
-  )
+  # Define User-Agent to avoid blocking by government servers
+  ua <- httr::user_agent(paste0(
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) ",
+    "AppleWebKit/537.36 (KHTML, like Gecko) ",
+    "Chrome/90.0.4430.93 Safari/537.36"
+  ))
   
   tryCatch({
-    response <- httr::RETRY(
-      verb = "GET",
-      url  = target_info$url,
-      ua,
-      httr::write_disk(path = dest_path, overwrite = TRUE),
-      httr::progress(type = if (quiet) "none" else "down"),
-      times = as.integer(retries),
-      pause_base = 2, # Wait 2s, 4s, 8s... between retries
-      quiet = quiet,
-      httr::timeout(600) # 10 minutes timeout (files can be large)
-    )
-    
-    # 5) Validate Response -----------------------------------------------------
-    code <- httr::status_code(response)
-    
-    if (code != 200) {
-      if (file.exists(dest_path)) unlink(dest_path) # Delete partial file
-      warning("Download failed with HTTP ", code)
-      
-      return(dplyr::tibble(
-        type      = type,
-        file_path = NA_character_,
-        bytes     = NA_real_,
-        status    = paste0("error_http_", code)
-      ))
+    # Use HEAD first to check if file exists (saves bandwidth on 404s)
+    check_head <- httr::HEAD(target_url, ua)
+    if (httr::status_code(check_head) >= 400) {
+      stop("URL not accessible. Status: ", httr::status_code(check_head))
     }
     
-    # Check file size (sanity check)
-    bytes <- suppressWarnings(file.size(dest_path))
-    if (is.na(bytes) || bytes < 1000) { # Less than 1KB is suspicious
-      warning("File downloaded but seems broken (too small).")
-      return(dplyr::tibble(
-        type      = type,
-        file_path = normalizePath(dest_path),
-        bytes     = bytes,
-        status    = "broken_file"
-      ))
+    # Perform GET request
+    res <- httr::GET(
+      target_url, 
+      ua, 
+      httr::write_disk(dest_path, overwrite = TRUE),
+      if (!quiet) httr::progress()
+    )
+    
+    # 6) Validation -----------------------------------------------------------
+    # Check if download is actually an error page (HTML) disguised as ZIP
+    ct <- httr::headers(res)$`content-type`
+    is_html <- !is.null(ct) && grepl("text/html", ct)
+    is_small <- file.size(dest_path) < 15000 # Error pages usually < 15KB
+    
+    if (is_html || is_small) {
+      if (file.exists(dest_path)) unlink(dest_path)
+      stop("❌ Download failed. The server returned an HTML error page.")
     }
     
     if (!quiet) {
-      msg_size <- format(structure(bytes, class = "object_size"), units = "auto")
-      message("✅ Download complete: ", basename(dest_path), " (", msg_size, ")")
+      sz <- format(structure(file.size(dest_path), class = "object_size"), 
+                   units = "auto")
+      message("✅ Success! Size: ", sz)
     }
     
     return(dplyr::tibble(
-      type      = type,
-      file_path = normalizePath(dest_path),
-      bytes     = bytes,
-      status    = "ok"
+      year   = year,
+      type   = type,
+      file   = normalizePath(dest_path),
+      bytes  = file.size(dest_path),
+      status = "ok"
     ))
     
   }, error = function(e) {
-    if (file.exists(dest_path)) unlink(dest_path)
-    message("❌ Error during download: ", e$message)
+    message("❌ Download Error: ", e$message)
+    if (file.exists(dest_path)) unlink(dest_path) # Clean up partial file
     return(dplyr::tibble(
-      type      = type,
-      file_path = NA_character_,
-      bytes     = NA_real_,
-      status    = "error_exception"
+      year   = year,
+      type   = type,
+      file   = NA_character_,
+      bytes  = 0,
+      status = "error"
     ))
   })
 }
