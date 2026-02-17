@@ -44,10 +44,10 @@ sao_paulo_cfg <- list(
 # --------------------------------------------------------------------------------------------
 # Function: sao_paulo_download_metro_area
 #
-# @Arg       : type              — string; "municipalities", "immediately_rg", 
-#                                  "intermediate_rg", "state".
+# @Arg       : level             — string; "mpio" (Municipality) or 
+#                                  "setor_censitario" (Census Tract).
 # @Arg       : base_url          — string; IBGE Downloads page URL.
-# @Arg       : keep_municipality — character vector; List of municipality codes (CD_MUN)
+# @Arg       : keep_municipality — character vector; List of municipality codes (CD_GEOCODM)
 #                                  to filter. Defaults to sao_paulo_cfg$cities_in_metro.
 # @Arg       : download_dir      — string; Local path to save the raw ZIP file.
 # @Arg       : out_file          — string; Local path to save the processed GeoPackage.
@@ -59,15 +59,17 @@ sao_paulo_cfg <- list(
 # @Output    : An sf object (invisible) containing the filtered spatial data.
 #              Side effect: Writes a .gpkg file to disk.
 #
-# @Purpose   : — Scrapes the IBGE Geociências website by expanding the JS Tree layer-by-layer 
-#                (Drill Down) to find the São Paulo shapefiles.
-#              — Filter for the metro area of São Paulo
-#              — Save the filtered shape as a .gpkg file
+# @Purpose   : - Scrapes the IBGE Geociências website for Census 2010 Shapefiles.
+#              - "mpio": Downloads sp_municipio.zip (Municipal Boundaries 2010).
+#              - "setor_censitario": Downloads sp_setores_censitarios.zip (Tracts 2010).
+#              - Filters for the metro area of São Paulo.
+#              - Fixes encoding (LATIN1) and saves as .gpkg.
+#
 # @Written_by: Marcos Paulo
-# @Updated_on: 14/11/2025
+# @Updated_on: 05/12/2025
 # --------------------------------------------------------------------------------------------
 sao_paulo_download_metro_area <- function(
-    type              = "municipalities",
+    level             = c("mpio", "setor_censitario"),
     base_url          = sao_paulo_cfg$base_url_shp,
     keep_municipality = sao_paulo_cfg$cities_in_metro,
     download_dir      = here::here("data", "downloads", "Administrative", "Brazil"),
@@ -78,37 +80,38 @@ sao_paulo_download_metro_area <- function(
     quiet             = FALSE
 ) {
   
-  # 1) Setup -------------------------------------------------------------------
-  valid_types <- c("municipalities", "immediately_rg", "intermediate_rg", "state")
-  if (!type %in% valid_types) stop("Invalid type.")
+  level <- match.arg(level)
   
-  filename_map <- list(
-    "municipalities"  = "SP_Municipios_2024.zip",
-    "immediately_rg"  = "SP_RG_Imediatas_2024.zip",
-    "intermediate_rg" = "SP_RG_Intermediarias_2024.zip",
-    "state"           = "SP_UF_2024.zip"
-  )
-  target_file_name <- filename_map[[type]]
+  # 1) Setup Paths & Filenames ---------------------------------------------------
   
+  # Both levels use the same tree path to get to the 2010 Census folder
   tree_path <- c(
     "organizacao_do_territorio",
     "malhas_territoriais",
-    "malhas_municipais",
-    "municipio_2024",
-    "UFs",
-    "SP"
+    "malhas_de_setores_censitarios__divisoes_intramunicipais",
+    "censo_2010",
+    "setores_censitarios_shp",
+    "sp"
   )
   
+  # Define target file based on level
+  if (level == "mpio") {
+    target_file_name <- "sp_municipio.zip"
+  } else {
+    target_file_name <- "sp_setores_censitarios.zip"
+  }
+  
   root_dl_dir <- Sys.getenv("DOWNLOADS_DIR", here::here("data", "downloads"))
+  
   if (!dir.exists(download_dir)) dir.create(download_dir, recursive = TRUE)
   if (!dir.exists(dirname(out_file))) dir.create(dirname(out_file), recursive = TRUE)
   
   zip_landing_path <- file.path(root_dl_dir, target_file_name) 
   zip_target_path  <- file.path(download_dir, target_file_name)
   
-  # 2) Selenium Logic ----------------------------------------------------------
+  # 2) Selenium Download Logic ---------------------------------------------------
   if (!file.exists(zip_target_path) || isTRUE(overwrite_zip)) {
-    if (!quiet) message("⬇️  Starting Selenium to scrape IBGE Data...")
+    if (!quiet) message("⬇️  Starting Selenium to scrape IBGE Data (Census 2010)...")
     
     if (!container) {
       if (!quiet) message("   🚀 Starting local Selenium on 4445…")
@@ -143,30 +146,27 @@ sao_paulo_download_metro_area <- function(
     session$navigate(base_url)
     Sys.sleep(5) 
     
-    # --- FIX: THE COOKIE DESTROYER ---
-    # We remove the banner from the DOM entirely so it can't block clicks.
+    # -- Cookie Banner Nuke --
     if (!quiet) message("   🍪 Nuking Cookie Banner...")
     session$execute_script(
       "var element = document.getElementById('cookie-container');
        if(element) { element.parentNode.removeChild(element); }"
     )
-    Sys.sleep(1) # Allow UI to settle
+    Sys.sleep(1)
     
-    # -- DRILL DOWN LOOP --
+    # -- Drill Down --
     if (!quiet) message("   🪜 Drilling down the folder tree...")
     
     for (step in tree_path) {
       if (!quiet) message(sprintf("      📂 Opening: %s", step))
       
-      # Use ID-based XPath for precision
-      xpath_step <- sprintf("//a[contains(@class, 'jstree-anchor') and contains(@id, '%s')]",
-                            step)
+      # Try ID-based click first, then text-based
+      xpath_step <- sprintf("//a[contains(@class, 'jstree-anchor') and contains(@id, '%s')]", step)
       
       step_found <- FALSE
       for(w in 1:5) {
         el <- try(session$find_element("xpath", xpath_step), silent=TRUE)
         if (!inherits(el, "try-error")) {
-          # Use JS click to bypass any remaining invisible overlays
           session$execute_script("arguments[0].click();", el)
           step_found <- TRUE
           break
@@ -175,7 +175,6 @@ sao_paulo_download_metro_area <- function(
       }
       
       if (!step_found) {
-        # Fallback: Find by text
         xpath_text <- sprintf("//a[contains(text(), '%s')]", step)
         el <- try(session$find_element("xpath", xpath_text), silent=TRUE)
         if (!inherits(el, "try-error")) {
@@ -184,10 +183,10 @@ sao_paulo_download_metro_area <- function(
           stop("❌ Failed to find tree node: ", step)
         }
       }
-      Sys.sleep(2) # Wait for children to load
+      Sys.sleep(2)
     }
     
-    # -- CLICK TARGET FILE --
+    # -- Click Target File --
     if (!quiet) message("   🖱️  Clicking file: ", target_file_name)
     
     xpath_file <- sprintf("//a[contains(text(), '%s')]", target_file_name)
@@ -197,26 +196,26 @@ sao_paulo_download_metro_area <- function(
       stop("❌ File link not found after drill-down.")
     }
     
-    # Force click via JS (Robust against scroll issues)
     session$execute_script("arguments[0].click();", file_link)
     
-    # -- Wait & Move --
-    if (!quiet) message("   ⏳ Waiting for file download...")
+    # -- Download Wait & Move --
+    if (!quiet) message("   ⏳ Waiting for download...")
     
     download_success <- FALSE
     for (i in 1:300) { 
       if (file.exists(zip_landing_path)) {
         parts <- list.files(root_dl_dir, pattern = "\\.part$", full.names = TRUE)
         if (length(parts) == 0) {
+          # Check size > 1KB
           if (file.info(zip_landing_path)$size > 1024) {
             
-            if (!quiet) message("   📦 Moving file to: ", zip_target_path)
+            if (!quiet) message("   📦 Moving to: ", zip_target_path)
             if (file.exists(zip_target_path)) unlink(zip_target_path)
             
             copy_ok <- file.copy(zip_landing_path, zip_target_path, overwrite = TRUE)
             if (copy_ok) {
               unlink(zip_landing_path)
-              if (!quiet) message("   ✅ Download & Move Complete.")
+              if (!quiet) message("   ✅ Download Complete.")
               download_success <- TRUE
               break
             } else {
@@ -236,33 +235,54 @@ sao_paulo_download_metro_area <- function(
   
   # 3) Extraction --------------------------------------------------------------
   if (!quiet) message("📦 Extracting Data...")
-  exdir <- file.path(tempdir(), "sp_carto_2024")
+  
+  # Create a specific temp dir for this extraction to avoid collisions
+  exdir <- file.path(tempdir(), paste0("sp_carto_2010_", level))
   if (dir.exists(exdir)) unlink(exdir, recursive = TRUE, force = TRUE)
   dir.create(exdir)
+  
   utils::unzip(zip_target_path, exdir = exdir)
   
   shp_files <- list.files(exdir, pattern = "\\.shp$", full.names = TRUE, recursive = TRUE)
+  if (length(shp_files) == 0) stop("No .shp file found in ZIP.")
+  
+  # Usually only one shapefile per 2010 zip, but pick largest just in case
   target_shp <- shp_files[which.max(file.info(shp_files)$size)]
   
   # 4) Processing --------------------------------------------------------------
   if (!quiet) message("🗺️  Reading and Filtering Spatial Data...")
-  sf_layer <- sf::st_read(target_shp, quiet = TRUE)
   
-  if (!"CD_MUN" %in% names(sf_layer)) {
-    potential_cols <- grep("CD_MUN|COD_MUN|GEOCOD", names(sf_layer), value=TRUE)
+  # IMPORTANT: Set ENCODING=LATIN1 for IBGE 2010 files to fix character issues
+  sf_layer <- sf::st_read(target_shp, quiet = TRUE, options = "ENCODING=LATIN1")
+  
+  # Standardize Column Names
+  # 2010 files usually have CD_GEOCODM for municipalities.
+  # Sector files have CD_GEOCODI (tract ID) and usually CD_GEOCODM (muni ID).
+  
+  if (!"CD_GEOCODM" %in% names(sf_layer)) {
+    # If explicit muni column is missing, try to infer or check alternatives
+    potential_cols <- grep("CD_GEOCODM|COD_MUN|CD_MUN", names(sf_layer), value=TRUE)
     if(length(potential_cols) > 0) {
-      names(sf_layer)[names(sf_layer) == potential_cols[1]] <- "CD_MUN"
+      names(sf_layer)[names(sf_layer) == potential_cols[1]] <- "CD_GEOCODM"
     } else {
-      stop("Column 'CD_MUN' missing.")
+      # If it's a sector file without muni column, we can slice CD_GEOCODI
+      if ("CD_GEOCODI" %in% names(sf_layer)) {
+        sf_layer$CD_GEOCODM <- substr(as.character(sf_layer$CD_GEOCODI), 1, 7)
+      } else {
+        stop("Critical columns (CD_GEOCODM or CD_GEOCODI) missing.")
+      }
     }
   }
   
-  sf_layer$CD_MUN <- as.character(sf_layer$CD_MUN)
-  sf_out <- sf_layer |> dplyr::filter(CD_MUN %in% as.character(keep_municipality))
+  # Filter
+  sf_layer$CD_GEOCODM <- as.character(sf_layer$CD_GEOCODM)
+  keep_municipality   <- as.character(keep_municipality)
   
-  if (nrow(sf_out) == 0) stop("No municipalities matched.")
+  sf_out <- sf_layer |> dplyr::filter(CD_GEOCODM %in% keep_municipality)
   
-  if (!quiet) message("🔎 Matched ", nrow(sf_out), " Municipalities.")
+  if (nrow(sf_out) == 0) stop("No data matched the provided municipality codes.")
+  
+  if (!quiet) message("🔎 Matched ", nrow(sf_out), " features (Level: ", level, ")")
   
   # 5) Save --------------------------------------------------------------------
   if (file.exists(out_file) && !overwrite_gpkg) {
