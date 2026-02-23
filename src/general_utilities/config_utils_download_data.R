@@ -16,6 +16,7 @@ pkgs <- c(
   "curl",
   "dplyr",
   "fs",
+  "geobr",
   "glue",
   "here",
   "httr",
