@@ -14,6 +14,7 @@
 pkgs <- c(
   "arrow",
   "cowplot",
+  "data.table",
   "dplyr",
   "ggmap",
   "ggplot2",
@@ -35,6 +36,7 @@ pkgs <- c(
   "terra",
   "tidyr",
   "viridisLite",
+  "viridis",
   "zoo")
 
 # Strict check: fail fast if something isn't in the project library
@@ -1854,23 +1856,23 @@ summarize_hourly_by_station <- function(df,
   hourly
 }
 
-# ------------------------------------------------------------------------------------------------
+# ---------------------------------------------------------------------------------------------
 # Function: plot_hourly_stacked_stations
 # @Arg         : hourly_df      output of summarize_hourly_by_station().
 # @Arg         : region_name    string for the plot title (e.g., "Santiago").
 # @Arg         : pollutant_label label to show (e.g., "PM2.5" or "PM10").
 # @Arg         : filter_label   subtitle (e.g., "All values", "Values > IT1 (35 µg/m³)").
-# @Arg         : normalize      if TRUE, 100% stacks by hour (shares); else stacks absolute means.
+# @Arg         : normalize      if TRUE, 100% stacks by hour (shares); else stacks abs means.
 # @Arg         : show_it_lines  if TRUE and not normalized, add IT2/IT1 vertical lines.
 # @Arg         : year           integer shown in title (default 2012L for signature parity).
 # @Arg         : it1, it2       numeric WHO lines if show_it_lines = TRUE.
 # @Arg         : base_family    font family for theme.
 # @Output      : A ggplot object (horizontal stacked bars; one bar per hour; segment = station).
-# @Purpose     : Visualize composition and level (or share) of hourly averages by station with a
-#                fixed station order across all hours to ease comparisons.
+# @Purpose     : Visualize composition and level (or share) of hourly averages by station 
+# with a fixed station order across all hours to ease comparisons.
 # @Written_on  : 12/08/2025
 # @Written_by  : Marcos Paulo
-# ------------------------------------------------------------------------------------------------
+# ---------------------------------------------------------------------------------------------
 plot_hourly_stacked_stations <- function(hourly_df,
                                          region_name     = "Santiago",
                                          pollutant_label = "PM2.5",
@@ -1934,6 +1936,125 @@ plot_hourly_stacked_stations <- function(hourly_df,
       annotate("text", x = it1 + 1, y = max(as.numeric(factor(dfp$Hour))), label = "IT1",
                vjust = -0.4, color = "darkred", size = 3)
   }
+  
+  return(p)
+}
+
+
+# ---------------------------------------------------------------------------------------------
+# Function: plot_inequality_pollution
+#
+# @Arg metro_sf    : sf object; The metropolitan area boundaries (e.g. tracts).
+# @Arg stations_sf : sf object; The ground monitoring stations.
+# @Arg arrow_dir   : string; Path to the partitioned parquet dataset folder.
+# @Arg census_df   : data.frame; The collapsed census statistics.
+# @Arg join_sf_col : string; Column name in metro_sf to join on.
+# @Arg join_df_col : string; Column name in census_df to join on.
+# @Arg station_col : string; Column in stations_sf with the station name/code.
+# @Arg ed_col      : string; Column for education/sorting (e.g. "escolaridad").
+# @Arg pop_col     : string; Column for population weights (e.g. "n").
+# @Arg year_filter : numeric; Year to check for active stations.
+# @Arg buffer_km   : numeric; Buffer size around stations in kilometers.
+# @Arg city_label  : string; Text label to place in the top right.
+# @Arg pollutants  : vector; Pollutants to check (e.g., c("pm25", "pm10")).
+#
+# @Output          : A ggplot object.
+# @Purpose         : Visualize inequality based on education levels and 
+#                    active air monitoring station buffers.
+# @Written_on      : 19/02/2026
+# @Written_by      : Marcos
+# ---------------------------------------------------------------------------------------------
+plot_inequality_pollution <- function(
+    metro_sf, stations_sf, arrow_dir, census_df, 
+    join_sf_col, join_df_col, station_col = "station_name", 
+    ed_col, pop_col, year_filter = 2023, buffer_km = 5, 
+    city_label = "Metro Area", pollutants = c("pm25", "pm10")
+) {
+  
+  req_pkgs <- c("dplyr", "sf", "ggplot2", "viridis", "arrow", "data.table")
+  for(p in req_pkgs) {
+    if (!requireNamespace(p, quietly = TRUE)) stop(paste("Need", p))
+  }
+  
+  # 1. Query Arrow for Active Stations
+  # ----------------------------------------------------------------------------
+  arrow_ds <- arrow::open_dataset(arrow_dir)
+  
+  active_stations <- arrow_ds |>
+    dplyr::filter(year == year_filter) |>
+    dplyr::select(station, dplyr::all_of(pollutants)) |>
+    dplyr::collect() |>
+    # Keep row if AT LEAST ONE of the requested pollutants is not NA
+    dplyr::filter(
+      rowSums(!is.na(dplyr::across(dplyr::all_of(pollutants)))) > 0
+    ) |>
+    dplyr::distinct(station) |>
+    dplyr::pull(station)
+  
+  # Subset the spatial stations using the dynamic station_col parameter
+  stations_subset <- stations_sf |> 
+    dplyr::filter(.data[[station_col]] %in% active_stations)
+  
+  if (nrow(stations_subset) == 0) {
+    warning("No active stations found for the given year and pollutants.")
+  }
+  
+  # 2. Compute Population-Weighted Quintiles
+  # ----------------------------------------------------------------------------
+  data.table::setDT(census_df)
+  data.table::setorderv(census_df, cols = ed_col)
+  
+  census_df[, cum_pop := cumsum(get(pop_col))]
+  census_df[, pct_pop := cum_pop / sum(get(pop_col), na.rm = TRUE)]
+  census_df[, quintiles := data.table::fcase(
+    pct_pop <= 0.2, "1",
+    pct_pop <= 0.4, "2",
+    pct_pop <= 0.6, "3",
+    pct_pop <= 0.8, "4",
+    default = "5"
+  )]
+  
+  # 3. Spatial Joins & Buffers (FIXED)
+  # ----------------------------------------------------------------------------
+  # Convert data.table back to data.frame to prevent sf merge conflicts
+  census_df <- as.data.frame(census_df)
+  
+  # Use dplyr::left_join for robust spatial merging
+  join_mapping <- stats::setNames(join_df_col, join_sf_col)
+  shp_merged <- dplyr::left_join(metro_sf, census_df, by = join_mapping) # %>% 
+    # filter(!is.na(quintiles))
+  
+  stations_buffer <- sf::st_buffer(stations_subset, dist = buffer_km * 1000)
+  stations_buffer <- sf::st_transform(stations_buffer, sf::st_crs(shp_merged))
+  
+  # 4. Extract Top-Right Coordinates for Label
+  # ----------------------------------------------------------------------------
+  bbox <- sf::st_bbox(shp_merged)
+  label_x <- bbox["xmax"] - (bbox["xmax"] - bbox["xmin"]) * 0.02
+  label_y <- bbox["ymax"] - (bbox["ymax"] - bbox["ymin"]) * 0.02
+  
+  # 5. Build ggplot
+  # ----------------------------------------------------------------------------
+  p <- ggplot() +
+    geom_sf(data = shp_merged, aes(fill = quintiles), color = "white",
+            linewidth = 0.05) +
+    scale_fill_viridis_d(option="mako", direction=-1, na.value="grey90") +
+    geom_sf(data = stations_subset, color = "red", size = 1) +
+    geom_sf(data = stations_buffer, fill = NA, color = "red", 
+            linewidth = 0.5, alpha = 0.3) +
+    annotate("text", x = label_x, y = label_y, label = city_label, 
+             hjust = 1, vjust = 1, fontface = "bold", size = 5, 
+             color = "grey20") +
+    labs(fill = "Years of schooling\nquintiles") +
+    theme_minimal() +
+    theme(
+      panel.background = element_rect(fill = "white", color = NA),
+      plot.background  = element_rect(fill = "white", color = NA),
+      panel.grid       = element_blank(),
+      axis.text        = element_blank(),
+      axis.title       = element_blank(),
+      legend.position  = "bottom"
+    )
   
   return(p)
 }
