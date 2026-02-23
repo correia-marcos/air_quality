@@ -8,6 +8,11 @@
 #   - src/config_utils_download_data.R  (selenium helpers, waits, clicking helpers, etc.)
 #   - src/config_utils_process_data.R   (merge, tidy, QA, parquet writing, etc.)
 #   - src/cities/registry.R
+# 
+# Others obs:
+# Definition of the metropolitan area comes from the following document:
+# Jiménez Uribe, R., et al (2023). 
+# Metrópolis de México 2020. Secretaría de Desarrollo Agrario, Territorial y Urbano.
 # ============================================================================================
 
 # Parameters (single source)
