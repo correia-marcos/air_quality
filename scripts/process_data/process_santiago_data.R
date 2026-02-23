@@ -38,8 +38,7 @@ outdir_metadata   <- here::here(santiago_cfg$dl_dir, "stations_metadata")
 santiago_stations_csv   <- here::here(outdir_metadata,
                                       "SINCA_metadata_stations_20260113_1616.csv")
 santiago_metro_gpkg     <- here::here(outdir_geospatial, "santiago",
-                                      "gran_santiago_area.gpkg")
-
+                                      "gran_santiago_area_2024.gpkg")
 # Open station location and other spatial data
 station_location <- read.csv(santiago_stations_csv)
 metro_area       <- sf::st_read(santiago_metro_gpkg)
@@ -53,41 +52,32 @@ stations_kept <- santiago_filter_stations_in_metro(
   radius_km     = 20,
   metro_area    = metro_area,
   out_file      = here::here(outdir_geospatial, "santiago",
-                             "santiago_stations_buffer_metro.gpkg"))
+                             "gran_santiago_stations_buffer_metro_2024.gpkg"))
 
 # Apply function to merge all downloaded file of Bogota metro area into DUCKDB database
-bogota_stations_data <- bogota_process_stations_data_to_parquet(
-  rmcab_folder   = here::here(bogota_cfg$dl_dir, "ground_stations"),
-  sisaire_folder = here::here(bogota_cfg$dl_dir, "metro_ground_stations_hourly"),
-  stations_sf    = stations_kept,
-  tz             = "UTC",    # Important to be UTC so DuckDB don't misbehaves
-  out_dir        = outdir_pollution,
-  out_name       = "bogota_metro"
+santiago_stations_data <- santiago_process_stations_data_to_parquet(
+  data_folder = here::here(santiago_cfg$dl_dir, "ground_stations"),
+  stations_sf = stations_kept,
+  out_dir     = outdir_pollution,
+  out_name    = "santiago_metro",
+  tz          = "UTC",
+  years       = santiago_cfg$years
 )
 
-# Apply function to unpack the extended census data (unzip and filter) then read and process
-process_extended <- bogota_filter_census(
-  census_zip = here::here(bogota_cfg$dl_dir, "census", "CG2005_AMPLIADO.zip"),
-  out_dir    = here::here("data", "raw", "census", "bogota", "CG2005_EXTENDED"),
-  overwrite  = TRUE,
+# Apply function to process the census data of 2017 - through a package
+process_harmonize_census <- santiago_process_census_2017(
+  out_dir    = here::here("data", "interim", "census", "santiago_2017"),
+  sf_data    = metro_area,
+  match_col  = "CUT",
   quiet      = FALSE)
-process_harmonize_extended <- bogota_harmonize_census_data(
-  extract_list = process_extended,
-  metro_codes  = bogota_cfg$city_code_metro,
-  out_dir      = here::here("data", "interim", "census", "bogota_extended"))
 
-# Apply function to unpack the basic census data (unzip and filter) then read and process
-process_basic <- bogota_filter_census(
-  census_zip = here::here(bogota_cfg$dl_dir, "census", "CG2005_BASICO.zip"),
-  out_dir    = here::here("data", "raw", "census", "bogota", "CG2005_BASIC"),
-  overwrite  = FALSE,
-  quiet      = FALSE
+# Apply function to unpack the census data of 2024 (unzip, filter, read and process)
+process_harmonize_census_2024 <- santiago_process_census_2024(
+  census_dir = here::here(santiago_cfg$dl_dir, "census", "2024"),
+  sf_data    = metro_area,
+  match_col  = "CUT",
+  out_dir    = here::here("data", "interim", "census", "santiago_2024")
 )
-process_harmonize_basic <- bogota_harmonize_census_data(
-  extract_list = process_basic,
-  is_extended  = FALSE,
-  metro_codes  = bogota_cfg$city_code_metro,
-  out_dir      = here::here("data", "interim", "census", "bogota_basic"))
 
 # Print a success message for when running inside Docker Container
 cat("Script from the IDB projected executed successfully in the Docker container!\n")
