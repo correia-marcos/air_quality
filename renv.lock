@@ -439,6 +439,28 @@
       "Maintainer": "Hadley Wickham <hadley@rstudio.com>",
       "Repository": "CRAN"
     },
+    "backports": {
+      "Package": "backports",
+      "Version": "1.5.0",
+      "Source": "Repository",
+      "Type": "Package",
+      "Title": "Reimplementations of Functions Introduced Since R-3.0.0",
+      "Authors@R": "c( person(\"Michel\", \"Lang\", NULL, \"michellang@gmail.com\", role = c(\"cre\", \"aut\"), comment = c(ORCID = \"0000-0001-9754-0393\")), person(\"Duncan\", \"Murdoch\", NULL, \"murdoch.duncan@gmail.com\", role = c(\"aut\")), person(\"R Core Team\", role = \"aut\"))",
+      "Maintainer": "Michel Lang <michellang@gmail.com>",
+      "Description": "Functions introduced or changed since R v3.0.0 are re-implemented in this package. The backports are conditionally exported in order to let R resolve the function name to either the implemented backport, or the respective base version, if available. Package developers can make use of new functions or arguments by selectively importing specific backports to support older installations.",
+      "URL": "https://github.com/r-lib/backports",
+      "BugReports": "https://github.com/r-lib/backports/issues",
+      "License": "GPL-2 | GPL-3",
+      "NeedsCompilation": "yes",
+      "ByteCompile": "yes",
+      "Depends": [
+        "R (>= 3.0.0)"
+      ],
+      "Encoding": "UTF-8",
+      "RoxygenNote": "7.3.1",
+      "Author": "Michel Lang [cre, aut] (<https://orcid.org/0000-0001-9754-0393>), Duncan Murdoch [aut], R Core Team [aut]",
+      "Repository": "CRAN"
+    },
     "base64enc": {
       "Package": "base64enc",
       "Version": "0.1-3",
@@ -655,6 +677,136 @@
       "NeedsCompilation": "no",
       "Author": "Jennifer Bryan [cre, aut], Hadley Wickham [ctb]",
       "Maintainer": "Jennifer Bryan <jenny@stat.ubc.ca>",
+      "Repository": "CRAN"
+    },
+    "censo2017": {
+      "Package": "censo2017",
+      "Version": "0.6.2",
+      "Source": "Repository",
+      "Title": "Base de Datos de Facil Acceso del Censo 2017 de Chile (2017 Chilean Census Easy Access Database)",
+      "Authors@R": "c( person(given = \"Mauricio\", family = \"Vargas\", role = c(\"aut\", \"cre\"), email = \"mavargas11@uc.cl\", comment = c(ORCID = \"0000-0003-1017-7574\")), person(given = \"Juan\", family = \"Correa\", role = c(\"ctb\")), person(given = \"Maria Paula\", family = \"Caldas\", role = c(\"rev\"), comment = \"rOpenSci\"), person(given = \"Frans\", family = \"van Dunee\", role = c(\"rev\"), comment = \"rOpenSci\"), person(given = \"Melina\", family = \"Vidoni\", role = c(\"rev\"), comment = \"rOpenSci\"), person(given = \"Constanza\", family = \"Manriquez\", role = c(\"rev\"), comment = \"revision independiente de las vinietas\"), person(family = \"Instituto Nacional de Estadisticas (INE)\", role = c(\"dtc\") ) )",
+      "Description": "Provee un acceso conveniente a mas de 17 millones de registros de la base de datos del Censo 2017. Los datos fueron importados desde el DVD oficial del INE usando el Convertidor REDATAM creado por Pablo De Grande. Esta paquete esta documentado intencionalmente en castellano asciificado para que funcione sin problema en diferentes plataformas. (Provides convenient access to more than 17 million records from the Chilean Census 2017 database. The datasets were imported from the official DVD provided by the Chilean National Bureau of Statistics by using the REDATAM converter created by Pablo De Grande and in addition it includes the maps accompanying these datasets.)",
+      "URL": "https://docs.ropensci.org/censo2017/",
+      "BugReports": "https://github.com/ropensci/censo2017/issues/",
+      "License": "CC0",
+      "Encoding": "UTF-8",
+      "LazyData": "true",
+      "RoxygenNote": "7.2.3",
+      "Imports": [
+        "DBI",
+        "duckdb",
+        "httr",
+        "tibble",
+        "purrr",
+        "cli",
+        "crayon",
+        "rstudioapi",
+        "tools"
+      ],
+      "Suggests": [
+        "testthat",
+        "covr",
+        "knitr",
+        "dplyr",
+        "dbplyr",
+        "ggplot2",
+        "chilemapas"
+      ],
+      "Depends": [
+        "R (>= 4.0)"
+      ],
+      "NeedsCompilation": "no",
+      "Author": "Mauricio Vargas [aut, cre] (<https://orcid.org/0000-0003-1017-7574>), Juan Correa [ctb], Maria Paula Caldas [rev] (rOpenSci), Frans van Dunee [rev] (rOpenSci), Melina Vidoni [rev] (rOpenSci), Constanza Manriquez [rev] (revision independiente de las vinietas), Instituto Nacional de Estadisticas (INE) [dtc]",
+      "Maintainer": "Mauricio Vargas <mavargas11@uc.cl>",
+      "Repository": "CRAN"
+    },
+    "censobr": {
+      "Package": "censobr",
+      "Version": "0.5.0",
+      "Source": "Repository",
+      "Type": "Package",
+      "Title": "Download Data from Brazil's Population Census",
+      "Authors@R": "c(person(given=\"Rafael H. M.\", family=\"Pereira\",  email=\"rafa.pereira.br@gmail.com\",  role=c(\"aut\", \"cre\"),  comment = c(ORCID = \"0000-0003-2125-7465\")), person(given=\"Rogério J.\", family=\"Barbosa\",  email=\"antrologos@gmail.com\",  role=c(\"aut\"),  comment = c(ORCID = \"0000-0002-6796-4547\")), person(given=\"Diego Rabatone\", family=\"Oliveira\",  email=\"diraol@diraol.eng.br\",  role=c(\"ctb\")), person(given=\"Neal\", family=\"Richardson\",  email=\"neal.p.richardson@gmail.com\",  role=c(\"ctb\")), person(given = \"Ipea - Institute for Applied Economic Research\", role = c(\"cph\", \"fnd\")))",
+      "Description": "Easy access to data from Brazil's population censuses. The package provides a simple and efficient way to download and read the data  sets and the documentation of all the population censuses taken in  and after 1960 in the country. The package is built on top of the  'Arrow' platform <https://arrow.apache.org/docs/r/>,  which allows  users to work with larger-than-memory census data using 'dplyr'  familiar functions. <https://arrow.apache.org/docs/r/articles/arrow.html#analyzing-arrow-data-with-dplyr>.",
+      "License": "MIT + file LICENSE",
+      "URL": "https://github.com/ipeaGIT/censobr, https://ipeagit.github.io/censobr/",
+      "BugReports": "https://github.com/ipeaGIT/censobr/issues",
+      "Depends": [
+        "R (>= 4.1.0)"
+      ],
+      "Imports": [
+        "arrow (>= 15.0.1)",
+        "checkmate",
+        "cli",
+        "curl (>= 5.0.0)",
+        "dplyr",
+        "duckdb",
+        "fs",
+        "glue",
+        "rlang",
+        "tools"
+      ],
+      "Suggests": [
+        "covr",
+        "DBI",
+        "dbplyr",
+        "geobr",
+        "ggplot2 (>= 3.3.1)",
+        "rmarkdown",
+        "kableExtra",
+        "knitr",
+        "scales",
+        "testthat"
+      ],
+      "VignetteBuilder": "knitr",
+      "Encoding": "UTF-8",
+      "RoxygenNote": "7.3.2",
+      "NeedsCompilation": "no",
+      "Author": "Rafael H. M. Pereira [aut, cre] (ORCID: <https://orcid.org/0000-0003-2125-7465>), Rogério J. Barbosa [aut] (ORCID: <https://orcid.org/0000-0002-6796-4547>), Diego Rabatone Oliveira [ctb], Neal Richardson [ctb], Ipea - Institute for Applied Economic Research [cph, fnd]",
+      "Maintainer": "Rafael H. M. Pereira <rafa.pereira.br@gmail.com>",
+      "Repository": "CRAN"
+    },
+    "checkmate": {
+      "Package": "checkmate",
+      "Version": "2.3.3",
+      "Source": "Repository",
+      "Type": "Package",
+      "Title": "Fast and Versatile Argument Checks",
+      "Description": "Tests and assertions to perform frequent argument checks. A substantial part of the package was written in C to minimize any worries about execution time overhead.",
+      "Authors@R": "c( person(\"Michel\", \"Lang\", NULL, \"michellang@gmail.com\", role = c(\"cre\", \"aut\"), comment = c(ORCID = \"0000-0001-9754-0393\")), person(\"Bernd\", \"Bischl\", NULL, \"bernd_bischl@gmx.net\", role = \"ctb\"), person(\"Dénes\", \"Tóth\", NULL, \"toth.denes@kogentum.hu\", role = \"ctb\", comment = c(ORCID = \"0000-0003-4262-3217\")) )",
+      "URL": "https://mllg.github.io/checkmate/, https://github.com/mllg/checkmate",
+      "URLNote": "https://github.com/mllg/checkmate",
+      "BugReports": "https://github.com/mllg/checkmate/issues",
+      "NeedsCompilation": "yes",
+      "ByteCompile": "yes",
+      "Encoding": "UTF-8",
+      "Depends": [
+        "R (>= 3.0.0)"
+      ],
+      "Imports": [
+        "backports (>= 1.1.0)",
+        "utils"
+      ],
+      "Suggests": [
+        "R6",
+        "fastmatch",
+        "data.table (>= 1.9.8)",
+        "devtools",
+        "ggplot2",
+        "knitr",
+        "magrittr",
+        "microbenchmark",
+        "rmarkdown",
+        "testthat (>= 3.0.4)",
+        "tinytest (>= 1.1.0)",
+        "tibble"
+      ],
+      "License": "BSD_3_clause + file LICENSE",
+      "VignetteBuilder": "knitr",
+      "RoxygenNote": "7.3.2",
+      "Collate": "'AssertCollection.R' 'allMissing.R' 'anyInfinite.R' 'anyMissing.R' 'anyNaN.R' 'asInteger.R' 'assert.R' 'helper.R' 'makeExpectation.R' 'makeTest.R' 'makeAssertion.R' 'checkAccess.R' 'checkArray.R' 'checkAtomic.R' 'checkAtomicVector.R' 'checkCharacter.R' 'checkChoice.R' 'checkClass.R' 'checkComplex.R' 'checkCount.R' 'checkDataFrame.R' 'checkDataTable.R' 'checkDate.R' 'checkDirectoryExists.R' 'checkDisjunct.R' 'checkDouble.R' 'checkEnvironment.R' 'checkFALSE.R' 'checkFactor.R' 'checkFileExists.R' 'checkFlag.R' 'checkFormula.R' 'checkFunction.R' 'checkInt.R' 'checkInteger.R' 'checkIntegerish.R' 'checkList.R' 'checkLogical.R' 'checkMatrix.R' 'checkMultiClass.R' 'checkNamed.R' 'checkNames.R' 'checkNull.R' 'checkNumber.R' 'checkNumeric.R' 'checkOS.R' 'checkPOSIXct.R' 'checkPathForOutput.R' 'checkPermutation.R' 'checkR6.R' 'checkRaw.R' 'checkScalar.R' 'checkScalarNA.R' 'checkSetEqual.R' 'checkString.R' 'checkSubset.R' 'checkTRUE.R' 'checkTibble.R' 'checkVector.R' 'coalesce.R' 'isIntegerish.R' 'matchArg.R' 'qassert.R' 'qassertr.R' 'vname.R' 'wfwl.R' 'zzz.R'",
+      "Author": "Michel Lang [cre, aut] (ORCID: <https://orcid.org/0000-0001-9754-0393>), Bernd Bischl [ctb], Dénes Tóth [ctb] (ORCID: <https://orcid.org/0000-0003-4262-3217>)",
+      "Maintainer": "Michel Lang <michellang@gmail.com>",
       "Repository": "CRAN"
     },
     "class": {
@@ -955,6 +1107,40 @@
       "NeedsCompilation": "yes",
       "Author": "Jeroen Ooms [aut, cre] (ORCID: <https://orcid.org/0000-0002-4035-0289>), Hadley Wickham [ctb], Posit Software, PBC [cph]",
       "Maintainer": "Jeroen Ooms <jeroenooms@gmail.com>",
+      "Repository": "CRAN"
+    },
+    "data.table": {
+      "Package": "data.table",
+      "Version": "1.18.2.1",
+      "Source": "Repository",
+      "Title": "Extension of `data.frame`",
+      "Depends": [
+        "R (>= 3.4.0)"
+      ],
+      "Imports": [
+        "methods"
+      ],
+      "Suggests": [
+        "bit64 (>= 4.0.0)",
+        "bit (>= 4.0.4)",
+        "R.utils (>= 2.13.0)",
+        "xts",
+        "zoo (>= 1.8-1)",
+        "yaml",
+        "knitr",
+        "markdown"
+      ],
+      "Description": "Fast aggregation of large data (e.g. 100GB in RAM), fast ordered joins, fast add/modify/delete of columns by group using no copies at all, list columns, friendly and fast character-separated-value read/write. Offers a natural and flexible syntax, for faster development.",
+      "License": "MPL-2.0 | file LICENSE",
+      "URL": "https://r-datatable.com, https://Rdatatable.gitlab.io/data.table, https://github.com/Rdatatable/data.table",
+      "BugReports": "https://github.com/Rdatatable/data.table/issues",
+      "VignetteBuilder": "knitr",
+      "Encoding": "UTF-8",
+      "ByteCompile": "TRUE",
+      "Authors@R": "c( person(\"Tyson\",\"Barrett\",        role=c(\"aut\",\"cre\"), email=\"t.barrett88@gmail.com\", comment = c(ORCID=\"0000-0002-2137-1391\")), person(\"Matt\",\"Dowle\",           role=\"aut\",          email=\"mattjdowle@gmail.com\"), person(\"Arun\",\"Srinivasan\",      role=\"aut\",          email=\"asrini@pm.me\"), person(\"Jan\",\"Gorecki\",          role=\"aut\",          email=\"j.gorecki@wit.edu.pl\"), person(\"Michael\",\"Chirico\",      role=\"aut\",          email=\"michaelchirico4@gmail.com\", comment = c(ORCID=\"0000-0003-0787-087X\")), person(\"Toby\",\"Hocking\",         role=\"aut\",          email=\"toby.hocking@r-project.org\", comment = c(ORCID=\"0000-0002-3146-0865\")), person(\"Benjamin\",\"Schwendinger\",role=\"aut\", comment = c(ORCID=\"0000-0003-3315-8114\")), person(\"Ivan\", \"Krylov\",         role=\"aut\",          email=\"ikrylov@disroot.org\",   comment = c(ORCID=\"0000-0002-0172-3812\")), person(\"Pasha\",\"Stetsenko\",      role=\"ctb\"), person(\"Tom\",\"Short\",            role=\"ctb\"), person(\"Steve\",\"Lianoglou\",      role=\"ctb\"), person(\"Eduard\",\"Antonyan\",      role=\"ctb\"), person(\"Markus\",\"Bonsch\",        role=\"ctb\"), person(\"Hugh\",\"Parsonage\",       role=\"ctb\"), person(\"Scott\",\"Ritchie\",        role=\"ctb\"), person(\"Kun\",\"Ren\",              role=\"ctb\"), person(\"Xianying\",\"Tan\",         role=\"ctb\"), person(\"Rick\",\"Saporta\",         role=\"ctb\"), person(\"Otto\",\"Seiskari\",        role=\"ctb\"), person(\"Xianghui\",\"Dong\",        role=\"ctb\"), person(\"Michel\",\"Lang\",          role=\"ctb\"), person(\"Watal\",\"Iwasaki\",        role=\"ctb\"), person(\"Seth\",\"Wenchel\",         role=\"ctb\"), person(\"Karl\",\"Broman\",          role=\"ctb\"), person(\"Tobias\",\"Schmidt\",       role=\"ctb\"), person(\"David\",\"Arenburg\",       role=\"ctb\"), person(\"Ethan\",\"Smith\",          role=\"ctb\"), person(\"Francois\",\"Cocquemas\",   role=\"ctb\"), person(\"Matthieu\",\"Gomez\",       role=\"ctb\"), person(\"Philippe\",\"Chataignon\",  role=\"ctb\"), person(\"Nello\",\"Blaser\",         role=\"ctb\"), person(\"Dmitry\",\"Selivanov\",     role=\"ctb\"), person(\"Andrey\",\"Riabushenko\",   role=\"ctb\"), person(\"Cheng\",\"Lee\",            role=\"ctb\"), person(\"Declan\",\"Groves\",        role=\"ctb\"), person(\"Daniel\",\"Possenriede\",   role=\"ctb\"), person(\"Felipe\",\"Parages\",       role=\"ctb\"), person(\"Denes\",\"Toth\",           role=\"ctb\"), person(\"Mus\",\"Yaramaz-David\",    role=\"ctb\"), person(\"Ayappan\",\"Perumal\",      role=\"ctb\"), person(\"James\",\"Sams\",           role=\"ctb\"), person(\"Martin\",\"Morgan\",        role=\"ctb\"), person(\"Michael\",\"Quinn\",        role=\"ctb\"), person(given=\"@javrucebo\",       role=\"ctb\", comment=\"GitHub user\"), person(\"Marc\",\"Halperin\",        role=\"ctb\"), person(\"Roy\",\"Storey\",           role=\"ctb\"), person(\"Manish\",\"Saraswat\",      role=\"ctb\"), person(\"Morgan\",\"Jacob\",         role=\"ctb\"), person(\"Michael\",\"Schubmehl\",    role=\"ctb\"), person(\"Davis\",\"Vaughan\",        role=\"ctb\"), person(\"Leonardo\",\"Silvestri\",   role=\"ctb\"), person(\"Jim\",\"Hester\",           role=\"ctb\"), person(\"Anthony\",\"Damico\",       role=\"ctb\"), person(\"Sebastian\",\"Freundt\",    role=\"ctb\"), person(\"David\",\"Simons\",         role=\"ctb\"), person(\"Elliott\",\"Sales de Andrade\", role=\"ctb\"), person(\"Cole\",\"Miller\",          role=\"ctb\"), person(\"Jens Peder\",\"Meldgaard\", role=\"ctb\"), person(\"Vaclav\",\"Tlapak\",        role=\"ctb\"), person(\"Kevin\",\"Ushey\",          role=\"ctb\"), person(\"Dirk\",\"Eddelbuettel\",    role=\"ctb\"), person(\"Tony\",\"Fischetti\",       role=\"ctb\"), person(\"Ofek\",\"Shilon\",          role=\"ctb\"), person(\"Vadim\",\"Khotilovich\",    role=\"ctb\"), person(\"Hadley\",\"Wickham\",       role=\"ctb\"), person(\"Bennet\",\"Becker\",        role=\"ctb\"), person(\"Kyle\",\"Haynes\",          role=\"ctb\"), person(\"Boniface Christian\",\"Kamgang\", role=\"ctb\"), person(\"Olivier\",\"Delmarcell\",   role=\"ctb\"), person(\"Josh\",\"O'Brien\",         role=\"ctb\"), person(\"Dereck\",\"de Mezquita\",   role=\"ctb\"), person(\"Michael\",\"Czekanski\",    role=\"ctb\"), person(\"Dmitry\", \"Shemetov\",     role=\"ctb\"), person(\"Nitish\", \"Jha\",          role=\"ctb\"), person(\"Joshua\", \"Wu\",           role=\"ctb\"), person(\"Iago\", \"Giné-Vázquez\",   role=\"ctb\"), person(\"Anirban\", \"Chetia\",      role=\"ctb\"), person(\"Doris\", \"Amoakohene\",    role=\"ctb\"), person(\"Angel\", \"Feliz\",         role=\"ctb\"), person(\"Michael\",\"Young\",        role=\"ctb\"), person(\"Mark\", \"Seeto\",          role=\"ctb\"), person(\"Philippe\", \"Grosjean\",   role=\"ctb\"), person(\"Vincent\", \"Runge\",       role=\"ctb\"), person(\"Christian\", \"Wia\",       role=\"ctb\"), person(\"Elise\", \"Maigné\",        role=\"ctb\"), person(\"Vincent\", \"Rocher\",      role=\"ctb\"), person(\"Vijay\", \"Lulla\",         role=\"ctb\"), person(\"Aljaž\", \"Sluga\",         role=\"ctb\"), person(\"Bill\", \"Evans\",          role=\"ctb\"), person(\"Reino\", \"Bruner\",        role=\"ctb\"), person(given=\"@badasahog\",       role=\"ctb\", comment=\"GitHub user\"), person(\"Vinit\", \"Thakur\",        role=\"ctb\"), person(\"Mukul\", \"Kumar\",         role=\"ctb\"), person(\"Ildikó\", \"Czeller\",      role=\"ctb\"), person(\"Manmita\", \"Das\",         role=\"ctb\") )",
+      "NeedsCompilation": "yes",
+      "Author": "Tyson Barrett [aut, cre] (ORCID: <https://orcid.org/0000-0002-2137-1391>), Matt Dowle [aut], Arun Srinivasan [aut], Jan Gorecki [aut], Michael Chirico [aut] (ORCID: <https://orcid.org/0000-0003-0787-087X>), Toby Hocking [aut] (ORCID: <https://orcid.org/0000-0002-3146-0865>), Benjamin Schwendinger [aut] (ORCID: <https://orcid.org/0000-0003-3315-8114>), Ivan Krylov [aut] (ORCID: <https://orcid.org/0000-0002-0172-3812>), Pasha Stetsenko [ctb], Tom Short [ctb], Steve Lianoglou [ctb], Eduard Antonyan [ctb], Markus Bonsch [ctb], Hugh Parsonage [ctb], Scott Ritchie [ctb], Kun Ren [ctb], Xianying Tan [ctb], Rick Saporta [ctb], Otto Seiskari [ctb], Xianghui Dong [ctb], Michel Lang [ctb], Watal Iwasaki [ctb], Seth Wenchel [ctb], Karl Broman [ctb], Tobias Schmidt [ctb], David Arenburg [ctb], Ethan Smith [ctb], Francois Cocquemas [ctb], Matthieu Gomez [ctb], Philippe Chataignon [ctb], Nello Blaser [ctb], Dmitry Selivanov [ctb], Andrey Riabushenko [ctb], Cheng Lee [ctb], Declan Groves [ctb], Daniel Possenriede [ctb], Felipe Parages [ctb], Denes Toth [ctb], Mus Yaramaz-David [ctb], Ayappan Perumal [ctb], James Sams [ctb], Martin Morgan [ctb], Michael Quinn [ctb], @javrucebo [ctb] (GitHub user), Marc Halperin [ctb], Roy Storey [ctb], Manish Saraswat [ctb], Morgan Jacob [ctb], Michael Schubmehl [ctb], Davis Vaughan [ctb], Leonardo Silvestri [ctb], Jim Hester [ctb], Anthony Damico [ctb], Sebastian Freundt [ctb], David Simons [ctb], Elliott Sales de Andrade [ctb], Cole Miller [ctb], Jens Peder Meldgaard [ctb], Vaclav Tlapak [ctb], Kevin Ushey [ctb], Dirk Eddelbuettel [ctb], Tony Fischetti [ctb], Ofek Shilon [ctb], Vadim Khotilovich [ctb], Hadley Wickham [ctb], Bennet Becker [ctb], Kyle Haynes [ctb], Boniface Christian Kamgang [ctb], Olivier Delmarcell [ctb], Josh O'Brien [ctb], Dereck de Mezquita [ctb], Michael Czekanski [ctb], Dmitry Shemetov [ctb], Nitish Jha [ctb], Joshua Wu [ctb], Iago Giné-Vázquez [ctb], Anirban Chetia [ctb], Doris Amoakohene [ctb], Angel Feliz [ctb], Michael Young [ctb], Mark Seeto [ctb], Philippe Grosjean [ctb], Vincent Runge [ctb], Christian Wia [ctb], Elise Maigné [ctb], Vincent Rocher [ctb], Vijay Lulla [ctb], Aljaž Sluga [ctb], Bill Evans [ctb], Reino Bruner [ctb], @badasahog [ctb] (GitHub user), Vinit Thakur [ctb], Mukul Kumar [ctb], Ildikó Czeller [ctb], Manmita Das [ctb]",
+      "Maintainer": "Tyson Barrett <t.barrett88@gmail.com>",
       "Repository": "CRAN"
     },
     "digest": {
@@ -1424,6 +1610,48 @@
       "NeedsCompilation": "no",
       "Author": "Hadley Wickham [aut, cre] (ORCID: <https://orcid.org/0000-0003-4757-117X>), Max Kuhn [aut], Davis Vaughan [aut], Posit Software, PBC [cph, fnd] (ROR: <https://ror.org/03wc8by49>)",
       "Maintainer": "Hadley Wickham <hadley@posit.co>",
+      "Repository": "CRAN"
+    },
+    "geobr": {
+      "Package": "geobr",
+      "Version": "1.9.1",
+      "Source": "Repository",
+      "Type": "Package",
+      "Title": "Download Official Spatial Data Sets of Brazil",
+      "Authors@R": "c(person(given=\"Rafael H. M.\", family=\"Pereira\", email=\"rafa.pereira.br@gmail.com\", role=c(\"aut\", \"cre\"), comment = c(ORCID = \"0000-0003-2125-7465\")), person(given=\"Caio Nogueira\", family=\"Goncalves\", role=c(\"aut\")), person(given=\"Paulo Henrique Fernandes de\", family=\"Araujo\", role=c(\"ctb\")), person(given=\"Guilherme Duarte\", family=\"Carvalho\", role=c(\"ctb\")), person(given=\"Rodrigo Almeida de\", family=\"Arruda\", role=c(\"ctb\")), person(given=\"Igor\", family=\"Nascimento\", role=\"ctb\"),  person(given=\"Barbara Santiago Pedreira da \", family=\"Costa\", role=\"ctb\"),  person(given=\"Welligtton Silva \", family=\"Cavedo\", role=\"ctb\"), person(given=\"Pedro R.\", family=\"Andrade\", role=\"ctb\"), person(given=\"Alan da\", family=\"Silva\", role=\"ctb\"), person(given=\"Carlos Kauê Vieira\", family=\"Braga\", role=\"ctb\"),    person(given=\"Carl\", family=\"Schmertmann\", role=\"ctb\"), person(given=\"Alessandro\", family=\"Samuel-Rosa\", role=\"ctb\"), person(given=\"Daniel\", family=\"Ferreira\", role=\"ctb\"), person(given=\"Marcus\", family=\"Saraiva\", role=\"ctb\"), person(given=\"Beatriz\", family=\"Milz\", , role = \"ctb\", comment = c(ORCID = \"0000-0002-3064-4486\")), person(\"Ipea - Institue for Applied Economic Research\", role = c(\"cph\", \"fnd\")))",
+      "URL": "https://ipeagit.github.io/geobr/, https://github.com/ipeaGIT/geobr",
+      "BugReports": "https://github.com/ipeaGIT/geobr/issues",
+      "Description": "Easy access to official spatial data sets of Brazil as 'sf' objects  in R. The package includes a wide range of geospatial data available at various geographic scales and for various years with harmonized attributes, projection and fixed topology.",
+      "License": "MIT + file LICENSE",
+      "Encoding": "UTF-8",
+      "LazyData": "TRUE",
+      "Depends": [
+        "R (>= 3.5.0)"
+      ],
+      "Imports": [
+        "curl (>= 5.0.0)",
+        "dplyr (>= 0.8-3)",
+        "data.table",
+        "fs",
+        "methods",
+        "sf (>= 0.9-3)",
+        "utils"
+      ],
+      "Suggests": [
+        "arrow (>= 15.0.1)",
+        "censobr (>= 0.3.2)",
+        "covr",
+        "ggplot2 (>= 3.3.1)",
+        "knitr",
+        "rmarkdown",
+        "scales",
+        "testthat"
+      ],
+      "RoxygenNote": "7.3.2",
+      "VignetteBuilder": "knitr",
+      "NeedsCompilation": "no",
+      "Author": "Rafael H. M. Pereira [aut, cre] (<https://orcid.org/0000-0003-2125-7465>), Caio Nogueira Goncalves [aut], Paulo Henrique Fernandes de Araujo [ctb], Guilherme Duarte Carvalho [ctb], Rodrigo Almeida de Arruda [ctb], Igor Nascimento [ctb], Barbara Santiago Pedreira da Costa [ctb], Welligtton Silva Cavedo [ctb], Pedro R. Andrade [ctb], Alan da Silva [ctb], Carlos Kauê Vieira Braga [ctb], Carl Schmertmann [ctb], Alessandro Samuel-Rosa [ctb], Daniel Ferreira [ctb], Marcus Saraiva [ctb], Beatriz Milz [ctb] (<https://orcid.org/0000-0002-3064-4486>), Ipea - Institue for Applied Economic Research [cph, fnd]",
+      "Maintainer": "Rafael H. M. Pereira <rafa.pereira.br@gmail.com>",
       "Repository": "CRAN"
     },
     "ggmap": {
@@ -3290,6 +3518,31 @@
       "NeedsCompilation": "no",
       "Author": "Kirill Müller [aut, cre] (ORCID: <https://orcid.org/0000-0002-1416-3412>)",
       "Maintainer": "Kirill Müller <kirill@cynkra.com>",
+      "Repository": "CRAN"
+    },
+    "rstudioapi": {
+      "Package": "rstudioapi",
+      "Version": "0.17.1",
+      "Source": "Repository",
+      "Title": "Safely Access the RStudio API",
+      "Description": "Access the RStudio API (if available) and provide informative error messages when it's not.",
+      "Authors@R": "c( person(\"Kevin\", \"Ushey\", role = c(\"aut\", \"cre\"), email = \"kevin@rstudio.com\"), person(\"JJ\", \"Allaire\", role = c(\"aut\"), email = \"jj@posit.co\"), person(\"Hadley\", \"Wickham\", role = c(\"aut\"), email = \"hadley@posit.co\"), person(\"Gary\", \"Ritchie\", role = c(\"aut\"), email = \"gary@posit.co\"), person(family = \"RStudio\", role = \"cph\") )",
+      "Maintainer": "Kevin Ushey <kevin@rstudio.com>",
+      "License": "MIT + file LICENSE",
+      "URL": "https://rstudio.github.io/rstudioapi/, https://github.com/rstudio/rstudioapi",
+      "BugReports": "https://github.com/rstudio/rstudioapi/issues",
+      "RoxygenNote": "7.3.2",
+      "Suggests": [
+        "testthat",
+        "knitr",
+        "rmarkdown",
+        "clipr",
+        "covr"
+      ],
+      "VignetteBuilder": "knitr",
+      "Encoding": "UTF-8",
+      "NeedsCompilation": "no",
+      "Author": "Kevin Ushey [aut, cre], JJ Allaire [aut], Hadley Wickham [aut], Gary Ritchie [aut], RStudio [cph]",
       "Repository": "CRAN"
     },
     "rvest": {
