@@ -56,8 +56,8 @@ stations_kept <- cdmx_filter_stations_in_metro(
 
 # Apply function to merge all downloaded file into a single tidy dataframe
 cdmx_stations_data <- cdmx_merge_pollution_data(
-  primary_data_dir     =  here::here(cdmx_cfg$dl_dir, "ground_stations"),
-  secondary_data_dir   =  here::here(cdmx_cfg$dl_dir, "ground_stations_raw_missing_data"),
+  primary_data_dir     = here::here(cdmx_cfg$dl_dir, "ground_stations"),
+  secondary_data_dir   = here::here(cdmx_cfg$dl_dir, "ground_stations_raw_missing_data"),
   stations_sf          = stations_kept,
   tz                   = "America/Mexico_City",
   years                = cdmx_cfg$years,
