@@ -960,7 +960,9 @@ santiago_download_station_info <- function(
 #                 2024 (Google Storage Buckets).
 #              3. Downloads the file using httr with User-Agent headers.
 #              4. Validates the file size to avoid broken HTML downloads.
-#
+# IMPORTANT: For 2017 Tabular data (people/homes/households),
+#              this function now blocks the download and redirects the user
+#              to use the 'censo2017' R package due to unstable URLs.
 # @Written_by: Marcos Paulo
 # @Written_on: 16/01/2026
 # -----------------------------------------------------------------------------
@@ -973,34 +975,24 @@ santiago_download_census_data <- function(
     quiet           = FALSE
 ) {
   
-  # 1) Define Defaults Dictionary ---------------------------------------------
-  # This map holds the best-known URLs for each year/type combination.
+  # 1) Deprecation Check for 2017 Tabular Data --------------------------------
+  # The INE URLs for 2017 microdata are unstable/broken. We now use the 
+  # 'censo2017' package for this.
+  if (is.null(url) && year == 2017 && 
+      type %in% c("people", "homes", "households")) {
+    
+    stop(paste0(
+      "\n⛔️ DEPRECATED: Direct download for 2017 '", type, "' is unavailable.\n",
+      "   The official URLs are broken/changed.\n\n",
+      "   👉 ACTION: Please use the 'censo2017' package logic instead.\n",
+      "      Run: censo2017::censo_descargar_base() to build the local DB.\n"
+    ))
+  }
+  
+  # 2) Define Defaults Dictionary ---------------------------------------------
   defaults_map <- list(
     "2017" = list(
-      "people" = list(
-        url  = paste0(
-          "https://www.ine.gob.cl/docs/default-source/censos/censo-2017/",
-          "base-de-datos/microdatos-censo-2017/csv/",
-          "microdato_censo2017_personas.csv.zip"
-        ),
-        file = "chile_census_2017_people.zip"
-      ),
-      "homes" = list(
-        url  = paste0(
-          "https://www.ine.gob.cl/docs/default-source/censos/censo-2017/",
-          "base-de-datos/microdatos-censo-2017/csv/",
-          "microdato_censo2017_viviendas.csv.zip"
-        ),
-        file = "chile_census_2017_homes.zip"
-      ),
-      "households" = list(
-        url  = paste0(
-          "https://www.ine.gob.cl/docs/default-source/censos/censo-2017/",
-          "base-de-datos/microdatos-censo-2017/csv/",
-          "microdato_censo2017_hogares.csv.zip"
-        ),
-        file = "chile_census_2017_households.zip"
-      ),
+      # People/Homes/Households removed (handled by censo2017 package)
       "geo_location" = list(
         url  = paste0(
           "https://www.ine.gob.cl/docs/default-source/geodatos-abiertos/",
@@ -1041,21 +1033,18 @@ santiago_download_census_data <- function(
     )
   )
   
-  # 2) Determine Target URL and Filename --------------------------------------
+  # 3) Determine Target URL and Filename --------------------------------------
   target_url  <- url
   target_file <- NULL
   year_char   <- as.character(year)
   
-  # Logic: If user provided a URL, use it. Otherwise, look in dictionary.
   if (!is.null(url)) {
     # Try to guess a clean filename from the user's custom URL
     clean_name  <- basename(sub("\\?.*$", "", url))
     target_file <- paste0("custom_", year, "_", clean_name)
     
   } else {
-    # Check if year exists in map
     if (year_char %in% names(defaults_map)) {
-      # Check if type exists in year
       if (type %in% names(defaults_map[[year_char]])) {
         def <- defaults_map[[year_char]][[type]]
         target_url  <- def$url
@@ -1064,7 +1053,7 @@ santiago_download_census_data <- function(
     }
   }
   
-  # 3) Sanity Checks ----------------------------------------------------------
+  # 4) Sanity Checks ----------------------------------------------------------
   if (is.null(target_url)) {
     stop(
       "\n❌ No URL found for Year: ", year, ", Type: '", type, "'.\n",
@@ -1080,7 +1069,7 @@ santiago_download_census_data <- function(
   
   dest_path <- file.path(final_folder, target_file)
   
-  # 4) Check Existing Files ---------------------------------------------------
+  # 5) Check Existing Files ---------------------------------------------------
   if (file.exists(dest_path) && !overwrite) {
     if (!quiet) {
       message("↪︎  File exists: ", basename(dest_path), " (Skipping)")
@@ -1094,11 +1083,10 @@ santiago_download_census_data <- function(
     ))
   }
   
-  # 5) Perform Download -------------------------------------------------------
+  # 6) Perform Download -------------------------------------------------------
   if (!quiet) message("⬇️  Downloading to: ", dest_path)
   if (!quiet) message("🔗 Source: ", substr(target_url, 1, 60), "...")
   
-  # Define User-Agent to avoid blocking by government servers
   ua <- httr::user_agent(paste0(
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) ",
     "AppleWebKit/537.36 (KHTML, like Gecko) ",
@@ -1106,7 +1094,7 @@ santiago_download_census_data <- function(
   ))
   
   tryCatch({
-    # Use HEAD first to check if file exists (saves bandwidth on 404s)
+    # Use HEAD first
     check_head <- httr::HEAD(target_url, ua)
     if (httr::status_code(check_head) >= 400) {
       stop("URL not accessible. Status: ", httr::status_code(check_head))
@@ -1120,11 +1108,10 @@ santiago_download_census_data <- function(
       if (!quiet) httr::progress()
     )
     
-    # 6) Validation -----------------------------------------------------------
-    # Check if download is actually an error page (HTML) disguised as ZIP
+    # 7) Validation -----------------------------------------------------------
     ct <- httr::headers(res)$`content-type`
     is_html <- !is.null(ct) && grepl("text/html", ct)
-    is_small <- file.size(dest_path) < 15000 # Error pages usually < 15KB
+    is_small <- file.size(dest_path) < 15000 
     
     if (is_html || is_small) {
       if (file.exists(dest_path)) unlink(dest_path)
@@ -1147,7 +1134,7 @@ santiago_download_census_data <- function(
     
   }, error = function(e) {
     message("❌ Download Error: ", e$message)
-    if (file.exists(dest_path)) unlink(dest_path) # Clean up partial file
+    if (file.exists(dest_path)) unlink(dest_path)
     return(dplyr::tibble(
       year   = year,
       type   = type,
@@ -1279,5 +1266,649 @@ santiago_filter_stations_in_metro <- function(
   }
   
   return(stations_final)
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: santiago_process_stations_data_to_parquet
+#
+# @Arg       : data_folder     — string; folder containing the station .txt files.
+# @Arg       : stations_sf     — sf object; Spatial registry of stations to keep. 
+# @Arg       : out_dir         — string; base output directory.
+# @Arg       : out_name        — string; name of the dataset (default: "santiago_metro_air").
+# @Arg       : years           — int vector; years to filter.
+# @Arg       : tz              — string; Olson timezone (default "America/Santiago").
+# @Arg       : verbose         — logical; print progress messages?
+#
+# @Output    : Arrow Dataset connection.
+#
+# @Purpose   : Ingests raw .txt files from SINCA/Chile.
+#              1. Parses complex filenames to identify Station and Pollutant.
+#              2. Matches filenames to the provided spatial registry (fuzzy normalization).
+#              3. Reads custom text format (skipping headers/footers).
+#              4. Coalesces valid/preliminary/unvalidated data columns.
+#              5. Pivots and saves to Partitioned Parquet via DuckDB.
+#
+# @Written_on: 18/02/2026
+# @Written_by: Marcos Paulo
+# --------------------------------------------------------------------------------------------
+santiago_process_stations_data_to_parquet <- function(
+    data_folder,
+    stations_sf,
+    out_dir,
+    out_name    = "santiago_metro_air",
+    years       = 2000:2024,
+    tz          = "America/Santiago",
+    verbose     = TRUE
+) {
+  
+  # --- HELPER: Normalize Strings for Matching ---
+  # Removes accents, spaces, punctuation, and uppercase for robust comparison
+  normalize_key <- function(x) {
+    x <- toupper(x)
+    # Remove accents
+    x <- stringi::stri_trans_general(x, id = "Latin-ASCII")
+    # Remove region prefix common in filenames to isolate station name
+    x <- gsub("METROPOLITANA DE SANTIAGO", "", x)
+    x <- gsub("METROPOLITANA_DE_SANTIAGO", "", x)
+    # Remove all non-alphanumeric
+    x <- gsub("[^A-Z0-9]", "", x)
+    return(x)
+  }
+  
+  # --- HELPER: Pollutant Mapper ---
+  # Maps filename strings to standard database column names
+  get_pollutant_code <- function(filename) {
+    fn <- toupper(filename)
+    if (grepl("MP10|PM10", fn)) return("pm10")
+    if (grepl("MP2.5|PM2.5|MP25|PM25", fn)) return("pm25")
+    if (grepl("NO2", fn)) return("no2")
+    if (grepl("_NO_", fn)) return("no") # Ensure NO doesn't match NO2
+    if (grepl("NOX", fn)) return("nox")
+    if (grepl("O3|OZONO", fn)) return("ozone")
+    if (grepl("_CO_", fn)) return("co")
+    if (grepl("SO2", fn)) return("so2")
+    if (grepl("TEMP", fn)) return("temperature")
+    if (grepl("HR|HUMEDAD", fn)) return("rh")
+    if (grepl("VV|VELOCIDAD", fn)) return("wind_speed")
+    if (grepl("DV|DIRECCION", fn)) return("wind_dir")
+    return(NA_character_)
+  }
+  
+  # 1) Check Dependencies
+  req_pkgs <- c("duckdb", "DBI", "arrow", "dplyr", "readr", "stringi", "lubridate")
+  for(p in req_pkgs) {
+    if (!requireNamespace(p, quietly = TRUE)) stop(paste("Package", p, "required."))
+  }
+  
+  # 2) Validate Station Index
+  if (!inherits(stations_sf, "sf") || !"station_name" %in% names(stations_sf)) {
+    stop("'stations_sf' must be an sf object with a 'station_name' column.")
+  }
+  
+  # Create Lookup Map: Normalized Key -> Real Station Name
+  valid_stations <- unique(stations_sf$station_name)
+  station_lookup <- setNames(valid_stations, normalize_key(valid_stations))
+  
+  # 3) Setup DuckDB
+  if (verbose) message("⬜️ Starting Unified Engine (DuckDB)...")
+  
+  dbdir <- tempfile("santiago_air_", fileext = ".db")
+  con   <- DBI::dbConnect(duckdb::duckdb(dbdir = dbdir))
+  on.exit({
+    DBI::dbDisconnect(con, shutdown = TRUE)
+    unlink(dbdir, force = TRUE)
+  }, add = TRUE)
+  
+  DBI::dbExecute(con, "PRAGMA memory_limit='8GB';") 
+  
+  # Staging Table
+  DBI::dbExecute(con, "CREATE TABLE staging_sinca (
+       datetime TIMESTAMP, 
+       station VARCHAR, 
+       year INTEGER, 
+       param VARCHAR, 
+       value DOUBLE
+    );")
+  
+  # 4) Process Files
+  txt_files <- list.files(data_folder, pattern = "\\.txt$", full.names = TRUE)
+  
+  if (length(txt_files) == 0) stop("No .txt files found in data_folder.")
+  if (verbose) message(sprintf("📂 Found %d raw files. Beginning processing...",
+                               length(txt_files)))
+  
+  count_ingest <- 0
+  
+  for (f in txt_files) {
+    fname <- basename(f)
+    
+    # A. Determine Station and Pollutant from Filename
+    # ------------------------------------------------
+    f_key <- normalize_key(fname)
+    param_code <- get_pollutant_code(fname)
+    
+    if (is.na(param_code)) {
+      # if (verbose) warning("Skipping unknown pollutant file: ", fname)
+      next 
+    }
+    
+    # Match Station: Check which valid station key is a substring of the file key
+    # e.g., Station Key "LASCONDESACREDITADA" is inside File Key "LASCONDESACREDITADANO2..."
+    match_idx <- which(sapply(names(station_lookup), function(k) grepl(k, f_key)))
+    
+    if (length(match_idx) == 0) {
+      # Station in file is not in our spatial filter list
+      next 
+    }
+    
+    # Pick the longest match (in case of subset names)
+    best_match <- names(station_lookup)[match_idx
+                                        [which.max(nchar(names(station_lookup)[match_idx]))]]
+    real_station_name <- station_lookup[[best_match]]
+    
+    # B. Read the Messy Text File
+    # ------------------------------------------------
+    # We read lines to find #DATA (or EOH) and EOF
+    lines <- readLines(f, warn = FALSE)
+    
+    # Find start: Look for line starting with #DATA or just DATA, or after EOH
+    start_idx <- grep("^#DATA", lines)
+    if (length(start_idx) == 0) start_idx <- grep("^EOH", lines)
+    if (length(start_idx) == 0) start_idx <- grep("^050114", lines)
+    
+    # Find end: Look for EOF
+    end_idx <- grep("^EOF", lines)
+    
+    if (length(start_idx) == 0) next
+    
+    # Extract the data chunk
+    # We start reading 1 line after #DATA
+    first_data_line <- start_idx[1] + 1
+    last_data_line  <- if (length(end_idx) > 0) end_idx[1] - 1 else length(lines)
+    
+    if (first_data_line > last_data_line) next
+    
+    raw_data <- lines[first_data_line:last_data_line]
+    
+    # Parse CSV structure (Date, Hour, Val1, Val2, Val3)
+    # Note: Use read_csv with col_names = FALSE for speed
+    # We expect 5 columns typically.
+    dt <- tryCatch({
+      readr::read_csv(I(raw_data), col_names = FALSE, show_col_types = FALSE, progress = FALSE)
+    }, error = function(e) return(NULL))
+    
+    if (is.null(dt) || nrow(dt) == 0) next
+    
+    # C. Clean and Transform
+    # ------------------------------------------------
+    # Columns: X1=Date, X2=Hour, X3=Val1, X4=Val2, X5=Val3 (Logic: Coalesce 3->4->5)
+    
+    # Select and Coalesce Value
+    # We prioritize X3 (Validated), then X4 (Prelim), then X5 (Non-validated)
+    # Note: read_csv might read empty fields as NA, which is what we want.
+    
+    val_cols <- dt %>% dplyr::select(dplyr::starts_with("X"))
+    if (ncol(val_cols) < 3) next # Need at least Date, Hour, 1 Value
+    
+    # Extract date/hour
+    d_col <- val_cols[[1]]
+    h_col <- val_cols[[2]]
+    
+    # Coalesce values: find first non-NA in remaining columns
+    values_mat <- as.matrix(val_cols[, 3:ncol(val_cols)])
+    
+    # Fast coalesce row-wise
+    final_vals <- apply(values_mat, 1, function(row) {
+      x <- na.omit(row)
+      if (length(x) > 0) x[1] else NA
+    })
+    
+    clean_df <- data.frame(
+      d_txt = as.character(d_col), 
+      h_txt = as.character(h_col), 
+      value = as.numeric(final_vals),
+      stringsAsFactors = FALSE
+    )
+    
+    clean_df <- clean_df[!is.na(clean_df$value), ]
+    if (nrow(clean_df) == 0) next
+    
+    # Parse Date: YYMMDD as per instructions (IV)
+    # Hour: HHMM
+    
+    # Pad strings just in case
+    clean_df$d_txt <- stringr::str_pad(clean_df$d_txt, 6, pad = "0")
+    clean_df$h_txt <- stringr::str_pad(clean_df$h_txt, 4, pad = "0")
+    
+    # Parse Datetime
+    # Note: If MMDDYY is strict:
+    clean_df$datetime_str <- paste0(clean_df$d_txt, " ", clean_df$h_txt)
+    
+    # Usage of 'mdy_hm' for YYMMDD HHMM
+    clean_df$datetime <- lubridate::ymd_hm(clean_df$datetime_str, tz = tz, quiet = TRUE)
+    
+    # Fallback check: If huge amount of NAs, maybe it was YYMMDD?
+    if (sum(is.na(clean_df$datetime)) > (0.5 * nrow(clean_df))) {
+      clean_df$datetime <- lubridate::ymd_hm(clean_df$datetime_str, tz = tz, quiet = TRUE)
+    }
+    
+    clean_df <- clean_df %>% dplyr::filter(!is.na(datetime))
+    clean_df$year <- lubridate::year(clean_df$datetime)
+    
+    # Filter Years
+    clean_df <- clean_df %>% dplyr::filter(year %in% years)
+    
+    if (nrow(clean_df) > 0) {
+      # Prepare for DB
+      db_payload <- data.frame(
+        datetime = clean_df$datetime,
+        station  = real_station_name,
+        year     = clean_df$year,
+        param    = param_code,
+        value    = clean_df$value
+      )
+      
+      duckdb::dbAppendTable(con, "staging_sinca", db_payload)
+      count_ingest <- count_ingest + nrow(db_payload)
+    }
+  }
+  
+  if (verbose) message("💾 Total rows staged: ", format(count_ingest, big.mark=","))
+  if (count_ingest == 0) warning("No data was ingested. Check date formats or filenames.")
+  
+  # 5) Pivot and Export
+  # ------------------------------------------------
+  dataset_path <- file.path(out_dir, paste0(out_name, "_dataset"))
+  if (dir.exists(dataset_path)) unlink(dataset_path, recursive = TRUE)
+  
+  # SQL to Pivot pollutants to columns and average hourly duplicates
+  sql_pivot <- "
+    COPY (
+      SELECT 
+        datetime,
+        station,
+        year,
+        AVG(CASE WHEN param = 'pm10'        THEN value END) AS pm10,
+        AVG(CASE WHEN param = 'pm25'        THEN value END) AS pm25,
+        AVG(CASE WHEN param = 'ozone'       THEN value END) AS ozone,
+        AVG(CASE WHEN param = 'no'          THEN value END) AS no,
+        AVG(CASE WHEN param = 'no2'         THEN value END) AS no2,
+        AVG(CASE WHEN param = 'nox'         THEN value END) AS nox,
+        AVG(CASE WHEN param = 'co'          THEN value END) AS co,
+        AVG(CASE WHEN param = 'so2'         THEN value END) AS so2,
+        AVG(CASE WHEN param = 'temperature' THEN value END) AS temperature,
+        AVG(CASE WHEN param = 'rh'          THEN value END) AS rh,
+        AVG(CASE WHEN param = 'wind_speed'  THEN value END) AS wind_speed,
+        AVG(CASE WHEN param = 'wind_dir'    THEN value END) AS wind_dir
+      FROM staging_sinca
+      GROUP BY datetime, station, year
+      ORDER BY station, datetime
+    ) TO '%s' (
+      FORMAT PARQUET, 
+      PARTITION_BY (year), 
+      COMPRESSION 'SNAPPY', 
+      OVERWRITE_OR_IGNORE TRUE
+    );
+  "
+  
+  query <- sprintf(sql_pivot, dataset_path)
+  
+  if (verbose) message("🧱 Pivoting and writing Partitioned Parquet...")
+  DBI::dbExecute(con, query)
+  
+  if (verbose) message("✅ Done! Dataset at: ", dataset_path)
+  
+  return(arrow::open_dataset(dataset_path))
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: santiago_process_census_2017
+#
+# @Arg       : sf_data    — sf object; The spatial dataframe containing the
+#                           communes of interest (e.g., metro_area).
+# @Arg       : match_col  — string; The name of the column in sf_data that 
+#                           contains the commune codes (e.g., "CUT").
+# @Arg       : out_dir    — string; Directory to save processed CSVs.
+# @Arg       : quiet      — logical; Suppress progress messages?
+#
+# @Output    : list(individual, collapsed); Returns tibbles of the data.
+#
+# @Purpose   : Harmonizes 2017 Census data using a spatial filter.
+#              1. Extracts commune codes from the provided sf object.
+#              2. Connects to local 'censo2017' DuckDB.
+#              3. Filters the Census 'personas' table using those codes.
+#              4. Harmonizes 'escolaridad' (fixing the Stata logic bug).
+#              5. Collapses data to the Commune level.
+#
+# @Written_by: Marcos Paulo
+# @Updated_on: 18/02/2026 (Added dynamic SF filtering)
+# --------------------------------------------------------------------------------------------
+santiago_process_census_2017 <- function(
+    sf_data,
+    match_col = "CUT",
+    out_dir   = here::here("data", "processed", "santiago", "census"),
+    quiet     = FALSE
+) {
+  
+  # 1. Checks & Setup ---------------------------------------------------------
+  if (!requireNamespace("censo2017", quietly = TRUE)) {
+    stop("Package 'censo2017' required. Install with install.packages('censo2017')")
+  }
+  if (!inherits(sf_data, "sf")) stop("'sf_data' must be an sf spatial object.")
+  if (!match_col %in% names(sf_data)) stop(paste("Column", match_col, "not found in sf_data."))
+  
+  if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE)
+  
+  # 2. Extract Filter Codes ---------------------------------------------------
+  # We convert to integer because censo2017 uses integer keys for p10comuna
+  filter_codes <- as.integer(unique(sf_data[[match_col]]))
+  
+  if (!quiet) message(sprintf("🎯 Filtering for %d communes found in '%s'...", 
+                              length(filter_codes), match_col))
+  
+  # 3. Connect to Data --------------------------------------------------------
+  if (!quiet) message("🔌 Connecting to local Census 2017 database...")
+  con <- censo2017::censo_conectar()
+  
+  # Select columns from 'personas' table
+  # Note: p10comuna is "Comuna de Residencia Habitual"
+  personas_db <- dplyr::tbl(con, "personas") %>% 
+    dplyr::select(
+      comuna = p10comuna, 
+      escolaridad, 
+      p14, # Curso aprobado
+      p15, # Nivel aprobado
+      p17, # Employment status
+      p08, # Sexo
+      p09, # Edad
+      p07, # Relacion parentesco
+      p16  # Indigena
+    )
+  
+  # 4. Filter and Harmonize (Lazy Execution) ----------------------------------
+  if (!quiet) message("⚙️  Applying harmonization rules...")
+  
+  processed_db <- personas_db %>%
+    # Dynamic Filter
+    dplyr::filter(comuna %in% filter_codes) %>%
+    
+    dplyr::mutate(
+      
+      # --- Education Harmonization (FIXED LOGIC) ---
+      # case_when evaluates sequentially. We put specific rules BEFORE general rules.
+      educ_years = dplyr::case_when(
+        
+        # A. PhD Specifics (Logic: 21 is base PhD. P14 adds years?)
+        # Stata logic: replace escolaridad = 23 if (old==21 & p15==14 & p14==4)
+        escolaridad == 21 & p15 == 14 & p14 == 4 ~ 23,
+        escolaridad == 21 & p15 == 14 & p14 == 3 ~ 22,
+        escolaridad == 21 ~ 21,
+        
+        # B. Master's (The Fix)
+        # We catch Master's (p15==13) BEFORE we catch the general 20 code.
+        escolaridad == 20 & p15 == 13 ~ 19,
+        escolaridad == 20 ~ 20,
+        
+        # C. General Mappings
+        escolaridad >= 18 & escolaridad <= 19 ~ escolaridad,
+        escolaridad >= 13 & escolaridad <= 17 ~ escolaridad,
+        escolaridad >= 0  & escolaridad <= 12 ~ escolaridad,
+        
+        TRUE ~ NA_real_
+      ),
+      
+      # --- Education Dummies ---
+      no_education           = if_else(educ_years == 0, 1, 0),
+      high_school_incomplete = if_else(educ_years >= 1 & educ_years <= 11, 1, 0),
+      high_school_complete   = if_else(educ_years == 12, 1, 0),
+      college_incomplete     = if_else(educ_years >= 13 & educ_years <= 16, 1, 0),
+      college_complete       = if_else(educ_years == 17, 1, 0),
+      graduate_educ          = if_else(educ_years >= 18, 1, 0),
+      
+      # --- Labor & Demographics ---
+      # p17: 1=Paid work, 3=Employed but absent (vacation/sick)
+      employed = if_else(p17 == 1 | p17 == 3, 1, 0),
+      
+      women = if_else(p08 == 2, 1, 0),
+      
+      hh_head = if_else(p07 == 1, 1, 0),
+      hh_head_women = if_else(hh_head == 1 & women == 1, 1, 0),
+      
+      indigena = dplyr::case_when(
+        p16 == 1 ~ 1,
+        p16 == 99 ~ NA_real_, # Missing
+        TRUE ~ 0
+      ),
+      
+      adult = if_else(p09 >= 25, 1, 0)
+    )
+  
+  # 5. Collect Individual Data ------------------------------------------------
+  if (!quiet) message("⬇️  Collecting individual data into memory...")
+  
+  individual_df <- processed_db %>% 
+    dplyr::collect() %>% 
+    dplyr::filter(!is.na(educ_years))
+  
+  # 6. Collapse (Aggregation) -------------------------------------------------
+  if (!quiet) message("📉 Collapsing to Comuna level (Adults 25+)...")
+  
+  collapsed_df <- individual_df %>%
+    dplyr::filter(adult == 1) %>%
+    dplyr::group_by(comuna) %>%
+    dplyr::summarise(
+      n = dplyr::n(),
+      
+      # Mean years of schooling
+      avg_escolaridad = mean(educ_years, na.rm = TRUE),
+      
+      # Counts
+      count_no_ed     = sum(no_education, na.rm = TRUE),
+      count_hs_inc    = sum(high_school_incomplete, na.rm = TRUE),
+      count_hs_com    = sum(high_school_complete, na.rm = TRUE),
+      count_col_inc   = sum(college_incomplete, na.rm = TRUE),
+      count_col_com   = sum(college_complete, na.rm = TRUE),
+      count_grad      = sum(graduate_educ, na.rm = TRUE),
+      count_employed  = sum(employed, na.rm = TRUE),
+      
+      # Shares (Proportions)
+      share_no_ed_pop     = mean(no_education, na.rm = TRUE),
+      share_hs_inc_pop    = mean(high_school_incomplete, na.rm = TRUE),
+      share_hs_com_pop    = mean(high_school_complete, na.rm = TRUE),
+      share_col_inc_pop   = mean(college_incomplete, na.rm = TRUE),
+      share_col_com_pop   = mean(college_complete, na.rm = TRUE),
+      share_grad_educ_pop = mean(graduate_educ, na.rm = TRUE),
+      share_employed_pop  = mean(employed, na.rm = TRUE)
+    )
+  
+  # 7. Save and Return --------------------------------------------------------
+  if (!quiet) message("💾 Saving outputs to: ", out_dir)
+  
+  readr::write_csv(individual_df, file.path(out_dir, "census_santiago_individual_2017.csv"))
+  readr::write_csv(collapsed_df, file.path(out_dir, "census_santiago_collapsed_2017.csv"))
+  
+  censo2017::censo_desconectar()
+  
+  return(list(individual = individual_df, collapsed = collapsed_df))
+}
+
+
+# ------------------------------------------------------------------------------
+# Function: santiago_process_census_2024
+#
+# @Arg       : census_dir — string; folder containing chile_census_2024_people.zip
+# @Arg       : sf_data    — sf object; Spatial dataframe (metro_area) to filter by.
+# @Arg       : match_col  — string; Column in sf_data with Commune codes (e.g., "CUT").
+# @Arg       : out_dir    — string; Output folder for processed CSVs.
+# @Arg       : overwrite  — logical; Re-extract ZIP if exists? (default FALSE).
+# @Arg       : quiet      — logical; Suppress messages? (default FALSE).
+#
+# @Output    : list(individual, collapsed); Tibbles with processed data.
+#
+# @Purpose   : 1. Extracts the 2024 Census CSV from the ZIP file.
+#              2. Filters by communes using the 'comuna' variable.
+#              3. Uses the 'escolaridad' variable (pre-calculated by INE).
+#              4. Creates labor/demographic dummies (Adults 25+).
+#              5. Collapses to the commune level (simple count, no factors).
+#
+# @Written_by: Marcos Paulo
+# @Updated_on: 18/02/2026 (Adjusted to real 2024 variables)
+# ------------------------------------------------------------------------------
+santiago_process_census_2024 <- function(
+    census_dir = here::here("data", "downloads", "santiago", "census", "2024"),
+    sf_data,
+    match_col  = "CUT",
+    out_dir    = here::here("data", "processed", "santiago", "census_2024"),
+    overwrite  = FALSE,
+    quiet      = FALSE
+) {
+  
+  # --- 1. Checks & Setup -----------------------------------------------------
+  if (!requireNamespace("vroom", quietly = TRUE)) stop("vroom required.")
+  if (!requireNamespace("dplyr", quietly = TRUE)) stop("dplyr required.")
+  if (!inherits(sf_data, "sf")) stop("'sf_data' must be an sf object.")
+  
+  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+  
+  # --- 2. Extract ZIP --------------------------------------------------------
+  zip_path <- file.path(census_dir, "chile_census_2024_people.zip")
+  if (!file.exists(zip_path)) stop("ZIP not found: ", zip_path)
+  
+  # List files inside ZIP to find the CSV
+  files_in_zip <- utils::unzip(zip_path, list = TRUE)
+  target_csv   <- grep("\\.csv$", files_in_zip$Name, value = TRUE, ignore.case = TRUE)
+  
+  if (length(target_csv) == 0) stop("No CSV found inside ZIP.")
+  target_csv <- target_csv[1] 
+  
+  dest_csv <- file.path(out_dir, basename(target_csv))
+  
+  if (!file.exists(dest_csv) || overwrite) {
+    if (!quiet) message("📦 Extracting ", target_csv, "...")
+    utils::unzip(zip_path, files = target_csv, exdir = out_dir, junkpaths = TRUE)
+  } else {
+    if (!quiet) message("↪︎ Using existing extracted file.")
+  }
+  
+  # --- 3. Filter Codes -------------------------------------------------------
+  # Extract codes from SF object
+  filter_codes <- as.integer(unique(sf_data[[match_col]]))
+  if (!quiet) message(sprintf("🎯 Target: %d communes.", length(filter_codes)))
+  
+  # --- 4. Read & Filter (Vroom) ----------------------------------------------
+  if (!quiet) message("📖 Reading and filtering CSV...")
+  
+  # We use vroom, selecting only necessary columns based on your provided list
+  raw_data <- vroom::vroom(
+    dest_csv,
+    delim = ";",
+    col_select = c(
+      comuna,
+      parentesco,          # 1 = Head of Household
+      sexo,                # 1 = Male, 2 = Female
+      edad,                # Numeric
+      escolaridad,         # Numeric 0-24 (Pre-calculated!)
+      sit_fuerza_trabajo,  # 1 = Employed
+      p28_autoid_pueblo    # 1 = Yes (Indigenous)
+    ),
+    show_col_types = FALSE,
+    # Define what strings are considered NA
+    na = c("", "NA", "-99", "-66", "99", "999") 
+  ) %>%
+    # Immediate geographic filtering
+    dplyr::filter(comuna %in% filter_codes)
+  
+  if (nrow(raw_data) == 0) stop("No data found for the requested communes.")
+  
+  # --- 5. Harmonization Logic ------------------------------------------------
+  if (!quiet) message("⚙️  Harmonizing variables...")
+  
+  df_harm <- raw_data %>%
+    dplyr::mutate(
+      
+      # 5.1 Education
+      # -------------
+      # Variable 'escolaridad' is already clean (0 to 24 years).
+      # We just ensure it is numeric and generate dummies.
+      educ_years = as.numeric(escolaridad),
+      
+      no_education           = as.numeric(educ_years == 0),
+      high_school_incomplete = as.numeric(educ_years >= 1 & educ_years <= 11),
+      high_school_complete   = as.numeric(educ_years == 12),
+      college_incomplete     = as.numeric(educ_years >= 13 & educ_years <= 16),
+      college_complete       = as.numeric(educ_years == 17),
+      graduate_educ          = as.numeric(educ_years >= 18),
+      
+      # 5.2 Employment (sit_fuerza_trabajo)
+      # -----------------------------------
+      # 1 = Occupied, 2 = Unemployed, 3 = Inactive
+      employed = as.numeric(sit_fuerza_trabajo == 1),
+      
+      # 5.3 Demographics
+      # ----------------
+      # Sex: 1=Male, 2=Female
+      women = as.numeric(sexo == 2),
+      
+      # Relationship: 1=Head of household
+      hh_head = as.numeric(parentesco == 1),
+      hh_head_women = as.numeric(hh_head == 1 & women == 1),
+      
+      # Indigenous: p28_autoid_pueblo (1=Yes, 2=No)
+      # Explicit NA handling
+      indigena = dplyr::case_when(
+        p28_autoid_pueblo == 1 ~ 1,
+        p28_autoid_pueblo == 2 ~ 0,
+        TRUE ~ NA_real_
+      ),
+      
+      # Age
+      edad_num = as.numeric(edad),
+      adult = as.numeric(edad_num >= 25)
+    )
+  
+  # --- 6. Collapse -----------------------------------------------------------
+  if (!quiet) message("📉 Collapsing to Commune level (Adults 25+)...")
+  
+  df_collapse <- df_harm %>%
+    dplyr::filter(adult == 1) %>%
+    dplyr::group_by(comuna) %>%
+    dplyr::summarise(
+      # Simple count (1 row = 1 person, as confirmed no expansion factor)
+      n = dplyr::n(),
+      
+      # Average years of schooling
+      avg_escolaridad = mean(educ_years, na.rm = TRUE),
+      
+      # Absolute counts
+      count_no_ed     = sum(no_education, na.rm = TRUE),
+      count_hs_inc    = sum(high_school_incomplete, na.rm = TRUE),
+      count_hs_com    = sum(high_school_complete, na.rm = TRUE),
+      count_col_inc   = sum(college_incomplete, na.rm = TRUE),
+      count_col_com   = sum(college_complete, na.rm = TRUE),
+      count_grad      = sum(graduate_educ, na.rm = TRUE),
+      count_employed  = sum(employed, na.rm = TRUE),
+      
+      # Proportions (Shares)
+      share_no_ed_pop     = mean(no_education, na.rm = TRUE),
+      share_hs_inc_pop    = mean(high_school_incomplete, na.rm = TRUE),
+      share_hs_com_pop    = mean(high_school_complete, na.rm = TRUE),
+      share_col_inc_pop   = mean(college_incomplete, na.rm = TRUE),
+      share_col_com_pop   = mean(college_complete, na.rm = TRUE),
+      share_grad_educ_pop = mean(graduate_educ, na.rm = TRUE),
+      share_employed_pop  = mean(employed, na.rm = TRUE)
+    ) %>%
+    dplyr::rename(CUT = comuna) # Rename to match SF object for future joins
+  
+  # --- 7. Save ---------------------------------------------------------------
+  if (!quiet) message("💾 Saving outputs to: ", out_dir)
+  
+  vroom::vroom_write(df_harm, file.path(out_dir, "census_santiago_individual_2024.csv"),
+                     delim = ",")
+  vroom::vroom_write(df_collapse, file.path(out_dir, "census_santiago_collapsed_2024.csv"),
+                     delim = ",")
+  
+  return(list(individual = df_harm, collapsed = df_collapse))
 }
 
