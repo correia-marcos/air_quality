@@ -25,6 +25,7 @@ bogota_cfg <- list(
   base_url_sisaire = "http://sisaire.ideam.gov.co/ideam-sisaire-web/consultas.xhtml",
   base_url_census  = "https://microdatos.dane.gov.co/index.php/catalog/421/get-microdata",
   base_new_census  = "https://microdatos.dane.gov.co/index.php/catalog/643/get-microdata",
+  base_url_comunas = "https://datosabiertos.bogota.gov.co/dataset/localidad-bogota-d-c",
   years            = 2000L:2023L,
   dl_dir           = here::here("data", "downloads", "bogota"),
   out_dir          = here::here("data", "raw"),
@@ -46,7 +47,7 @@ bogota_cfg <- list(
 # ============================================================================================
 # --------------------------------------------------------------------------------------------
 # Function: bogota_download_metro_area
-# @Arg level            : "mpio", "depto", or "manzana". 
+# @Arg level            : "mpio", "depto", "manzana", or "mpio_localidad". 
 # @Arg mgn_year         : 2018 or 2005. 
 # @Arg base_url         : base URL of DANE geoportal files.
 # @Arg municipality_codes: character vector of 5-digit codes (e.g. "11001").
@@ -56,86 +57,169 @@ bogota_cfg <- list(
 # @Arg overwrite_gpkg   : logical; overwrite output GeoPackage if exists.
 # @Arg quiet            : logical; suppress progress.
 #
-# @Output               : Writes a GeoPackage; returns (invisibly) the sf object.
-# @Purpose              : Download admin boundaries and crop to the Bogotá metro area.
-#                         Specially handles 2018 Manzana by downloading BOTH Urban and Rural ZIPs.
+# @Output               : Writes a GeoPackage; returns sf object invisibly.
+# @Purpose              : Download admin boundaries and crop to Bogota metro.
+#                         "mpio_localidad" replaces Bogota with a clipped 
+#                         version of the official Localities GPKG.
 #
-# @Written_on           : 20/08/2025 (Updated 08/02/2026)
+# @Written_on           : 20/08/2025
 # @Written_by           : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 bogota_download_metro_area <- function(
-    level                  = c("mpio", "depto", "manzana"),
-    mgn_year               = c(2018, 2005),
-    base_url               = bogota_cfg$base_url_shp,
-    municipality_codes     = bogota_cfg$city_code_metro,
-    download_dir           = here::here("data", "downloads", "Administrative", "Colombia"),
-    out_file               = here::here("data", "raw", "admin", "Colombia", "bogota.gpkg"),
-    overwrite_zip          = FALSE,
-    overwrite_gpkg         = TRUE,
-    quiet                  = FALSE
+    level              = c("mpio", "depto", "manzana", "mpio_localidad"),
+    mgn_year           = c(2018, 2005),
+    base_url           = bogota_cfg$base_url_shp,
+    municipality_codes = bogota_cfg$city_code_metro,
+    download_dir       = here::here("data", "downloads", "Administrative", "Colombia"),
+    out_file           = here::here("data", "raw", "admin", "Colombia", "bogota.gpkg"),
+    overwrite_zip      = FALSE,
+    overwrite_gpkg     = TRUE,
+    quiet              = FALSE
 ) {
   
-  level    <- match.arg(tolower(level), c("mpio", "depto", "manzana"))
+  level <- match.arg(
+    tolower(level), c("mpio", "depto", "manzana", "mpio_localidad")
+  )
   mgn_year <- as.numeric(match.arg(as.character(mgn_year), c("2018", "2005")))
   
-  # ----------------------------------------------------------------------------
-  # 1) Define ZIP names based on year and level
-  # ----------------------------------------------------------------------------
-  if (mgn_year == 2018) {
+  # 1) Define ZIP names and URLs
+  # ---------------------------------------------------------------------------
+  if (level == "mpio_localidad") {
+    zip_names <- if (mgn_year == 2018) "SHP_MGN2018_INTGRD_MPIO.zip" else 
+      "SHP_MGN2005_COLOMBIA.zip"
+  } else if (mgn_year == 2018) {
     if (level == "manzana") {
-      # 2018 requires TWO files for full coverage at the block/sector level
-      zip_names <- c("SHP_MGN2018_INTGRD_MANZ.zip",   # Urban
-                     "SHP_MGN2018_INTGRD_SECCR.zip")  # Rural Sections
+      zip_names <- c("SHP_MGN2018_INTGRD_MANZ.zip",   
+                     "SHP_MGN2018_INTGRD_SECCR.zip")  
     } else {
       zip_names <- switch(level,
                           "mpio"  = "SHP_MGN2018_INTGRD_MPIO.zip",
                           "depto" = "SHP_MGN2018_INTGRD_DEPTO.zip")
     }
   } else {
-    # 2005 data usually comes in a single national ZIP for all levels
     zip_names <- "SHP_MGN2005_COLOMBIA.zip"
   }
   
-  dir.create(download_dir, recursive = TRUE, showWarnings = FALSE)
+  loc_url <- paste0(
+    "https://web.archive.org/web/20251018145049/https://",
+    "datosabiertos.bogota.gov.co/dataset/856cb657-8ca3-4ee8-857f-",
+    "37211173b1f8/resource/b6c3fbda-1281-4735-8063-260e75ad95f8/",
+    "download/loca.gpkg"
+  )
+  loc_path <- file.path(download_dir, "bogota_loca.gpkg")
   
-  # Temporary directory for extraction (unique per run)
+  dir.create(download_dir, recursive = TRUE, showWarnings = FALSE)
   exdir <- file.path(tempdir(), paste0("col_shp_", level, "_", mgn_year))
   if (dir.exists(exdir)) unlink(exdir, recursive = TRUE)
   dir.create(exdir)
   
   # 2) Loop Download & Extract
-  # ----------------------------------------------------------------------------
+  # ---------------------------------------------------------------------------
   for (zip_name in zip_names) {
     zip_url  <- file.path(base_url, zip_name)
     zip_path <- file.path(download_dir, zip_name)
     
-    # Download
     if (file.exists(zip_path) && !overwrite_zip) {
       if (!quiet) message("↪︎ ZIP already present: ", zip_name)
     } else {
       if (!quiet) message("⬇️  Downloading ", zip_name, " ...")
-      req <- httr::RETRY("GET", zip_url, httr::write_disk(zip_path, overwrite = TRUE), 
+      req <- httr::RETRY("GET", zip_url, 
+                         httr::write_disk(zip_path, overwrite = TRUE), 
                          times = 5, httr::timeout(3600))
-      if (httr::status_code(req) != 200L) stop("Download failed for: ", zip_name)
+      if (httr::status_code(req) != 200L) stop("Download failed.")
     }
-    
-    # Extract into the same temp folder (files usually have distinct names)
     if (!quiet) message("📦 Extracting ", zip_name, "...")
     archive::archive_extract(zip_path, dir = exdir)
   }
   
-  # 3) Processing Logic
-  # ----------------------------------------------------------------------------
+  if (level == "mpio_localidad") {
+    if (file.exists(loc_path) && !overwrite_zip) {
+      if (!quiet) message("↪︎ GPKG already present: bogota_loca.gpkg")
+    } else {
+      if (!quiet) message("⬇️  Downloading bogota_loca.gpkg ...")
+      req_loc <- httr::RETRY("GET", loc_url, 
+                             httr::write_disk(loc_path, overwrite = TRUE), 
+                             times = 5, httr::timeout(3600))
+      if (httr::status_code(req_loc) != 200L) stop("GPKG Download failed.")
+    }
+  }
   
-  if (mgn_year == 2005) {
-    # --- 2005 LOGIC (Single Zip) ---
+  # 3) Processing Logic
+  # ---------------------------------------------------------------------------
+  if (level == "mpio_localidad") {
+    if (!quiet) message("🧩 Merging Mpios with Clipped GPKG Localities...")
+    
+    pat_mp <- if(mgn_year == 2005) "MGN_Municipio\\.shp$" else "(?i)MPIO.*\\.shp$"
+    path_mpio <- list.files(
+      exdir, pattern = pat_mp, recursive = TRUE, full.names = TRUE
+    )
+    if(length(path_mpio) == 0) stop("MPIO Shapefile not found.")
+    path_mpio <- path_mpio[which.max(file.info(path_mpio)$size)]
+    
+    mpio_all <- sf::st_read(path_mpio, quiet = TRUE) %>%
+      dplyr::rename_with(toupper)
+    sf::st_geometry(mpio_all) <- "geometry"
+    
+    mpio_all <- mpio_all %>%
+      dplyr::mutate(
+        MPIO_FULL = if ("MPIO_CDPMP" %in% names(.)) {
+          as.character(MPIO_CDPMP)
+        } else {
+          paste0(stringr::str_pad(DPTO_DPTO_, 2, pad="0"), 
+                 stringr::str_pad(MPIO_CCDGO, 3, pad="0"))
+        },
+        GEO_ID = MPIO_FULL,
+        TIPO = "Municipio"
+      )
+    
+    mpio_sf <- mpio_all %>%
+      dplyr::filter(MPIO_FULL %in% municipality_codes & MPIO_FULL != "11001") %>%
+      dplyr::select(
+        MPIO_FULL, GEO_ID, TIPO, 
+        dplyr::any_of(c("MPIO_CNMBR", "DPTO_CCDGO", "MPIO_CCDGO")), 
+        dplyr::everything()
+      )
+    
+    bogota_base <- mpio_all %>%
+      dplyr::filter(MPIO_FULL == "11001") %>%
+      sf::st_union()
+    
+    locs_sf <- sf::st_read(loc_path, quiet = TRUE)
+    sf::st_geometry(locs_sf) <- "geometry"
+    locs_sf <- sf::st_transform(locs_sf, sf::st_crs(mpio_all))
+    
+    suppressWarnings({
+      locs_clipped <- sf::st_intersection(locs_sf, bogota_base) %>%
+        sf::st_cast("MULTIPOLYGON")
+    })
+    
+    locs_clipped <- locs_clipped %>%
+      dplyr::mutate(
+        MPIO_FULL = "11001",
+        MPIO_CNMBR = LocNombre,
+        GEO_ID = paste0("11001", stringr::str_pad(LocCodigo, 2, pad="0")),
+        TIPO = "Localidad"
+      ) %>%
+      dplyr::select(MPIO_FULL, GEO_ID, TIPO, MPIO_CNMBR, dplyr::everything())
+    
+    g_sel <- dplyr::bind_rows(mpio_sf, locs_clipped)
+    
+  } else if (mgn_year == 2005) {
     if (level == "manzana") {
-      if (!quiet) message("🧩 [2005] Merging Urban Manzanas and Rural Sections...")
+      if (!quiet) message("🧩 [2005] Merging Urban, Rural, and C. Poblado...")
       
-      path_mza   <- list.files(exdir, pattern = "MGN_Manzana\\.shp$",
-                               recursive = TRUE, full.names = TRUE)
-      path_rural <- list.files(exdir, pattern = "MGN_Seccion_rural\\.shp$",
-                               recursive = TRUE, full.names = TRUE)
+      path_mza <- list.files(
+        exdir, pattern = "MGN_Manzana\\.shp$", 
+        recursive = TRUE, full.names = TRUE
+      )
+      path_rur <- list.files(
+        exdir, pattern = "MGN_Seccion_rural\\.shp$", 
+        recursive = TRUE, full.names = TRUE
+      )
+      path_cpob <- list.files(
+        exdir, pattern = "MGN_CentroPoblado\\.shp$", 
+        recursive = TRUE, full.names = TRUE
+      )
       
       u_processed <- sf::st_read(path_mza, quiet = TRUE) %>%
         dplyr::rename_with(toupper) %>%
@@ -148,7 +232,7 @@ bogota_download_metro_area <- function(
         dplyr::filter(MPIO_FULL %in% municipality_codes) %>%
         dplyr::select(MPIO_FULL, TIPO, GEO_ID, dplyr::everything())
       
-      r_processed <- sf::st_read(path_rural, quiet = TRUE) %>%
+      r_processed <- sf::st_read(path_rur, quiet = TRUE) %>%
         dplyr::rename_with(toupper) %>%
         dplyr::mutate(
           MPIO_FULL = paste0(stringr::str_pad(SETR_CLSE_, 2, pad="0"), 
@@ -159,12 +243,24 @@ bogota_download_metro_area <- function(
         dplyr::filter(MPIO_FULL %in% municipality_codes) %>%
         dplyr::select(MPIO_FULL, TIPO, GEO_ID, dplyr::everything())
       
-      g_sel <- dplyr::bind_rows(u_processed, r_processed)
+      c_processed <- sf::st_read(path_cpob, quiet = TRUE) %>%
+        dplyr::rename_with(toupper) %>%
+        dplyr::mutate(
+          MPIO_FULL = substr(CPOB_CCNCT, 1, 5),
+          TIPO      = "Centro Poblado",
+          GEO_ID    = CPOB_CCNCT
+        ) %>%
+        dplyr::filter(MPIO_FULL %in% municipality_codes) %>%
+        dplyr::select(MPIO_FULL, TIPO, GEO_ID, dplyr::everything())
+      
+      g_sel <- dplyr::bind_rows(u_processed, r_processed, c_processed)
       
     } else {
-      # 2005 Mpio/Depto
-      pattern <- if(level == "mpio") "MGN_Municipio\\.shp$" else "MGN_Departamento\\.shp$"
-      target_shp <- list.files(exdir, pattern = pattern, recursive = TRUE, full.names = TRUE)
+      pat <- if (level == "mpio") "MGN_Municipio\\.shp$" else 
+        "MGN_Departamento\\.shp$"
+      target_shp <- list.files(
+        exdir, pattern = pat, recursive = TRUE, full.names = TRUE
+      )
       
       g_sel <- sf::st_read(target_shp, quiet = TRUE) %>%
         dplyr::rename_with(toupper) %>%
@@ -177,42 +273,36 @@ bogota_download_metro_area <- function(
     }
     
   } else {
-    # --- 2018 LOGIC (Dual Zips for Manzana) ---
-    
     if (level == "manzana") {
-      if (!quiet) message("🧩 [2018] Merging Urban Manzanas and Rural Sections...")
+      if (!quiet) message("🧩 [2018] Merging Urban and Rural Sections...")
       
-      # 1. Identify Urban File (MANZ)
-      path_mza <- list.files(exdir, pattern = "(?i)MANZ.*\\.shp$",
-                             recursive = TRUE, full.names = TRUE)
-      # 2. Identify Rural File (SECCR / SECCION)
-      # The 2018 rural zip usually contains a file with 'SECCION' or 'SECCR' in name
-      path_rural <- list.files(exdir, pattern = "(?i)(SECCION|SECCR).*\\.shp$",
-                               recursive = TRUE, full.names = TRUE)
+      path_mza <- list.files(
+        exdir, pattern = "(?i)MANZ.*\\.shp$", 
+        recursive = TRUE, full.names = TRUE
+      )
+      path_rur <- list.files(
+        exdir, pattern = "(?i)(SECCION|SECCR).*\\.shp$", 
+        recursive = TRUE, full.names = TRUE
+      )
       
-      # Process Urban
       if (length(path_mza) > 0) {
-        path_mza <- path_mza[which.max(file.info(path_mza)$size)] # Robustness
-        
+        path_mza <- path_mza[which.max(file.info(path_mza)$size)] 
         u_processed <- sf::st_read(path_mza, quiet = TRUE) %>%
           dplyr::rename_with(toupper) %>%
           dplyr::mutate(
-            MPIO_FULL = as.character(MPIO_CDPMP), # 2018 code is concatenated
+            MPIO_FULL = as.character(MPIO_CDPMP), 
             TIPO      = "Urban Block",
-            GEO_ID    = as.character(COD_DANE_A)  # Unique ID
+            GEO_ID    = as.character(COD_DANE_A) 
           ) %>%
           dplyr::filter(MPIO_FULL %in% municipality_codes) %>%
           dplyr::select(MPIO_FULL, TIPO, GEO_ID, dplyr::everything())
       } else {
-        warning("2018 Urban Manzana shapefile not found.")
         u_processed <- NULL
       }
       
-      # Process Rural
-      if (length(path_rural) > 0) {
-        path_rural <- path_rural[which.max(file.info(path_rural)$size)] # Robustness
-        
-        r_processed <- sf::st_read(path_rural, quiet = TRUE) %>%
+      if (length(path_rur) > 0) {
+        path_rur <- path_rur[which.max(file.info(path_rur)$size)] 
+        r_processed <- sf::st_read(path_rur, quiet = TRUE) %>%
           dplyr::rename_with(toupper) %>%
           dplyr::mutate(
             MPIO_FULL = as.character(MPIO_CDPMP),
@@ -222,25 +312,26 @@ bogota_download_metro_area <- function(
           dplyr::filter(MPIO_FULL %in% municipality_codes) %>%
           dplyr::select(MPIO_FULL, TIPO, GEO_ID, dplyr::everything())
       } else {
-        if(!quiet) warning("⚠️ 2018 Rural Sections shapefile not found in extracted folder.")
         r_processed <- NULL
       }
       
       g_sel <- dplyr::bind_rows(u_processed, r_processed)
       
     } else {
-      # 2018 Mpio or Depto
-      pattern <- if(level == "mpio") "(?i)MPIO.*\\.shp$" else "(?i)DEPTO.*\\.shp$"
-      target_shp <- list.files(exdir, pattern = pattern, recursive = TRUE, full.names = TRUE)
-      
-      if(length(target_shp) == 0) stop("Shapefile not found for level: ", level)
+      pat <- if(level == "mpio") "(?i)MPIO.*\\.shp$" else "(?i)DEPTO.*\\.shp$"
+      target_shp <- list.files(
+        exdir, pattern = pat, recursive = TRUE, full.names = TRUE
+      )
       target_shp <- target_shp[which.max(file.info(target_shp)$size)]
       
       g_sel <- sf::st_read(target_shp, quiet = TRUE) %>%
         dplyr::rename_with(toupper) %>%
         dplyr::mutate(
-          MPIO_FULL = if("MPIO_CDPMP" %in% names(.)) as.character(MPIO_CDPMP) 
-          else paste0(DPTO_CCDGO, MPIO_CCDGO)
+          MPIO_FULL = if("MPIO_CDPMP" %in% names(.)) {
+            as.character(MPIO_CDPMP) 
+          } else {
+            paste0(DPTO_CCDGO, MPIO_CCDGO)
+          }
         ) %>%
         dplyr::filter(MPIO_FULL %in% municipality_codes) %>%
         dplyr::select(MPIO_FULL, dplyr::everything())
@@ -248,15 +339,11 @@ bogota_download_metro_area <- function(
   }
   
   # 4) Export
-  # ----------------------------------------------------------------------------
-  if (is.null(g_sel) || nrow(g_sel) == 0) stop("No features found for provided codes.")
-  
+  # ---------------------------------------------------------------------------
   if (!quiet) message("💾 Writing GeoPackage → ", basename(out_file))
   sf::st_write(g_sel, out_file, delete_dsn = overwrite_gpkg, quiet = TRUE)
   
-  # Cleanup temp files
   unlink(exdir, recursive = TRUE)
-  
   invisible(g_sel)
 }
 
@@ -2733,52 +2820,68 @@ bogota_harmonize_census_2005_data <- function(
   
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
   
-  # --- Helper: Education Mapping (Unified for both versions) ---
+  # 1) HELPER FUNCTIONS
+  # ===========================================================================
+  
+  # --- Helper 1: Safely pad missing values -----------------------------------
+  safe_pad <- function(x, width) {
+    stringr::str_pad(
+      ifelse(is.na(x), "0", as.character(x)), width, "left", "0"
+    )
+  }
+  
+  # --- Helper 2: Harmonize Education Levels ----------------------------------
   harmonize_education <- function(df) {
     cols <- names(df)
     
     if ("P44B3_NIVEL_ANOS" %in% cols) {
-      # Extended Census Mapping
+      # Mapping logic for the EXTENDED census dataset
       df <- df %>%
         dplyr::mutate(
           VAL = as.numeric(P44B3_NIVEL_ANOS),
           VAL = dplyr::na_if(VAL, 98),
           VAL = dplyr::na_if(VAL, 99),
           VAL = ifelse(VAL == 43, 0, VAL),
+          
+          # Vertical expansion for easy auditing
           escolaridad = dplyr::case_when(
-            VAL %in% 0:3   ~ 0,
-            VAL == 4       ~ 1,  
-            VAL == 5       ~ 2,  
-            VAL == 6       ~ 3,
-            VAL == 7       ~ 4,  
-            VAL == 8       ~ 5,  
-            VAL == 9       ~ 6,
-            VAL == 10      ~ 7,  
-            VAL == 11      ~ 8,  
-            VAL == 12      ~ 9,
-            VAL == 13      ~ 10, 
-            VAL == 14      ~ 12, # Bachillerato
-            VAL %in% c(15, 17) ~ 10,
-            VAL %in% c(16, 18) ~ 12,
+            VAL %in% 0:3               ~ 0,
+            VAL == 4                   ~ 1,
+            VAL == 5                   ~ 2,
+            VAL == 6                   ~ 3,
+            VAL == 7                   ~ 4,
+            VAL == 8                   ~ 5,
+            VAL == 9                   ~ 6,
+            VAL == 10                  ~ 7,
+            VAL == 11                  ~ 8,
+            VAL == 12                  ~ 9,
+            VAL == 13                  ~ 10,
+            VAL == 14                  ~ 12, # Bachillerato
+            VAL %in% c(15, 17)         ~ 10,
+            VAL %in% c(16, 18)         ~ 12,
             VAL %in% c(19, 21, 23, 26) ~ 13,
             VAL %in% c(20, 22, 24, 27) ~ 14,
-            VAL %in% c(25, 28) ~ 15,
-            VAL == 29      ~ 16,
-            VAL %in% 30:33 ~ 17, # Profesional
-            VAL == 34      ~ 18,
-            VAL %in% 35:36 ~ 19,
-            VAL == 37      ~ 20,
-            VAL == 38      ~ 21,
-            VAL == 39      ~ 22,
-            VAL %in% 40:42 ~ 23,
-            TRUE           ~ NA_real_
+            VAL %in% c(25, 28)         ~ 15,
+            VAL == 29                  ~ 16,
+            VAL %in% 30:33             ~ 17, # Profesional
+            VAL == 34                  ~ 18,
+            VAL %in% 35:36             ~ 19,
+            VAL == 37                  ~ 20,
+            VAL == 38                  ~ 21,
+            VAL == 39                  ~ 22,
+            VAL %in% 40:42             ~ 23,
+            .default                   = NA_real_
           )
         )
+      
     } else if ("P44B1_TIP_ESTUD" %in% cols) {
-      # Basic Census Mapping (Specific values provided)
+      # Mapping logic for the BASIC census dataset
       df <- df %>%
         dplyr::mutate(
           VAL = as.numeric(P44B1_TIP_ESTUD),
+          VAL = dplyr::na_if(VAL, 99),
+          
+          # Vertical expansion for easy auditing
           escolaridad = dplyr::case_when(
             VAL == 13    ~ 0,  # None
             VAL == 1     ~ 0,  # Preschool
@@ -2790,52 +2893,65 @@ bogota_harmonize_census_2005_data <- function(
             VAL == 8     ~ 15, # Technological
             VAL == 9     ~ 17, # Professional
             VAL == 10    ~ 18, # Specialization
-            VAL == 11    ~ 20, # Master's
+            VAL == 11    ~ 19, # Master's
             VAL == 12    ~ 23, # Doctorate
-            TRUE         ~ NA_real_
+            .default     = NA_real_
           )
         )
     }
+    
+    # Clean up the temporary VAL column before returning
     return(df %>% dplyr::select(-dplyr::any_of("VAL")))
   }
   
-  # --- Internal Processing Pipeline ---
+  # 2) MAIN PROCESSING PIPELINE
+  # ===========================================================================
+  
   process_file <- function(path, type, extended) {
     if (!quiet) message("📖 Processing ", type, " | File: ", basename(path))
     
-    # I. Read all columns as character to avoid guessing errors
-    # Use col_types = vroom::cols(.default = "c")
+    # 1. Read Data
     raw <- vroom::vroom(
       path, 
       col_types = vroom::cols(.default = "c"), 
       show_col_types = FALSE,
-      delim = ",",           # Ensure this matches your CSV format
-      trim_ws = TRUE,        # Automatically removes leading/trailing spaces
-      na = c("", " ", "NA")  # Define common null values found in DANE files
+      delim = ",", 
+      trim_ws = TRUE, 
+      na = c("", " ", "NA")
     ) %>% 
       dplyr::rename_with(toupper)
     
-    # II. Basic uses full 22-chr MGN code; Extended uses Municipal/Locality ID
+    # 2. Geometry & Filtering
     df <- raw %>%
       dplyr::mutate(
-        LocComuna = if (type == "bogota") {
-          stringr::str_pad(I0B1_LOCALIDAD, 2, "left", "0")
-        } else NA,
+        LocComuna = if (type == "bogota") {stringr::str_pad(I0B1_LOCALIDAD, 2, "left", "0")
+        } else {NA_character_},
         LocCodigo = paste0(
-          stringr::str_pad(I0A_DPTO, 2, "left", "0"),
-          stringr::str_pad(I0B_MPIO, 3, "left", "0")),
+          safe_pad(I0A_DPTO, 2), 
+          safe_pad(I0B_MPIO, 3)),
+        
+        # Build the dynamic GEO_ID based on the geographic class
         GEO_ID = if (!extended) {
-          # Full MGN concatenation for Basic Census
-          stringr::str_c(
-            stringr::str_pad(I0A_DPTO, 2, "left", "0"),
-            stringr::str_pad(I0B_MPIO, 3, "left", "0"),
-            stringr::str_pad(I0C_CLASE, 1, "left", "0"),
-            stringr::str_pad(I0D_SECT_R, 3, "left", "0"),
-            stringr::str_pad(I0D_SEC_R, 2, "left", "0"),
-            stringr::str_pad(I0D_CPOB, 3, "left", "0"),
-            stringr::str_pad(I0D_SECT_U, 4, "left", "0"),
-            stringr::str_pad(I0D_SEC_U, 2, "left", "0"),
-            stringr::str_pad(I0D_MZA, 2, "left", "0")
+          
+          # A) Build the absolute maximum 22-digit string
+          full_id <- stringr::str_c(
+            safe_pad(I0A_DPTO,   2),   
+            safe_pad(I0B_MPIO,   3),
+            safe_pad(I0C_CLASE,  1),  
+            safe_pad(I0D_SECT_R, 3),
+            safe_pad(I0D_SEC_R,  2),  
+            safe_pad(I0D_CPOB,   3),
+            safe_pad(I0D_SECT_U, 4), 
+            safe_pad(I0D_SEC_U,  2),
+            safe_pad(I0D_MZA,    2)
+          )
+          
+          # B) Truncate ID to precisely match shapefile resolution
+          dplyr::case_when(
+            I0C_CLASE == "1" ~ full_id,                           # Urban: 22 
+            I0C_CLASE == "2" ~ stringr::str_sub(full_id, 1, 14),  # CPOB : 14 
+            I0C_CLASE == "3" ~ stringr::str_sub(full_id, 1, 11),  # Rural: 11 
+            TRUE ~ full_id
           )
         } else if (extended & type == "bogota") {
           paste0(LocCodigo, LocComuna)
@@ -2843,74 +2959,119 @@ bogota_harmonize_census_2005_data <- function(
           LocCodigo # Fallback to Locality for Extended
         }
       ) %>%
-      # 2. Filter Metro Area (based on Municipality part of ID)
-      dplyr::filter(stringr::str_sub(GEO_ID, 1, 5) %in% metro_codes) %>%
-      # 3. Core Indicators
+      # Keep only rows belonging to the defined metropolitan area
+      dplyr::filter(stringr::str_sub(GEO_ID, 1, 5) %in% metro_codes)
+    
+    # 3. Demographic Indicators Calculation
+    df <- df %>%
       dplyr::mutate(
-        raw_age = if ("PC09B_EDAD" %in% names(.)) {
-          as.numeric(PC09B_EDAD)} else {as.numeric(PC09B_EDADQ)},
-        # Convert to "roughly real age" if it's the group version
-        edad = if (extended) {
-          raw_age} else {(raw_age - 1) * 5 + 2.5},
-        fe    = if ("FACT_EXP_CAL_P_N" %in% names(.)) 
-          round(as.numeric(FACT_EXP_CAL_P_N)) else 1,
-        women = as.numeric(P25B_SEXO == 2),
-        adult = if (extended) {
-          as.numeric(raw_age >= 25)} else {as.numeric(raw_age >= 6) # Group 6 is 25-29 years
-            }
+        raw_age = if ("PC09B_EDAD" %in% names(.)) {as.numeric(PC09B_EDAD)
+          } else {as.numeric(PC09B_EDADQ)},
+        edad    = if (extended) {raw_age} else {(raw_age - 1) * 5 + 2.5},
+        fe      = if ("FACT_EXP_CAL_P_N" %in% names(.)) {round(as.numeric(FACT_EXP_CAL_P_N)) 
+        } else {1},
+        women   = as.numeric(P25B_SEXO == 2),
+        adult   = if (extended) {as.numeric(raw_age >= 25)
+          } else {as.numeric(raw_age >= 6)} # Group 6 is 25-29 years
       ) %>%
       harmonize_education() %>%
       dplyr::mutate(
-        no_education         = as.numeric(escolaridad == 0),
-        high_school_complete = as.numeric(escolaridad %in% 11:12),
-        college_complete     = as.numeric(escolaridad == 17),
-        graduate_educ        = as.numeric(escolaridad >= 18),
-        employed             = if ("P47B_OCUPACION" %in% names(.)) {
-          ifelse(edad >= 25, 
-                 as.numeric(P47B_OCUPACION %in% 1:2), 
-                 NA_real_)
-        } else NA_real_
+        no_education = as.numeric(escolaridad == 0),
+        high_school_incomplete = if (extended) {as.numeric(escolaridad >= 1 & escolaridad <= 11)
+        } else {as.numeric(escolaridad %in% c(5, 9))},
+        high_school_complete   = if (extended) {as.numeric(escolaridad == 12)
+          } else {as.numeric(escolaridad == 11)},
+        college_incomplete = if (extended) {as.numeric(escolaridad >= 13 & escolaridad <= 16)
+          } else {NA_real_},
+        college_complete = as.numeric(escolaridad == 17),
+        graduate_educ    = as.numeric(escolaridad >= 18),
+        employed         = if ("P47B_OCUPACION" %in% names(.)) {
+          ifelse(edad >= 25, as.numeric(P47B_OCUPACION %in% 1:2), NA_real_)
+        } else {
+          NA_real_
+        }
       )
     
     return(df)
   }
   
-  # --- Execution ---
-  bog_path <- list.files(extract_list$bogota$dir_extracted, 
-                         pattern = "PERH", full.names = TRUE)[1]
-  cun_path <- list.files(extract_list$cundinamarca$dir_extracted, 
-                         pattern = "PERH", full.names = TRUE)[1]
+  # 3) EXECUTION AND AGGREGATION
+  # ===========================================================================
   
+  # Locate the microdata files
+  bog_path <- list.files(
+    extract_list$bogota$dir_extracted, 
+    pattern = "PERH", 
+    full.names = TRUE
+  )[1]
+  
+  cun_path <- list.files(
+    extract_list$cundinamarca$dir_extracted, 
+    pattern = "PERH", 
+    full.names = TRUE
+  )[1]
+  
+  # Bind rows from both regions
   all_census <- dplyr::bind_rows(
     process_file(bog_path, "bogota", is_extended),
     process_file(cun_path, "cundinamarca", is_extended)
   )
   
-  # --- Aggregation ---
-  group_var <- "GEO_ID"
-  
+  # Collapse the microdata down to the geographic unit level (GEO_ID)
   collapse_data <- all_census %>%
     dplyr::filter(adult == 1) %>%
-    dplyr::group_by(!!dplyr::sym(group_var)) %>%
+    dplyr::group_by(GEO_ID) %>%
     dplyr::summarise(
       n = sum(fe, na.rm = TRUE),
       escolaridad_avg = weighted.mean(escolaridad, fe, na.rm = TRUE),
-      dplyr::across(c(no_education, high_school_complete, college_complete, 
-                      graduate_educ, employed),
-                    ~ sum(.x * fe, na.rm = TRUE))
+      
+      # Calculate total counts using expansion factors
+      dplyr::across(
+        c(
+          no_education, 
+          high_school_incomplete, 
+          high_school_complete, 
+          college_incomplete, 
+          college_complete, 
+          graduate_educ, 
+          employed
+        ),
+        ~ sum(.x * fe, na.rm = TRUE)
+      ),
+      .groups = "drop" 
     ) %>%
-    dplyr::mutate(dplyr::across(c(no_education, high_school_complete, 
-                                  college_complete, graduate_educ, employed),
-                                ~ .x / n, .names = "share_{.col}_pop"))
+    dplyr::mutate(
+      # Convert total counts into population shares
+      dplyr::across(
+        c(
+          no_education, 
+          high_school_incomplete, 
+          high_school_complete, 
+          college_incomplete, 
+          college_complete, 
+          graduate_educ, 
+          employed
+        ),
+        ~ .x / n, 
+        .names = "share_{.col}_pop"
+      )
+    )
   
-  # --- Export ---
+  # EXPORT
+  # ===========================================================================
   prefix <- if (is_extended) "extended" else "basic"
-  vroom::vroom_write(all_census, file.path(out_dir, 
-                                           paste0("census_metro_individual_", prefix, ".csv")), 
-                     delim = ",")
-  vroom::vroom_write(collapse_data, file.path(out_dir, 
-                                              paste0("collapse_metro_area_", prefix, ".csv")), 
-                     delim = ",")
+  
+  vroom::vroom_write(
+    all_census, 
+    file.path(out_dir, paste0("census_metro_individual_", prefix, ".csv")), 
+    delim = ","
+  )
+  
+  vroom::vroom_write(
+    collapse_data, 
+    file.path(out_dir, paste0("collapse_metro_area_", prefix, ".csv")), 
+    delim = ","
+  )
   
   return(list(individual = all_census, collapsed = collapse_data))
 }
