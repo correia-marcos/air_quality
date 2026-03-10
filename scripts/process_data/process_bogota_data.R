@@ -34,24 +34,35 @@ outdir_stations   <- here::here(bogota_cfg$dl_dir, "ground_stations_geolocation"
 outdir_metadata   <- here::here(bogota_cfg$dl_dir, "stations_metadata")
 
 # Define the file's specific location
-bogota_stations_csv   <- here::here(outdir_stations, "bogota_stations_location.csv")
-bogota_metro_gpkg     <- here::here(outdir_geospatial, "bogota", "bogota_area_metro_2018.gpkg")
+bogota_stations_csv    <- here::here(outdir_stations, "bogota_stations_location.csv")
+bogota_metro_2018_gpkg <- here::here(outdir_geospatial, "bogota", "bogota_area_metro_2018.gpkg")
+bogota_metro_2005_gpkg <- here::here(outdir_geospatial, "bogota", "bogota_area_metro_2005.gpkg")
 
 # Read the geospatial data
 stations_bogota   <- read.csv(bogota_stations_csv)
-bogota_metro      <- st_read(bogota_metro_gpkg)
+bogota_2018_metro <- st_read(bogota_metro_2018_gpkg)
+bogota_2005_metro <- st_read(bogota_metro_2005_gpkg)
 
 # ============================================================================================
 # II: Process  data
 # ============================================================================================
-# Apply function to filter the stations in the metro area + 20 km radius
+# Apply function to filter the stations in the metro area + 20 km radius (2018)
 stations_kept <- bogota_filter_stations_in_metro(
   rmcab_df      = stations_bogota,
   metadata_dir  = outdir_metadata,
   radius_km     = 20,
-  metro_area    = bogota_metro,
+  metro_area    = bogota_2018_metro,
   out_file      = here::here(outdir_geospatial, "bogota",
                              "bogota_2018_stations_buffer_metro.gpkg"))
+
+# Apply function to filter the stations in the metro area + 20 km radius (2005)
+stations_kept <- bogota_filter_stations_in_metro(
+  rmcab_df      = stations_bogota,
+  metadata_dir  = outdir_metadata,
+  radius_km     = 20,
+  metro_area    = bogota_2005_metro,
+  out_file      = here::here(outdir_geospatial, "bogota",
+                             "bogota_2005_stations_buffer_metro.gpkg"))
 
 # Apply function to merge all downloaded file of Bogota metro area into DUCKDB database
 bogota_stations_data <- bogota_process_stations_data_to_parquet(

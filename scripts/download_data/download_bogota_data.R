@@ -11,7 +11,7 @@
 #     2 - All ground station air pollution data inside the metro area
 #     3 - CENSUS microdata for the country
 # 
-# @Summary: 
+# @Summary:
 #   I.   Load all the sources in the correct order (order matters) for functions and variables
 #   II.  Use the named list in city_specific/bogota.R to define parameters for functions
 #   III. Download all data (metro area -> stations -> census)
@@ -41,14 +41,23 @@ print(bogota_cfg$years)
 # ============================================================================================
 # I: Download data
 # ============================================================================================
-# Apply function to download shapefiles for Bogotá metro area - municipality level
+# Apply function to download shapefiles for Bogotá metro area - municipality + comunas level
 metro_area_2005 <- bogota_download_metro_area(
-  level        = "mpio",
+  level        = "mpio_localidad",
   mgn_year     = 2005,
   base_url     = bogota_cfg$base_url_shp,
   download_dir = here::here(bogota_cfg$dl_dir, "metro_area"),
   out_file     = here::here("data", "raw", "geospatial_data", "bogota",
                             "bogota_area_metro_2005.gpkg"))
+
+# Apply function to download shapefiles for Bogotá metro area - municipality level
+metro_area_mpio_2005 <- bogota_download_metro_area(
+  level        = "mpio",
+  mgn_year     = 2005,
+  base_url     = bogota_cfg$base_url_shp,
+  download_dir = here::here(bogota_cfg$dl_dir, "metro_area"),
+  out_file     = here::here("data", "raw", "geospatial_data", "bogota",
+                            "bogota_area_metro_municipalities_2005.gpkg"))
 
 # Apply function to download shapefiles for Bogotá metro area - Urban block + rural sections
 metro_area_mzn_2005 <- bogota_download_metro_area(
@@ -57,12 +66,11 @@ metro_area_mzn_2005 <- bogota_download_metro_area(
   base_url     = bogota_cfg$base_url_shp,
   download_dir = here::here(bogota_cfg$dl_dir, "metro_area"),
   out_file     = here::here("data", "raw", "geospatial_data", "bogota",
-                            "bogota_area_metro_census_tracts_2005.gpkg")
-)
+                            "bogota_area_metro_census_tracts_2005.gpkg"))
 
-# Apply function to download shapefiles for Bogotá metro area - munici level 2018
+# Apply function to download shapefiles for Bogotá metro area - munici. level 2018
 metro_area_2018 <- bogota_download_metro_area(
-  level             = "mpio",
+  level             = "mpio_localidad",
   mgn_year          = 2018,
   base_url          = bogota_cfg$base_url_shp,
   download_dir      = here::here(bogota_cfg$dl_dir, "metro_area"),
