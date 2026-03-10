@@ -1048,7 +1048,7 @@ sao_paulo_download_metadata <- function(
 # @Arg       : stations_sp    — Pre-loaded dataframe (São Paulo Stations)
 # @Arg       : metro_area     — sf polygon of the metropolitan area
 # @Arg       : radius_km      — numeric; max distance to keep (default 20)
-# @Arg       : stations_epsg  — EPSG for UTM Zone 23S (default 32723 for WGS84 UTM 23S)
+# @Arg       : stations_esri  — ESRI for UTM Zone 23S (default 103213 for UTM 23S)
 # @Arg       : out_file       — output GeoPackage path
 # @Arg       : overwrite_gpkg — logical; overwrite if exists
 # @Arg       : dissolve       — logical; TRUE unions metro polygons
@@ -1061,7 +1061,7 @@ sp_filter_stations_in_metro <- function(
     stations_sp,
     metro_area,
     radius_km      = 20,
-    stations_epsg  = 32723, # Defaulting to UTM Zone 23S
+    stations_esri  = "ESRI:103213", # Defaulting to UTM Zone 23S
     out_file       = here::here("data", "raw", "geospatial_data", 
                                 "sao_paulo", "stations.gpkg"),
     overwrite_gpkg = TRUE,
@@ -1081,6 +1081,7 @@ sp_filter_stations_in_metro <- function(
   # ---------------------------------------------------------------------------
   # X coordinates in SP are always 6 digits, Y coordinates are always 7 digits
   df_clean <- stations_sp |>
+    distinct() |>
     dplyr::mutate(
       # Coerce to character for regex evaluation
       x_chr = as.character(utm_x),
@@ -1123,7 +1124,7 @@ sp_filter_stations_in_metro <- function(
   stations_sf <- sf::st_as_sf(
     df_clean,
     coords = c("true_x", "true_y"),
-    crs = stations_epsg
+    crs = stations_esri
   )
   
   message("🔄 Applying Spatial Filter (Radius: ", radius_km, "km)...")
@@ -1149,6 +1150,7 @@ sp_filter_stations_in_metro <- function(
   keep_mask  <- lengths(within_idx) > 0
   
   stations_final <- stations_sf[keep_mask, ]
+  stations_final <- sf::st_transform(stations_final, crs = "EPSG:4674")
   
   message("    Filter Stats: Input=", nrow(stations_sf), 
           " -> Output=", nrow(stations_final), 
@@ -1374,20 +1376,20 @@ sp_process_stations_data_to_parquet <- function(
         value = suppressWarnings(as.numeric(gsub(",", ".", value)))
       ) |>
       dplyr::select(Data = V1, Hora = V2, param, value) |>
-      dplyr::filter(!is.na(value)) 
+      dplyr::filter(!is.na(value))
     
     if (nrow(dt_long) == 0) next
     
     # Handle CETESB Dates & 24:00 Hour format
     dt_long <- dt_long |>
       dplyr::mutate(
-        is_24 = (Hora == "24:00"),
-        Hora_clean = ifelse(is_24, "00:00", Hora),
+        is_24 = (Hora == hms("24:00:00")),
+        Hora_clean = hour(Hora),
         datetime_str = paste(Data, Hora_clean),
         # Flexible parser for multiple Brazilian date variants (FIXED)
         datetime = lubridate::parse_date_time(
           datetime_str, 
-          orders = c("dmy_HM", "ymd_HM", "dmy_HMS", "ymd_HMS"),
+          orders = c("dmy_H"),
           tz = tz, quiet = TRUE
         ),
         datetime = ifelse(
