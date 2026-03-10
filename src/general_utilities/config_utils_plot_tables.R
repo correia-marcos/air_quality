@@ -1913,7 +1913,8 @@ plot_hourly_stacked_stations <- function(hourly_df,
     geom_bar(stat = "identity", width = 0.7, color = "black") +
     scale_fill_manual(values = pal, drop = FALSE) +
     labs(
-      title    = paste0("Hourly ", pollutant_label, " by Station — ", region_name, " (", year, ")"),
+      title    = paste0("Hourly ", pollutant_label, " by Station — ", region_name,
+                        " (", year, ")"),
       subtitle = filter_label,
       x        = if (normalize) "Share of hourly mean (100% stacked)"
       else paste0("Average ", pollutant_label, " (µg/m³)"),
@@ -1955,58 +1956,87 @@ plot_hourly_stacked_stations <- function(hourly_df,
 # @Arg pop_col     : string; Column for population weights (e.g. "n").
 # @Arg year_filter : numeric; Year to check for active stations.
 # @Arg buffer_km   : numeric; Buffer size around stations in kilometers.
-# @Arg city_label  : string; Text label to place in the top right.
+# @Arg city_label  : string; Text label to place in the map.
 # @Arg pollutants  : vector; Pollutants to check (e.g., c("pm25", "pm10")).
+# @Arg label_x_pct : numeric; X position of annotations (0 to 1, default 0.98).
+# @Arg label_y_pct : numeric; Y position of annotations (0 to 1, default 0.98).
+# @Arg legend_pos  : vector; Relative X/Y pos of legend (default top-right).
 #
 # @Output          : A ggplot object.
-# @Purpose         : Visualize inequality based on education levels and 
-#                    active air monitoring station buffers.
-# @Written_on      : 19/02/2026
-# @Written_by      : Marcos
+# @Purpose         : Visualize inequality based on education levels and active 
+#                    air monitoring station buffers. Uses a Sequential Cascading
+#                    Join to seamlessly fill un-surveyed blocks with the median 
+#                    data of their geographic parent sections.
+# @Written_on      : 10/01/2026 (Updated 04/03/2026)
+# @Written_by      : Marcos Paulo
 # ---------------------------------------------------------------------------------------------
 plot_inequality_pollution <- function(
-    metro_sf, stations_sf, arrow_dir, census_df, 
-    join_sf_col, join_df_col, station_col = "station_name", 
-    ed_col, pop_col, year_filter = 2023, buffer_km = 5, 
-    city_label = "Metro Area", pollutants = c("pm25", "pm10")
+    metro_sf,
+    stations_sf,
+    arrow_dir,
+    census_df,
+    join_sf_col,
+    join_df_col,
+    station_col = "station_name",
+    ed_col,
+    pop_col,
+    year_filter = 2023,
+    buffer_km = 5,
+    city_label = "Metro Area",
+    pollutants = c("pm25", "pm10"),
+    label_x_pct = 0.98,               # <-- New control for X annotation
+    label_y_pct = 0.98,               # <-- New control for Y annotation
+    legend_pos = c(0.85, 0.85)        # <-- New control for legend position
 ) {
   
-  req_pkgs <- c("dplyr", "sf", "ggplot2", "viridis", "arrow", "data.table")
-  for(p in req_pkgs) {
+  pkgs <- c("dplyr", "sf", "ggplot2", "viridis", "arrow", "data.table", 
+            "stringr", "stringi")
+  for(p in pkgs) {
     if (!requireNamespace(p, quietly = TRUE)) stop(paste("Need", p))
   }
   
+  # 0. Helper function: Normalize strings for joining
+  normalize_key <- function(x) {
+    x <- toupper(x)
+    x <- stringi::stri_trans_general(x, id = "Latin-ASCII")
+    x <- gsub("[^A-Z0-9]", "", x)
+    return(x)
+  }
+  
   # 1. Query Arrow for Active Stations
-  # ----------------------------------------------------------------------------
+  # ---------------------------------------------------------------------------
   arrow_ds <- arrow::open_dataset(arrow_dir)
   
   active_stations <- arrow_ds |>
     dplyr::filter(year == year_filter) |>
     dplyr::select(station, dplyr::all_of(pollutants)) |>
     dplyr::collect() |>
-    # Keep row if AT LEAST ONE of the requested pollutants is not NA
     dplyr::filter(
       rowSums(!is.na(dplyr::across(dplyr::all_of(pollutants)))) > 0
     ) |>
     dplyr::distinct(station) |>
     dplyr::pull(station)
   
-  # Subset the spatial stations using the dynamic station_col parameter
+  norm_active <- normalize_key(active_stations)
+  stations_sf$norm_name <- normalize_key(stations_sf[[station_col]])
+  
   stations_subset <- stations_sf |> 
-    dplyr::filter(.data[[station_col]] %in% active_stations)
+    dplyr::filter(norm_name %in% norm_active)
   
   if (nrow(stations_subset) == 0) {
     warning("No active stations found for the given year and pollutants.")
   }
   
   # 2. Compute Population-Weighted Quintiles
-  # ----------------------------------------------------------------------------
+  # ---------------------------------------------------------------------------
   data.table::setDT(census_df)
-  data.table::setorderv(census_df, cols = ed_col)
   
-  census_df[, cum_pop := cumsum(get(pop_col))]
-  census_df[, pct_pop := cum_pop / sum(get(pop_col), na.rm = TRUE)]
-  census_df[, quintiles := data.table::fcase(
+  census_clean <- census_df[!is.na(get(ed_col)) & !is.na(get(pop_col))]
+  data.table::setorderv(census_clean, cols = ed_col)
+  
+  census_clean[, cum_pop := cumsum(get(pop_col))]
+  census_clean[, pct_pop := cum_pop / sum(get(pop_col), na.rm = TRUE)]
+  census_clean[, quintiles := data.table::fcase(
     pct_pop <= 0.2, "1",
     pct_pop <= 0.4, "2",
     pct_pop <= 0.6, "3",
@@ -2014,50 +2044,147 @@ plot_inequality_pollution <- function(
     default = "5"
   )]
   
-  # 3. Spatial Joins & Buffers (FIXED)
-  # ----------------------------------------------------------------------------
-  # Convert data.table back to data.frame to prevent sf merge conflicts
-  census_df <- as.data.frame(census_df)
+  # 3. Spatial Joins & Sequential Cascading Fallback
+  # ---------------------------------------------------------------------------
+  census_clean <- as.data.frame(census_clean)
   
-  # Use dplyr::left_join for robust spatial merging
-  join_mapping <- stats::setNames(join_df_col, join_sf_col)
-  shp_merged <- dplyr::left_join(metro_sf, census_df, by = join_mapping) # %>% 
-    # filter(!is.na(quintiles))
+  census_clean$k_base <- as.character(census_clean[[join_df_col]])
+  sf_keys <- as.character(metro_sf[[join_sf_col]])
   
+  # A. Prepare Exact Matches
+  census_exact <- census_clean %>%
+    dplyr::select(k_exact = k_base, q_exact = quintiles) %>%
+    dplyr::distinct(k_exact, .keep_all = TRUE)
+  
+  # B. Build Median Data for Parent Geographic Levels
+  build_tree <- function(len, col_name) {
+    census_clean %>%
+      dplyr::filter(nchar(k_base) >= len) %>%
+      dplyr::mutate(key = stringr::str_sub(k_base, 1, len)) %>%
+      dplyr::group_by(key) %>%
+      dplyr::summarise(
+        !!col_name := as.character(
+          round(median(as.numeric(quintiles), na.rm = TRUE))
+        ),
+        .groups = "drop"
+      )
+  }
+  
+  tree20 <- build_tree(20, "q20") # Seccion Urbana
+  tree17 <- build_tree(17, "q17") # Sector Urbano
+  tree14 <- build_tree(14, "q14") # Centro Poblado
+  tree11 <- build_tree(11, "q11") # Seccion Rural
+  tree9  <- build_tree(9, "q9")   # Sector Rural
+  
+  # C. Perform Sequential Cascading Joins
+  shp_merged <- metro_sf %>%
+    dplyr::mutate(
+      k_exact = sf_keys,
+      k20 = stringr::str_sub(k_exact, 1, 20),
+      k17 = stringr::str_sub(k_exact, 1, 17),
+      k14 = stringr::str_sub(k_exact, 1, 14),
+      k11 = stringr::str_sub(k_exact, 1, 11),
+      k9  = stringr::str_sub(k_exact, 1, 9)
+    ) %>%
+    dplyr::left_join(census_exact, by = "k_exact") %>%
+    dplyr::left_join(tree20, by = c("k20" = "key")) %>%
+    dplyr::left_join(tree17, by = c("k17" = "key")) %>%
+    dplyr::left_join(tree14, by = c("k14" = "key")) %>%
+    dplyr::left_join(tree11, by = c("k11" = "key")) %>%
+    dplyr::left_join(tree9,  by = c("k9" = "key")) %>%
+    dplyr::mutate(
+      final_join_key = dplyr::coalesce(
+        ifelse(!is.na(q_exact), k_exact, NA_character_),
+        ifelse(!is.na(q20), k20, NA_character_),
+        ifelse(!is.na(q17), k17, NA_character_),
+        ifelse(!is.na(q14), k14, NA_character_),
+        ifelse(!is.na(q11), k11, NA_character_),
+        ifelse(!is.na(q9),  k9, NA_character_)
+      ),
+      quintiles = dplyr::coalesce(q_exact, q20, q17, q14, q11, q9)
+    )
+  
+  # Explicitly align the stations' CRS
+  stations_subset <- sf::st_transform(stations_subset, sf::st_crs(shp_merged))
   stations_buffer <- sf::st_buffer(stations_subset, dist = buffer_km * 1000)
-  stations_buffer <- sf::st_transform(stations_buffer, sf::st_crs(shp_merged))
   
-  # 4. Extract Top-Right Coordinates for Label
-  # ----------------------------------------------------------------------------
+  # 4. Calculate Dropped Population
+  # ---------------------------------------------------------------------------
+  used_keys <- unique(shp_merged$final_join_key[!is.na(shp_merged$quintiles)])
+  
+  census_eval <- census_clean %>%
+    dplyr::mutate(
+      is_mapped = (
+        k_base %in% used_keys | 
+          stringr::str_sub(k_base, 1, 20) %in% used_keys |
+          stringr::str_sub(k_base, 1, 17) %in% used_keys |
+          stringr::str_sub(k_base, 1, 14) %in% used_keys |
+          stringr::str_sub(k_base, 1, 11) %in% used_keys |
+          stringr::str_sub(k_base, 1, 9) %in% used_keys
+      )
+    )
+  
+  tot_pop <- sum(census_eval[[pop_col]], na.rm = TRUE)
+  drp_pop <- sum(census_eval[[pop_col]][!census_eval$is_mapped], na.rm = TRUE)
+  pct_drp <- round(100 * (drp_pop / tot_pop), 2)
+  
+  drop_label <- paste0("Dropped Pop: ", pct_drp, "%")
+  
+  # 5. Extract Coordinates for Dynamic Labels
+  # ---------------------------------------------------------------------------
   bbox <- sf::st_bbox(shp_merged)
-  label_x <- bbox["xmax"] - (bbox["xmax"] - bbox["xmin"]) * 0.02
-  label_y <- bbox["ymax"] - (bbox["ymax"] - bbox["ymin"]) * 0.02
+  x_range <- bbox["xmax"] - bbox["xmin"]
+  y_range <- bbox["ymax"] - bbox["ymin"]
   
-  # 5. Build ggplot
-  # ----------------------------------------------------------------------------
+  # Dynamic placement based on user percentages (default is top-right)
+  label_x <- bbox["xmin"] + (x_range * label_x_pct)
+  label_y <- bbox["ymin"] + (y_range * label_y_pct)
+  drop_y  <- label_y - (y_range * 0.03) # Shift dropped text exactly 3% below
+  
+  # 6. Build ggplot
+  # ---------------------------------------------------------------------------
+  geom_color <- if (nrow(shp_merged) > 1000) NA else "grey50"
+  
   p <- ggplot() +
-    geom_sf(data = shp_merged, aes(fill = quintiles), color = "white",
-            linewidth = 0.05) +
+    geom_sf(
+      data = shp_merged, aes(fill = quintiles), 
+      color = geom_color, linewidth = 0.25
+    ) +
     scale_fill_viridis_d(option="mako", direction=-1, na.value="grey90") +
     geom_sf(data = stations_subset, color = "red", size = 1) +
-    geom_sf(data = stations_buffer, fill = NA, color = "red", 
-            linewidth = 0.5, alpha = 0.3) +
-    annotate("text", x = label_x, y = label_y, label = city_label, 
-             hjust = 1, vjust = 1, fontface = "bold", size = 5, 
-             color = "grey20") +
+    geom_sf(
+      data = stations_buffer, fill = NA, color = "red", 
+      linewidth = 0.5, alpha = 0.3
+    ) +
+    annotate(
+      "text", x = label_x, y = label_y, label = city_label, 
+      hjust = 1, vjust = 1, family = "Palatino", fontface = "bold", 
+      size = 5, color = "grey20"
+    ) +
+    annotate(
+      "text", x = label_x, y = drop_y, label = drop_label, 
+      hjust = 1, vjust = 1, family = "Palatino", fontface = "italic", 
+      size = 3.5, color = "grey40"
+    ) +
     labs(fill = "Years of schooling\nquintiles") +
-    theme_minimal() +
+    theme_minimal(base_family = "Palatino", base_size = 12) +
     theme(
       panel.background = element_rect(fill = "white", color = NA),
       plot.background  = element_rect(fill = "white", color = NA),
       panel.grid       = element_blank(),
-      axis.text        = element_blank(),
-      axis.title       = element_blank(),
-      legend.position  = "bottom"
+      
+      # Floating Legend Overhaul
+      legend.position   = legend_pos,
+      legend.title      = element_text(size = 9, face = "bold"),
+      legend.text       = element_text(size = 9),
+      legend.key.size   = unit(0.5, "cm"),
+      legend.background = element_rect(fill = alpha("white", 0.7), color = NA)
     )
   
+  print(p)
   return(p)
 }
+
 
 # Print a success message for when running inside Docker Container
 cat("Config script parsed successfully!\n")
