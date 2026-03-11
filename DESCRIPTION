@@ -1,0 +1,84 @@
+Package: AirMonitoringInequality
+Type: Project
+Title: Inequality in Air Pollution Monitoring and Exposure: Evidence from Four Latin American Cities
+Version: 0.1.0
+Authors@R: c(
+    person("Bridget", "Hoffman", email = "bridgeth@iadb.org", role = "aut"),
+    person("Patricio", "Dominguez", email = "pdomingr@uc.cl", role = "aut"),
+    person("Maria Paula", "Medina", email = "mpmedina@ucdavis.edu", role = "aut"),
+    person("Marcos Paulo", "Correia", email = "marcospaulorcorreia@gmail.com", role = c("aut", "cre"))
+    )
+Description: >
+    Replication package for air pollution analysis across four metropolitan
+    areas in Latin America. Covers data download, processing, and
+    visualization of ground monitoring station data integrated with
+    satellite-derived sources (MERRA-2) and census geographies.
+License: MIT + file LICENSE.md
+Encoding: UTF-8
+Imports:
+    abind,
+    archive,
+    arrow,
+    censo2017,
+    censobr,
+    cowplot,
+    curl,
+    data.table,
+    DBI,
+    doParallel,
+    dplyr,
+    duckdb,
+    exactextractr,
+    foreach,
+    forcats,
+    fs,
+    geobr,
+    ggmap,
+    ggplot2,
+    ggspatial,
+    ggridges,
+    glue,
+    haven,
+    here,
+    htmltools,
+    htmlwidgets,
+    httr,
+    janitor,
+    jsonlite,
+    kableExtra,
+    leaflet,
+    lubridate,
+    memuse,
+    purrr,
+    RColorBrewer,
+    readr,
+    readxl,
+    rio,
+    rlang,
+    rnaturalearth,
+    rnaturalearthdata,
+    rnaturalearthhires,
+    rosm,
+    rstudioapi,
+    rvest,
+    selenium,
+    sf,
+    showtext,
+    showtextdb,
+    snakecase,
+    sp,
+    stringi,
+    stringr,
+    sysfonts,
+    terra,
+    tibble,
+    tidyr,
+    viridis,
+    viridisLite,
+    vroom,
+    XLConnect,
+    XML,
+    xml2,
+    zip,
+    zoo
+Additional_repositories: https://ropensci.r-universe.dev
