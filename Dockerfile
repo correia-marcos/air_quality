@@ -1,7 +1,7 @@
 ################################################################################
 # STAGE 1: Base - System Dependencies (Ubuntu Noble)
 ################################################################################
-FROM rocker/r-ver:4.5.1 AS base
+FROM rocker/rstudio:4.5.2 AS base
 
 # Prevent apt-get prompts
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -67,7 +67,7 @@ RUN R -e "install.packages('renv', repos='https://cran.rstudio.com/')" \
 ################################################################################
 # STAGE 3: Final - Runtime
 ################################################################################
-FROM rocker/rstudio:4.5.1 AS final
+FROM rocker/rstudio:4.5.2 AS final
 
 # Re-install runtime dependencies
 ENV DEBIAN_FRONTEND=noninteractive TZ=UTC
