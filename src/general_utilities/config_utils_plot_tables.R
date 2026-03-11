@@ -1779,12 +1779,12 @@ plot_time_spans_ridgeline <- function(list_of_dfs,
   return(p)
 }
 
-# ------------------------------------------------------------------------------------------------
+# ---------------------------------------------------------------------------------------------
 # Function: summarize_hourly_by_station
 # @Arg         : df           a data frame with columns for station code, datetime, and value.
 # @Arg         : station_col  name of the station code column (default "station_code").
 # @Arg         : datetime_col name of the datetime column (default "date2_hour").
-# @Arg         : value_col    name of the pollutant column to average (default "pm25_validated").
+# @Arg         : value_col    name of the pollutant column to average - default pm25_validated
 # @Arg         : filter_type  one of "none", "gt_it1", or "gt_it2" for threshold filtering.
 # @Arg         : it1, it2     numeric thresholds (defaults reflect WHO annual PM2.5 IT1/IT2).
 # @Arg         : tz           timezone for parsing if needed (kept for signature parity).
@@ -1795,7 +1795,7 @@ plot_time_spans_ridgeline <- function(list_of_dfs,
 #                and attach a stable station ordering for consistent stacked plots.
 # @Written_on  : 12/08/2025
 # @Written_by  : Marcos Paulo
-# ------------------------------------------------------------------------------------------------
+# ---------------------------------------------------------------------------------------------
 summarize_hourly_by_station <- function(df,
                                         station_col    = "station_code",
                                         datetime_col   = "date2_hour",
