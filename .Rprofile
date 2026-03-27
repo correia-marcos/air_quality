@@ -1,3 +1,9 @@
+# 0. Set the possible repositories
+options(repos = c(
+  CRAN = "https://cran.rstudio.com/",
+  ropensci = "https://ropensci.r-universe.dev"
+))
+
 # 1. Detect Docker & Switch Directory FIRST
 #    We must do this before trying to load renv, because R starts in /home/rstudio
 if (identical(Sys.getenv("IN_DOCKER"), "true")) {
@@ -14,6 +20,6 @@ if (file.exists("renv/activate.R")) {
 
 # 3. Optional: Auto-activate for interactive sessions
 #    (renv usually handles this via activate.R, but this ensures it)
-if (interactive() && requireNamespace("renv", quietly = TRUE)) {
-  renv::activate()
-}
+# if (interactive() && requireNamespace("renv", quietly = TRUE)) {
+#  renv::activate()
+# }
