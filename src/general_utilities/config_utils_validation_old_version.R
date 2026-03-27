@@ -263,21 +263,31 @@ prepare_new_bogota_like_legacy <- function(
     hour_shift = 0L,
     tz = "America/Bogota"
 ) {
-  df <- new_df %>% 
+  df <- new_df %>%
     collect() %>% 
-    dplyr::transmute(
-      station,
-      datetime = as.POSIXct(.data$datetime, tz = tz),
+    dplyr::mutate(
+      datetime = as.POSIXct(datetime, tz = tz),
       pm10     = pm10, 
       pm25     = pm25,
       ozone    = ozone,
       co       = co,
       no2      = no2
-    )
+    ) %>% 
+    dplyr::select(
+      station,
+      datetime,
+      pm10,
+      pm25,
+      ozone,
+      co,
+      no2
+    ) %>% 
+    arrange(datetime)
 
   df <- build_time_parts(df, tz = tz, hour_shift = hour_shift) |>
     dplyr::filter(.data$year %in% year_keep) |>
     harmonize_station_names(rename_map = rename_map, drop_stations = drop_stations) |>
+    filter(station %in% rename_map) |>
     dplyr::select(station, datetime, pm10, pm25, ozone, co, no2, year, month, day, hour) |>
     dplyr::arrange(.data$station, .data$datetime)
   

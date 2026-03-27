@@ -14,42 +14,61 @@
 # @Author: Marcos
 # ============================================================================================
 source(here::here("src", "general_utilities", "config_utils_validation_old_version.R"))
+source(here::here("src","city_specific", "registry.R"))
+source(here::here("src","city_specific", "bogota.R"))
 
 # ============================================================================================
 # I: Import  data
 # ============================================================================================
-# Define the directory with legacy data
-legacy_dir         <- here::here("data", "_legacy", "pollution", "Bogota")
+# Define the output general folders
+legacy_dir_area   <- here::here("data", "_legacy", "cities_shapefiles")
+legacy_dir_pol    <- here::here("data", "_legacy", "pollution")
+outdir_pollution  <- here::here(bogota_cfg$out_dir, "monitoring_stations")
+outdir_geospatial <- here::here(bogota_cfg$out_dir, "geospatial_data")
+
+# Define the file's specific location
+bogota_metro_2018_gpkg <- here::here(outdir_geospatial, "bogota", "bogota_area_metro_2018.gpkg")
+bogota_metro_2005_gpkg <- here::here(outdir_geospatial, "bogota", "bogota_area_metro_2005.gpkg")
+bogota_pollution       <- here::here(outdir_pollution, "bogota_metro_dataset")
+legacy_metro_2005_shp  <- here::here(legacy_dir_area, "Bogota_metro")
+legacy_pollution_files <- here::here(legacy_dir_pol, "Bogota")
+
+# Read the necessary files
+bogota_2018_metro   <- st_read(bogota_metro_2018_gpkg)
+bogota_2005_metro   <- st_read(bogota_metro_2005_gpkg)
+legacy_bogota_metro <- sf::st_read(legacy_metro_2005_shp)
+bogota_stations_new <- open_dataset(bogota_pollution)
 
 # Define station dictionary (old -> new) to match older recording names
 station_map <- c(
-  "Centro de Alto Rendimiento" = "CAR",
-  "Carvajal - Sevillana"       = "Carvajal-Sevillana",
-  "Ciudad Bolivar"             = "CiudadBolivar",
-  "Las Ferias"                 = "LasFerias",
-  "Movil 7ma"                  = "Movil7ma",
-  "Movil Fontibon"             = "MovilFontibon",
-  "Puente Aranda"              = "PuenteAranda",
-  "San Cristobal"              = "SanCristobal"
+  "CENTRO DE ALTO RENDIMIENTO" = "CAR",
+  "CARVAJAL-SEVILLANA"         = "Carvajal-Sevillana",
+  "CIUDAD BOLIVAR"             = "CiudadBolivar",
+  "LAS FERIAS"                 = "LasFerias",
+  "MOVIL 7MA"                  = "Movil7ma",
+  "MOVIL FONTIBON"             = "MovilFontibon",
+  "PUENTE ARANDA"              = "PuenteAranda",
+  "SAN CRISTOBAL"              = "SanCristobal",
+  "GUAYMARAL"                  = "Guaymaral",
+  "USAQUEN"                    = "Usaquen",
+  "MINAMBIENTE"                = "MinAmbiente",
+  "KENNEDY"                    = "Kennedy",
+  "TUNAL"                      = "Tunal",
+  "BOLIVIA"                    = "Bolivia",
+  "FONTIBON"                   = "Fontibon",
+  "COLINA"                     = "Colina",
+  "USME"                       = "Usme",
+  "SUBA"                       = "Suba",
+  "EL JAZMIN"                  = "Jazmin",
+  "JAZMIN"                     = "Jazmin"
 )
-
-# Define the output general folders
-l_bogota_shp <- here::here("data", "_legacy", "cities_shapefiles(old)", "Bogota_metro")
-bogota_shp   <- here::here("data", "raw", "geospatial_data", "bogota", "bogota_area_metro.gpkg")
-bogota_data  <- here::here("data", "raw", "monitoring_stations", "bogota_metro_dataset")
-
-# Import the raw panel of ground stations
-legacy_bogota_metro <- sf::st_read(l_bogota_shp)
-bogota_metro        <- sf::st_read(bogota_shp)
-bogota_stations_new <- open_dataset(bogota_data) %>% 
-  filter(source_type == "RMCAB")
 
 # ============================================================================================
 # II: Process  data
 # ============================================================================================
 # Apply function in Legacy data to read all four CSVs and harmonize them
 legacy_raw <- read_legacy_period_csvs(
-  dir = legacy_dir,
+  dir = legacy_pollution_files,
   pattern = "^Air_Pollution_Bogota_\\d{4}_\\d{4}\\.csv$"
 )
 
