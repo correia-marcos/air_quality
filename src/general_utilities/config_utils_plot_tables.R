@@ -2186,5 +2186,281 @@ plot_inequality_pollution <- function(
 }
 
 
+# ---------------------------------------------------------------------------------------------
+# Function: plot_exposure_by_quintile
+#
+# @Arg exposure_dt  : data.table; output of aggregate_idw_exposure()$
+#                     exposure_yearly. Must contain geo_id, year,
+#                     edu_quintile, pop_col, and the avg/hrs columns.
+# @Arg pop_col      : string; population weight column. Default "n".
+# @Arg year_filter  : integer or NULL; single year to display. If NULL, all
+#                     years are averaged first.
+# @Arg pollutants   : character vector; default c("pm10", "pm25").
+# @Arg who_it_plot  : character vector; which WHO ITs to include in the
+#                     hours-above table. Default c("it1", "it2").
+# @Arg out_dir      : string; directory to save outputs.
+# @Arg out_name     : string; file prefix for plot and table.
+# @Arg city_label   : string; city name shown on the plot.
+# @Arg quiet        : logical; default FALSE.
+#
+# @Output : Named list:
+#   $plot          — ggplot object (dual-axis: PM10 left, PM2.5 right).
+#   $table_mean    — data.table; weighted mean concentration by quintile.
+#   $table_hrs     — data.table; weighted mean hours-above-IT by quintile.
+#   Saves PNG and CSV to out_dir.
+#
+# @Details: Weighted means across geo units use pop_col as weight, matching
+#   the individual-level approach of the original scripts but working entirely
+#   on the collapsed census data. The dual-axis scaling factor is derived
+#   automatically from the ratio of PM10 to PM2.5 means (Q5 reference),
+#   avoiding hard-coded magic numbers.
+#
+# @Written_on : 01/02/2026
+# @Written_by : Marcos Paulo
+# ---------------------------------------------------------------------------------------------
+plot_exposure_by_quintile <- function(
+    exposure_dt,
+    pop_col      = "n",
+    year_filter  = NULL,
+    pollutants   = c("pm10", "pm25"),
+    who_it_plot  = c("it1", "it2"),
+    out_dir      = "results/figures",
+    out_name,
+    city_label   = "",
+    quiet        = FALSE
+) {
+  
+  # ---------------------------------------------------------------------------
+  # 0. Dependencies
+  # ---------------------------------------------------------------------------
+  pkgs <- c("data.table", "ggplot2")
+  for (p in pkgs) {
+    if (!requireNamespace(p, quietly = TRUE))
+      stop("Package '", p, "' required but not installed.")
+  }
+  if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE)
+  
+  # ---------------------------------------------------------------------------
+  # 1. Subset + validate
+  # ---------------------------------------------------------------------------
+  dt <- data.table::copy(data.table::as.data.table(exposure_dt))
+  
+  if (!pop_col %in% names(dt))
+    stop("`pop_col` '", pop_col, "' not found in exposure_dt.")
+  if (!"edu_quintile" %in% names(dt))
+    stop("'edu_quintile' not found. Run aggregate_idw_exposure() first.")
+  
+  # Filter year if requested
+  if (!is.null(year_filter)) {
+    dt <- dt[year == year_filter]
+    if (nrow(dt) == 0)
+      stop("No data for year_filter = ", year_filter)
+    yr_label <- as.character(year_filter)
+  } else {
+    yr_label <- paste0(min(dt$year), "-", max(dt$year))
+  }
+  
+  dt <- dt[!is.na(edu_quintile)]
+  
+  # ---------------------------------------------------------------------------
+  # 2. Identify concentration and hours-above columns
+  # ---------------------------------------------------------------------------
+  avg_cols <- paste0("avg_", pollutants)
+  avg_cols <- avg_cols[avg_cols %in% names(dt)]
+  
+  hrs_cols <- unlist(lapply(pollutants, function(p) {
+    grep(
+      paste0("hrs_d_", p, "_(", paste(who_it_plot, collapse = "|"), ")"),
+      names(dt), value = TRUE
+    )
+  }))
+  
+  if (length(avg_cols) == 0)
+    stop("No avg_* columns found for requested pollutants.")
+  
+  # ---------------------------------------------------------------------------
+  # 3. Weighted means by education quintile
+  # ---------------------------------------------------------------------------
+  # Concentration table
+  wm <- function(x, w) {
+    ok <- !is.na(x) & !is.na(w) & w > 0
+    if (sum(ok) == 0) return(NA_real_)
+    sum(x[ok] * w[ok]) / sum(w[ok])
+  }
+  
+  mean_tbl <- dt[
+    ,
+    lapply(
+      stats::setNames(avg_cols, avg_cols),
+      function(col) wm(get(col), get(pop_col))
+    ),
+    by = edu_quintile
+  ]
+  data.table::setorder(mean_tbl, edu_quintile)
+  
+  # Hours-above table
+  hrs_tbl <- NULL
+  if (length(hrs_cols) > 0) {
+    hrs_tbl <- dt[
+      ,
+      lapply(
+        stats::setNames(hrs_cols, hrs_cols),
+        function(col) wm(get(col), get(pop_col))
+      ),
+      by = edu_quintile
+    ]
+    data.table::setorder(hrs_tbl, edu_quintile)
+  }
+  
+  # ---------------------------------------------------------------------------
+  # 4. Build dual-axis plot (PM10 left, PM2.5 right)
+  # ---------------------------------------------------------------------------
+  p <- NULL
+  
+  if ("pm10" %in% pollutants && "pm25" %in% pollutants &&
+      "avg_pm10" %in% names(mean_tbl) &&
+      "avg_pm25" %in% names(mean_tbl)) {
+    
+    # Auto-scaling: ratio of Q5 means → avoids hard-coded multipliers
+    q5_pm10 <- mean_tbl[edu_quintile == 5L, avg_pm10]
+    q5_pm25 <- mean_tbl[edu_quintile == 5L, avg_pm25]
+    scale_f  <- if (
+      !is.null(q5_pm10) && !is.null(q5_pm25) &&
+      length(q5_pm25) > 0 && q5_pm25 > 0
+    ) {
+      q5_pm10 / q5_pm25
+    } else {
+      2   # sensible fallback for LAC cities
+    }
+    
+    pd <- mean_tbl[, .(edu_quintile, avg_pm10, avg_pm25)]
+    
+    p <- ggplot2::ggplot(pd, ggplot2::aes(x = factor(edu_quintile))) +
+      
+      # PM10 — left axis
+      ggplot2::geom_line(
+        ggplot2::aes(y = avg_pm10, linetype = "PM10", group = 1),
+        color = "black", linewidth = 0.9
+      ) +
+      ggplot2::geom_point(
+        ggplot2::aes(y = avg_pm10),
+        color = "black", size = 2.2
+      ) +
+      
+      # PM2.5 — scaled to left axis for display, right axis label corrects
+      ggplot2::geom_line(
+        ggplot2::aes(
+          y = avg_pm25 * scale_f,
+          linetype = "PM2.5", group = 1
+        ),
+        color = "black", linewidth = 0.9
+      ) +
+      ggplot2::geom_point(
+        ggplot2::aes(y = avg_pm25 * scale_f),
+        color = "black", size = 2.2
+      ) +
+      
+      ggplot2::scale_y_continuous(
+        name = expression(PM[10] ~ "(μg/m³)"),
+        sec.axis = ggplot2::sec_axis(
+          ~ . / scale_f,
+          name = expression(PM[2.5] ~ "(μg/m³)")
+        )
+      ) +
+      ggplot2::scale_linetype_manual(
+        values = c("PM10" = "solid", "PM2.5" = "dashed")
+      ) +
+      ggplot2::labs(
+        x        = "Education quintile",
+        linetype = "Pollutant",
+        title    = city_label,
+        subtitle = yr_label
+      ) +
+      ggplot2::theme_minimal(base_family = "Palatino", base_size = 12) +
+      ggplot2::theme(
+        panel.grid.major  = ggplot2::element_blank(),
+        panel.grid.minor  = ggplot2::element_blank(),
+        legend.position   = "bottom",
+        legend.title      = ggplot2::element_text(size = 11),
+        legend.text       = ggplot2::element_text(size = 11),
+        axis.title        = ggplot2::element_text(size = 13),
+        axis.text         = ggplot2::element_text(size = 11),
+        plot.title        = ggplot2::element_text(
+          size = 13, face = "bold"
+        )
+      )
+    
+    # Save plot
+    plot_file <- file.path(
+      out_dir,
+      paste0(out_name, "_exposure_quintile_", yr_label, ".png")
+    )
+    ggplot2::ggsave(
+      plot_file, plot = p,
+      width = 10, height = 6, dpi = 300
+    )
+    if (!quiet) message("Plot saved: ", plot_file)
+    
+  } else if (length(avg_cols) >= 1) {
+    # Single-pollutant fallback
+    poll  <- sub("avg_", "", avg_cols[1])
+    pd    <- mean_tbl[, .(edu_quintile, value = get(avg_cols[1]))]
+    
+    p <- ggplot2::ggplot(pd, ggplot2::aes(
+      x = factor(edu_quintile), y = value, group = 1
+    )) +
+      ggplot2::geom_line(color = "black", linewidth = 0.9) +
+      ggplot2::geom_point(color = "black", size = 2.2) +
+      ggplot2::labs(
+        x = "Education quintile",
+        y = paste0(toupper(poll), " mean (μg/m³)"),
+        title    = city_label,
+        subtitle = yr_label
+      ) +
+      ggplot2::theme_minimal(base_size = 12) +
+      ggplot2::theme(
+        panel.grid = ggplot2::element_blank()
+      )
+    
+    plot_file <- file.path(
+      out_dir,
+      paste0(out_name, "_exposure_quintile_", yr_label, ".png")
+    )
+    ggplot2::ggsave(
+      plot_file, plot = p,
+      width = 10, height = 6, dpi = 300
+    )
+    if (!quiet) message("Plot saved: ", plot_file)
+  }
+  
+  # ---------------------------------------------------------------------------
+  # 5. Save tables
+  # ---------------------------------------------------------------------------
+  mean_file <- file.path(
+    out_dir, paste0(out_name, "_mean_exposure_quintile_", yr_label, ".csv")
+  )
+  data.table::fwrite(mean_tbl, mean_file)
+  if (!quiet) message("Mean table saved: ", mean_file)
+  
+  if (!is.null(hrs_tbl)) {
+    hrs_file <- file.path(
+      out_dir,
+      paste0(out_name, "_hrs_above_who_quintile_", yr_label, ".csv")
+    )
+    data.table::fwrite(hrs_tbl, hrs_file)
+    if (!quiet) message("Hours-above table saved: ", hrs_file)
+  }
+  
+  # ---------------------------------------------------------------------------
+  # 6. Return
+  # ---------------------------------------------------------------------------
+  invisible(list(
+    plot       = p,
+    table_mean = mean_tbl,
+    table_hrs  = hrs_tbl
+  ))
+}
+
+
 # Print a success message for when running inside Docker Container
 cat("Config script parsed successfully!\n")
