@@ -1,44 +1,27 @@
 ################################################################################
-# STAGE 1: Base - System Dependencies (Ubuntu Noble)
+# STAGE 1: Base - System Dependencies
 ################################################################################
-FROM rocker/rstudio:4.5.2 AS base
+FROM rocker/rstudio:4.5.3 AS base
 
-# Prevent apt-get prompts
-ENV DEBIAN_FRONTEND=noninteractive \
-    TZ=UTC
+ENV DEBIAN_FRONTEND=noninteractive TZ=UTC
 
-# Install System Dependencies
-RUN apt-get update \
- && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential git curl ca-certificates pkg-config cmake \
+    # Java for rJava/XLConnect
     default-jdk \
-    libfreetype6-dev \
     # Geospatial Stack
     gdal-bin libgdal-dev libproj-dev proj-bin proj-data \
     libgeos-dev libudunits2-dev libsqlite3-dev \
-    # Graphics / Text
+    # Graphics & Text
     libpng-dev libjpeg-turbo8-dev libtiff-dev \
     libfreetype6-dev libfontconfig1-dev libharfbuzz-dev libfribidi-dev \
-    pandoc libicu-dev \
-    # Compression / Archives
-    libarchive-dev libzstd-dev liblz4-dev libsnappy-dev bzip2 xz-utils \
-    # Network / Security
+    # System Utils
+    pandoc libicu-dev libarchive-dev libzstd-dev liblz4-dev libsnappy-dev \
     libxml2-dev libssl-dev libcurl4-openssl-dev \
  && rm -rf /var/lib/apt/lists/*
 
-# Configure R Repositories
-ARG PPM_DATE=2025-09-01
-ENV RENV_CONFIG_PPM_URL="https://packagemanager.posit.co/cran/__linux__/ubuntu/noble/${PPM_DATE}"
-
-RUN mkdir -p /usr/local/lib/R/etc \
- && cat >/usr/local/lib/R/etc/Rprofile.site <<'RPROF'
-options(repos = c(
-  RSPM      = Sys.getenv("RENV_CONFIG_PPM_URL"),
-  RUniverse = "https://ropensci.r-universe.dev",
-  CRAN      = "https://cran.rstudio.com/"
-))
-options(HTTPUserAgent = sprintf("R/%s R (%s)", getRversion(), paste(R.version[["platform"]], R.version[["arch"]], R.version[["os"]])))
-RPROF
+# IMPORTANT: Register Java with R for rJava/XLConnect
+RUN R CMD javareconf
 
 ################################################################################
 # STAGE 2: Builder - Restore R Packages
@@ -47,68 +30,42 @@ FROM base AS builder
 
 WORKDIR /air_monitoring
 
-# 1. Setup renv directory structure
-RUN mkdir -p renv
-
-# 2. Copy ONLY files needed for restoration (Caching Layer)
-COPY renv.lock renv.lock
-COPY .Rprofile .Rprofile
+# Copy renv metadata for caching
+COPY renv.lock .
+COPY .Rprofile .
 COPY renv/activate.R renv/activate.R
 COPY renv/settings.json renv/settings.json
 
-# 3. Disable symlinks so packages are physically copied
+# Restore libraries (caching this layer)
 ENV RENV_CONFIG_CACHE_SYMLINKS=FALSE
-ENV RENV_PATHS_LIBRARY=/air_monitoring/renv/library
-
-# 4. Restore Packages
 RUN R -e "install.packages('renv', repos='https://cran.rstudio.com/')" \
  && R -s -e "renv::restore(clean = TRUE)"
 
 ################################################################################
 # STAGE 3: Final - Runtime
 ################################################################################
-FROM rocker/rstudio:4.5.2 AS final
-
-# Re-install runtime dependencies
-ENV DEBIAN_FRONTEND=noninteractive TZ=UTC
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gdal-bin libgdal-dev libproj-dev proj-bin libgeos-dev libudunits2-0 \
-    default-jdk pandoc libicu74 libarchive13 \
-    libfreetype6-dev \
-    && rm -rf /var/lib/apt/lists/*
+FROM base AS final
 
 WORKDIR /air_monitoring
 
-# 1. Copy the restored library from Builder
-COPY --from=builder /air_monitoring /air_monitoring
+# 1. Copy the pre-built library from builder
+COPY --from=builder /air_monitoring/renv /air_monitoring/renv
 
-# 2. Copy the rest of the code
+# 2. Copy the full project code
 COPY . .
 
-# 3. Fix Permissions for the project
-RUN chown -R rstudio:rstudio /air_monitoring
+# 3. RStudio & Permissions Setup
+RUN mkdir -p /home/rstudio/.config/rstudio \
+ && chown -R rstudio:rstudio /air_monitoring /home/rstudio/.config
 
-# 4. Trampoline: Force RStudio to load the project profile
+# Copy Preferences & Force Project Loading
+COPY rstudio-prefs.json /home/rstudio/.config/rstudio/rstudio-prefs.json
 RUN echo "source('/air_monitoring/.Rprofile')" >> /home/rstudio/.Rprofile
 
-# 4.1: APPLY RSTUDIO PREFERENCES
-# Create the config folder structure
-RUN mkdir -p /home/rstudio/.config/rstudio
-
-# Copy the preferences file
-COPY rstudio-prefs.json /home/rstudio/.config/rstudio/rstudio-prefs.json
-
-# CRITICAL: Ensure 'rstudio' user owns the config, or it will be ignored
-RUN chown -R rstudio:rstudio /home/rstudio/.config
-
-# 5. Runtime Config
+# 4. Runtime Configuration
 EXPOSE 8787
-
-# Copy Entrypoint
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
-# Ensure entrypoint is executable (sometimes permissions get lost)
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
-# Use the SIMPLIFIED entrypoint logic (S6 overlay)
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["/init"]
