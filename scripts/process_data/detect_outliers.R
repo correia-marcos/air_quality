@@ -62,8 +62,6 @@ cdmx_metro_sf                <- sf::st_read(gpkg_cdmx_metro_area)
 santiago_metro_2024_sf       <- sf::st_read(gpkg_santiago_2024_metro_area)
 sp_metro_2010_sf             <- sf::st_read(gpkg_sp_2010_metro_area)
 
-
-
 big_bogota_cnpv <- here::here(dir_census, "bogota_2018", "census_2018_metro_individual.csv")
 bogota_cnpv_2018 <- vroom::vroom(big_bogota_cnpv, col_types = "cnnnnccc")
 
@@ -86,14 +84,16 @@ exp <- aggregate_idw_exposure(
   pop_col        = "fe",
   edu_col        = "escolaridad",
   quintile_level = "individual",
-  out_dir        = here::here("data", "processed", "idw_estimates"),
+  out_dir        = here::here("data", "processed", "idw_estimates", "bogota_2018"),
   out_name       = "bogota_2018"
 )
 
-plot_exposure_by_quintile(
-  exposure_dt = exp$exposure_yearly,
-  year_filter = 2023,
-  out_dir     = here::here("results", "figures", "exposure_by_quintiles"),
-  out_name    = "bogota_2018",
-  city_label  = "Bogotá"
-)
+
+hi <- plot_exposure_by_quintile(
+  exposure_dir   = here::here("data", "processed", "idw_estimates", "bogota_2018"),
+  out_name       = "bogota_2018",
+  quintile_level = "individual",
+  pop_col        = "fe",
+  year_filter    = 2023)
+
+hi$plot
