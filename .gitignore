@@ -29,22 +29,22 @@ data/
 # Validation outputs (scripts stay tracked; rendered artefacts do not)
 # ---------------------------------------------------------------------------
 # Rendered HTML reports produced by Quarto
-results/validation_rep_package/**/*.html
+results/validation_old_version/**/*.html
  
 # Quarto intermediate files generated during rendering
-results/validation_rep_package/**/*.knit.md
-results/validation_rep_package/**/*_files/
+results/validation_old_version/**/*.knit.md
+results/validation_old_version/**/*_files/
 scripts/validation_old_version/**/*_files/
 scripts/validation_old_version/**/*.knit.md
  
 # Comparison artefacts (Parquet files written by compare_ground_stations etc.)
-results/validation_rep_package/**/ground_station_comparison/
-results/validation_rep_package/**/*.parquet
-results/validation_rep_package/**/*.csv
-results/validation_rep_package/**/*.rds
+results/validation_old_version/**/ground_station_comparison/
+results/validation_old_version/**/*.parquet
+results/validation_old_version/**/*.csv
+results/validation_old_version/**/*.rds
  
 # PDF maps that are outputs of validation scripts (not paper figures)
-results/validation_rep_package/**/*.pdf
+results/validation_old_version/**/*.pdf
  
  
 # ---------------------------------------------------------------------------

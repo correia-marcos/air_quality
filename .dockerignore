@@ -51,7 +51,7 @@ scripts/validation_old_version/
 src/general_utilities/config_utils_validation_old_version.R
  
 # All validation outputs and reports
-results/validation_rep_package/
+results/validation_old_version/
  
  
 # ---------------------------------------------------------------------------
