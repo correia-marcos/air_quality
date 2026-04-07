@@ -1,25 +1,87 @@
-# Ignore Git folder
+# ---------------------------------------------------------------------------
+# Git Metadata
+# ---------------------------------------------------------------------------
 .git
-
-# Ignore local OS files
+.gitignore
+ 
+ 
+# ---------------------------------------------------------------------------
+# OS Files
+# ---------------------------------------------------------------------------
 .DS_Store
-
-# R project info (as in .gitignore)
+**/.DS_Store
+Thumbs.db
+ 
+ 
+# ---------------------------------------------------------------------------
+# R Session Artefacts
+# ---------------------------------------------------------------------------
 .Rproj.user
 .Rhistory
 .RData
 .Ruserdata
-
-# Ignore renv library
-renv/library
-
-# Possibly ignore Rproj files if you don't want them in the image
 *.Rproj
-
-# Ignore your raw data folders
+ 
+ 
+# ---------------------------------------------------------------------------
+# renv Package Cache (restored at build time; do not copy from host)
+# ---------------------------------------------------------------------------
+renv/library
+ 
+ 
+# ---------------------------------------------------------------------------
+# Data
+# ---------------------------------------------------------------------------
+# Raw and downloaded data is never baked into the image.
+# It is mounted at runtime via docker-compose volumes or copied separately.
 data/raw/
-data/raw/merra2/
-data/*
-
-# Ignore the results of validation on replication package
+data/downloads/
+data/_legacy/
+data/interim/
+data/processed/
+ 
+ 
+# ---------------------------------------------------------------------------
+# Validation Infrastructure (internal audit — not part of the paper pipeline)
+# ---------------------------------------------------------------------------
+# Comparison scripts against the coauthor's legacy code
+scripts/validation_old_version/
+ 
+# Validation utility functions (sourced only by validation scripts)
+src/general_utilities/config_utils_validation_old_version.R
+ 
+# All validation outputs and reports
 results/validation_rep_package/
+ 
+ 
+# ---------------------------------------------------------------------------
+# Results (reproducible from code; not needed to build the image)
+# ---------------------------------------------------------------------------
+results/figures/
+results/tables/
+ 
+ 
+# ---------------------------------------------------------------------------
+# Credentials & Secrets
+# ---------------------------------------------------------------------------
+.Renviron
+.netrc
+.env
+.env.*
+!.env.example
+ 
+ 
+# ---------------------------------------------------------------------------
+# Quarto / Pandoc Intermediate Files
+# ---------------------------------------------------------------------------
+**/*_files/
+**/*.knit.md
+ 
+ 
+# ---------------------------------------------------------------------------
+# Miscellaneous
+# ---------------------------------------------------------------------------
+doc/
+fonts/
+README.md
+LICENSE.md

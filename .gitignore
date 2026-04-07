@@ -1,40 +1,68 @@
-# R
-# =============================================================================
+# ---------------------------------------------------------------------------
+# R Session Artefacts
+# ---------------------------------------------------------------------------
 .Rproj.user/
 .Rhistory
 .RData
 .Ruserdata
 *.Rproj
-
+ 
+ 
+# ---------------------------------------------------------------------------
 # Credentials & Secrets
-# =============================================================================
+# ---------------------------------------------------------------------------
 .Renviron
 .netrc
 .env
-
+.env.*
+!.env.example          # keep the example template tracked
+ 
+ 
+# ---------------------------------------------------------------------------
 # Data
-# =============================================================================
-# All data is excluded from version control.
-# Raw inputs and processed outputs are archived and versioned via Zenodo.
+# ---------------------------------------------------------------------------
+# All data directories are excluded. Raw inputs are archived on Zenodo
 data/
-
-
-# Results
-# =============================================================================
-# Validation outputs from the original replication package (local use only)
-results/validation_rep_package/
-
-# Unzipped build artifacts from interactive map rendering
+ 
+ 
+# ---------------------------------------------------------------------------
+# Validation outputs (scripts stay tracked; rendered artefacts do not)
+# ---------------------------------------------------------------------------
+# Rendered HTML reports produced by Quarto
+results/validation_rep_package/**/*.html
+ 
+# Quarto intermediate files generated during rendering
+results/validation_rep_package/**/*.knit.md
+results/validation_rep_package/**/*_files/
+scripts/validation_old_version/**/*_files/
+scripts/validation_old_version/**/*.knit.md
+ 
+# Comparison artefacts (Parquet files written by compare_ground_stations etc.)
+results/validation_rep_package/**/ground_station_comparison/
+results/validation_rep_package/**/*.parquet
+results/validation_rep_package/**/*.csv
+results/validation_rep_package/**/*.rds
+ 
+# PDF maps that are outputs of validation scripts (not paper figures)
+results/validation_rep_package/**/*.pdf
+ 
+ 
+# ---------------------------------------------------------------------------
+# Results — untracked interactive map build artefacts
+# ---------------------------------------------------------------------------
 results/figures/maps_interactive/*_files/
-
-
-# Legacy & Test Artifacts
-# =============================================================================
-tests/_cache/
-tests/_out/
-
-
+ 
+ 
+# ---------------------------------------------------------------------------
 # OS Files
-# =============================================================================
+# ---------------------------------------------------------------------------
 .DS_Store
 **/.DS_Store
+Thumbs.db
+ 
+ 
+# ---------------------------------------------------------------------------
+# Legacy & Test Artefacts
+# ---------------------------------------------------------------------------
+tests/_cache/
+tests/_out/
