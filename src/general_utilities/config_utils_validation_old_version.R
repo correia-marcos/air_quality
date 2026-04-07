@@ -17,6 +17,7 @@ pkgs <- c(
   "haven",
   "here",
   "lubridate",
+  "quarto",
   "readr",
   "tidyr",
   "sf"
@@ -26,7 +27,7 @@ pkgs <- c(
 ensure_installed <- function(pkgs) {
   miss <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
   if (length(miss)) {
-    stop(
+    message(
       "Missing packages: ", paste(miss, collapse = ", "),
       ". Run renv::restore() (or install locally with renv::install() then renv::snapshot())."
     )
@@ -46,6 +47,200 @@ rm(pkgs, ensure_installed)
 # ============================================================================================
 # Validation helpers and functions
 # ============================================================================================
+# Null-coalesce helper used inside compare_ground_stations
+`%||%` <- function(a, b) if (!is.null(a)) a else b
+
+# ---------------------------------------------------------------------------
+# prepare_new_bogota_like_legacy — harmonise new Arrow panel
+# ---------------------------------------------------------------------------
+prepare_new_bogota_like_legacy <- function(
+    new_df,
+    rename_map    = c(),
+    drop_stations = character(),
+    year_keep     = 2002:2023,
+    hour_shift    = 0L,
+    tz            = "America/Bogota"
+) {
+  df <- new_df |>
+    dplyr::collect() |>
+    dplyr::mutate(
+      datetime = as.POSIXct(datetime, tz = tz)
+    ) |>
+    dplyr::select(station, datetime, pm10, pm25,
+                  ozone, co, no2) |>
+    dplyr::arrange(datetime)
+  
+  df <- build_time_parts(df, tz = tz,
+                         hour_shift = hour_shift) |>
+    dplyr::filter(.data$year %in% year_keep) |>
+    harmonize_station_names(
+      rename_map    = rename_map,
+      drop_stations = drop_stations
+    ) |>
+    dplyr::select(
+      station, datetime, pm10, pm25, ozone, co, no2,
+      year, month, day, hour
+    ) |>
+    dplyr::arrange(station, datetime)
+  
+  df
+}
+
+
+# ---------------------------------------------------------------------------
+# prepare_legacy_bogota — harmonise legacy multi-CSV panel
+# ---------------------------------------------------------------------------
+prepare_legacy_bogota <- function(
+    legacy_df,
+    rename_map    = c(),
+    drop_stations = character(),
+    tz            = "UTC",
+    panelize      = TRUE,
+    panel_years   = 2002:2023,
+    verbose       = TRUE
+) {
+  df <- legacy_df |>
+    dplyr::mutate(
+      ozone = ozono,
+      hour  = suppressWarnings(as.integer(hour)),
+      year  = suppressWarnings(as.integer(year)),
+      month = suppressWarnings(as.integer(month)),
+      day   = suppressWarnings(as.integer(day))
+    )
+  
+  date0 <- lubridate::make_datetime(
+    year = df$year, month = df$month,
+    day  = df$day,  hour  = df$hour, tz = tz
+  )
+  is24 <- !is.na(df$hour) & df$hour == 24L
+  n24  <- sum(is24, na.rm = TRUE)
+  if (any(is24)) df$hour[is24] <- 0L
+  df$datetime <- as.POSIXct(date0)
+  
+  df <- df |>
+    dplyr::select(station, datetime, pm10, pm25, ozone, co, no2) |>
+    harmonize_station_names(
+      rename_map    = rename_map,
+      drop_stations = drop_stations
+    ) |>
+    dplyr::distinct(station, datetime, .keep_all = TRUE) |>
+    dplyr::arrange(station, datetime)
+  
+  if (isTRUE(panelize)) {
+    y0       <- min(panel_years, na.rm = TRUE)
+    y1       <- max(panel_years, na.rm = TRUE)
+    start_dt <- as.POSIXct(
+      sprintf("%d-01-01 00:00:00", y0), tz = tz
+    )
+    end_dt   <- as.POSIXct(
+      sprintf("%d-12-31 23:00:00", y1), tz = tz
+    )
+    hours_seq <- seq(start_dt, end_dt, by = "1 hour")
+    stations  <- sort(unique(df$station))
+    
+    grid <- tidyr::crossing(
+      station = stations, datetime = hours_seq
+    ) |>
+      dplyr::mutate(
+        year  = lubridate::year(datetime),
+        month = lubridate::month(datetime),
+        day   = lubridate::day(datetime),
+        hour  = lubridate::hour(datetime)
+      )
+    
+    df <- dplyr::left_join(
+      grid,
+      dplyr::select(df, station, datetime,
+                    pm10, pm25, ozone, co, no2),
+      by = c("station", "datetime")
+    ) |>
+      dplyr::arrange(station, datetime)
+    
+    if (verbose) {
+      message(sprintf(
+        paste0(
+          "\u2759 Panelised: %s stations \u00d7",
+          " %s hours \u2192 %s rows."
+        ),
+        format(length(stations),  big.mark = ","),
+        format(length(hours_seq), big.mark = ","),
+        format(nrow(df),          big.mark = ",")
+      ))
+      if (n24 > 0)
+        message(sprintf(
+          "\u23f1\ufe0f  Rolled %d obs from 24:00 \u2192 00:00.", n24
+        ))
+    }
+  } else {
+    df <- df |>
+      dplyr::mutate(
+        year  = lubridate::year(datetime),
+        month = lubridate::month(datetime),
+        day   = lubridate::day(datetime),
+        hour  = lubridate::hour(datetime)
+      )
+  }
+  
+  df |>
+    dplyr::mutate(
+      dplyr::across(c(pm10, pm25, ozone, co, no2),
+                    ~ suppressWarnings(as.numeric(.x)))
+    ) |>
+    dplyr::select(
+      station, datetime, pm10, pm25, ozone, co, no2,
+      year, month, day, hour
+    )
+}
+
+
+# ---------------------------------------------------------------------------
+# read_legacy_period_csvs — read + row-bind period CSVs
+# ---------------------------------------------------------------------------
+read_legacy_period_csvs <- function(
+    dir,
+    pattern = "^Air_Pollution_Bogota_\\d{4}_\\d{4}\\.csv$",
+    tz      = "America/Bogota"
+) {
+  files <- list.files(dir, pattern = pattern, full.names = TRUE)
+  if (!length(files)) stop("No legacy CSVs found in: ", dir)
+  purrr::map_dfr(files, readr::read_csv, show_col_types = FALSE)
+}
+
+
+# ---------------------------------------------------------------------------
+# build_time_parts — add year/month/day/hour columns from POSIXct
+# ---------------------------------------------------------------------------
+build_time_parts <- function(df, tz = "America/Bogota",
+                             hour_shift = 0L) {
+  stopifnot("datetime" %in% names(df))
+  dt <- lubridate::force_tz(df$datetime, tzone = tz)
+  if (hour_shift != 0L) dt <- dt + lubridate::hours(hour_shift)
+  df$year  <- as.integer(lubridate::year(dt))
+  df$month <- as.integer(lubridate::month(dt))
+  df$day   <- as.integer(lubridate::day(dt))
+  df$hour  <- as.integer(lubridate::hour(dt))
+  df
+}
+
+
+# ---------------------------------------------------------------------------
+# harmonize_station_names — recode + drop stations in a data frame
+# ---------------------------------------------------------------------------
+harmonize_station_names <- function(
+    df,
+    rename_map    = c(),
+    drop_stations = character()
+) {
+  stopifnot("station" %in% names(df))
+  if (length(rename_map))
+    df$station <- dplyr::recode(
+      df$station, !!!rename_map, .default = df$station
+    )
+  if (length(drop_stations))
+    df <- dplyr::filter(df, !.data$station %in% drop_stations)
+  df
+}
+
 
 # --------------------------------------------------------------------------------------------
 # Function: harmonize_station_names
@@ -69,120 +264,148 @@ harmonize_station_names <- function(df, rename_map = c(), drop_stations = charac
 }
 
 
-# --------------------------------------------------------------------------------------------
-# Function: build_time_parts
-# @Arg       : df         — tibble with POSIXct 'datetime'
-# @Arg       : tz         — Olson timezone for consistency (default "America/Bogota")
-# @Arg       : hour_shift — integer; add hours to align definitions (e.g., +1)
-# @Output    : df with integer columns: year, month, day, hour (0–23)
-# @Purpose   : Derive time parts in a consistent, explicit way.
-# --------------------------------------------------------------------------------------------
-build_time_parts <- function(df, tz = "America/Bogota", hour_shift = 0L) {
-  stopifnot("datetime" %in% names(df))
-  dt <- lubridate::force_tz(df$datetime, tzone = tz)
-  if (hour_shift != 0L) dt <- dt + lubridate::hours(hour_shift)
-  df$year  <- as.integer(lubridate::year(dt))
-  df$month <- as.integer(lubridate::month(dt))
-  df$day   <- as.integer(lubridate::day(dt))
-  df$hour  <- as.integer(lubridate::hour(dt))
-  df
-}
-
-
-# --------------------------------------------------------------------------------------------
-# Function: read_legacy_period_csvs
-# @Arg       : dir      — folder containing the legacy CSVs
-# @Arg       : pattern  — regex pattern for files (default matches your 4 Bogota files)
-# @Arg       : tz       — Olson timezone (not used here; legacy files are already split cols)
-# @Output    : bound tibble with standard column set
-# @Purpose   : Read + row-bind period CSVs created by the old Stata pipeline.
-# --------------------------------------------------------------------------------------------
-read_legacy_period_csvs <- function(
-    dir,
-    pattern = "^Air_Pollution_Bogota_\\d{4}_\\d{4}\\.csv$",
-    tz = "America/Bogota"
-) {
-  files <- list.files(dir, pattern = pattern, full.names = TRUE)
-  if (!length(files)) stop("No legacy CSVs found in: ", dir)
-  purrr::map_dfr(files, readr::read_csv, show_col_types = FALSE)
-}
-
-
-# --------------------------------------------------------------------------------------------
-# Function: prepare_legacy_bogota
-# @Arg       : legacy_df       — tibble read from legacy CSVs
-# @Arg       : rename_map      — named chr vector for station harmonization
-#                                e.g. c("Centro de Alto Rendimiento"="CAR" ...)
-# @Arg       : drop_stations   — chr vector to exclude (default: character(0) — keep all)
-# @Arg       : tz              — Olson timezone (default "UTC")
-# @Arg       : panelize        — logical; if TRUE, create a balanced hourly panel 
-#                                (default TRUE)
-# @Arg       : panel_years     — integer vector of years to span if panelize=TRUE 
-#                                (default 2002:2023)
-# @Arg       : verbose         — logical; print brief summary and counts (default TRUE)
-# @Output    : tibble with columns:
-#                station, datetime, pm10, pm25, ozone, co, no2, year, month, day, hour
-# @Purpose   : Transform legacy columns/labels to the new schema; robust to hour==24.
-#              Optionally expand to a full station × hourly grid with NAs for missing obs.
-# @Written_on: 27/08/2025
+# ---------------------------------------------------------------------------
+# .std_name
+# @Arg  x : character vector of station names (any case/encoding)
+# @Out    : character; uppercase, accents stripped, non-alphanumeric removed.
+#           "LasFerias" and "LAS FERIAS" both → "LASFERIAS".
+# @Purpose: Normalise station names so that differences in casing, spaces,
+#           hyphens and accents do not produce spurious mismatches.
+#           Apply BEFORE any residual_map lookup.
+# @Written_on: 20/03/2026
 # @Written_by: Marcos Paulo
-# --------------------------------------------------------------------------------------------
-prepare_legacy_bogota <- function(legacy_df,
-                                  rename_map = c(),
-                                  drop_stations = character(),
-                                  tz = "UTC",
-                                  panelize = TRUE,
-                                  panel_years = 2002:2023,
-                                  verbose = TRUE) {
-  # 1) Normalize legacy columns/types (handles upper/lower/Spanish variants)
-  df <- legacy_df |>
-    dplyr::mutate(
-      ozone = ozono,
-      pm25  = pm25,
-      pm10  = pm10,
-      co    = co,
-      no2   = no2,
-      hour  = suppressWarnings(as.integer(hour)),
-      year  = suppressWarnings(as.integer(year)),
-      month = suppressWarnings(as.integer(month)),
-      day   = suppressWarnings(as.integer(day))
-    )
+# ---------------------------------------------------------------------------
+.std_name <- function(x) {
+  if (!requireNamespace("stringi", quietly = TRUE))
+    stop("Package 'stringi' required for name standardisation.")
+  x <- toupper(trimws(x))
+  x <- stringi::stri_trans_general(x, "Latin-ASCII")
+  gsub("[^A-Z0-9]", "", x)
+}
+
+
+# ---------------------------------------------------------------------------
+# prepare_legacy_single_csv
+#
+# @Arg legacy_csv    : string; path to the single merged CSV from the
+#                      old Stata pipeline.
+#                      Required columns (minimum):
+#                        datehour  — chr, Stata "01jan2002 01:00:00"
+#                        hour      — numeric 1-24  (24 rolled next day)
+#                        station   — chr, any case/accents
+#                        year, month, day — integer date parts
+#                        pm10, pm25, ozono, co, no2 — numeric pollutants
+# @Arg residual_map  : named chr vec; overrides applied AFTER .std_name().
+#                      Keys are already-normalised names. Default c().
+# @Arg drop_stations : chr vec (raw); excluded after normalisation.
+# @Arg tz            : Olson timezone. Default "UTC".
+# @Arg compare_years : integer vector; years to retain. NULL = all.
+# @Arg panelize      : logical; expand to full station × hour grid.
+# @Arg verbose       : logical; print progress counts. Default TRUE.
+#
+# @Output: tibble with columns:
+#            station, datetime, pm10, pm25, ozone, co, no2,
+#            year, month, day, hour
+# @Written_on: 20/03/2026
+# @Written_by: Marcos Paulo
+# ---------------------------------------------------------------------------
+prepare_legacy_single_csv <- function(
+    legacy_csv,
+    residual_map  = c(),
+    drop_stations = character(0),
+    tz            = "UTC",
+    compare_years = NULL,
+    panelize      = TRUE,
+    verbose       = TRUE
+) {
+  for (pkg in c("vroom", "stringi", "lubridate", "tidyr", "dplyr"))
+    if (!requireNamespace(pkg, quietly = TRUE))
+      stop("Package '", pkg, "' required but not installed.")
   
-  # 2) Fix 24:00 → 00:00 next day (safe across month/year boundary)
-  date0 <- lubridate::make_datetime(year  = df$year,
-                                    month = df$month,
-                                    day   = df$day,
-                                    hour  = df$hour,
-                                    tz    = tz)
-  is24  <- !is.na(df$hour) & df$hour == 24L
-  n24   <- sum(is24, na.rm = TRUE)
-  if (any(is24)) {
-    date0[is24] <- date0[is24]
-    df$hour[is24] <- 0L
+  if (!file.exists(legacy_csv))
+    stop("legacy_csv not found:\n  ", legacy_csv)
+  
+  # 1. Read all columns as character to avoid type-guessing issues
+  raw <- vroom::vroom(
+    legacy_csv,
+    col_types      = vroom::cols(.default = vroom::col_character()),
+    show_col_types = FALSE
+  )
+  
+  # 2. Parse Stata datehour "01jan2002 01:00:00"
+  dt_parsed <- as.POSIXct(
+    strptime(tolower(trimws(raw$datehour)),
+             format = "%d%b%Y %H:%M:%S",
+             tz     = tz)
+  )
+  
+  df        <- raw
+  df$datetime <- dt_parsed
+  df$hour     <- suppressWarnings(as.integer(df$hour))
+  df$year     <- suppressWarnings(as.integer(df$year))
+  df$month    <- suppressWarnings(as.integer(df$month))
+  df$day      <- suppressWarnings(as.integer(df$day))
+  
+  # 3. Roll hour == 24 → 00:00 next day
+  is24 <- !is.na(df$hour) & df$hour == 24L
+  n24  <- sum(is24)
+  if (n24 > 0L) {
+    df$datetime[is24] <- df$datetime[is24] + 86400L
+    df$hour[is24]     <- 0L
+    df$year[is24]  <- as.integer(lubridate::year( df$datetime[is24]))
+    df$month[is24] <- as.integer(lubridate::month(df$datetime[is24]))
+    df$day[is24]   <- as.integer(lubridate::day(  df$datetime[is24]))
+    if (verbose)
+      message(sprintf(
+        "Rolled %d obs from hour 24 \u2192 00:00 next day.", n24
+      ))
   }
-  df$datetime <- as.POSIXct(date0)
   
-  # 3) Keep core columns and harmonize station names (no drops by default)
-  df <- df |>
-    dplyr::select(station, datetime, pm10, pm25, ozone, co, no2) |>
-    harmonize_station_names(rename_map = rename_map,
-                            drop_stations = drop_stations) |>
-    dplyr::distinct(station, datetime, .keep_all = TRUE) |>
-    dplyr::arrange(station, datetime)
+  # 4. Rename ozono → ozone; coerce pollutants to numeric
+  if ("ozono" %in% names(df) && !"ozone" %in% names(df))
+    names(df)[names(df) == "ozono"] <- "ozone"
   
-  # 4) Optional: expand to a balanced hourly panel over requested years
-  if (isTRUE(panelize)) {
-    # 4a) Hourly sequence across the full span (local tz)
-    y0 <- min(panel_years, na.rm = TRUE)
-    y1 <- max(panel_years, na.rm = TRUE)
-    start_dt <- as.POSIXct(sprintf("%d-01-01 00:00:00", y0), tz = tz)
-    end_dt   <- as.POSIXct(sprintf("%d-12-31 23:00:00", y1), tz = tz)
-    hours_seq <- seq(from = start_dt, to = end_dt, by = "1 hour")
+  for (col in c("pm10", "pm25", "ozone", "co", "no2"))
+    if (col %in% names(df))
+      df[[col]] <- suppressWarnings(as.numeric(df[[col]]))
+  
+  # 5. Standardise station names then apply residual map
+  df$station <- .std_name(df$station)
+  if (length(residual_map) > 0L)
+    df$station <- dplyr::recode(df$station, !!!residual_map)
+  
+  # 6. Drop stations; de-duplicate on station × datetime
+  if (length(drop_stations) > 0L)
+    df <- df[!df$station %in% .std_name(drop_stations), ,
+             drop = FALSE]
+  df <- dplyr::distinct(df, station, datetime, .keep_all = TRUE)
+  
+  # 7. Year filter
+  if (!is.null(compare_years))
+    df <- df[df$year %in% compare_years, , drop = FALSE]
+  
+  # 8. Select core columns
+  keep_cols <- intersect(
+    c("station", "datetime",
+      "pm10", "pm25", "ozone", "co", "no2",
+      "year", "month", "day", "hour"),
+    names(df)
+  )
+  df <- df[, keep_cols, drop = FALSE]
+  
+  # 9. Optionally expand to balanced station × hour panel
+  if (isTRUE(panelize) && nrow(df) > 0L) {
+    stations  <- sort(unique(df$station))
+    y0 <- min(df$year, na.rm = TRUE)
+    y1 <- max(df$year, na.rm = TRUE)
+    start_dt  <- as.POSIXct(
+      sprintf("%d-01-01 00:00:00", y0), tz = tz
+    )
+    end_dt    <- as.POSIXct(
+      sprintf("%d-12-31 23:00:00", y1), tz = tz
+    )
+    hours_seq <- seq(start_dt, end_dt, by = "1 hour")
     
-    # 4b) Station universe after harmonization (keep all)
-    stations <- sort(unique(df$station))
-    
-    # 4c) Cross station × hour and left-join pollutants
     grid <- tidyr::crossing(
       station  = stations,
       datetime = hours_seq
@@ -194,104 +417,31 @@ prepare_legacy_bogota <- function(legacy_df,
         hour  = lubridate::hour(datetime)
       )
     
-    df_narrow <- df |>
-      dplyr::select(station, datetime, pm10, pm25, ozone, co, no2)
-    
-    panel <- grid |>
-      dplyr::left_join(df_narrow, by = c("station", "datetime")) |>
+    poll_cols <- intersect(
+      c("pm10", "pm25", "ozone", "co", "no2"), names(df)
+    )
+    df <- dplyr::left_join(
+      grid,
+      df[, c("station", "datetime", poll_cols)],
+      by = c("station", "datetime")
+    ) |>
       dplyr::arrange(station, datetime)
     
-    if (isTRUE(verbose)) {
-      added <- nrow(panel) - nrow(df)
-      msg <- sprintf(
-        "🧩 Panelized to %s stations × %s hours → %s rows (added %s synthetic rows).",
-        format(length(stations), big.mark=","), 
-        format(length(hours_seq), big.mark=","),
-        format(nrow(panel), big.mark=","), 
-        format(added, big.mark=","))
-      message(msg)
-      if (n24 > 0) {
-        message(sprintf("⏱️  Rolled %d observations from 24:00 → 00:00 next day.", n24))
-      }
-    }
-    df <- panel
-  } else {
-    # Add year/month/day/hour derived from datetime for consistency (no panel expansion)
-    df <- df |>
-      dplyr::mutate(
-        year  = lubridate::year(datetime),
-        month = lubridate::month(datetime),
-        day   = lubridate::day(datetime),
-        hour  = lubridate::hour(datetime)
-      )
-    if (isTRUE(verbose) && n24 > 0) {
-      message(sprintf("⏱️  Rolled %d observations from 24:00 → 00:00 next day.", n24))
+    if (verbose) {
+      added <- nrow(df) - length(stations) * length(hours_seq)
+      message(sprintf(
+        paste0(
+          "Panelised: %s stations \u00d7 %s hours",
+          " \u2192 %s rows."
+        ),
+        format(length(stations),  big.mark = ","),
+        format(length(hours_seq), big.mark = ","),
+        format(nrow(df),          big.mark = ",")
+      ))
     }
   }
   
-  # 5) Column order / types (pollutants numeric)
-  df <- df |>
-    dplyr::mutate(
-      pm10  = suppressWarnings(as.numeric(pm10)),
-      pm25  = suppressWarnings(as.numeric(pm25)),
-      ozone = suppressWarnings(as.numeric(ozone)),
-      co    = suppressWarnings(as.numeric(co)),
-      no2   = suppressWarnings(as.numeric(no2))
-    ) |>
-    dplyr::select(station, datetime, pm10, pm25, ozone, co, no2, year, month, day, hour)
-  
-  df
-}
-
-
-# --------------------------------------------------------------------------------------------
-# Function: prepare_new_bogota_like_legacy
-# @Arg       : new_df        — tibble (your parquet read), must include datetime + vars
-# @Arg       : rename_map    — named chr vector for station harmonization
-# @Arg       : drop_stations — chr vector to exclude
-# @Arg       : year_keep     — integer vector of years to keep (e.g., 2002:2023)
-# @Arg       : hour_shift    — integer; shift hours to align legacy convention (e.g., +1)
-# @Arg       : tz            — Olson timezone (default "America/Bogota")
-# @Output    : tibble with same columns as prepare_legacy_bogota()
-# @Purpose   : Make the new panel directly comparable to legacy.
-# --------------------------------------------------------------------------------------------
-prepare_new_bogota_like_legacy <- function(
-    new_df,
-    rename_map = c(),
-    drop_stations = character(),
-    year_keep = 2002:2023,
-    hour_shift = 0L,
-    tz = "America/Bogota"
-) {
-  df <- new_df %>%
-    collect() %>% 
-    dplyr::mutate(
-      datetime = as.POSIXct(datetime, tz = tz),
-      pm10     = pm10, 
-      pm25     = pm25,
-      ozone    = ozone,
-      co       = co,
-      no2      = no2
-    ) %>% 
-    dplyr::select(
-      station,
-      datetime,
-      pm10,
-      pm25,
-      ozone,
-      co,
-      no2
-    ) %>% 
-    arrange(datetime)
-
-  df <- build_time_parts(df, tz = tz, hour_shift = hour_shift) |>
-    dplyr::filter(.data$year %in% year_keep) |>
-    harmonize_station_names(rename_map = rename_map, drop_stations = drop_stations) |>
-    filter(station %in% rename_map) |>
-    dplyr::select(station, datetime, pm10, pm25, ozone, co, no2, year, month, day, hour) |>
-    dplyr::arrange(.data$station, .data$datetime)
-  
-  df
+  dplyr::arrange(df, station, datetime)
 }
 
 
@@ -738,6 +888,336 @@ compare_panels <- function(
     diff_summary = diff_summary
   )
 }
+
+
+# --------------------------------------------------------------------------------------------
+# compare_ground_stations
+# @Arg      : cfg              — city cfg list. Must contain a $compare sublist with:
+#                                legacy_single_csv, legacy_dir, legacy_pattern,
+#                                compare_years, value_cols, residual_map,
+#                                pipeline_tz, focus_pollutants (optional).
+# @Arg      : out_root         — root output folder; {out_root}/{cfg$id}/ is created.
+# @Arg      : focus_pollutants — character; restrict comparison to these pollutants.
+#                                Must be a subset of cfg$compare$value_cols. Default NULL falls 
+#                                back to cfg$compare$focus_pollutants, then 
+#                                cfg$compare$value_cols (all pollutants)
+# @Arg      : pipeline_tz      — string; timezone used when the Arrow dataset was BUILT.
+#                                Set to "UTC" when bogota_process_stations_data_to_parquet was 
+#                                called with tz = "UTC" (the Bogotá default, used to avoid a 
+#                                DuckDB R-driver timezone-shift bug). Intentionally separate 
+#                                from cfg$tz, which holds the city's true local timezone and 
+#                                must remain intact for other pipeline steps. NULL falls back 
+#                                to cfg$compare$pipeline_tz, then cfg$tz.
+# @Arg      : tol        —  named numeric; per-pollutant tolerance. Default 0.
+# @Arg      : quiet      — logical; suppress messages. Default FALSE.
+#
+# @Output   : named list (invisible) with:
+#   $diff_summary, $diffs_long, $only_legacy, $only_new,
+#   $station_audit, $out_dir
+#   Five Parquet files written to {out_root}/{cfg$id}/ground_station_comparison/.
+#
+# @Purpose  : Create report of new vs legacy data handling.
+# @Details  :  
+#   SISAIRE CONTAMINATION
+#   The new Arrow dataset contains both RMCAB core stations and SISAIRE
+#   metro-area stations. After .std_name() normalisation some SISAIRE
+#   station names collide with RMCAB names (e.g. municipality "Bolivia" =
+#   "BOLIVIA" = RMCAB station "Bolivia"). A full_join on colliding names
+#   creates a cartesian product, inflating n and producing wrong values.
+#   Fix: new_prep is restricted to the legacy station universe before
+#   compare_panels() is called. This mirrors the original script's
+#   filter(station %in% rename_map).
+#
+#   PIPELINE TIMEZONE
+#   bogota_process_stations_data_to_parquet passes tz = "UTC" to DuckDB to
+#   avoid a known driver bug where POSIXct tzone attributes trigger an
+#   implicit clock shift during type coercion. The Parquet therefore stores
+#   local Bogotá clock time with the UTC label. When reading those timestamps
+#   back, pipeline_tz = "UTC" recovers the correct year/month/day/hour
+#   integers. cfg$tz = "America/Bogota" is left unchanged.
+#
+#   HOUR CONVENTION
+#   RMCAB exports hours in the 1–24 range (1 = first hour of the day,
+#   24 = midnight = next day 00:00). Both pipelines receive the same raw
+#   hour range. The midnight hour (24) is rolled to day+1 hour=0 during
+#   legacy preparation. Stations that lack prior-year data cannot produce
+#   the Jan 1 00:00 reading (it comes from Dec 31 24:00), which is why
+#   that hour appears only in the new pipeline for recently-commissioned
+#   stations.
+#
+#   STATA BUG (combined CSV — not used here)
+#   The coauthor's Stata combine script (0_manage_pollution_data_bogota.do)
+#   contains a bug: after replacing hour==24 with hour==0, it applies
+#   `replace day=day+1 if hour==0` to ALL hour-0 rows. This shifts the
+#   correctly-rolled Jan 31 24:00→Feb 1 00:00 a second time, landing it
+#   at March 1 00:00. Feb 1 00:00 is therefore absent from the combined
+#   CSV, and March 1 00:00 carries an incorrect measurement value. This
+#   bug only affects Air_Pollution_Bogota_2002_2023.csv. The individual
+#   period CSVs used here are unaffected.
+#
+# @Written_on: 20/03/2026
+# @Written_by: Marcos Paulo
+# --------------------------------------------------------------------------------------------
+compare_ground_stations <- function(
+    cfg,
+    out_root,
+    focus_pollutants = NULL,
+    pipeline_tz      = NULL,
+    tol              = c(),
+    quiet            = FALSE
+) {
+  
+  # 1) Validate that the cfg contains a $compare sublist and all required fields.
+  cmp <- cfg$compare
+  if (is.null(cmp))
+    stop("[", cfg$id, "] cfg$compare is NULL. Add a compare sublist.")
+  
+  required <- c(
+    "legacy_dir", "legacy_pattern", "legacy_single_csv",
+    "compare_years", "value_cols", "residual_map"
+  )
+  missing_f <- setdiff(required, names(cmp))
+  if (length(missing_f))
+    stop(
+      "[", cfg$id, "] cfg$compare missing: ",
+      paste(missing_f, collapse = ", ")
+    )
+  
+  # 2) Resolve which pollutants to compare.
+  #    Priority: function arg > cfg$compare$focus_pollutants > all value_cols.
+  #    This lets the caller narrow the comparison without editing the cfg.
+  active_pols <- focus_pollutants %||%
+    cmp$focus_pollutants %||%
+    cmp$value_cols
+  
+  # Guard: caller cannot request a pollutant that is absent from value_cols
+  unknown_pols <- setdiff(active_pols, cmp$value_cols)
+  if (length(unknown_pols))
+    stop(
+      "[", cfg$id, "] focus_pollutants not in value_cols: ",
+      paste(unknown_pols, collapse = ", ")
+    )
+  
+  # 3) Resolve the timezone for reading the Arrow dataset.
+  # pipeline_tz is intentionally separate from cfg$tz (the city's true local timezone) 
+  # because the processing pipeline may store timestamps with a different label to avoid 
+  # DuckDB driver bugs.
+  # Priority: function arg > cfg$compare$pipeline_tz > cfg$compare$tz > cfg$tz.
+  cmp_tz <- pipeline_tz %||%
+    cmp$pipeline_tz %||%
+    cmp$tz %||%
+    cfg$tz
+  
+  # 4) Locate the new Arrow dataset. The naming convention is fixed:
+  #    data/raw/monitoring_stations/{city_id}_metro_dataset.
+  new_arrow_dir <- here::here(
+    "data", "raw", "monitoring_stations",
+    paste0(cfg$id, "_metro_dataset")
+  )
+  if (!dir.exists(new_arrow_dir))
+    stop("[", cfg$id, "] Arrow dir not found:\n  ", new_arrow_dir)
+  
+  # Create the per-city output folder under out_root.
+  out_dir <- file.path(out_root, cfg$id)
+  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+  
+  if (!quiet) {
+    message("[", cfg$id, "] Comparing ground stations ...")
+    message(
+      "  Pollutants : ", paste(active_pols, collapse = ", "),
+      " | Years : ", paste(cmp$compare_years, collapse = ", "),
+      " | Pipeline tz : ", cmp_tz
+    )
+  }
+
+  # 5) Load and prepare the legacy dataset.
+  # Two sub-paths:
+  # A) Single merged CSV (produced by the coauthor's Stata pipeline).
+  #    Contains a known bug: Jan 31 24:00 is wrongly mapped to March 1
+  #    00:00 in the combined file (see @Details above). Avoid this path
+  #    for Bogotá unless the bug has been corrected.
+  # B) Individual period CSVs (preferred). Exported before the Stata
+  #    combine+correction step, so free of the day+1 bug.
+  # -----------------------------------------------------------------------
+  use_single <- !is.null(cmp$legacy_single_csv) &&
+    file.exists(cmp$legacy_single_csv)
+  
+  if (use_single) {
+    # Sub-path A: one CSV covering all years
+    if (!quiet)
+      message("[", cfg$id, "] Reading single merged CSV ...")
+    legacy_prep <- prepare_legacy_single_csv(
+      legacy_csv    = cmp$legacy_single_csv,
+      residual_map  = cmp$residual_map,
+      drop_stations = cmp$drop_stations %||% character(0),
+      tz            = cmp_tz,
+      compare_years = cmp$compare_years,
+      panelize      = TRUE,   # expand to full station × hour grid
+      verbose       = !quiet
+    )
+  } else {
+    # Sub-path B: multiple period CSVs (e.g. 2002-2007, 2008-2013, ...)
+    if (!quiet)
+      message("[", cfg$id, "] Reading period CSVs ...")
+    if (!dir.exists(cmp$legacy_dir))
+      stop("[", cfg$id, "] legacy_dir not found: ", cmp$legacy_dir)
+    
+    # Row-bind all matching CSVs from legacy_dir
+    legacy_raw <- read_legacy_period_csvs(
+      dir     = cmp$legacy_dir,
+      pattern = cmp$legacy_pattern,
+      tz      = cmp_tz
+    )
+    
+    # Harmonise column types, roll hour==24 to next-day 00:00, and optionally expand to
+    # a balanced panel across compare_years.
+    legacy_prep <- prepare_legacy_bogota(
+      legacy_df     = legacy_raw,
+      rename_map    = cmp$residual_map,
+      drop_stations = cmp$drop_stations %||% character(0),
+      tz            = cmp_tz,
+      panelize      = TRUE,
+      panel_years   = cmp$compare_years,
+      verbose       = !quiet
+    )
+    
+    # Standardize names AFTER internal renaming so the residual_map is applied to the
+    # already-renamed values, not raw CSV names.
+    legacy_prep$station <- .std_name(legacy_prep$station)
+    if (length(cmp$residual_map) > 0L)
+      legacy_prep$station <- dplyr::recode(
+        legacy_prep$station, !!!cmp$residual_map
+      )
+  }
+
+  # 6) Load and prepare the new Arrow dataset.
+  # We intentionally pass rename_map = c() and drop_stations = character(0) here — name 
+  # standardization and exclusion are applied manually below so both datasets go through the
+  # same normalisation path regardless of which legacy branch was taken above.
+  # -----------------------------------------------------------------------
+  new_ds   <- arrow::open_dataset(new_arrow_dir)
+  new_prep <- prepare_new_bogota_like_legacy(
+    new_df        = new_ds,
+    rename_map    = c(),          # applied manually below
+    drop_stations = character(0), # applied manually below
+    year_keep     = cmp$compare_years,
+    hour_shift    = 0L,
+    tz            = cmp_tz
+  )
+  
+  # Apply the same normalisation pipeline as legacy
+  new_prep$station <- .std_name(new_prep$station)
+  if (length(cmp$residual_map) > 0L)
+    new_prep$station <- dplyr::recode(
+      new_prep$station, !!!cmp$residual_map
+    )
+  
+  # Apply explicit exclusions (if any) after normalizing names
+  drop_std <- .std_name(cmp$drop_stations %||% character(0))
+  if (length(drop_std) > 0L)
+    new_prep <- new_prep[!new_prep$station %in% drop_std, , drop = FALSE]
+  
+  # 7) CRITICAL: restrict new_prep to the legacy station universe.
+  # We build a station_audit table first so the removed stations are documented in the output
+  # (shown in the Quarto report).
+  # -----------------------------------------------------------------------
+  legacy_stations <- unique(legacy_prep$station)
+  new_stations    <- unique(new_prep$station)
+  
+  # Stations in new that are absent from legacy — these are SISAIRE-only
+  sisaire_only  <- setdiff(new_stations, legacy_stations)
+  
+  # Legacy stations not found in new — signals a name-matching failure
+  unmatched_leg <- setdiff(legacy_stations, new_stations)
+  
+  station_audit <- data.frame(
+    station      = sort(union(legacy_stations, new_stations)),
+    in_legacy    = sort(union(legacy_stations, new_stations)) %in%
+      legacy_stations,
+    in_new       = sort(union(legacy_stations, new_stations)) %in%
+      new_stations,
+    sisaire_only = sort(union(legacy_stations, new_stations)) %in%
+      sisaire_only
+  )
+  
+  # Keep only RMCAB stations (those present in legacy) in the new dataset
+  new_prep <- new_prep[
+    new_prep$station %in% legacy_stations, ,
+    drop = FALSE
+  ]
+  
+  if (!quiet) {
+    message(sprintf(
+      "  Stations — legacy: %d | new (all): %d | SISAIRE dropped: %d",
+      length(legacy_stations),
+      length(new_stations),
+      length(sisaire_only)
+    ))
+    if (length(unmatched_leg) > 0)
+      message(
+        "  WARNING — legacy stations absent from new: ",
+        paste(unmatched_leg, collapse = ", ")
+      )
+  }
+  
+  # 8) Build per-pollutant tolerances. Caller overrides take precedence.
+  base_tol <- stats::setNames(rep(0, length(active_pols)), active_pols)
+  for (v in names(tol))
+    if (v %in% active_pols) base_tol[v] <- tol[v]
+  
+  # 9) Run the comparison.
+  #    compare_panels() does a full_join on keys, then computes cell-level
+  #    differences for each value column. Tolerance is applied per pollutant.
+  # -----------------------------------------------------------------------
+  res <- compare_panels(
+    old_df = legacy_prep,
+    new_df = new_prep,
+    keys   = c("station", "year", "month", "day", "hour"),
+    values = active_pols,
+    tol    = base_tol
+  )
+  
+  # Derive the rows-only-in-new summary (station × key columns only)
+  missing_new <- res$only_new |>
+    dplyr::distinct(station, year, month, day, hour) |>
+    dplyr::arrange(station, year, month, day, hour)
+  
+  # 10) Persist results as Parquet.
+  #     All artefacts go into one subfolder so they are easy to find and
+  #     read together in the Quarto report. No CSV or RDS files are written.
+  # -----------------------------------------------------------------------
+  cmp_dir <- file.path(out_dir, "ground_station_comparison")
+  dir.create(cmp_dir, recursive = TRUE, showWarnings = FALSE)
+  
+  # Helper: write one Parquet with zstd compression (good ratio + fast reads)
+  .wpq <- function(df, name)
+    arrow::write_parquet(
+      dplyr::as_tibble(df),
+      file.path(cmp_dir, paste0(name, ".parquet")),
+      compression = "zstd"
+    )
+  
+  .wpq(res$diff_summary, "diff_summary")
+  .wpq(res$diffs_long,   "diffs_long")
+  .wpq(res$only_old,     "only_legacy")
+  .wpq(res$only_new,     "only_new")
+  .wpq(station_audit,    "station_audit")
+  
+  if (!quiet)
+    message("[", cfg$id, "] Saved to: ", cmp_dir)
+  
+  # 11) Return a list so the caller can inspect results without
+  #     re-reading the Parquet files.
+  invisible(list(
+    diff_summary  = res$diff_summary,
+    diffs_long    = res$diffs_long,
+    only_legacy   = dplyr::as_tibble(res$only_old),
+    only_new      = dplyr::as_tibble(res$only_new),
+    station_audit = station_audit,
+    out_dir       = cmp_dir
+  ))
+}
+
 
 # Print a success message for when running inside Docker Container
 cat("Config script parsed successfully!\n")
