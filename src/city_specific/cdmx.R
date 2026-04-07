@@ -45,20 +45,23 @@ cdmx_cfg <- list(
 # CDMX-specific helpers function (most for downloading pollution data from stations)
 # ============================================================================================
 # ------------------------------------------------------------------------------------------
-# Function : .http_retry_get_robust
-# @Arg     : url                 — target URL
-# @Arg     : ua                  — httr::user_agent(...) object
-# @Arg     : timeout_sec         — per-attempt timeout
-# @Arg     : verbose             — print progress (TRUE/FALSE)
-# @Arg     : allow_insecure_fallback — one last attempt with verify OFF if SSL chain fails
-# @Output  : httr response (status 200) or stop() with a helpful message
-# @Purpose : Robust GET for Docker + OpenSSL 3:
-#            - strict TLS over IPv4
-#            - retry with OpenSSL security level 1 (verification ON)
-#            - optional insecure try
-#            - http:// fallback
-# Notes    : The curl/httr option name is **ssl_cipher_list** (not 'ciphers').
-#            The OpenSSL string is "DEFAULT@SECLEVEL=1".
+# Function: .http_retry_get_robust
+# @Arg       : url                 — target URL
+# @Arg       : ua                  — httr::user_agent(...) object
+# @Arg       : timeout_sec         — per-attempt timeout
+# @Arg       : verbose             — print progress (TRUE/FALSE)
+# @Arg       : allow_insecure_fallback — one last attempt with verify OFF if SSL chain fails
+# 
+# @Output    : httr response (status 200) or stop() with a helpful message
+# @Purpose   : Robust GET for Docker + OpenSSL 3:
+#              - strict TLS over IPv4
+#              - retry with OpenSSL security level 1 (verification ON)
+#              - optional insecure try
+#              - http:// fallback
+# Notes      : The curl/httr option name is **ssl_cipher_list** (not 'ciphers').
+#              The OpenSSL string is "DEFAULT@SECLEVEL=1".
+# @Written_on: 13/10/2025
+# @Written_by: Marcos Paulo
 # ------------------------------------------------------------------------------------------
 .http_retry_get_robust <- function(url, ua, timeout_sec = 30,
                                    verbose = TRUE,
@@ -159,9 +162,12 @@ cdmx_cfg <- list(
 # Function: selenium_start_session_flat_first
 # @Arg       : container             — logical; TRUE when using docker-compose service
 # @Arg       : wd_request_timeout_ms — integer; per-request HTTP timeout to the driver
+# 
 # @Output    : selenium::SeleniumSession
 # @Purpose   : Start Selenium with flat (W3C) capabilities only — avoids the
 #              "Illegal key values seen in w3c capabilities" 500 error.
+# @Written_on: 13/10/2025
+# @Written_by: Marcos Paulo
 # ------------------------------------------------------------------------------------------
 selenium_start_session_flat_first <- function(container = TRUE,
                                               wd_request_timeout_ms = 60000L) {
@@ -195,8 +201,11 @@ selenium_start_session_flat_first <- function(container = TRUE,
 # Function: sinaica_scroll_into_view_sel
 # @Arg       : session — SeleniumSession
 # @Arg       : sel     — CSS selector to bring into view
+# 
 # @Output    : invisible(TRUE)
 # @Purpose   : Scroll the first match of `sel` into view (best-effort).
+# @Written_on: 13/10/2025
+# @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 sinaica_scroll_into_view_sel <- function(session, sel) {
   js <- paste0(
@@ -214,9 +223,12 @@ sinaica_scroll_into_view_sel <- function(session, sel) {
 # @Arg       : session  — SeleniumSession
 # @Arg       : timeout  — seconds to wait (default 30)
 # @Arg       : min_rows — minimal station rows required (default 1)
+# 
 # @Output    : TRUE if table rows are present; FALSE otherwise
 # @Purpose   : After picking a state, wait until the stations table exists. The table can be
 #              lazy-rendered near the bottom, so we close overlays, scroll, and re-check.
+# @Written_on: 13/10/2025
+# @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 sinaica_wait_state_table <- function(session, timeout = 30, min_rows = 1) {
   t0 <- Sys.time()
@@ -261,6 +273,8 @@ sinaica_wait_state_table <- function(session, timeout = 30, min_rows = 1) {
 # @Arg       : x — character
 # @Output    : trimmed UTF-8 string with collapsed whitespace
 # @Purpose   : Normalize text captured from pages for stable comparisons.
+# @Written_on: 13/10/2025
+# @Written_by: Marcos Paulo
 # ------------------------------------------------------------------------------------------
 sinaica_clean_text <- function(x) {
   x <- iconv(x %||% "", from = "", to = "UTF-8")
@@ -273,6 +287,8 @@ sinaica_clean_text <- function(x) {
 # @Arg       : txt — like "20.06 N, 99.22 O"
 # @Output    : c(lat=..., lon=...)
 # @Purpose   : Parse N/S/E/O coordinates to signed decimal degrees.
+# @Written_on: 13/10/2025
+# @Written_by: Marcos Paulo
 # ------------------------------------------------------------------------------------------
 sinaica_parse_coords <- function(txt) {
   txt <- tolower(sinaica_clean_text(txt))
@@ -293,6 +309,8 @@ sinaica_parse_coords <- function(txt) {
 # @Arg       : txt — like "2240 msnm"
 # @Output    : numeric altitude (meters) or NA
 # @Purpose   : Extract altitude number from free text.
+# @Written_on: 13/10/2025
+# @Written_by: Marcos Paulo
 # ------------------------------------------------------------------------------------------
 sinaica_parse_alt <- function(txt) {
   x <- gsub("[^0-9\\.,-]", "", tolower(txt %||% ""))
@@ -305,6 +323,8 @@ sinaica_parse_alt <- function(txt) {
 # @Arg       : timeout  — integer; max seconds to wait for items (default 10)
 # @Output    : TRUE if the menu is open and items are present; error on timeout
 # @Purpose   : Open the “Seleccionar estado” dropdown and wait until <p.selSMCA> items exist.
+# @Written_on: 13/10/2025
+# @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 sinaica_open_state_dropdown <- function(session, timeout = 10) {
   btn <- wait_for(

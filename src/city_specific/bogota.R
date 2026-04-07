@@ -17,29 +17,50 @@
 
 # Parameters (single source)
 bogota_cfg <- list(
+  # Core identity
   id               = "bogota",
   tz               = "America/Bogota",
+  # Download URLs
   url_station_shp  = "https://www.ambientebogota.gov.co/estaciones-rmcab",
   base_url_shp     = "https://www.dane.gov.co/files/geoportal-provisional",
   base_url_rmcab   = "http://rmcab.ambientebogota.gov.co/Report/stationreport",
   base_url_sisaire = "http://sisaire.ideam.gov.co/ideam-sisaire-web/consultas.xhtml",
-  base_url_census  = "https://microdatos.dane.gov.co/index.php/catalog/421/get-microdata",
-  base_new_census  = "https://microdatos.dane.gov.co/index.php/catalog/643/get-microdata",
-  base_url_comunas = "https://datosabiertos.bogota.gov.co/dataset/localidad-bogota-d-c",
-  years            = 2000L:2023L,
-  dl_dir           = here::here("data", "downloads", "bogota"),
-  out_dir          = here::here("data", "raw"),
-  which_states     = c("Bogotá D.C.", "Cundinamarca", "Huila", "Meta", "Tolima"),
-  cities_in_metro  = c("Bogotá DC", "Bojacá", "Cajicá", "Chía", "Cota", "El Rosal",
-                       "Facatativá", "Funza", "Fusagasugá", "Gachancipá", "La Calera", "Madrid",
-                       "Mosquera", "Sibaté", "Soacha", "Sopó", "Subachoque", "Tabio", "Tenjo",
-                       "Tocancipá", "Zipaquirá"),
-  city_code_metro  = c("25099", "25126", "25214", "25269", "25286", "25295", "25377", "25430",
-                       "25758", "25769", "25785", "25799", "25817", "25899", "11001", "25754",
-                       "25175", "25260", "25473", "25740", "25290"),
-  station_nme_map  = c("Centro de alto rendimiento" = "Centro de Alto Rendimiento",
-                       "Las Ferias"                 = "Las Ferias",
-                       "Carvajal-Sevillana"         = "Carvajal-Sevillana")
+  base_url_census  = paste0(
+    "https://microdatos.dane.gov.co/index.php/catalog/421/get-microdata"),
+  base_new_census  = paste0(
+    "https://microdatos.dane.gov.co/index.php/catalog/643/get-microdata"),
+  base_url_comunas = paste0(
+    "https://datosabiertos.bogota.gov.co/dataset/localidad-bogota-d-c"),
+  # Processing parameters
+  years           = 2000L:2023L,
+  dl_dir          = here::here("data", "downloads", "bogota"),
+  out_dir         = here::here("data", "raw"),
+  which_states    = c("Bogotá D.C.", "Cundinamarca", "Huila", "Meta", "Tolima"),
+  cities_in_metro = c(
+    "Bogotá DC", "Bojacá", "Cajicá", "Chía", "Cota", "El Rosal", "Facatativá", "Funza",
+    "Fusagasugá", "Gachancipá", "La Calera", "Madrid", "Mosquera", "Sibaté", "Soacha",
+    "Sopó", "Subachoque", "Tabio", "Tenjo", "Tocancipá", "Zipaquirá"),
+  city_code_metro = c(
+    "25099", "25126", "25214", "25269", "25286", "25295", "25377", "25430", "25758", "25769",
+    "25785", "25799", "25817", "25899", "11001", "25754", "25175", "25260", "25473", "25740",
+    "25290"),
+  station_nme_map = c("Centro de alto rendimiento" = "Centro de Alto Rendimiento",
+                      "Las Ferias"                 = "Las Ferias",
+                      "Carvajal-Sevillana"         = "Carvajal-Sevillana"),
+  # Validation / comparison parameters
+  compare = list(
+    pipeline_tz       = "UTC",
+    legacy_single_csv = here::here("data", "_legacy", "merged_pollution",
+                                   "bogota", "Air_Pollution_Bogota_2002_2023.csv"),
+    legacy_dir        = here::here("data", "_legacy", "raw_pollution", "bogota"),
+    legacy_pattern    = paste0("^Air_Pollution_Bogota_\\d{4}_\\d{4}\\.csv$"),
+    compare_years     = 2023L,
+    focus_pollutants  = c("pm10", "pm25"),
+    value_cols        = c("pm10", "pm25", "ozone", "co", "no2"),
+    drop_stations     = character(0),
+    residual_map      = c("CENTRODEALTORENDIMIENTO" = "CAR",    # .std_name() can't solve
+                          "ELJAZMIN"                = "JAZMIN") # .std_name() can't solve
+    )
 )
 
 # ============================================================================================
@@ -2243,7 +2264,7 @@ bogota_filter_stations_in_metro <- function(
 }
 
 
-# -----------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------
 # Function: bogota_process_stations_data_to_parquet
 # @Arg       : rmcab_folder   — character; folder with RMCAB .xlsx files.
 # @Arg       : sisaire_folder — string; folder with SISAIRE .csv files.
@@ -2274,7 +2295,7 @@ bogota_filter_stations_in_metro <- function(
 #     extension is required.
 # @Written_on: 29/10/2025
 # @Written_by: Marcos Paulo
-# -----------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------
 bogota_process_stations_data_to_parquet <- function(
     rmcab_folder,
     sisaire_folder,
@@ -3216,7 +3237,8 @@ bogota_harmonize_census_2005_data <- function(
       harmonize_education() %>%
       dplyr::mutate(
         no_education = as.numeric(escolaridad == 0),
-        high_school_incomplete = if (extended) {as.numeric(escolaridad >= 1 & escolaridad <= 11)
+        high_school_incomplete = if (extended) {as.numeric(
+          escolaridad >= 1 & escolaridad <= 11)
         } else {as.numeric(escolaridad %in% c(5, 9))},
         high_school_complete   = if (extended) {as.numeric(escolaridad == 12)
           } else {as.numeric(escolaridad == 11)},
