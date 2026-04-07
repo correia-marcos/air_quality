@@ -22,7 +22,7 @@ source(here::here("src","city_specific", "bogota.R"))
 # ============================================================================================
 # Define the output general folders
 legacy_dir_area   <- here::here("data", "_legacy", "cities_shapefiles")
-legacy_dir_pol    <- here::here("data", "_legacy", "pollution")
+legacy_dir_pol    <- here::here("data", "_legacy", "pollution_data", "bogota")
 outdir_pollution  <- here::here(bogota_cfg$out_dir, "monitoring_stations")
 outdir_geospatial <- here::here(bogota_cfg$out_dir, "geospatial_data")
 
@@ -31,8 +31,9 @@ bogota_metro_2018_gpkg <- here::here(outdir_geospatial, "bogota", "bogota_area_m
 bogota_metro_2005_gpkg <- here::here(outdir_geospatial, "bogota", "bogota_area_metro_2005.gpkg")
 bogota_pollution       <- here::here(outdir_pollution, "bogota_metro_dataset")
 legacy_metro_2005_shp  <- here::here(legacy_dir_area, "Bogota_metro")
-legacy_pollution_files <- here::here(legacy_dir_pol, "Bogota")
+legacy_pollution_files <- here::here("data", "_legacy", "pollution", "Bogota")
 
+legacy_pollution_file <- here::here(legacy_dir_pol, "Air_Pollution_Bogota_2002_2023.csv")
 # Read the necessary files
 bogota_2018_metro   <- st_read(bogota_metro_2018_gpkg)
 bogota_2005_metro   <- st_read(bogota_metro_2005_gpkg)
@@ -62,6 +63,8 @@ station_map <- c(
   "EL JAZMIN"                  = "Jazmin",
   "JAZMIN"                     = "Jazmin"
 )
+
+legacy_bogota <- vroom::vroom(legacy_pollution_file)
 
 # ============================================================================================
 # II: Process  data
