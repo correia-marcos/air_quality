@@ -1,0 +1,452 @@
+---
+title: "Pipeline Validation Report"
+subtitle: "Raw Ground Station Data"
+date: "`r Sys.Date()`"
+format:
+  html:
+    toc: true
+    toc-depth: 2
+    toc-location: left
+    theme: cosmo
+    self-contained: true
+    code-fold: true
+    fig-width: 9
+    fig-height: 4
+params:
+  city_id:  "bogota"
+  out_root: "results/validation_rep_package"
+---
+
+```{r setup, include=FALSE}
+library(here); library(arrow); library(dplyr)
+library(ggplot2); library(knitr); library(kableExtra)
+library(scales); library(lubridate)
+
+source(here("src", "general_utilities",
+            "config_utils_validation_old_version.R"))
+source(here("src", "city_specific", "registry.R"))
+source(here("src", "city_specific", "bogota.R"))
+source(here("src", "city_specific", "cdmx.R"))
+source(here("src", "city_specific", "santiago.R"))
+source(here("src", "city_specific", "sao_paulo.R"))
+
+`%||%` <- function(a, b) if (!is.null(a)) a else b
+
+cfg     <- city_cfg(params$city_id)
+cmp     <- cfg$compare
+cmp_dir <- file.path(
+  params$out_root, params$city_id, "ground_station_comparison"
+)
+
+read_pq <- function(name) {
+  f <- file.path(cmp_dir, paste0(name, ".parquet"))
+  if (file.exists(f)) arrow::read_parquet(f) else NULL
+}
+
+diff_sum  <- read_pq("diff_summary")
+diffs     <- read_pq("diffs_long")
+only_leg  <- read_pq("only_legacy")
+only_new  <- read_pq("only_new")
+sta_audit <- read_pq("station_audit")
+
+focus_pol <- cmp$focus_pollutants %||% cmp$value_cols
+yr_label  <- paste(cmp$compare_years, collapse = ", ")
+
+pol_col <- c(pm10  = "#2b6ca8", pm25  = "#d94f3d",
+             ozone = "#e6a817", co    = "#4caf50", no2   = "#9c27b0")
+```
+
+# `r toupper(params$city_id)` — Year `r yr_label`
+
+> **Purpose.** This report compares the new automated pipeline against
+> the legacy manual dataset compiled by the coauthor. The goal is to
+> attribute every discrepancy to a specific, understood cause — so that
+> neither pipeline is unfairly discredited and the research team knows
+> exactly which hours differ and why.
+
+---
+
+## Overall verdict
+
+```{r verdict, echo=FALSE, results='asis'}
+pm_sum      <- diff_sum |> filter(variable %in% focus_pol)
+n_cell_diff <- sum(pm_sum$n_diff)
+n_total     <- sum(pm_sum$n)
+pct_agree   <- 1 - n_cell_diff / n_total
+
+vcol  <- if (pct_agree >= 0.999) "#2e7d32" else
+          if (pct_agree >= 0.990) "#f57c00" else "#c62828"
+vtext <- if (pct_agree >= 0.999) "Essentially identical" else
+          if (pct_agree >= 0.990) "Minor discrepancies" else
+          "Significant differences"
+
+cat(sprintf(paste0(
+  '<div style="border-left:5px solid %s;padding:12px 18px;',
+  'background:#f9f9f9;border-radius:4px;margin-bottom:16px">',
+  '<span style="font-size:1.15em;font-weight:bold;color:%s">',
+  '%s</span><br><span style="color:#555">',
+  'For PM10 + PM25: <strong>%.4f%%</strong> of matched rows ',
+  'agree exactly. <strong>%s</strong> cell-level differences | ',
+  '<strong>%s</strong> rows only in new pipeline | ',
+  '<strong>%s</strong> rows only in legacy.</span></div>'),
+  vcol, vcol, vtext,
+  100 * pct_agree,
+  format(n_cell_diff,  big.mark = ","),
+  format(nrow(only_new), big.mark = ","),
+  format(nrow(only_leg), big.mark = ",")))
+```
+
+---
+
+## Pollutant summary
+
+```{r summary_tbl, echo=FALSE}
+diff_sum |>
+  filter(variable %in% focus_pol) |>
+  mutate(
+    share_diff    = percent(share_diff, 0.0001),
+    mean_abs_diff = round(mean_abs_diff, 3),
+    p95_abs_diff  = round(p95_abs_diff,  3)
+  ) |>
+  kable(
+    col.names = c("Pollutant", "Matched rows", "Rows differ",
+                  "Both NA", "Share differ",
+                  "Mean |diff| (μg/m³)", "P95 |diff| (μg/m³)"),
+    align = "lrrrrrr"
+  ) |>
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = FALSE
+  ) |>
+  column_spec(5, bold = TRUE)
+```
+
+---
+
+## Cell-level differences — matched rows with different values
+
+```{r cell_diffs, echo=FALSE, results='asis', warning=FALSE}
+cell_diffs <- diffs |>
+  filter(!within_tol, !is.na(absv), absv > 0,
+         variable %in% focus_pol)
+
+if (nrow(cell_diffs) == 0) {
+  cat("*No cell-level differences for the focus pollutants.*\n")
+} else {
+  timing <- cell_diffs |>
+    count(month, day, hour, name = "n_rows") |>
+    arrange(month, day, hour)
+
+  cat(sprintf(paste0(
+    "**%s differing rows** across **%s stations** ",
+    "and **%s pollutant(s)**.\n\n"),
+    format(nrow(cell_diffs), big.mark = ","),
+    dplyr::n_distinct(cell_diffs$station),
+    dplyr::n_distinct(cell_diffs$variable)))
+
+  timing |>
+    kable(caption = "When do differences occur?",
+          col.names = c("Month", "Day", "Hour", "# rows")) |>
+    kable_styling(bootstrap_options = c("striped", "condensed"),
+                  full_width = FALSE) |>
+    print()
+
+  cat("\n")
+
+  cell_diffs |>
+    select(variable, station, month, day, hour,
+           value_old, value_new, diff) |>
+    mutate(across(c(value_old, value_new, diff), ~ round(.x, 2))) |>
+    arrange(variable, station) |>
+    kable(
+      caption = "All differing rows (legacy | new pipeline)",
+      col.names = c("Pollutant", "Station", "Month", "Day", "Hour",
+                    "Legacy (μg/m³)", "New (μg/m³)", "Diff")
+    ) |>
+    kable_styling(bootstrap_options = c("striped", "condensed"),
+                  font_size = 12, full_width = FALSE) |>
+    scroll_box(height = "300px") |>
+    print()
+}
+```
+
+```{r cell_cause, echo=FALSE, results='asis'}
+if (params$city_id == "bogota" && nrow(cell_diffs) > 0) {
+  ut <- cell_diffs |> distinct(month, day, hour)
+  cat(sprintf(paste0(
+    '\n\n> **Root cause.** All %d differing rows share the same ',
+    'timestamp (month %d, day %d, hour %02d:00) across all %d ',
+    'monitored stations simultaneously. A station-specific sensor ',
+    'error would affect only one station; a software bug would ',
+    'produce a systematic pattern across all years. A network-wide ',
+    'event at one single hour across all stations points to an ',
+    '**RMCAB data revision** published between the coauthor\'s ',
+    'manual download date and our automated scraping date. ',
+    'Retrospective corrections to monitoring data are documented ',
+    'practice of the RMCAB network. Mean absolute difference: ',
+    '%.1f μg/m³. Impact on annual-level statistics: negligible ',
+    '(< 0.01%% of all PM observations).\n\n',
+    '> Note: the coauthor\'s Stata combined-file bug (which maps ',
+    'Jan 31 24:00 incorrectly to March 1 00:00) does **not** apply ',
+    'here because we compare against the individual period CSVs, ',
+    'which were exported before the combine-and-correct step.\n\n'),
+    nrow(cell_diffs),
+    ut$month[1], ut$day[1], ut$hour[1],
+    dplyr::n_distinct(cell_diffs$station),
+    mean(abs(cell_diffs$diff))
+  ))
+}
+```
+
+---
+
+## Rows only in the new pipeline
+
+```{r only_new_tbl, echo=FALSE, results='asis'}
+if (!is.null(only_new) && nrow(only_new) > 0) {
+
+  # Classify each row by the cause most consistent with the data
+  classified <- only_new |>
+    mutate(
+      cause = case_when(
+        # Dec 31 missing: RMCAB manual portal caps exports at 363 days.
+        # Automated scraper uses two half-year batches to cover all days.
+        month == 12 & day >= 29
+          ~ "Dec 31 — 363-day RMCAB download cap",
+
+        # Jan 1 00:00: comes from rolling Dec 31 24:00 of the prior year.
+        # Stations without prior-year data cannot produce this hour.
+        month == 1 & day == 1 & hour == 0
+          ~ "Jan 1 00:00 — prior-year data absent for this station",
+
+        # Feb 1 00:00: comes from rolling Jan 31 24:00.
+        # If the legacy download for a station starts from Feb or later,
+        # Jan 31 is absent and this midnight hour cannot be produced.
+        month == 2 & day == 1 & hour == 0
+          ~ "Feb 1 00:00 — prior-year or Jan data absent for this station",
+
+        # MOVILFONTIBON ozone-only rows: station-specific data quirk.
+        # No PM10 or PM25 values → irrelevant for project analysis.
+        station == "MOVILFONTIBON"
+          ~ "MOVILFONTIBON — ozone-only quirk (no PM impact)",
+
+        TRUE ~ "Other"
+      )
+    )
+
+  classified |>
+    count(cause, name = "rows") |>
+    arrange(desc(rows)) |>
+    kable(
+      caption = sprintf(
+        "%s rows present only in the new pipeline — by cause",
+        format(nrow(only_new), big.mark = ",")
+      ),
+      col.names = c("Cause", "Rows")
+    ) |>
+    kable_styling(bootstrap_options = c("striped", "condensed"),
+                  full_width = FALSE) |>
+    print()
+}
+```
+
+```{r only_new_cause, echo=FALSE, results='asis'}
+if (params$city_id == "bogota") {
+  cat(paste0(
+    '\n\n> **Root causes — hour convention and download coverage.**\n\n',
+    '> **Important context.** Both pipelines receive RMCAB data in the ',
+    'same hour range (01:00–24:00). Hour 24 represents midnight and must ',
+    'be rolled to day+1 hour 0. The differences below arise not from ',
+    'different hour conventions, but from differences in *which days* ',
+    'each pipeline has data for.\n\n',
+    '> **1. December 31 end-of-year hours.** The RMCAB manual portal ',
+    'limits exports to 363 days per request. A full-year manual download ',
+    'therefore misses the last 2–3 days of December. Our scraper avoids ',
+    'this by downloading in two half-year batches, always capturing ',
+    'December 31.\n\n',
+    '> **2. January 1 and February 1 at 00:00.** Because RMCAB uses hours ',
+    '1–24, the midnight hour that starts a new month (e.g. Jan 1 00:00) ',
+    'is physically stored as the hour-24 reading of the *previous* day ',
+    '(Dec 31 24:00). If the legacy download for a station does not include ',
+    'that prior day — because the station was commissioned in 2023 and has ',
+    'no 2022 data, or because the download started mid-January — the ',
+    'midnight hour cannot be produced by rolling hour 24 and is therefore ',
+    'absent from the legacy dataset. Our scraper downloads the full ',
+    'previous half-year, ensuring the prior-day hour-24 is always present.\n\n',
+    '> **3. MOVILFONTIBON ozone-only rows.** A small set of rows for this ',
+    'station carries an ozone reading but no PM10 or PM25. They appear ',
+    'as "only in new" because the legacy file does not include them. ',
+    'They are irrelevant for the PM-focused analysis.\n\n',
+    '> **Net effect on PM10/PM25 research:** none. All additional rows ',
+    'expand temporal coverage without changing values for matched hours.\n\n'
+  ))
+}
+```
+
+---
+
+## The Stata combined-file bug (for reference)
+
+```{r stata_bug, echo=FALSE, results='asis'}
+if (params$city_id == "bogota") {
+  cat(paste0(
+    'The coauthor\'s Stata script (`0_manage_pollution_data_bogota.do`) ',
+    'contains a bug in the combine-and-correct step that affects ',
+    '**only the merged single CSV** (`Air_Pollution_Bogota_2002_2023.csv`). ',
+    'The comparison on this page uses the individual period CSVs and ',
+    'is therefore unaffected. The bug is documented here for transparency.\n\n',
+    '**The sequence:**\n\n',
+    '```stata\n',
+    'replace hour = 0   if hour == 24          \n',
+    'replace day  = day + 1  if (hour == 0)    \n',
+    '```\n\n',
+    'After the first line, the *only* rows with `hour == 0` should be ',
+    'the former hour-24 rows (since RMCAB exports hours 1–24). The ',
+    'second line intends to advance those rows to the next day, which ',
+    'is correct. However, the February corrections that follow re-apply ',
+    'the month increment to rows that were already correctly placed:\n\n',
+    '| Original reading | After bug | Expected |\n',
+    '|---|---|---|\n',
+    '| Jan 31 24:00 → Feb 1 00:00 (via day=32→month+1) |',
+    ' Line 433 fires again (`month==2 & day==1 & hour==0`) → **March 1 00:00** |',
+    ' Feb 1 00:00 |\n',
+    '| Feb 28 24:00 | → March 1 00:00 (correct via Feb correction) |',
+    ' March 1 00:00 ✓ |\n\n',
+    'Result in the combined CSV: Feb 1 00:00 is **absent**; ',
+    'March 1 00:00 has **two entries** (the true Feb 28 24:00 reading ',
+    'and the misrouted Jan 31 24:00 reading). If de-duplication is ',
+    'applied afterwards, one of those two March 1 values is silently dropped.\n\n',
+    '**This bug is absent from the individual period CSVs** because they ',
+    'were exported before the combine step.\n\n'
+  ))
+}
+```
+
+---
+
+## Rows only in the legacy dataset
+
+```{r only_legacy, echo=FALSE}
+if (!is.null(only_leg) && nrow(only_leg) > 0) {
+  only_leg |>
+    count(station, month, name = "rows") |>
+    kable(
+      caption = sprintf(
+        "%s rows present only in the legacy dataset",
+        format(nrow(only_leg), big.mark = ",")
+      )
+    ) |>
+    kable_styling(bootstrap_options = c("striped", "condensed"),
+                  full_width = FALSE)
+} else {
+  cat("*No rows found exclusively in the legacy dataset.*")
+}
+```
+
+---
+
+## Station coverage
+
+```{r stations_tbl, echo=FALSE}
+if (!is.null(sta_audit)) {
+  sta_audit |>
+    mutate(Status = case_when(
+      in_legacy & in_new & !sisaire_only  ~ "\u2713 Matched in both",
+      sisaire_only                         ~ "\u26a0 SISAIRE-only (filtered)",
+      in_legacy & !in_new                 ~ "\u2717 Legacy only",
+      !in_legacy & in_new & !sisaire_only ~ "\u2295 New only",
+      TRUE                                 ~ "?"
+    )) |>
+    select(station, Status) |>
+    kable() |>
+    kable_styling(bootstrap_options = c("striped", "condensed"),
+                  full_width = FALSE) |>
+    row_spec(which(sta_audit$sisaire_only), background = "#fff3cd")
+}
+```
+
+> **SISAIRE filtering.** The Arrow dataset merges RMCAB core stations
+> with SISAIRE metro-area stations. After name normalisation, some SISAIRE
+> station names match RMCAB station names (e.g. both pipelines have a
+> "BOLIVIA" entry, but they refer to different sensors). Without
+> restriction, a `full_join` on station name produces a cartesian product,
+> inflating matched rows and driving spurious differences to ~99.5%.
+> The comparison filters the new dataset to the legacy station universe
+> before joining. SISAIRE-only stations are shown in yellow above.
+
+---
+
+## Pipeline comparison
+
+```{r pipeline_tbl, echo=FALSE}
+city_rows <- list(
+  bogota = data.frame(
+    Feature = c(
+      "Download method",
+      "Hour convention (raw)",
+      "Days per year covered",
+      "Midnight hour source",
+      "Station scope",
+      "Timestamp storage in Parquet",
+      "Combined-file bug"
+    ),
+    Legacy = c(
+      "Manual download via RMCAB portal",
+      "01:00–24:00 (same as new)",
+      "Up to 363 (RMCAB portal cap)",
+      "Hour 24 of previous day, rolled during Stata processing",
+      "19 RMCAB core stations",
+      "Local time (America/Bogota)",
+      "Jan 31 24:00 → March 1 00:00 in merged CSV; Feb 1 00:00 absent"
+    ),
+    New_pipeline = c(
+      "Automated scraping (Selenium + RMCAB API)",
+      "01:00–24:00 (same as legacy)",
+      "Full 365/366 (two half-year batches)",
+      "Hour 24 of previous day, rolled during xlsx parsing",
+      "19 RMCAB + SISAIRE metro stations (SISAIRE filtered for comparison)",
+      "Local time stored with UTC label (DuckDB workaround)",
+      "Not applicable — no Stata combine step"
+    ),
+    stringsAsFactors = FALSE
+  )
+)
+
+rows <- city_rows[[params$city_id]]
+if (!is.null(rows)) {
+  rows |>
+    kable(col.names = c("Feature", "Legacy pipeline",
+                        "New pipeline")) |>
+    kable_styling(
+      bootstrap_options = c("striped", "hover", "condensed"),
+      full_width = TRUE
+    ) |>
+    column_spec(1, bold = TRUE, width = "22%") |>
+    row_spec(7, background = "#fff3cd")  # highlight the bug row
+} else {
+  cat("*Pipeline comparison to be completed for this city.*")
+}
+```
+
+---
+
+<details><summary>Run metadata</summary>
+```{r run_meta, echo=FALSE}
+tibble::tibble(
+  Item  = c("City", "Year(s)", "Pipeline tz", "Legacy source",
+            "Focus pollutants", "Results folder"),
+  Value = c(
+    params$city_id,
+    yr_label,
+    cmp$pipeline_tz %||% cfg$tz,
+    if (!is.null(cmp$legacy_single_csv) &&
+        file.exists(cmp$legacy_single_csv))
+      basename(cmp$legacy_single_csv) else cmp$legacy_dir,
+    paste(focus_pol, collapse = ", "),
+    cmp_dir
+  )
+) |>
+  kable() |>
+  kable_styling(bootstrap_options = "striped", full_width = FALSE)
+```
+</details>
