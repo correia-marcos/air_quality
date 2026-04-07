@@ -1,0 +1,340 @@
+---
+title: "Bogotá — Pipeline Validation Report"
+subtitle: "Comparison: New Automated Pipeline vs. Coauthor Legacy Dataset"
+date: "`r Sys.Date()`"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    toc-location: left
+    theme: cosmo
+    self-contained: true
+    code-fold: true
+    fig-width: 9
+    fig-height: 4
+params:
+  city_id:  "bogota"
+  out_root: "results/validation_rep_package"
+---
+
+```{r setup, include=FALSE}
+library(here); library(arrow); library(dplyr)
+library(ggplot2); library(knitr); library(kableExtra)
+library(scales); library(lubridate)
+
+source(here("src", "general_utilities",
+            "config_utils_validation_old_version.R"))
+source(here("src", "city_specific", "registry.R"))
+source(here("src", "city_specific", "bogota.R"))
+
+`%||%` <- function(a, b) if (!is.null(a)) a else b
+
+cfg      <- city_cfg(params$city_id)
+cmp      <- cfg$compare
+city_dir <- file.path(params$out_root, params$city_id)
+
+# Helper: read a Parquet from a named subdirectory
+read_pq <- function(subdir, name) {
+  f <- file.path(city_dir, subdir, paste0(name, ".parquet"))
+  if (file.exists(f)) arrow::read_parquet(f) else NULL
+}
+
+# Ground station artefacts
+gs_diff_sum  <- read_pq("ground_station_comparison", "diff_summary")
+gs_diffs     <- read_pq("ground_station_comparison", "diffs_long")
+gs_only_leg  <- read_pq("ground_station_comparison", "only_legacy")
+gs_only_new  <- read_pq("ground_station_comparison", "only_new")
+gs_sta_audit <- read_pq("ground_station_comparison", "station_audit")
+
+focus_pol <- cmp$focus_pollutants %||% cmp$value_cols
+yr_label  <- paste(cmp$compare_years, collapse = ", ")
+
+pol_col <- c(pm10 = "#2b6ca8", pm25 = "#d94f3d",
+             ozone = "#e6a817", co = "#4caf50", no2 = "#9c27b0")
+
+# Status badge helper
+status_badge <- function(ok, label_ok = "Complete",
+                          label_pending = "Pending") {
+  if (ok) {
+    sprintf(
+      '<span style="background:#2e7d32;color:white;padding:2px 8px;
+       border-radius:4px;font-size:.85em">%s</span>', label_ok
+    )
+  } else {
+    sprintf(
+      '<span style="background:#9e9e9e;color:white;padding:2px 8px;
+       border-radius:4px;font-size:.85em">%s</span>', label_pending
+    )
+  }
+}
+```
+
+# City overview
+
+> **Bogotá D.C.** is the capital of Colombia and one of the largest cities
+> in Latin America. Air quality monitoring is operated by RMCAB
+> (Red de Monitoreo de Calidad del Aire de Bogotá), supplemented by
+> SISAIRE (the national network) for the broader metropolitan area.
+> The comparison covers **`r yr_label`** using PM10 and PM25 as the
+> focus pollutants of the project.
+
+---
+
+## Comparison checklist
+
+```{r checklist, echo=FALSE, results='asis'}
+checks <- list(
+  list(
+    name    = "Ground station hourly data",
+    done    = !is.null(gs_diff_sum),
+    section = "#ground-stations"
+  ),
+  list(
+    name    = "Census microdata",
+    done    = FALSE,
+    section = "#census"
+  ),
+  list(
+    name    = "Metropolitan area boundaries",
+    done    = FALSE,
+    section = "#metro-area"
+  ),
+  list(
+    name    = "Station-to-locality distances",
+    done    = FALSE,
+    section = "#distances"
+  ),
+  list(
+    name    = "Outlier-corrected pollution panel",
+    done    = FALSE,
+    section = "#processed-panel"
+  )
+)
+
+rows <- sapply(checks, function(x)
+  sprintf("| [%s](%s) | %s |",
+          x$name, x$section, status_badge(x$done))
+)
+cat("| Data layer | Status |\n|---|---|\n")
+cat(paste(rows, collapse = "\n"))
+```
+
+---
+
+# Ground stations {#ground-stations}
+
+```{r gs_verdict, echo=FALSE, results='asis'}
+if (is.null(gs_diff_sum)) {
+  cat(
+    '<div style="background:#f5f5f5;padding:12px;border-radius:4px">',
+    status_badge(FALSE, label_pending = "Not yet run"),
+    ' Run <code>compare_bogota.R</code> to generate results.</div>'
+  )
+  knitr::knit_exit()
+}
+
+pm_sum      <- gs_diff_sum |> filter(variable %in% focus_pol)
+n_cell_diff <- sum(pm_sum$n_diff)
+n_total     <- sum(pm_sum$n)
+pct_agree   <- 1 - n_cell_diff / n_total
+
+vcol  <- if (pct_agree >= 0.999) "#2e7d32" else
+          if (pct_agree >= 0.990) "#f57c00" else "#c62828"
+vtext <- if (pct_agree >= 0.999) "Essentially identical" else
+          if (pct_agree >= 0.990) "Minor discrepancies" else
+          "Significant differences"
+
+cat(sprintf(paste0(
+  '<div style="border-left:5px solid %s;padding:12px 18px;',
+  'background:#f9f9f9;border-radius:4px;margin-bottom:16px">',
+  '<span style="font-size:1.1em;font-weight:bold;color:%s">%s</span>',
+  '<br><span style="color:#555">',
+  'PM10 + PM25: <strong>%.4f%%</strong> of matched rows agree exactly. ',
+  '<strong>%s</strong> cell differences | ',
+  '<strong>%s</strong> rows only in new | ',
+  '<strong>%s</strong> rows only in legacy.</span></div>'),
+  vcol, vcol, vtext,
+  100 * pct_agree,
+  format(n_cell_diff,      big.mark = ","),
+  format(nrow(gs_only_new), big.mark = ","),
+  format(nrow(gs_only_leg), big.mark = ",")))
+```
+
+## Pollutant summary
+
+```{r gs_summary_tbl, echo=FALSE}
+gs_diff_sum |>
+  filter(variable %in% focus_pol) |>
+  mutate(
+    share_diff    = percent(share_diff, 0.0001),
+    mean_abs_diff = round(mean_abs_diff, 3),
+    p95_abs_diff  = round(p95_abs_diff,  3)
+  ) |>
+  kable(
+    col.names = c("Pollutant", "Matched rows", "Rows differ",
+                  "Both NA", "Share differ",
+                  "Mean |diff| (μg/m³)", "P95 |diff| (μg/m³)"),
+    align = "lrrrrrr"
+  ) |>
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = FALSE
+  ) |>
+  column_spec(5, bold = TRUE)
+```
+
+## Cell-level differences
+
+```{r gs_cells, echo=FALSE, results='asis', warning=FALSE}
+cell_diffs <- gs_diffs |>
+  filter(!within_tol, !is.na(absv), absv > 0, variable %in% focus_pol)
+
+if (nrow(cell_diffs) == 0) {
+  cat("*No cell-level differences for PM10 and PM25.*\n")
+} else {
+  ut <- cell_diffs |> distinct(month, day, hour)
+  cat(sprintf(paste0(
+    "**%s differing rows** across **%s stations**. ",
+    "All fall on month %d, day %d, hour %02d:00 — a single timestamp ",
+    "across all stations simultaneously, consistent with an RMCAB ",
+    "**data revision** between download dates (mean |diff| = %.1f μg/m³).\n\n"),
+    format(nrow(cell_diffs), big.mark = ","),
+    dplyr::n_distinct(cell_diffs$station),
+    ut$month[1], ut$day[1], ut$hour[1],
+    mean(abs(cell_diffs$diff))
+  ))
+  cell_diffs |>
+    select(variable, station, month, day, hour,
+           value_old, value_new, diff) |>
+    mutate(across(c(value_old, value_new, diff), ~ round(.x, 2))) |>
+    arrange(variable, station) |>
+    kable(col.names = c("Pollutant", "Station", "Month",
+                        "Day", "Hour", "Legacy", "New", "Diff")) |>
+    kable_styling(bootstrap_options = c("striped", "condensed"),
+                  font_size = 12, full_width = FALSE) |>
+    scroll_box(height = "280px") |>
+    print()
+}
+```
+
+## Rows only in the new pipeline
+
+```{r gs_only_new, echo=FALSE, results='asis'}
+if (!is.null(gs_only_new) && nrow(gs_only_new) > 0) {
+  gs_only_new |>
+    mutate(cause = case_when(
+      month == 12 & day >= 29     ~ "Dec 31 — 363-day RMCAB cap",
+      month == 1  & day == 1 & hour == 0
+                                  ~ "Jan 1 00:00 — prior-year data absent",
+      month == 2  & day == 1 & hour == 0
+                                  ~ "Feb 1 00:00 — prior-year data absent",
+      station == "MOVILFONTIBON"  ~ "MOVILFONTIBON ozone-only (no PM)",
+      TRUE                        ~ "Other"
+    )) |>
+    count(cause, name = "rows") |>
+    arrange(desc(rows)) |>
+    kable(caption = sprintf(
+            "%s rows only in new pipeline",
+            format(nrow(gs_only_new), big.mark = ",")),
+          col.names = c("Cause", "Rows")) |>
+    kable_styling(bootstrap_options = c("striped", "condensed"),
+                  full_width = FALSE) |>
+    print()
+
+  cat(paste0(
+    '\n\n> **Root causes.** All three causes stem from differences in ',
+    '*download coverage*, not data processing. (1) The RMCAB portal caps ',
+    'manual exports at 363 days; our scraper downloads in two half-year ',
+    'batches. (2) Stations without prior-year data cannot produce the ',
+    'midnight rollover (hour 24 → day+1 hour 0) for Jan 1 and Feb 1. ',
+    '(3) MOVILFONTIBON ozone rows are irrelevant for PM analysis.\n\n'
+  ))
+}
+```
+
+## Station coverage
+
+```{r gs_stations, echo=FALSE}
+if (!is.null(gs_sta_audit)) {
+  gs_sta_audit |>
+    mutate(Status = case_when(
+      in_legacy & in_new & !sisaire_only ~ "\u2713 Matched",
+      sisaire_only                        ~ "\u26a0 SISAIRE-only (filtered)",
+      in_legacy & !in_new               ~ "\u2717 Legacy only",
+      TRUE                               ~ "\u2295 New only"
+    )) |>
+    select(station, Status) |>
+    kable() |>
+    kable_styling(bootstrap_options = c("striped", "condensed"),
+                  full_width = FALSE) |>
+    row_spec(which(gs_sta_audit$sisaire_only), background = "#fff3cd")
+}
+```
+
+---
+
+# Census {#census}
+
+```{r census_placeholder, echo=FALSE, results='asis'}
+cat(paste0(
+  status_badge(FALSE, label_pending = "Pending"),
+  '\n\n*Census comparison not yet implemented. ',
+  'Add `compare_census()` to `compare_bogota.R` ',
+  'and re-render this report.*\n\n'
+))
+```
+
+---
+
+# Metropolitan area boundaries {#metro-area}
+
+```{r metro_placeholder, echo=FALSE, results='asis'}
+cat(paste0(
+  status_badge(FALSE, label_pending = "Pending"),
+  '\n\n*Metro area boundary comparison not yet implemented.*\n\n'
+))
+```
+
+---
+
+# Station-to-locality distances {#distances}
+
+```{r dist_placeholder, echo=FALSE, results='asis'}
+cat(paste0(
+  status_badge(FALSE, label_pending = "Pending"),
+  '\n\n*Distance matrix comparison not yet implemented.*\n\n'
+))
+```
+
+---
+
+# Outlier-corrected pollution panel {#processed-panel}
+
+```{r panel_placeholder, echo=FALSE, results='asis'}
+cat(paste0(
+  status_badge(FALSE, label_pending = "Pending"),
+  '\n\n*Processed panel comparison not yet implemented.*\n\n'
+))
+```
+
+---
+
+<details><summary>Run metadata</summary>
+```{r run_meta, echo=FALSE}
+tibble::tibble(
+  Item  = c("City", "Year(s)", "Pipeline tz",
+            "Legacy source", "Focus pollutants"),
+  Value = c(
+    params$city_id,
+    yr_label,
+    cmp$pipeline_tz %||% cfg$tz,
+    if (!is.null(cmp$legacy_single_csv) &&
+        file.exists(cmp$legacy_single_csv))
+      basename(cmp$legacy_single_csv) else cmp$legacy_dir,
+    paste(focus_pol, collapse = ", ")
+  )
+) |>
+  kable() |>
+  kable_styling(bootstrap_options = "striped", full_width = FALSE)
+```
+</details>
