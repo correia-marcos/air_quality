@@ -121,12 +121,14 @@ differences_no_na <- differences %>%
 # Are there big differences?
 big_diff <- differences_no_na %>% 
   filter(absv >= 1) 
-#  Nope!
+#  32
+
+differences_na <- differences |> 
+  filter(within_tol == TRUE)
 
 # Quick check on the missing data for PM10
 differences_na_pm10 <- differences %>%
   filter(is.na(value_old)) %>%
-  filter(year == 2023) %>%
   filter(variable == "pm10")
 
 # Quick check on the missing data for PM2.5
