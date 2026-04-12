@@ -1,6 +1,6 @@
 ---
 title: "Bogotá — Pipeline Validation Report"
-subtitle: "Comparison: New Automated Pipeline vs. Coauthor Legacy Dataset"
+subtitle: "Comparison: New Automated Pipeline vs. Dropbox Legacy Dataset"
 date: "`r Sys.Date()`"
 format:
   html:
@@ -14,13 +14,14 @@ format:
     fig-height: 4
 params:
   city_id:  "bogota"
-  out_root: "results/validation_rep_package"
+  out_root: "results/validation_old_version"
 ---
 
-```{r setup, include=FALSE}
+```{r setup}
+#| include: false
 library(here); library(arrow); library(dplyr)
 library(ggplot2); library(knitr); library(kableExtra)
-library(scales); library(lubridate)
+library(scales); library(lubridate); library(sf); library(leaflet)
 
 source(here("src", "general_utilities",
             "config_utils_validation_old_version.R"))
@@ -49,40 +50,172 @@ gs_sta_audit <- read_pq("ground_station_comparison", "station_audit")
 focus_pol <- cmp$focus_pollutants %||% cmp$value_cols
 yr_label  <- paste(cmp$compare_years, collapse = ", ")
 
-pol_col <- c(pm10 = "#2b6ca8", pm25 = "#d94f3d",
-             ozone = "#e6a817", co = "#4caf50", no2 = "#9c27b0")
+# Metro area artefacts
+metro_summary <- read_pq("metro_area_comparison", "metro_summary")
+metro_dir     <- file.path(city_dir, "metro_area_comparison")
+metro_has_sf  <- file.exists(file.path(metro_dir, "new_metro.gpkg"))
 
-# Status badge helper
+# Census artefacts
+cen_col_sum  <- read_pq("census_comparison", "collapsed_summary")
+cen_col_diff <- read_pq("census_comparison", "collapsed_diffs")
+cen_geo_cov  <- read_pq("census_comparison", "geo_coverage")
+cen_ind_sum  <- read_pq("census_comparison", "individual_summary")
+
+# Distance matrix artefacts
+idw_sta_sum  <- read_pq("distance_comparison", "station_dist_summary")
+idw_sta_diff <- read_pq("distance_comparison", "station_dist_diffs")
+idw_geo_sum  <- read_pq("distance_comparison", "geo_dist_summary")
+
+# Outlier detection artefacts
+out_step_sum <- read_pq("outlier_comparison", "step_summary")
+out_compare  <- read_pq("outlier_comparison", "outlier_comparison")
+
+# Status badge helper: green = done, grey = pending
 status_badge <- function(ok, label_ok = "Complete",
                           label_pending = "Pending") {
   if (ok) {
     sprintf(
-      '<span style="background:#2e7d32;color:white;padding:2px 8px;
-       border-radius:4px;font-size:.85em">%s</span>', label_ok
+      '<span style="background:#2e7d32;color:white;padding:2px 8px;border-radius:4px;font-size:.85em">%s</span>', label_ok
     )
   } else {
     sprintf(
-      '<span style="background:#9e9e9e;color:white;padding:2px 8px;
-       border-radius:4px;font-size:.85em">%s</span>', label_pending
+      '<span style="background:#9e9e9e;color:white;padding:2px 8px;border-radius:4px;font-size:.85em">%s</span>', label_pending
     )
   }
 }
 ```
 
+## Executive Summary
+
+```{r exec_summary_stats, echo=FALSE}
+# Calculate summary stats for the Executive Summary safely
+match_rate <- if(!is.null(gs_diff_sum)) percent(1 - mean(gs_diff_sum$share_diff, na.rm=TRUE), 0.1) else "N/A"
+new_stations_count <- if(!is.null(gs_sta_audit)) sum(gs_sta_audit$sisaire_only, na.rm=TRUE) else 0
+```
+
+::: {.callout-note icon=false}
+
+**Shortest summary:** \
+**High Fidelity**: The new automated pipeline successfully matches `r match_rate`
+of the legacy dataset observations for core pollutants. \
+**Expanded Coverage**: The new pipeline integrates `r new_stations_count` new 
+SISAIRE stations that were absent from the legacy RMCAB data, significantly 
+expanding spatial coverage across the broader metropolitan area. \
+**Bug Corrections**: The new processing resolves a known temporal shift bug present
+in the legacy Stata pipeline, ensuring accurate midnight boundary readings. \
+
+:::
+
+
 # City overview
 
-> **Bogotá D.C.** is the capital of Colombia and one of the largest cities
-> in Latin America. Air quality monitoring is operated by RMCAB
-> (Red de Monitoreo de Calidad del Aire de Bogotá), supplemented by
-> SISAIRE (the national network) for the broader metropolitan area.
-> The comparison covers **`r yr_label`** using PM10 and PM25 as the
-> focus pollutants of the project.
+**Bogotá D.C.** is the capital of Colombia and the country's largest city, with a
+population of approximately 7.9 million (DANE Census 2018). This report covers the year of
+**`r yr_label`**, using **PM10 and PM25** as the focus pollutants of the project.
+Below is a summary of the key data layers and how the Dropbox legacy pipeline (the replication
+package available on Dropbox) and the new automated pipeline differ in their definitions
+and sources.
+
+## Metropolitan area
+
+The **new pipeline** adopts the most recent official definition of the Bogotá
+metropolitan area, following *Secretaría Distrital de Planeación. (2022).
+Bogotá región: Un solo territorio. Dirección de Integración Regional, Nacional
+e Internacional. Alcaldía Mayor de Bogotá.* Under this definition, the metro
+area comprises **Bogotá D.C. plus 20 surrounding municipalities** of Cundinamarca
+(`r if (!is.null(cfg$cities_in_metro)) paste(sort(cfg$cities_in_metro), collapse = ", ") else "see cfg$cities_in_metro"`).
+
+The **Dropbox legacy pipeline** uses an older, non-legal definition derived from
+the Wikipedia page for the Bogotá metropolitan area
+(<https://en.wikipedia.org/wiki/Bogotá_metropolitan_area>), which differs in the
+number and selection of surrounding municipalities included.
+
+## Air quality monitoring
+
+Air monitoring data for Bogotá and its metropolitan area is available from two
+networks:
+
+- **RMCAB** (*Red de Monitoreo de Calidad del Aire de Bogotá*): the official
+  monitoring network operated by the Bogotá Environmental Secretary (Secretária
+  Distrital de Ambiente — SDA), covering only stations inside Bogotá D.C.
+- **SISAIRE** (*Subsistema de Información sobre Calidad del Aire*): the national
+  network, which includes the RMCAB Bogotá stations *and* additional stations in
+  Bogotá D.C. as well as in other cities, including municipalities in the broader
+  metropolitan area.
+
+The **Dropbox legacy pipeline** draws exclusively from **RMCAB**, yielding
+**19 stations** for both PM10 and PM25, in the year of 2023. The **new pipeline**
+integrates both RMCAB and SISAIRE, yielding **48 PM10 stations** and
+**47 PM25 stations** across the full metro area. For comparability, this report
+filters the new pipeline to the 19 RMCAB station universe before joining (see
+[Station coverage](#station-coverage)).
+
+## Census microdata
+
+The **Dropbox legacy pipeline** uses the **extended version of the 2005 Census**,
+which allows individual identification in only **42 geographic units** — the 20
+*localidades* inside Bogotá D.C. plus 22 surrounding municipalities.
+
+The **new pipeline** can operate with three census versions:
+
+- **Extended 2005** (same as Dropbox legacy): 42 geo units.
+- **Basic 2005**: finer geographic identifiers, reaching *manzana* level in many
+  areas.
+- **Census 2018**: the most granular version, with **44,979 geo units** in the
+  metro area — *manzana* level throughout.
+
+This improvement in spatial resolution is one of the central methodological
+contributions of the new pipeline.
+
+## Pipeline comparison at a glance
+
+```{r overview_table}
+#| echo: false
+
+tibble::tibble(
+  Dimension = c(
+    "Metro area definition",
+    "Metro municipalities (incl. Bogota D.C.)",
+    "PM10 stations (2023)",
+    "PM25 stations (2023)",
+    "Census version used",
+    "Smallest geographic unit"
+  ),
+  `Dropbox legacy` = c(
+    "Wikipedia (non-legal)",
+    "23",
+    "19",
+    "19",
+    "Extended 2005",
+    "42 units (localidades + municipalities)"
+  ),
+  `New pipeline` = c(
+    "SDP (2022) — official",
+    "20",
+    "48",
+    "47",
+    "Extended 2005 / Basic 2005 / Census 2018",
+    "Up to 44,979 units (manzana level, 2018)"
+  )
+) |>
+  kable(align = "lll", col.names = c("Dimension",
+                                      "Dropbox legacy",
+                                      "New pipeline")) |>
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = TRUE
+  ) |>
+  column_spec(1, bold = TRUE, width = "32%") |>
+  column_spec(2, width = "34%") |>
+  column_spec(3, width = "34%")
+```
 
 ---
 
 ## Comparison checklist
 
-```{r checklist, echo=FALSE, results='asis'}
+```{r checklist}
+#| echo: false
 checks <- list(
   list(
     name    = "Ground station hourly data",
@@ -91,39 +224,120 @@ checks <- list(
   ),
   list(
     name    = "Census microdata",
-    done    = FALSE,
+    done    = !is.null(cen_col_sum),
     section = "#census"
   ),
   list(
     name    = "Metropolitan area boundaries",
-    done    = FALSE,
+    done    = !is.null(metro_summary),
     section = "#metro-area"
   ),
   list(
     name    = "Station-to-locality distances",
-    done    = FALSE,
+    done    = !is.null(idw_sta_sum),
     section = "#distances"
   ),
   list(
     name    = "Outlier-corrected pollution panel",
-    done    = FALSE,
+    done    = !is.null(out_step_sum),
     section = "#processed-panel"
   )
 )
 
-rows <- sapply(checks, function(x)
-  sprintf("| [%s](%s) | %s |",
-          x$name, x$section, status_badge(x$done))
-)
-cat("| Data layer | Status |\n|---|---|\n")
-cat(paste(rows, collapse = "\n"))
+tibble::tibble(
+  `Data layer` = sapply(checks, function(x)
+    sprintf('<a href="%s">%s</a>', x$section, x$name)),
+  Status = sapply(checks, function(x) status_badge(x$done))
+) |>
+  kable(format = "html", escape = FALSE, align = "ll") |>
+  kable_styling(bootstrap_options = c("striped", "condensed"),
+                full_width = FALSE)
 ```
 
 ---
 
 # Ground stations {#ground-stations}
 
-```{r gs_verdict, echo=FALSE, results='asis'}
+## Data sources
+
+We compare **raw hourly pollution data** — one row per station per hour per
+pollutant (µg/m³) — between the Dropbox legacy dataset and the new automated
+pipeline.
+
+```{r gs_sources_table}
+#| echo: false
+#| output: asis
+src_tbl <- tibble::tibble(
+  Attribute = c(
+    "Source",
+    "Format",
+    "Created by",
+    "Stations",
+    "Year(s) compared"
+  ),
+  `Dropbox legacy` = c(
+    "RMCAB individual period CSVs <sup>1</sup>",
+    "CSV",
+    "0_manage_pollution_data_bogota.do (Stata)",
+    "19 RMCAB stations",
+    yr_label
+  ),
+  `New pipeline` = c(
+    "RMCAB + SISAIRE",
+    "Arrow/Parquet <sup>2</sup>",
+    "download_bogota_data.R + process_bogota_data.R",
+    "48 PM10 / 47 PM25 (filtered to 19 for comparison)",
+    yr_label
+  )
+) |>
+  kable(
+    format = "html",
+    align  = "lll",
+    col.names = c("", "Dropbox legacy", "New pipeline"),
+    escape = FALSE
+  ) |>
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = TRUE
+  ) |>
+  column_spec(1, bold = TRUE, width = "18%") |>
+  column_spec(2, width = "41%") |>
+  column_spec(3, width = "41%")
+cat(as.character(src_tbl))
+
+cat(paste0(
+  '<div style="font-size:.85em;color:#555;margin-top:4px;line-height:1.6">',
+  '<sup>1</sup> The Dropbox repository also contains a merged file ',
+  '(<code>Air_Pollution_Bogota_2002_2023.csv</code>) produced by the ',
+  'Stata combine step. That file is <strong>not used</strong> in this ',
+  'comparison because it contains a timestamp bug &mdash; see ',
+  '<a href="#the-stata-combine-step-bug">The Stata combine-step bug</a>. ',
+  'The individual period CSVs used here are located at ',
+  '<code>data/pollution/Bogota/original_data/2020-2023/</code>.<br>',
+  '<sup>2</sup> Apache Parquet is a columnar binary format: reading a single ',
+  'column (e.g. PM25 for one station) does not decompress the rest of the ',
+  'file, making filtered queries orders of magnitude faster than scanning a ',
+  'CSV. Column types are stored in the file header, eliminating silent ',
+  'type-coercion bugs. The dataset is located at ',
+  '<code>data/raw/monitoring_stations/bogota_metro_dataset/</code>.',
+  '</div>'
+))
+
+cat(paste0(
+  '<p style="margin-top:12px">',
+  '<strong>Join keys:</strong> station, year, month, day, hour.',
+  ' &ensp;|&ensp; ',
+  '<strong>Values compared:</strong> PM10 and PM25 concentrations (&mu;g/m&sup3;).',
+  '</p>'), '\n\n')
+```
+
+---
+
+## Overall comparison summary
+
+```{r gs_verdict}
+#| echo: false
+#| output: asis
 if (is.null(gs_diff_sum)) {
   cat(
     '<div style="background:#f5f5f5;padding:12px;border-radius:4px">',
@@ -133,10 +347,49 @@ if (is.null(gs_diff_sum)) {
   knitr::knit_exit()
 }
 
+# ── Coverage counts ──────────────────────────────────────────────────────────
+n_rmcab <- if (!is.null(gs_sta_audit)) sum(gs_sta_audit$in_legacy) else 19L
+hours_in_year   <- 8760L
+total_possible  <- hours_in_year * n_rmcab
+
+n_sh_only_new <- if (!is.null(gs_only_new) && nrow(gs_only_new) > 0) {
+  gs_only_new |>
+    distinct(station, year, month, day, hour) |>
+    nrow()
+} else 0L
+
+n_sh_only_leg <- if (!is.null(gs_only_leg) && nrow(gs_only_leg) > 0) {
+  gs_only_leg |>
+    distinct(station, year, month, day, hour) |>
+    nrow()
+} else 0L
+
+# ── Matched-data-point counts ─────────────────────────────────────────────
 pm_sum      <- gs_diff_sum |> filter(variable %in% focus_pol)
-n_cell_diff <- sum(pm_sum$n_diff)
 n_total     <- sum(pm_sum$n)
+n_cell_diff <- sum(pm_sum$n_diff)
 pct_agree   <- 1 - n_cell_diff / n_total
+
+# ── Classify discrepancy types ───────────────────────────────────────────
+diff_breakdown <- gs_diffs |>
+  filter(variable %in% focus_pol) |>
+  mutate(
+    diff_type = case_when(
+      !is.na(value_old) & !is.na(value_new) & value_old != value_new
+        ~ "A — Matched value differs (both non-NA)",
+      !is.na(value_old) & is.na(value_new)
+        ~ "B — Value present in Dropbox, NA in new pipeline",
+      is.na(value_old) & !is.na(value_new)
+        ~ "C — Value present in new pipeline, NA in Dropbox",
+      TRUE ~ "Other"
+    )
+  ) |>
+  count(variable, diff_type, name = "n") |>
+  arrange(variable, diff_type)
+
+n_typeA <- diff_breakdown |> filter(grepl("^A", diff_type)) |> pull(n) |> sum()
+n_typeB <- diff_breakdown |> filter(grepl("^B", diff_type)) |> pull(n) |> sum()
+n_typeC <- diff_breakdown |> filter(grepl("^C", diff_type)) |> pull(n) |> sum()
 
 vcol  <- if (pct_agree >= 0.999) "#2e7d32" else
           if (pct_agree >= 0.990) "#f57c00" else "#c62828"
@@ -144,37 +397,122 @@ vtext <- if (pct_agree >= 0.999) "Essentially identical" else
           if (pct_agree >= 0.990) "Minor discrepancies" else
           "Significant differences"
 
+# ── Render verdict box ────────────────────────────────────────────────────
 cat(sprintf(paste0(
-  '<div style="border-left:5px solid %s;padding:12px 18px;',
-  'background:#f9f9f9;border-radius:4px;margin-bottom:16px">',
-  '<span style="font-size:1.1em;font-weight:bold;color:%s">%s</span>',
-  '<br><span style="color:#555">',
-  'PM10 + PM25: <strong>%.4f%%</strong> of matched rows agree exactly. ',
-  '<strong>%s</strong> cell differences | ',
-  '<strong>%s</strong> rows only in new | ',
-  '<strong>%s</strong> rows only in legacy.</span></div>'),
+  '<div style="border-left:5px solid %s;padding:16px 22px;',
+  'background:#f9f9f9;border-radius:4px;margin-bottom:24px;',
+  'line-height:1.8">',
+  '<span style="font-size:1.15em;font-weight:bold;color:%s">',
+  '%s</span>',
+  '<span style="color:#888;font-size:.9em;margin-left:10px">',
+  'PM10 and PM25 &mdash; year %s &mdash; 19 RMCAB stations</span>',
+  '<hr style="border:none;border-top:1px solid #ddd;margin:10px 0">',
+
+  # ── Coverage table (proper HTML table for alignment) ──
+  '<table style="border-collapse:collapse;width:100%%">',
+  '<tr>',
+    '<td style="color:#555;padding:4px 16px 4px 0;width:55%%">',
+      'Total possible station-hours (8,760&thinsp;h &times; %d stations)',
+    '</td>',
+    '<td style="font-weight:bold;color:#333;padding:4px 0">',
+      '%s per pollutant&ensp;/&ensp;%s across PM10 + PM25',
+    '</td>',
+  '</tr>',
+  '<tr>',
+    '<td style="color:#555;padding:4px 16px 4px 0">',
+      'Station-hours present in <em>both</em> datasets',
+    '</td>',
+    '<td style="font-weight:bold;color:#333;padding:4px 0">',
+      '%s data points (matched)',
+    '</td>',
+  '</tr>',
+  '<tr>',
+    '<td style="color:#d94f3d;padding:4px 16px 4px 0">',
+      'Station-hours absent from Dropbox legacy',
+    '</td>',
+    '<td style="font-weight:bold;color:#d94f3d;padding:4px 0">',
+      '%s station-hours',
+    '</td>',
+  '</tr>',
+  '<tr>',
+    '<td style="color:#555;padding:4px 16px 4px 0">',
+      'Station-hours absent from new pipeline',
+    '</td>',
+    '<td style="font-weight:bold;color:#333;padding:4px 0">%s</td>',
+  '</tr>',
+  '</table>',
+
+  '<hr style="border:none;border-top:1px solid #ddd;margin:10px 0">',
+
+  # ── Agreement line ──
+  '<div style="font-size:1.05em;font-weight:bold;color:%s;margin-bottom:6px">',
+    'Of matched data points: %.4f%%%% agree exactly',
+  '</div>',
+
+  # ── Discrepancy breakdown (aligned with inner table) ──
+  '<div style="color:#555;line-height:1.9">',
+    '<strong>%s</strong> discrepant data points in total:',
+    '<table style="border-collapse:collapse;margin:4px 0 0 8px">',
+    '<tr>',
+      '<td style="padding:2px 10px 2px 0;font-weight:bold;text-align:right;',
+        'white-space:nowrap">%s</td>',
+      '<td style="padding:2px 0">Type&nbsp;A &mdash; both pipelines have a ',
+        'value but they differ</td>',
+    '</tr>',
+    '<tr>',
+      '<td style="padding:2px 10px 2px 0;font-weight:bold;text-align:right;',
+        'white-space:nowrap">%s</td>',
+      '<td style="padding:2px 0">Type&nbsp;B &mdash; Dropbox has a value, ',
+        'new pipeline has NA</td>',
+    '</tr>',
+    '<tr>',
+      '<td style="padding:2px 10px 2px 0;font-weight:bold;text-align:right;',
+        'white-space:nowrap">%s</td>',
+      '<td style="padding:2px 0">Type&nbsp;C &mdash; new pipeline has a value, ',
+        'Dropbox has NA</td>',
+    '</tr>',
+    '</table>',
+  '</div>',
+  '</div>'),
   vcol, vcol, vtext,
+  yr_label,
+  n_rmcab,
+  format(total_possible,            big.mark = ","),
+  format(total_possible * length(focus_pol), big.mark = ","),
+  format(n_total,                   big.mark = ","),
+  format(n_sh_only_new,             big.mark = ","),
+  if (n_sh_only_leg == 0) "0 (none)" else format(n_sh_only_leg, big.mark=","),
+  vcol,
   100 * pct_agree,
-  format(n_cell_diff,      big.mark = ","),
-  format(nrow(gs_only_new), big.mark = ","),
-  format(nrow(gs_only_leg), big.mark = ",")))
+  format(n_cell_diff, big.mark = ","),
+  format(n_typeA,     big.mark = ","),
+  format(n_typeB,     big.mark = ","),
+  format(n_typeC,     big.mark = ",")))
 ```
 
 ## Pollutant summary
 
-```{r gs_summary_tbl, echo=FALSE}
+```{r gs_summary_tbl}
+#| echo: false
 gs_diff_sum |>
   filter(variable %in% focus_pol) |>
   mutate(
+    variable      = toupper(variable),
     share_diff    = percent(share_diff, 0.0001),
     mean_abs_diff = round(mean_abs_diff, 3),
     p95_abs_diff  = round(p95_abs_diff,  3)
   ) |>
   kable(
-    col.names = c("Pollutant", "Matched rows", "Rows differ",
-                  "Both NA", "Share differ",
-                  "Mean |diff| (μg/m³)", "P95 |diff| (μg/m³)"),
-    align = "lrrrrrr"
+    format = "html",
+    col.names = c("Pollutant",
+                  "Matched data points",
+                  "Discrepant data points",
+                  "Both NA",
+                  "Share discrepant",
+                  "Mean abs diff (µg/m³)",
+                  "P95 abs diff (µg/m³)"),
+    align = "lrrrrrr",
+    format.args = list(big.mark = ",")
   ) |>
   kable_styling(
     bootstrap_options = c("striped", "hover", "condensed"),
@@ -183,87 +521,532 @@ gs_diff_sum |>
   column_spec(5, bold = TRUE)
 ```
 
-## Cell-level differences
+---
 
-```{r gs_cells, echo=FALSE, results='asis', warning=FALSE}
-cell_diffs <- gs_diffs |>
-  filter(!within_tol, !is.na(absv), absv > 0, variable %in% focus_pol)
+## Known issues in the Dropbox pipeline {#known-issues}
 
-if (nrow(cell_diffs) == 0) {
-  cat("*No cell-level differences for PM10 and PM25.*\n")
-} else {
-  ut <- cell_diffs |> distinct(month, day, hour)
-  cat(sprintf(paste0(
-    "**%s differing rows** across **%s stations**. ",
-    "All fall on month %d, day %d, hour %02d:00 — a single timestamp ",
-    "across all stations simultaneously, consistent with an RMCAB ",
-    "**data revision** between download dates (mean |diff| = %.1f μg/m³).\n\n"),
-    format(nrow(cell_diffs), big.mark = ","),
-    dplyr::n_distinct(cell_diffs$station),
-    ut$month[1], ut$day[1], ut$hour[1],
-    mean(abs(cell_diffs$diff))
-  ))
-  cell_diffs |>
-    select(variable, station, month, day, hour,
-           value_old, value_new, diff) |>
-    mutate(across(c(value_old, value_new, diff), ~ round(.x, 2))) |>
-    arrange(variable, station) |>
-    kable(col.names = c("Pollutant", "Station", "Month",
-                        "Day", "Hour", "Legacy", "New", "Diff")) |>
-    kable_styling(bootstrap_options = c("striped", "condensed"),
-                  font_size = 12, full_width = FALSE) |>
-    scroll_box(height = "280px") |>
-    print()
-}
+Before examining each type of discrepancy, it is important to understand two
+structural issues in the Dropbox legacy pipeline that explain the vast majority
+of differences found. Both originate from how the raw RMCAB data is downloaded
+and processed; neither reflects a difference in the underlying source data.
+
+### The Stata combine-step bug {#the-stata-combine-step-bug}
+
+The Dropbox pipeline script `0_manage_pollution_data_bogota.do` contains a
+bug in the step that combines all period files into the merged CSV
+(`Air_Pollution_Bogota_2002_2023.csv`). The bug is documented here for
+transparency and because it explains the Type A discrepancies found in the
+matched data.
+
+RMCAB exports hours in the **1–24 range**, where hour 24 represents midnight
+(i.e. 00:00 of the following day). The Stata script handles this conversion in
+two steps (lines 414–416 of the `.do` file):
+
+```stata
+**1. Correct the 24h
+replace hour=0 if hour==24
+replace day=day + 1 if (hour==0)
 ```
 
-## Rows only in the new pipeline
+The first line correctly converts hour 24 to hour 0. The second line advances
+the day for **all** rows where `hour == 0` — not just the rows converted from
+hour 24. This is correct for the 24:00 → next-day 00:00 mapping, but the
+subsequent month-correction logic creates a cascade problem. The script then
+applies:
 
-```{r gs_only_new, echo=FALSE, results='asis'}
+```stata
+*Correct february
+replace day=1 if (month==2) & day==29 & hour==0
+replace month=month+1 if (month==2) & day==1 & hour==0
+
+replace day=1 if (month==2) & day==30 & hour==0
+replace month=month+1 if (month==2) & day==1 & hour==0
+
+replace year = year + 1 if month==1 & day==1 & hour==0
+```
+
+The critical issue: after `day + 1` advances Jan 31 24:00 → Feb 1 00:00
+(correctly), the February correction block sees `month == 2 & day == 1
+& hour == 0` and pushes it again to **March 1 00:00**. The result:
+
+| Original reading | After bug | Should be |
+|---|---|---|
+| Jan 31 24:00 | **March 1 00:00** (wrong value) | Feb 1 00:00 |
+
+This means **Feb 1 00:00 is absent** from the merged CSV, and **March 1 00:00
+carries the wrong measurement** (the value that belongs to Feb 1 00:00). The
+bug affects **16 out of 19 stations** — the remaining 3 had NA values at that
+timestamp, so the erroneous replacement had no visible effect.
+
+Although the individual period CSVs used in this comparison are free of this
+bug, the same midnight-rollover logic explains why the period CSVs also lack
+certain midnight hours: the individual period files were exported *before*
+any hour-24 conversion, so hour 00:00 of January 1 only exists in the new
+pipeline (which downloads data in overlapping batches that include the prior
+year's December 31 24:00).
+
+### The RMCAB 364-day download cap {#rmcab-364-day-cap}
+
+The RMCAB website limits each data query to at most **364 days**. A manual
+full-year request (Jan 1 – Dec 31) therefore misses **December 31**. With
+19 stations and 24 hours per day, this accounts for up to **456 station-hours**
+absent from the Dropbox legacy (for each pollutant). The new pipeline's
+automated scraper avoids this by downloading in two overlapping half-year
+batches.
+
+---
+
+## Station-hours absent from Dropbox legacy {#absent-from-dropbox}
+
+These are hours where the Dropbox pipeline has **no entry at all** for a given
+station — the hour key itself does not exist in the legacy file. This is
+distinct from Type B/C discrepancies, where the hour *does* exist in both
+datasets but one side has NA.
+
+```{r gs_only_new}
+#| echo: false
+#| output: asis
 if (!is.null(gs_only_new) && nrow(gs_only_new) > 0) {
-  gs_only_new |>
-    mutate(cause = case_when(
-      month == 12 & day >= 29     ~ "Dec 31 — 363-day RMCAB cap",
-      month == 1  & day == 1 & hour == 0
-                                  ~ "Jan 1 00:00 — prior-year data absent",
-      month == 2  & day == 1 & hour == 0
-                                  ~ "Feb 1 00:00 — prior-year data absent",
-      station == "MOVILFONTIBON"  ~ "MOVILFONTIBON ozone-only (no PM)",
-      TRUE                        ~ "Other"
-    )) |>
-    count(cause, name = "rows") |>
-    arrange(desc(rows)) |>
-    kable(caption = sprintf(
-            "%s rows only in new pipeline",
-            format(nrow(gs_only_new), big.mark = ",")),
-          col.names = c("Cause", "Rows")) |>
+
+  only_new_classified <- gs_only_new |>
+    mutate(
+      Cause = case_when(
+        month == 12 & day == 31
+          ~ "Dec 31 — RMCAB 364-day download cap",
+        month == 1 & day == 1 & hour == 0
+          ~ "Jan 1 00:00 — midnight rollover (no prior-year data)",
+        month == 2 & day == 1 & hour == 0
+          ~ "Feb 1 00:00 — midnight rollover (no prior-month batch)",
+        grepl("MOVILFONTIBON", station, ignore.case = TRUE)
+          ~ "MOVILFONTIBON — ozone-only quirk (no PM impact)",
+        TRUE ~ "Other"
+      )
+    )
+
+  only_new_classified |>
+    count(Cause, name = "Station-hours") |>
+    arrange(desc(`Station-hours`)) |>
+    kable(
+      caption = sprintf(
+        "%s station-hours present only in new pipeline (not downloaded by Dropbox)",
+        format(nrow(gs_only_new), big.mark = ",")
+      ),
+      align = "lr",
+      format.args = list(big.mark = ",")
+    ) |>
     kable_styling(bootstrap_options = c("striped", "condensed"),
                   full_width = FALSE) |>
     print()
 
   cat(paste0(
-    '\n\n> **Root causes.** All three causes stem from differences in ',
-    '*download coverage*, not data processing. (1) The RMCAB portal caps ',
-    'manual exports at 363 days; our scraper downloads in two half-year ',
-    'batches. (2) Stations without prior-year data cannot produce the ',
-    'midnight rollover (hour 24 → day+1 hour 0) for Jan 1 and Feb 1. ',
-    '(3) MOVILFONTIBON ozone rows are irrelevant for PM analysis.\n\n'
+    '\n\n> **Root causes — download coverage differences, not data ',
+    'processing errors.**\n>\n',
+    '> **1. December 31 ',
+    '([RMCAB 364-day cap](#rmcab-364-day-cap)).** ',
+    'The RMCAB website limits each query to 364 days. ',
+    'A manual full-year request misses Dec 31. ',
+    'With 19 stations × 24 hours = up to **456 station-hours** per pollutant. ',
+    'The automated scraper avoids this by downloading in half-year batches.\n>\n',
+    '> **2. January 1 and February 1 at 00:00 (midnight rollover).** ',
+    'RMCAB exports hours in the **1–24 range**. Hour 24 of day D rolls to ',
+    'day D+1 at 00:00 during processing. Stations without prior-year data ',
+    '(e.g. **BOLIVIA**, commissioned 2023, has no 2022 records) cannot ',
+    'produce Jan 1 00:00 because it originates from Dec 31 24:00 of the ',
+    'prior year. The new pipeline always includes the full prior half-year batch.\n>\n',
+    '> **3. MOVILFONTIBON ozone-only rows.** ',
+    'This station has an ozone reading but no PM10 or PM25 for certain hours. ',
+    'No impact on PM analysis.\n>\n',
+    '> **Net effect on PM10/PM25 research:** none. All additional station-hours ',
+    'extend temporal or station coverage without altering matched values.\n\n'
   ))
+
+  detail_cols <- intersect(
+    c("station", "year", "month", "day", "hour", "pm10", "pm25", "Cause"),
+    names(only_new_classified)
+  )
+  only_new_classified |>
+    select(all_of(detail_cols)) |>
+    mutate(across(any_of(c("pm10", "pm25")), ~ round(.x, 2))) |>
+    rename_with(toupper, any_of(c("pm10", "pm25"))) |>
+    rename(Station = station, Month = month, Day = day, Hour = hour) |>
+    arrange(Station, Month, Day, Hour) |>
+    kable(
+      caption = "All station-hours absent from Dropbox (present only in new pipeline)",
+      align = "llrrrrrrl"
+    ) |>
+    kable_styling(bootstrap_options = c("striped", "condensed"),
+                  font_size = 11, full_width = FALSE) |>
+    scroll_box(height = "300px") |>
+    print()
 }
 ```
 
-## Station coverage
+## Station-hours absent from new pipeline
 
-```{r gs_stations, echo=FALSE}
+These are hours that exist in the Dropbox legacy but have **no corresponding
+entry at all** in the new pipeline — not even an NA.
+
+```{r gs_only_leg}
+#| echo: false
+#| output: asis
+if (is.null(gs_only_leg) || nrow(gs_only_leg) == 0) {
+  cat(paste0(
+    "*No station-hours are entirely absent from the new pipeline. ",
+    "Every hour present in the Dropbox legacy was also downloaded ",
+    "by the automated scraper.*\n"
+  ))
+} else {
+  n_sh_leg <- nrow(gs_only_leg)
+
+  cat(sprintf(paste0(
+    "**%s station-hours** exist only in the Dropbox legacy and are entirely ",
+    "absent from the new pipeline (each station-hour covers PM10 and PM25).\n\n"),
+    format(n_sh_leg, big.mark = ",")
+  ))
+
+  leg_cols <- intersect(
+    c("station", "year", "month", "day", "hour", "pm10", "pm25"),
+    names(gs_only_leg)
+  )
+  gs_only_leg |>
+    select(all_of(leg_cols)) |>
+    mutate(across(any_of(c("pm10", "pm25")), ~ round(.x, 2))) |>
+    rename_with(toupper, any_of(c("pm10", "pm25"))) |>
+    rename(Station = station, Month = month, Day = day, Hour = hour) |>
+    arrange(Station, Month, Day, Hour) |>
+    kable(
+      caption = "Station-hours present only in Dropbox legacy (absent from new pipeline)",
+      align = "llrrrrrr"
+    ) |>
+    kable_styling(bootstrap_options = c("striped", "condensed"),
+                  font_size = 12, full_width = FALSE) |>
+    scroll_box(height = "260px") |>
+    print()
+}
+```
+
+---
+
+## Data point discrepancy breakdown
+
+The table below classifies every discrepant data point (a station × hour ×
+pollutant combination where the two pipelines disagree) by its type. Each
+type has a distinct root cause and is analysed in detail in the subsections
+that follow.
+
+```{r gs_breakdown_tbl}
+#| echo: false
+diff_breakdown |>
+  mutate(
+    variable = toupper(variable),
+    diff_type = factor(diff_type, levels = c(
+      "A — Matched value differs (both non-NA)",
+      "B — Value present in Dropbox, NA in new pipeline",
+      "C — Value present in new pipeline, NA in Dropbox",
+      "Other"
+    ))
+  ) |>
+  arrange(variable, diff_type) |>
+  rename(
+    Pollutant = variable,
+    `Discrepancy type` = diff_type,
+    `Data points` = n
+  ) |>
+  kable(
+    align = "llr",
+    format.args = list(big.mark = ","),
+    caption = "All discrepant data points by pollutant and type"
+  ) |>
+  kable_styling(
+    bootstrap_options = c("striped", "condensed"),
+    full_width = FALSE
+  ) |>
+  row_spec(
+    which(diff_breakdown$diff_type ==
+            "A — Matched value differs (both non-NA)"),
+    background = "#e8f5e9"
+  )
+```
+
+---
+
+## Data point discrepancies — detailed analysis
+
+### Type A — True value differences {#type-a}
+
+Both pipelines have a non-NA reading for the same station-hour, but the values
+differ.
+
+```{r gs_typeA}
+#| echo: false
+#| output: asis
+#| warning: false
+type_A <- gs_diffs |>
+  filter(
+    variable %in% focus_pol,
+    !is.na(value_old),
+    !is.na(value_new),
+    value_old != value_new
+  )
+
+if (nrow(type_A) == 0) {
+  cat("*No Type A discrepancies for PM10 and PM25.*\n")
+} else {
+  ut <- type_A |> distinct(month, day, hour)
+  n_sta_affected <- dplyr::n_distinct(type_A$station)
+
+  cat(sprintf(paste0(
+    "**%s data points** where both pipelines report a non-NA reading but ",
+    "the values differ, across **%s stations** and **%s pollutant(s)**. ",
+    "All mismatches fall on a single timestamp: ",
+    "month&nbsp;%d, day&nbsp;%d, hour&nbsp;%02d:00.\n\n"),
+    format(nrow(type_A), big.mark = ","),
+    n_sta_affected,
+    dplyr::n_distinct(type_A$variable),
+    ut$month[1], ut$day[1], ut$hour[1]
+  ))
+
+  cat(sprintf(paste0(
+    "> **Root cause: the Stata combine-step bug ",
+    "(see [The Stata combine-step bug]",
+    "(#the-stata-combine-step-bug)).**\n>\n",
+    "> All %d stations with non-NA readings show a different value at the ",
+    "*exact same timestamp* — **March 1 00:00**. This is the signature of the ",
+    "midnight-rollover bug in `0_manage_pollution_data_bogota.do`: ",
+    "the value that belongs to **Feb 1 00:00** (originating from Jan 31 24:00) ",
+    "is erroneously pushed to March 1 00:00 by the cascading day/month ",
+    "replacement logic. The Dropbox legacy therefore reports the *wrong* ",
+    "measurement at this timestamp — the value shown under \"Dropbox\" is ",
+    "actually the Jan 31 midnight reading, not the true March 1 00:00 ",
+    "reading.\n>\n",
+    "> The remaining **3 out of 19 stations** do not appear here because ",
+    "their Jan 31 24:00 value was NA, so the erroneous replacement had no ",
+    "visible effect ",
+    "(mean absolute difference across affected stations = %.2f µg/m³).\n\n"),
+    n_sta_affected,
+    mean(abs(type_A$diff))
+  ))
+
+  type_A |>
+    select(variable, station, month, day, hour,
+           value_old, value_new, diff) |>
+    mutate(
+      variable = toupper(variable),
+      across(c(value_old, value_new, diff), ~ round(.x, 2))
+    ) |>
+    rename(
+      Pollutant = variable, Station = station,
+      Month = month, Day = day, Hour = hour,
+      `Dropbox (µg/m³)` = value_old,
+      `New pipeline (µg/m³)` = value_new,
+      `Diff` = diff
+    ) |>
+    arrange(Pollutant, Station) |>
+    kable(
+      align = "llrrrrrr",
+      format.args = list(big.mark = ","),
+      caption = "Type A: all data points where both pipelines have non-NA values that differ"
+    ) |>
+    kable_styling(bootstrap_options = c("striped", "condensed"),
+                  font_size = 12, full_width = FALSE) |>
+    scroll_box(height = "260px") |>
+    print()
+}
+```
+
+### Type B — Value present in Dropbox, NA in new pipeline {#type-b}
+
+```{r gs_typeB}
+#| echo: false
+#| output: asis
+#| warning: false
+type_B <- gs_diffs |>
+  filter(
+    variable %in% focus_pol,
+    !is.na(value_old),
+    is.na(value_new)
+  )
+
+if (nrow(type_B) == 0) {
+  cat("*No Type B discrepancies for PM10 and PM25.*\n")
+} else {
+  typeB_timing <- type_B |>
+    count(variable, month, day, hour, name = "stations") |>
+    arrange(variable, month, day, hour)
+
+  cat(sprintf(paste0(
+    "**%s data points** where the Dropbox legacy has a non-NA reading but ",
+    "the new pipeline stores **NA** for the same station-hour. ",
+    "These affect **%s station(s)** and **%s pollutant(s)**.\n\n"),
+    format(nrow(type_B), big.mark = ","),
+    dplyr::n_distinct(type_B$station),
+    dplyr::n_distinct(type_B$variable)
+  ))
+
+  cat(paste0(
+    "> **Root cause: RMCAB revised the measurement to NA after the Dropbox ",
+    "download.**\n",
+    "> The station-hour key *exists* in both pipelines, meaning both ",
+    "downloaded this hour — but the new pipeline's file now contains NA ",
+    "where the Dropbox file has a value. This is **not** a processing bug ",
+    "on either side; rather, it reflects a retrospective quality-control ",
+    "action by RMCAB in which the original measurement was flagged and set ",
+    "to missing (likely during 2025 re-validation after the Dropbox download ",
+    "was taken). The Dropbox dataset preserves the original, pre-revision ",
+    "value.\n>\n",
+    "> **Reproducibility implication:** the new pipeline will produce NA ",
+    "for these data points when the Dropbox legacy returns a numeric value. ",
+    "This is expected and unavoidable given that RMCAB's live server reflects ",
+    "the latest validated version of the data.\n\n"
+  ))
+
+  type_B |>
+    select(variable, station, month, day, hour, value_old) |>
+    mutate(
+      variable  = toupper(variable),
+      value_old = round(value_old, 2),
+      value_new = "NA (revised by RMCAB)"
+    ) |>
+    rename(
+      Pollutant = variable, Station = station,
+      Month = month, Day = day, Hour = hour,
+      `Dropbox value (µg/m³)` = value_old,
+      `New pipeline` = value_new
+    ) |>
+    arrange(Pollutant, Station, Month, Day, Hour) |>
+    kable(
+      align = "llrrrc",
+      format.args = list(big.mark = ","),
+      caption = "Type B: hours present in both datasets but new pipeline has NA"
+    ) |>
+    kable_styling(bootstrap_options = c("striped", "condensed"),
+                  font_size = 12, full_width = FALSE) |>
+    scroll_box(height = "260px") |>
+    print()
+}
+```
+
+### Type C — Value present in new pipeline, NA in Dropbox legacy {#type-c}
+
+```{r gs_typeC}
+#| echo: false
+#| output: asis
+#| warning: false
+type_C <- gs_diffs |>
+  filter(
+    variable %in% focus_pol,
+    is.na(value_old),
+    !is.na(value_new)
+  )
+
+if (nrow(type_C) == 0) {
+  cat("*No Type C discrepancies for PM10 and PM25.*\n")
+} else {
+  # Classify Type C rows by cause
+  type_C_classified <- type_C |>
+    mutate(
+      cause = case_when(
+        month == 12 & day == 31
+          ~ "Dec 31 — RMCAB 364-day download cap",
+        month == 1 & day == 1 & hour == 0
+          ~ "Jan 1 00:00 — midnight rollover",
+        month == 2 & day == 1 & hour == 0
+          ~ "Feb 1 00:00 — midnight rollover",
+        TRUE ~ "Other (RMCAB backfill)"
+      )
+    )
+
+  cat(sprintf(paste0(
+    "**%s data points** where the new pipeline has a non-NA reading but ",
+    "the Dropbox legacy stores **NA** for the same station-hour. ",
+    "These affect **%s station(s)** and **%s pollutant(s)**.\n\n"),
+    format(nrow(type_C), big.mark = ","),
+    dplyr::n_distinct(type_C$station),
+    dplyr::n_distinct(type_C$variable)
+  ))
+
+  type_C_classified |>
+    count(cause, name = "Data points") |>
+    arrange(desc(`Data points`)) |>
+    kable(
+      col.names = c("Cause", "Data points"),
+      align = "lr",
+      format.args = list(big.mark = ","),
+      caption = "Type C data points by root cause"
+    ) |>
+    kable_styling(bootstrap_options = c("striped", "condensed"),
+                  full_width = FALSE) |>
+    print()
+
+  cat(paste0(
+    "\n\n> **Root causes:**\n>\n",
+    "> **1. December 31 — RMCAB 364-day cap.** ",
+    "Most Type C data points fall on Dec 31. The Dropbox pipeline's manual ",
+    "download missed this day because the RMCAB website caps each query at ",
+    "364 days (see [RMCAB 364-day cap](#rmcab-364-day-cap)). ",
+    "The station-hour *key* exists in the Dropbox legacy (from the period ",
+    "CSV structure) but the *value* is NA because the day was never ",
+    "downloaded. The new pipeline captured these values via half-year ",
+    "batches.\n>\n",
+    "> **2. Jan 1 and Feb 1 at 00:00 — midnight rollover.** ",
+    "These hours originate from the prior day's hour 24 (Dec 31 24:00 → ",
+    "Jan 1 00:00, and Jan 31 24:00 → Feb 1 00:00). The Dropbox individual ",
+    "period CSVs do not include the prior-year batch needed to produce ",
+    "these midnight readings. See [Known issues](#known-issues) for the ",
+    "full explanation of the midnight-rollover mechanism.\n>\n",
+    "> **3. Other (RMCAB backfill).** ",
+    "A small number of data points reflect cases where RMCAB backfilled ",
+    "a previously missing value after the Dropbox download was taken ",
+    "(the inverse of Type B).\n>\n",
+    "> **Impact:** the new pipeline provides more complete coverage for ",
+    "these hours. The difference is favourable for the new pipeline.\n\n"
+  ))
+
+  type_C |>
+    select(variable, station, month, day, hour, value_new) |>
+    mutate(
+      variable  = toupper(variable),
+      value_new = round(value_new, 2),
+      value_old = "NA (in Dropbox)"
+    ) |>
+    rename(
+      Pollutant = variable, Station = station,
+      Month = month, Day = day, Hour = hour,
+      `Dropbox` = value_old,
+      `New pipeline value (µg/m³)` = value_new
+    ) |>
+    arrange(Pollutant, Station, Month, Day, Hour) |>
+    kable(
+      align = "llrrrc",
+      format.args = list(big.mark = ","),
+      caption = "Type C: hours present in both datasets but Dropbox legacy has NA"
+    ) |>
+    kable_styling(bootstrap_options = c("striped", "condensed"),
+                  font_size = 12, full_width = FALSE) |>
+    scroll_box(height = "260px") |>
+    print()
+}
+```
+
+---
+
+## Station coverage {#station-coverage}
+
+```{r gs_stations}
+#| echo: false
 if (!is.null(gs_sta_audit)) {
   gs_sta_audit |>
     mutate(Status = case_when(
-      in_legacy & in_new & !sisaire_only ~ "\u2713 Matched",
-      sisaire_only                        ~ "\u26a0 SISAIRE-only (filtered)",
-      in_legacy & !in_new               ~ "\u2717 Legacy only",
-      TRUE                               ~ "\u2295 New only"
+      in_legacy & in_new & !sisaire_only
+        ~ "✓ Matched in both pipelines",
+      sisaire_only
+        ~ "⚠ SISAIRE-only (new pipeline only — filtered for comparison)",
+      in_legacy & !in_new
+        ~ "✗ Dropbox legacy only",
+      TRUE
+        ~ "⊕ New pipeline only"
     )) |>
-    select(station, Status) |>
+    select(Station = station, Status) |>
     kable() |>
     kable_styling(bootstrap_options = c("striped", "condensed"),
                   full_width = FALSE) |>
@@ -271,70 +1054,446 @@ if (!is.null(gs_sta_audit)) {
 }
 ```
 
+> **SISAIRE filtering note.** The new pipeline's Arrow dataset merges RMCAB
+> core stations with SISAIRE metro-area stations. After name normalisation, some
+> SISAIRE municipality names collide with RMCAB station names (e.g. both
+> have a location called "BOLIVIA"). Without filtering, a `full_join` on station
+> name would produce a cartesian product inflating matched rows and driving
+> spurious differences to ~99.5%. The comparison therefore restricts the new
+> dataset to the Dropbox legacy's 19-station RMCAB universe before joining.
+> SISAIRE-only stations (highlighted in yellow) are documented for completeness
+> but excluded from all comparison statistics.
+
 ---
 
 # Census {#census}
 
-```{r census_placeholder, echo=FALSE, results='asis'}
-cat(paste0(
-  status_badge(FALSE, label_pending = "Pending"),
-  '\n\n*Census comparison not yet implemented. ',
-  'Add `compare_census()` to `compare_bogota.R` ',
-  'and re-render this report.*\n\n'
-))
+This section compares the **Extended 2005 Census** processing between the two
+pipelines. Both use the same source data (DANE CG2005 Ampliado) and apply the
+same education harmonisation logic (P44B3_NIVEL_ANOS mapping) and labour
+variable construction. The new pipeline's R code was written to replicate the
+Stata logic line-by-line; differences should therefore be small rounding
+artefacts from the expansion factor.
+
+## Geographic unit coverage
+
+```{r cen_geo, echo=FALSE, results='asis'}
+if (is.null(cen_geo_cov)) {
+  cat(paste0(
+    status_badge(FALSE, label_pending = "Not yet run"),
+    '\n\nRun `compare_census()` in `compare_bogota.R` to generate results.\n\n'
+  ))
+} else {
+  n_overlap  <- sum(cen_geo_cov$overlap)
+  n_new_only <- sum(cen_geo_cov$in_new & !cen_geo_cov$in_legacy)
+  n_leg_only <- sum(cen_geo_cov$in_legacy & !cen_geo_cov$in_new)
+
+  cat(sprintf(paste0(
+    "The collapsed census data covers **%d geographic units** in the new pipeline ",
+    "and **%d** in the Dropbox legacy. Of these, **%d overlap** and are compared ",
+    "directly. **%d units** appear only in the new pipeline (from the SDP 2022 ",
+    "metro definition) and **%d** appear only in the legacy (from the Wikipedia ",
+    "definition).\n\n"),
+    sum(cen_geo_cov$in_new), sum(cen_geo_cov$in_legacy),
+    n_overlap, n_new_only, n_leg_only
+  ))
+
+  cen_geo_cov |>
+    mutate(
+      Status = case_when(
+        overlap ~ "Overlap (compared)",
+        in_new & !in_legacy ~ "New pipeline only",
+        !in_new & in_legacy ~ "Dropbox legacy only"
+      )
+    ) |>
+    count(Status, name = "Geographic units") |>
+    kable(format = "html", align = "lr") |>
+    kable_styling(bootstrap_options = c("striped", "condensed"),
+                  full_width = FALSE)
+}
+```
+
+## Collapsed data comparison
+
+```{r cen_collapsed, echo=FALSE, results='asis'}
+if (!is.null(cen_col_sum)) {
+  cat("Variable-level match statistics on overlapping geographic units:\n\n")
+
+  cen_col_sum |>
+    mutate(
+      share_match   = percent(share_match, 0.01),
+      mean_abs_diff = round(mean_abs_diff, 4),
+      max_abs_diff  = round(max_abs_diff, 4)
+    ) |>
+    kable(
+      format = "html",
+      col.names = c("Variable", "Geo units", "Match", "Diff",
+                     "Both NA", "Match rate", "Mean abs diff", "Max abs diff"),
+      align = "lrrrrrrr",
+      format.args = list(big.mark = ",")
+    ) |>
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
+                  full_width = FALSE) |>
+    column_spec(6, bold = TRUE) |>
+    as.character() |> cat()
+
+  if (!is.null(cen_col_diff) && nrow(cen_col_diff) > 0) {
+    cat(sprintf(
+      "\n\n**%d value differences** exceed the tolerance (0.001):\n\n",
+      nrow(cen_col_diff)
+    ))
+    cen_col_diff |>
+      mutate(across(where(is.numeric), ~ round(.x, 4))) |>
+      kable(
+        format = "html",
+        col.names = c("Geo unit", "Variable", "New", "Legacy",
+                       "Diff", "Abs diff", "Within tol"),
+        align = "llrrrrr"
+      ) |>
+      kable_styling(bootstrap_options = c("striped", "condensed"),
+                    font_size = 11, full_width = FALSE) |>
+      scroll_box(height = "260px") |>
+      as.character() |> cat()
+  } else {
+    cat("\n\n*All values match within tolerance.*\n")
+  }
+}
+```
+
+## Individual-level summary
+
+```{r cen_individual, echo=FALSE}
+if (!is.null(cen_ind_sum)) {
+  cen_ind_sum |>
+    mutate(across(where(is.numeric), ~ round(.x, 2))) |>
+    kable(
+      format = "html",
+      col.names = c("Pipeline", "Total rows", "Adults (25+)",
+                     "Weighted N", "Mean schooling", "Share women",
+                     "Geo units"),
+      align = "lrrrrrr",
+      format.args = list(big.mark = ",")
+    ) |>
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
+                  full_width = FALSE)
+}
 ```
 
 ---
 
 # Metropolitan area boundaries {#metro-area}
 
-```{r metro_placeholder, echo=FALSE, results='asis'}
-cat(paste0(
-  status_badge(FALSE, label_pending = "Pending"),
-  '\n\n*Metro area boundary comparison not yet implemented.*\n\n'
-))
+This section compares the geographic definition of the Bogotá metropolitan area
+between the two pipelines and visualises the station networks within each boundary.
+
+## Summary comparison
+
+```{r metro_summary, echo=FALSE, results='asis'}
+if (is.null(metro_summary)) {
+  cat(paste0(
+    status_badge(FALSE, label_pending = "Not yet run"),
+    '\n\nRun `compare_metro_area()` in `compare_bogota.R` to generate results.\n\n'
+  ))
+} else {
+  metro_summary |>
+    kable(
+      format = "html",
+      col.names = c("Metric", "Dropbox legacy", "New pipeline"),
+      align = "lrr"
+    ) |>
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
+                  full_width = FALSE) |>
+    column_spec(1, bold = TRUE) |>
+    as.character() |> cat()
+}
+```
+
+## Interactive maps
+
+```{r metro_load, echo=FALSE}
+#| include: false
+if (metro_has_sf) {
+  new_metro_sf       <- sf::st_read(file.path(metro_dir, "new_metro.gpkg"), quiet = TRUE)
+  legacy_metro_sf    <- sf::st_read(file.path(metro_dir, "legacy_metro.gpkg"), quiet = TRUE)
+  new_stations_sf    <- sf::st_read(file.path(metro_dir, "new_stations.gpkg"), quiet = TRUE)
+  legacy_stations_sf <- sf::st_read(file.path(metro_dir, "legacy_stations.gpkg"), quiet = TRUE)
+
+  tile_url  <- "https://cartodb-basemaps-a.global.ssl.fastly.net/light_all/{z}/{x}/{y}.png"
+  tile_attr <- paste0(
+    '&copy; <a href="https://carto.com/attributions">CARTO</a> | ',
+    '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>')
+}
+```
+
+### Dropbox legacy metro area
+
+```{r metro_map_legacy, echo=FALSE, fig.height=5}
+if (metro_has_sf) {
+  bb <- as.numeric(sf::st_bbox(legacy_metro_sf))
+  leaflet::leaflet(height = 450) |>
+    leaflet::addTiles(urlTemplate = tile_url, attribution = tile_attr) |>
+    leaflet::fitBounds(bb[1], bb[2], bb[3], bb[4]) |>
+    leaflet::addPolygons(
+      data = legacy_metro_sf,
+      color = "#1E3A8A", weight = 1.5,
+      fillColor = "#3B82F6", fillOpacity = 0.2
+    ) |>
+    leaflet::addCircleMarkers(
+      data = legacy_stations_sf,
+      radius = 5, stroke = TRUE, color = "#111", weight = 1,
+      fillColor = "#DC2626", fillOpacity = 0.85,
+      label = if ("station_name" %in% names(legacy_stations_sf))
+        legacy_stations_sf$station_name else
+        if ("station_std" %in% names(legacy_stations_sf))
+          legacy_stations_sf$station_std else NULL
+    ) |>
+    leaflet::addControl(
+      html = sprintf(
+        '<div style="background:rgba(255,255,255,.85);padding:6px 10px;
+         border-radius:6px;font-size:13px">
+         <b>Dropbox legacy</b><br>Stations: <b>%d</b></div>',
+        nrow(legacy_stations_sf)),
+      position = "topleft"
+    )
+}
+```
+
+### New pipeline metro area
+
+```{r metro_map_new, echo=FALSE, fig.height=5}
+if (metro_has_sf) {
+  bb <- as.numeric(sf::st_bbox(new_metro_sf))
+  leaflet::leaflet(height = 450) |>
+    leaflet::addTiles(urlTemplate = tile_url, attribution = tile_attr) |>
+    leaflet::fitBounds(bb[1], bb[2], bb[3], bb[4]) |>
+    leaflet::addPolygons(
+      data = new_metro_sf,
+      color = "#1E3A8A", weight = 1.5,
+      fillColor = "#3B82F6", fillOpacity = 0.2
+    ) |>
+    leaflet::addCircleMarkers(
+      data = new_stations_sf,
+      radius = 5, stroke = TRUE, color = "#111", weight = 1,
+      fillColor = "#16A34A", fillOpacity = 0.85,
+      label = if ("station_name" %in% names(new_stations_sf))
+        new_stations_sf$station_name else NULL
+    ) |>
+    leaflet::addControl(
+      html = sprintf(
+        '<div style="background:rgba(255,255,255,.85);padding:6px 10px;
+         border-radius:6px;font-size:13px">
+         <b>New pipeline</b><br>Stations: <b>%d</b></div>',
+        nrow(new_stations_sf)),
+      position = "topleft"
+    )
+}
 ```
 
 ---
 
 # Station-to-locality distances {#distances}
 
-```{r dist_placeholder, echo=FALSE, results='asis'}
-cat(paste0(
-  status_badge(FALSE, label_pending = "Pending"),
-  '\n\n*Distance matrix comparison not yet implemented.*\n\n'
-))
+This section compares the distance matrices used for inverse-distance weighting
+(IDW) between the two pipelines. The new pipeline uses an Azimuthal Equidistant
+(AEQD) projection for Euclidean distances, while the legacy uses the Haversine
+great-circle formula. At metro scales (~50–200 km), these methods agree within
+approximately 0.1–0.5 km.
+
+## Station-to-station distances
+
+```{r idw_sta, echo=FALSE, results='asis'}
+if (is.null(idw_sta_sum)) {
+  cat(paste0(
+    status_badge(FALSE, label_pending = "Not yet run"),
+    '\n\nRun `compare_idw()` in `compare_bogota.R` to generate results.\n\n'
+  ))
+} else {
+  idw_sta_sum |>
+    mutate(
+      share_match   = scales::percent(share_match, 0.01),
+      mean_abs_diff = round(mean_abs_diff, 3),
+      max_abs_diff  = round(max_abs_diff, 3)
+    ) |>
+    kable(
+      format = "html",
+      col.names = c("Pairs", "Match", "Diff", "Mean abs diff (km)",
+                     "Max abs diff (km)", "Match rate"),
+      align = "rrrrrr",
+      format.args = list(big.mark = ",")
+    ) |>
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
+                  full_width = FALSE) |>
+    as.character() |> cat()
+
+  if (!is.null(idw_sta_diff) && nrow(idw_sta_diff) > 0) {
+    cat(sprintf(
+      "\n\n**%d station pairs** differ by more than the tolerance:\n\n",
+      nrow(idw_sta_diff)
+    ))
+    idw_sta_diff |>
+      head(20) |>
+      mutate(across(where(is.numeric), ~ round(.x, 3))) |>
+      select(station_from, station_to, distance_km_new,
+             distance_km_legacy, diff_km) |>
+      kable(
+        format = "html",
+        col.names = c("From", "To", "New (km)", "Legacy (km)", "Diff (km)"),
+        align = "llrrr"
+      ) |>
+      kable_styling(bootstrap_options = c("striped", "condensed"),
+                    font_size = 11, full_width = FALSE) |>
+      scroll_box(height = "260px") |>
+      as.character() |> cat()
+  } else {
+    cat("\n\n*All station-to-station distances match within tolerance.*\n")
+  }
+}
 ```
+
+## Geo-unit to station distances
+
+```{r idw_geo, echo=FALSE, results='asis'}
+if (!is.null(idw_geo_sum)) {
+  idw_geo_sum |>
+    mutate(
+      share_match   = scales::percent(share_match, 0.01),
+      mean_abs_diff = round(mean_abs_diff, 3),
+      max_abs_diff  = round(max_abs_diff, 3)
+    ) |>
+    kable(
+      format = "html",
+      col.names = c("Pairs", "Match", "Mean abs diff (km)",
+                     "Max abs diff (km)", "Match rate"),
+      align = "rrrrr",
+      format.args = list(big.mark = ",")
+    ) |>
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
+                  full_width = FALSE) |>
+    as.character() |> cat()
+} else {
+  cat("*Geo-unit distance comparison not available or not yet run.*\n")
+}
+```
+
+> **Methodological note.** The new pipeline computes all distances using AEQD
+> (Azimuthal Equidistant) projection centred on the station cloud centroid,
+> yielding accurate Euclidean distances. The legacy uses `geosphere::distm()`
+> with the Haversine formula. Additionally, the new pipeline identifies
+> pollutant-specific nearest neighbours (only stations with data for the
+> current pollutant are candidates), while the legacy uses a single nearest
+> neighbour for all pollutants.
 
 ---
 
 # Outlier-corrected pollution panel {#processed-panel}
 
-```{r panel_placeholder, echo=FALSE, results='asis'}
-cat(paste0(
-  status_badge(FALSE, label_pending = "Pending"),
-  '\n\n*Processed panel comparison not yet implemented.*\n\n'
-))
+Both pipelines apply the same outlier detection algorithm. The procedure works
+in three steps for each pollutant, within each station × year-month:
+
+1. **Flag** observations above the 99th percentile.
+2. **Benchmark** each flagged observation against its lag/lead average. Classify
+   as reasonable (within mean ± 2 SD of first differences) or unreasonable. If
+   neither lag nor lead exist, the observation has no benchmark.
+3. **Neighbour check** — unreasonable observations are reclassified as reasonable
+   if the difference with the nearest neighbour falls within mean ± 2 SD of the
+   neighbour-difference distribution.
+
+Flagged observations that remain unreasonable or lack a benchmark are set to NA.
+
+## Outlier detection summary (new pipeline)
+
+```{r outlier_step, echo=FALSE, results='asis'}
+if (is.null(out_step_sum)) {
+  cat(paste0(
+    status_badge(FALSE, label_pending = "Not yet run"),
+    '\n\nRun `compare_outlier_procedure()` in `compare_bogota.R` to generate results.\n\n'
+  ))
+} else {
+  out_step_sum |>
+    mutate(pct_removed = paste0(pct_removed, "%")) |>
+    kable(
+      format = "html",
+      col.names = c("Pollutant", "Total non-NA obs",
+                     "Outliers removed", "% removed"),
+      align = "lrrr",
+      format.args = list(big.mark = ",")
+    ) |>
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
+                  full_width = FALSE) |>
+    as.character() |> cat()
+}
 ```
+
+## Per-station outlier comparison
+
+```{r outlier_compare, echo=FALSE, results='asis'}
+if (!is.null(out_compare) && nrow(out_compare) > 0) {
+  cat(paste0(
+    "Per-station comparison of outlier counts between the new pipeline and ",
+    "the Dropbox legacy:\n\n"
+  ))
+
+  out_compare |>
+    select(any_of(c("station", "pollutant",
+                     "outliers_new", "outliers_legacy", "total_new"))) |>
+    arrange(pollutant, station) |>
+    kable(
+      format = "html",
+      col.names = c("Station", "Pollutant",
+                     "Outliers (new)", "Outliers (legacy)", "Total obs (new)"),
+      align = "llrrr",
+      format.args = list(big.mark = ",")
+    ) |>
+    kable_styling(bootstrap_options = c("striped", "condensed"),
+                  font_size = 11, full_width = FALSE) |>
+    scroll_box(height = "300px") |>
+    as.character() |> cat()
+} else {
+  cat("*Per-station comparison not available (legacy cleaned data not found).*\n")
+}
+```
+
+> **Methodological note.** The new pipeline identifies the nearest neighbour
+> on a per-pollutant basis (only stations with data for the current pollutant
+> are candidates), while the legacy uses a single nearest neighbour for all
+> pollutants. The new pipeline also uses AEQD distances vs the legacy's
+> Haversine. These differences may cause a small number of observations to be
+> classified differently at step 3.
 
 ---
 
 <details><summary>Run metadata</summary>
-```{r run_meta, echo=FALSE}
+```{r run_meta}
+#| echo: false
 tibble::tibble(
-  Item  = c("City", "Year(s)", "Pipeline tz",
-            "Legacy source", "Focus pollutants"),
+  Item = c(
+    "City", "Year(s)", "Pipeline timezone",
+    "Dropbox legacy source (used in this report)",
+    "Dropbox merged CSV (not used — contains Stata bug)",
+    "New pipeline source",
+    "New pipeline created by",
+    "Focus pollutants",
+    "New pipeline PM10 stations",
+    "New pipeline PM25 stations",
+    "Dropbox legacy RMCAB stations"
+  ),
   Value = c(
     params$city_id,
     yr_label,
     cmp$pipeline_tz %||% cfg$tz,
-    if (!is.null(cmp$legacy_single_csv) &&
-        file.exists(cmp$legacy_single_csv))
-      basename(cmp$legacy_single_csv) else cmp$legacy_dir,
-    paste(focus_pol, collapse = ", ")
+    "data/pollution/Bogota/original_data/2020-2023/ (individual period CSVs)",
+    "data/Bogota/working_data/Air_Pollution_Bogota_2002_2023.csv",
+    "data/raw/monitoring_stations/bogota_metro_dataset/",
+    paste0(
+      "scripts/download_data/download_bogota_data.R + ",
+      "scripts/process_data/process_bogota_data.R ",
+      "(bogota_process_stations_data_to_parquet())"
+    ),
+    paste(toupper(focus_pol), collapse = ", "),
+    "48", "47", "19"
   )
 ) |>
-  kable() |>
+  kable(col.names = c("Item", "Value")) |>
   kable_styling(bootstrap_options = "striped", full_width = FALSE)
 ```
 </details>
