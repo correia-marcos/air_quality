@@ -45,7 +45,9 @@ results/validation_old_version/**/*.rds
  
 # PDF maps that are outputs of validation scripts (not paper figures)
 results/validation_old_version/**/*.pdf
- 
+
+# Other files in validation results
+Results/validation_old_version/**/*.gpkg
  
 # ---------------------------------------------------------------------------
 # Results — untracked interactive map build artefacts
