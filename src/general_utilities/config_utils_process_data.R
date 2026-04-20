@@ -906,41 +906,26 @@ compute_distance_matrices <- function(
 # --------------------------------------------------------------------------------------------
 # Function: detect_pollution_outliers
 #
-# @Arg arrow_dir         : string; path to Arrow dataset of station's hourly data.
-# @Arg station_dist_path : string; station_distances.parquet from compute_distance_matrices(). 
-#                          Used to find each station's nearest geometric neighbor per 
-#                          pollutant.
-# @Arg out_dir           : string; output directory (created if absent).
-# @Arg out_name          : string; prefix, e.g. "bogota_2018". Output folder: {out_name}_clean/.
-# @Arg pollutants        : character; pollutants to process.
-#                          Default c("pm10", "pm25").
-# @Arg pct_flag          : numeric [0,1]; upper-tail quantile threshold for flagging within 
-#                          station x year-month. Default 0.99.
-# @Arg n_sd              : numeric; tolerance half-width in SD units. Default 2.
-# @Arg overwrite         : logical; skip if output exists. Default TRUE.
-# @Arg quiet             : logical; suppress messages. Default FALSE.
+# @Arg arrow_dir           : string; path to Arrow dataset of hourly data.
+# @Arg station_dist_path   : string; station_distances.parquet path.
+# @Arg out_dir             : string; output directory.
+# @Arg out_name            : string; prefix, e.g. "bogota_2018".
+# @Arg pollutants          : character; default c("pm10", "pm25").
+# @Arg pct_flag            : numeric [0,1]; upper-tail quantile. Default 0.99.
+# @Arg n_sd                : numeric; tolerance half-width in SD units. Default 2.
+# @Arg on_missing_temporal : string; "finish" (mark outlier) or "continue" (skip 
+#                            temporal and attempt spatial check). Default "finish".
+# @Arg on_missing_neighbor : string; "finish" (mark outlier) or "second" (fallback
+#                            to the second closest station). Default "finish".
+# @Arg overwrite           : logical; skip if output exists. Default TRUE.
+# @Arg quiet               : logical; suppress messages. Default FALSE.
 #
-# @Output : Path to the output Arrow dataset (invisible string). All original columns
-#           retained; partitioned by year (Hive-style). Added per pollutant p in the output:
-#           {p}_outlier <int>  1 = observation was flagged and unreasonable.
-#           Outlier {p} values are replaced with NA.
-#
-# @Details: Procedure per pollutant per year —
-#   (1) Balance panel: complete station x hour grid for the year. One boundary row 
-#       (last hr of yr-1; first hr of yr+1) is temporarily appended so lag/lead are 
-#       defined at year edges. Boundary rows are removed before writing output.
-#   (2) Nearest neighbour is pollutant-specific: the closest station (by km) with >= 1 
-#       non-NA reading for the pollutant processed.
-#       Dp   = p_t - p_{t-1}       (first difference within station).
-#       Dp_n = p_t - p_{nearest,t} (difference vs nearest neighbour).
-#   (3) Benchmark p-bar from lag/lead: avg if both present (Type 1), the available one 
-#       if only one (Type 2), NA if neither (Type 3).
-#   (4) Flag obs above pct_flag within station x year-month.
-#   (5) Classify flagged obs as reasonable if
-#       mu(Dp) - n_sd*sd(Dp) < p - p-bar < mu(Dp) + n_sd*sd(Dp).
-#   (6) Reclassify unreasonable obs as reasonable if Dp_n falls
-#       within mu(Dp_n) +/- n_sd*sd(Dp_n) (station x year-month).
-#   (7) Flagged + unreasonable or no-benchmark -> NA; outlier flag = 1.
+# @Details: 
+#   Creates `{pollutant}_outlier_reason` columns to track the exact failure point:
+#     0 = Valid (or not flagged in the 99th percentile)
+#     1 = Flagged, missing temporal benchmark (Type 3)
+#     2 = Flagged, failed temporal, missing spatial benchmark
+#     3 = Flagged, failed temporal, failed spatial
 #
 # @Written_on : 02/02/2026
 # @Written_by : Marcos Paulo
@@ -950,19 +935,20 @@ detect_pollution_outliers <- function(
     station_dist_path,
     out_dir,
     out_name,
-    pollutants  = c("pm10", "pm25"),
-    pct_flag    = 0.99,
-    n_sd        = 2,
-    overwrite   = TRUE,
-    quiet       = FALSE
+    pollutants          = c("pm10", "pm25"),
+    pct_flag            = 0.99,
+    n_sd                = 2,
+    on_missing_temporal = "finish",
+    on_missing_neighbor = "finish",
+    overwrite           = TRUE,
+    quiet               = FALSE
 ) {
   
   # 0. Dependencies
   # -----------------------------------------------------------------------
   pkgs <- c("arrow", "data.table", "dplyr")
   for (p in pkgs) {
-    if (!requireNamespace(p, quietly = TRUE))
-      stop("Package '", p, "' required but not installed.")
+    if (!requireNamespace(p, quietly = TRUE)) stop("Package '", p, "' required.")
   }
   
   # 1. Output path + early exit
@@ -973,29 +959,19 @@ detect_pollution_outliers <- function(
     if (!quiet) message("Output exists; overwrite=FALSE — skipping.")
     return(invisible(out_path))
   }
-  if (!dir.exists(out_dir))
-    dir.create(out_dir, recursive = TRUE)
-  if (dir.exists(out_path))
-    unlink(out_path, recursive = TRUE)
+  
+  if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE)
+  if (dir.exists(out_path)) unlink(out_path, recursive = TRUE)
   dir.create(out_path)
   
   # 2. Load full distance table
-  #    Nearest-neighbour is resolved per pollutant inside .flag_pollutant,
-  #    conditioning on stations that have data for that pollutant.
   # -----------------------------------------------------------------------
-  dist_dt <- data.table::as.data.table(
-    arrow::read_parquet(station_dist_path)
-  )
-  
-  if (!quiet) message(
-    "Distance table loaded: ",
-    data.table::uniqueN(dist_dt$station_from), " stations."
-  )
+  dist_dt <- data.table::as.data.table(arrow::read_parquet(station_dist_path))
+  if (!quiet) message("Distance table loaded.")
   
   # 3. Open Arrow dataset; collect year index
   # -----------------------------------------------------------------------
   arrow_ds <- arrow::open_dataset(arrow_dir)
-  
   years <- arrow_ds |>
     dplyr::select(year) |>
     dplyr::distinct()   |>
@@ -1003,261 +979,233 @@ detect_pollution_outliers <- function(
     dplyr::pull(year)   |>
     sort()
   
-  if (!quiet) message(
-    "Years to process: ",
-    paste(range(years), collapse = "\u2013"),
-    "  (n = ", length(years), ")"
-  )
-  
-  # 4. Inner helper — flags one pollutant in-place on a data.table.
-  #    Uses reference semantics (:=): the caller's object is updated
-  #    without copying. Nearest neighbour is resolved here, restricted
-  #    to stations with >= 1 non-NA value for the current pollutant.
+  # 4. Inner helper — flags one pollutant at a time
   # -----------------------------------------------------------------------
-  .flag_pollutant <- function(dt, pol, dist_dt, pct_flag, n_sd) {
+  .flag_pollutant <- function(dt, pol, dist_dt, pct_flag, n_sd, 
+                              miss_temp, miss_neigh) {
     
     if (!pol %in% names(dt)) return(invisible(NULL))
     
-    flag_col <- paste0(pol, "_outlier")
-    dt[, (flag_col) := 0L]
+    flag_col   <- paste0(pol, "_outlier")
+    reason_col <- paste0(pol, "_outlier_reason")
     
-    # Nothing to flag if this pollutant has no data this year
+    dt[, (flag_col)   := 0L]
+    dt[, (reason_col) := 0L] 
+    
     if (all(is.na(dt[[pol]]))) return(invisible(NULL))
     
-    # -- Pollutant-specific nearest neighbour -------------------------
-    # For each station: the closest other station (by distance_km)
-    # with at least one non-NA observation for this pollutant.
+    # -- (1) Dynamic Nearest Neighbors ----------------------------------
     has_data <- dt[!is.na(get(pol)), unique(station)]
-    near_dt  <- dist_dt[
-      distance_km > 0 & station_to %in% has_data
-    ][
-      , .SD[which.min(distance_km)], by = station_from
-    ][
-      , .(station = station_from, nearest = station_to)
-    ]
+    near_dt  <- dist_dt[distance_km > 0 & station_to %in% has_data]
     
-    # -- (2) Lag, lead, and first differences within station ----------
-    dt[,
-       `:=`(
-         .t_lag  = data.table::shift(get(pol), 1L, type = "lag"),
-         .t_lead = data.table::shift(get(pol), 1L, type = "lead")
-       ),
-       by = station
-    ]
-    dt[, .t_diff := get(pol) - .t_lag]         # Dp = p_t - p_{t-1}
+    data.table::setorder(near_dt, station_from, distance_km)
+    near_dt[, rank := seq_len(.N), by = station_from]
     
-    # Neighbour difference via a keyed self-join:
-    #   Step 1 — add the nearest-neighbour name for each station
-    dt[near_dt, .t_near := i.nearest, on = "station"]
-    #   Step 2 — slim lookup: station x datetime -> pollutant value
+    near_1 <- near_dt[rank == 1, .(station = station_from, near1 = station_to)]
+    dt[near_1, .t_near1 := i.near1, on = "station"]
+    
+    if (miss_neigh == "second") {
+      near_2 <- near_dt[rank == 2, .(station = station_from, near2 = station_to)]
+      dt[near_2, .t_near2 := i.near2, on = "station"]
+    }
+    
+    # -- (2) Lag, lead, and differences ---------------------------------
+    dt[, `:=`(
+      .t_lag  = data.table::shift(get(pol), 1L, type = "lag"),
+      .t_lead = data.table::shift(get(pol), 1L, type = "lead")
+    ), by = station]
+    
+    dt[, .t_diff := get(pol) - .t_lag]
+    
     tmp_lkp <- dt[, .(station, datetime, tmp_p = get(pol))]
-    #   Step 3 — join: get the neighbour's value at the same time
-    dt[
-      tmp_lkp,
-      .t_vn := i.tmp_p,
-      on = .(.t_near = station, datetime)
-    ]
-    rm(tmp_lkp)
-    dt[, .t_diff_nb := get(pol) - .t_vn]       # Dp_n = p_t - p_{n,t}
-    dt[, c(".t_near", ".t_vn") := NULL]
     
-    # -- (3) Benchmark p-bar and deviation from benchmark -------------
+    dt[tmp_lkp, .t_vn1 := i.tmp_p, on = .(.t_near1 = station, datetime)]
+    dt[, .t_diff_nb1 := get(pol) - .t_vn1]
+    
+    if (miss_neigh == "second") {
+      dt[tmp_lkp, .t_vn2 := i.tmp_p, on = .(.t_near2 = station, datetime)]
+      dt[, .t_diff_nb2 := get(pol) - .t_vn2]
+    }
+    rm(tmp_lkp)
+    
+    # -- (3) Benchmarks -------------------------------------------------
     dt[, .t_bench := data.table::fcase(
-      !is.na(.t_lag) & !is.na(.t_lead),
-      (.t_lag + .t_lead) / 2,   # Type 1: avg(lag, lead)
-      !is.na(.t_lag),  .t_lag,  # Type 2a: lag only
-      !is.na(.t_lead), .t_lead, # Type 2b: lead only
-      default = NA_real_        # Type 3: no benchmark
+      !is.na(.t_lag) & !is.na(.t_lead), (.t_lag + .t_lead) / 2, 
+      !is.na(.t_lag),  .t_lag,                                  
+      !is.na(.t_lead), .t_lead,                                 
+      default = NA_real_                                        
     )]
+    
     dt[, .t_btype := data.table::fcase(
       !is.na(.t_lag) & !is.na(.t_lead), 1L,
       !is.na(.t_lag) | !is.na(.t_lead), 2L,
       default = 3L
     )]
-    dt[, .t_diff_b := get(pol) - .t_bench]     # p - p-bar
+    dt[, .t_diff_b := get(pol) - .t_bench]
     
-    # -- (4) Flag obs above pct_flag quantile (station x year-month) --
+    # -- (4) Flag 99th pct ----------------------------------------------
     dt[, .t_ym := format(datetime, "%Y-%m")]
-    dt[,
-       .t_p99 := as.numeric(
-         stats::quantile(.SD[[1]], probs = pct_flag, na.rm = TRUE)
-       ),
-       by     = .(station, .t_ym),
-       .SDcols = pol
-    ]
-    dt[,
-       .t_flag := data.table::fifelse(
-         !is.na(get(pol)) & get(pol) > .t_p99, 1L, 0L
-       )
-    ]
+    dt[, .t_p99 := as.numeric(
+      stats::quantile(.SD[[1]], probs = pct_flag, na.rm = TRUE)
+    ), by = .(station, .t_ym), .SDcols = pol]
     
-    # -- (5)/(6) Station-month stats on Dp and Dp_n ------------------
-    dt[, `:=`(
-      .t_md  = mean(.t_diff,    na.rm = TRUE),  # mean(Dp)
-      .t_sd  = sd(.t_diff,      na.rm = TRUE),  # sd(Dp)
-      .t_mnb = mean(.t_diff_nb, na.rm = TRUE),  # mean(Dp_n)
-      .t_snb = sd(.t_diff_nb,   na.rm = TRUE)   # sd(Dp_n)
-    ), by = .(station, .t_ym)]
+    dt[, .t_flag := data.table::fifelse(
+      !is.na(get(pol)) & get(pol) > .t_p99, 1L, 0L
+    )]
     
-    # -- (5) Classify: 1 = reasonable, 2 = unreasonable, 3 = no bench --
+    # -- (5) Station-month stats ----------------------------------------
+    if (miss_neigh == "second") {
+      dt[, `:=`(
+        .t_md   = mean(.t_diff,     na.rm = TRUE),
+        .t_sd   = sd(.t_diff,       na.rm = TRUE),
+        .t_mnb1 = mean(.t_diff_nb1, na.rm = TRUE),
+        .t_snb1 = sd(.t_diff_nb1,   na.rm = TRUE),
+        .t_mnb2 = mean(.t_diff_nb2, na.rm = TRUE),
+        .t_snb2 = sd(.t_diff_nb2,   na.rm = TRUE)
+      ), by = .(station, .t_ym)]
+    } else {
+      dt[, `:=`(
+        .t_md   = mean(.t_diff,     na.rm = TRUE),
+        .t_sd   = sd(.t_diff,       na.rm = TRUE),
+        .t_mnb1 = mean(.t_diff_nb1, na.rm = TRUE),
+        .t_snb1 = sd(.t_diff_nb1,   na.rm = TRUE)
+      ), by = .(station, .t_ym)]
+    }
+    
+    # -- (6) Classify: 1=reasonable, 2=unreasonable, 3=no bench ---------
     dt[, .t_cat := data.table::fcase(
       .t_btype == 3L, 3L,
-      !is.na(.t_diff_b) &
-        .t_diff_b > (.t_md - n_sd * .t_sd) &
+      !is.na(.t_diff_b) & 
+        .t_diff_b > (.t_md - n_sd * .t_sd) & 
         .t_diff_b < (.t_md + n_sd * .t_sd), 1L,
       default = 2L
     )]
     
-    # -- (6) Reclassify unreasonable using neighbour distribution -----
+    cats_check <- if (miss_temp == "continue") c(2L, 3L) else 2L
+    
+    # -- (7) Spatial rescue ---------------------------------------------
     dt[
-      .t_cat     == 2L         &
-        !is.na(.t_diff_nb)     &
-        !is.na(.t_mnb)         &
-        !is.na(.t_snb)         &
-        .t_diff_nb > (.t_mnb - n_sd * .t_snb) &
-        .t_diff_nb < (.t_mnb + n_sd * .t_snb),
+      .t_cat %in% cats_check &
+        !is.na(.t_diff_nb1)  & !is.na(.t_mnb1) & !is.na(.t_snb1) &
+        .t_diff_nb1 > (.t_mnb1 - n_sd * .t_snb1) &
+        .t_diff_nb1 < (.t_mnb1 + n_sd * .t_snb1),
       .t_cat := 1L
     ]
     
-    # -- (7) Set outlier flag; replace pollutant value with NA --------
-    dt[
-      .t_flag == 1L & .t_cat %in% c(2L, 3L),
-      (flag_col) := 1L
-    ]
+    if (miss_neigh == "second") {
+      dt[
+        .t_cat %in% cats_check & 
+          is.na(.t_diff_nb1)   & 
+          !is.na(.t_diff_nb2)  & !is.na(.t_mnb2) & !is.na(.t_snb2) &
+          .t_diff_nb2 > (.t_mnb2 - n_sd * .t_snb2) &
+          .t_diff_nb2 < (.t_mnb2 + n_sd * .t_snb2),
+        .t_cat := 1L
+      ]
+    }
+    
+    # -- (8) Identify missing spatial capacity --------------------------
+    if (miss_neigh == "second") {
+      dt[, .t_no_spat := (is.na(.t_diff_nb1) | is.na(.t_mnb1) | is.na(.t_snb1)) &
+           (is.na(.t_diff_nb2) | is.na(.t_mnb2) | is.na(.t_snb2))]
+    } else {
+      dt[, .t_no_spat := (is.na(.t_diff_nb1) | is.na(.t_mnb1) | is.na(.t_snb1))]
+    }
+    
+    # -- (9) Assign Diagnostic Reason Codes -----------------------------
+    # 1: No temporal benchmark
+    dt[.t_flag == 1L & .t_cat == 3L, (reason_col) := 1L]
+    
+    # 2: Failed temporal, but no spatial neighbor was available to check
+    dt[.t_flag == 1L & .t_cat == 2L & .t_no_spat == TRUE, (reason_col) := 2L]
+    
+    # 3: Failed temporal, checked spatial and failed spatial too
+    dt[.t_flag == 1L & .t_cat == 2L & .t_no_spat == FALSE, (reason_col) := 3L]
+    
+    # -- (10) Final Masking ---------------------------------------------
+    dt[get(reason_col) > 0L, (flag_col) := 1L]
     dt[get(flag_col) == 1L, (pol) := NA_real_]
     
-    # Drop all temporary columns
-    dt[, c(
-      ".t_lag", ".t_lead", ".t_diff", ".t_diff_nb",
-      ".t_bench", ".t_btype", ".t_diff_b",
-      ".t_ym", ".t_p99", ".t_flag",
-      ".t_md", ".t_sd", ".t_mnb", ".t_snb", ".t_cat"
-    ) := NULL]
+    # Cleanup temporary columns
+    drop_cols <- c(".t_lag", ".t_lead", ".t_diff", ".t_diff_nb1", ".t_bench", 
+                   ".t_btype", ".t_diff_b", ".t_ym", ".t_p99", ".t_flag", 
+                   ".t_md", ".t_sd", ".t_mnb1", ".t_snb1", ".t_cat", 
+                   ".t_near1", ".t_vn1", ".t_no_spat")
+    if (miss_neigh == "second") {
+      drop_cols <- c(drop_cols, ".t_diff_nb2", ".t_mnb2", ".t_snb2", 
+                     ".t_near2", ".t_vn2")
+    }
+    
+    drop_cols <- intersect(drop_cols, names(dt))
+    dt[, (drop_cols) := NULL]
     
     invisible(NULL)
   }
-
+  
   # 5. Year loop
   # -----------------------------------------------------------------------
   for (yr in years) {
     if (!quiet) message("  [", yr, "] Collecting ...")
     
-    # -- Collect current year -----------------------------------------
     dt_yr <- arrow_ds |>
       dplyr::filter(year == yr) |>
-      dplyr::collect()           |>
+      dplyr::collect()          |>
       data.table::as.data.table()
     
-    if (nrow(dt_yr) == 0) {
-      if (!quiet) message("    No rows — skipped.")
-      next
-    }
+    if (nrow(dt_yr) == 0) next
     
     all_sta  <- unique(dt_yr$station)
     yr_start <- min(dt_yr$datetime)
     yr_end   <- max(dt_yr$datetime)
     
-    # -- Boundary rows: 1 hr before yr_start and 1 hr after yr_end ---
-    #    Appended temporarily so lag/lead are defined at year edges.
-    #    Filtered to stations active in yr; removed before writing.
-    #    Year of the boundary hour is derived from its timestamp so
-    #    the correct Hive partition is scanned.
     prev_cutoff <- yr_start - 3600
     next_cutoff <- yr_end   + 3600
-    
-    prev_yr  <- as.integer(format(prev_cutoff, "%Y"))
-    next_yr  <- as.integer(format(next_cutoff, "%Y"))
+    prev_yr     <- as.integer(format(prev_cutoff, "%Y"))
+    next_yr     <- as.integer(format(next_cutoff, "%Y"))
     
     bnd_prev <- arrow_ds |>
-      dplyr::filter(
-        year == prev_yr, datetime == prev_cutoff
-      ) |>
-      dplyr::collect()  |>
-      data.table::as.data.table()
+      dplyr::filter(year == prev_yr, datetime == prev_cutoff) |>
+      dplyr::collect() |> data.table::as.data.table()
     bnd_prev <- bnd_prev[station %in% all_sta]
     
     bnd_next <- arrow_ds |>
-      dplyr::filter(
-        year == next_yr, datetime == next_cutoff
-      ) |>
-      dplyr::collect()  |>
-      data.table::as.data.table()
+      dplyr::filter(year == next_yr, datetime == next_cutoff) |>
+      dplyr::collect() |> data.table::as.data.table()
     bnd_next <- bnd_next[station %in% all_sta]
     
-    # -- Build balanced panel: all stations x every hour in the year --
-    # Station set is derived from yr data so newly commissioned or
-    # decommissioned stations are handled correctly.
     all_hours <- seq(yr_start, yr_end, by = "hour")
-    grid      <- data.table::CJ(
-      station  = all_sta,
-      datetime = all_hours
-    )
+    grid      <- data.table::CJ(station = all_sta, datetime = all_hours)
+    non_key   <- setdiff(names(dt_yr), c("station", "datetime", "year"))
     
-    non_key <- setdiff(
-      names(dt_yr), c("station", "datetime", "year")
-    )
     dt_bal <- data.table::merge.data.table(
       grid,
       dt_yr[, c("station", "datetime", non_key), with = FALSE],
-      by    = c("station", "datetime"),
-      all.x = TRUE
+      by = c("station", "datetime"), all.x = TRUE
     )
     dt_bal[, year := yr]
     
-    # Append boundary rows; sort by station x datetime
     dt_bal <- data.table::rbindlist(
-      list(dt_bal, bnd_prev, bnd_next),
-      fill      = TRUE,
-      use.names = TRUE
+      list(dt_bal, bnd_prev, bnd_next), fill = TRUE, use.names = TRUE
     )
+    
     data.table::setorder(dt_bal, station, datetime)
+    in_yr <- dt_bal$datetime >= yr_start & dt_bal$datetime <= yr_end
     
-    # Logical index for target-year rows (counting + output filter)
-    in_yr <- dt_bal$datetime >= yr_start &
-      dt_bal$datetime <= yr_end
-    
-    if (!quiet) message(
-      "    Balanced: ",
-      format(sum(in_yr), big.mark = ","),
-      " rows | ", length(all_sta), " stations"
-    )
-    
-    # -- Flag each pollutant in-place via reference semantics ---------
     for (pol in pollutants) {
-      if (!quiet) message("    Flagging: ", pol, " ...")
-      .flag_pollutant(dt_bal, pol, dist_dt, pct_flag, n_sd)
-      
-      if (!quiet) {
-        fc    <- paste0(pol, "_outlier")
-        n_out <- if (fc %in% names(dt_bal))
-          sum(dt_bal[[fc]][in_yr], na.rm = TRUE)
-        else 0L
-        n_obs <- sum(!is.na(dt_yr[[pol]]))
-        pct   <- round(100 * n_out / max(n_obs, 1L), 2)
-        message(
-          "      Outliers: ", n_out,
-          " / ", format(n_obs, big.mark = ","),
-          " original obs (", pct, "%)"
-        )
-      }
+      .flag_pollutant(dt_bal, pol, dist_dt, pct_flag, n_sd, 
+                      on_missing_temporal, on_missing_neighbor)
     }
     
-    # -- Drop boundary rows; write only target-year rows --------------
     dt_out <- dt_bal[in_yr]
-    
     yr_dir <- file.path(out_path, paste0("year=", yr))
     dir.create(yr_dir, showWarnings = FALSE)
     arrow::write_parquet(
-      dt_out,
-      file.path(yr_dir, "data.parquet"),
-      compression = "snappy"
+      dt_out, file.path(yr_dir, "data.parquet"), compression = "snappy"
     )
     
     rm(dt_yr, dt_bal, dt_out, grid, bnd_prev, bnd_next, in_yr)
     gc(verbose = FALSE)
   }
   
-  if (!quiet) message("Completed. Output:\n  ", out_path)
   invisible(out_path)
 }
 
