@@ -70,10 +70,12 @@ bogota_cnpv_2018 <- vroom::vroom(big_bogota_cnpv, col_types = "cnnnnccc")
 # ============================================================================================
 # Apply function to calculate outliers for Bogota
 bogota_cleaned <- detect_pollution_outliers(
-  arrow_dir         = arrow_bogota_dir,
-  station_dist_path = here::here(outdir_distances, "bogota_2018_station_distances.parquet"),
-  out_dir           = outdir_results,
-  out_name          = "bogota_metro"
+  arrow_dir           = arrow_bogota_dir,
+  station_dist_path   = here::here(outdir_distances, "bogota_2018_station_distances.parquet"),
+  on_missing_temporal = "continue",
+  on_missing_neighbor = "second",
+  out_dir             = outdir_results,
+  out_name            = "bogota_metro"
 )
 
 exp <- aggregate_idw_exposure(
