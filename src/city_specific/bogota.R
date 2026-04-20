@@ -46,22 +46,8 @@ bogota_cfg <- list(
     "25290"),
   station_nme_map = c("Centro de alto rendimiento" = "Centro de Alto Rendimiento",
                       "Las Ferias"                 = "Las Ferias",
-                      "Carvajal-Sevillana"         = "Carvajal-Sevillana"),
-  # Validation / comparison parameters
-  compare = list(
-    pipeline_tz       = "UTC",
-    legacy_single_csv = here::here("data", "_legacy", "merged_pollution",
-                                   "bogota", "Air_Pollution_Bogota_2002_2023.csv"),
-    legacy_dir        = here::here("data", "_legacy", "raw_pollution", "bogota"),
-    legacy_pattern    = paste0("^Air_Pollution_Bogota_\\d{4}_\\d{4}\\.csv$"),
-    compare_years     = 2023L,
-    focus_pollutants  = c("pm10", "pm25"),
-    value_cols        = c("pm10", "pm25", "ozone", "co", "no2"),
-    drop_stations     = character(0),
-    residual_map      = c("CENTRODEALTORENDIMIENTO" = "CAR",    # .std_name() can't solve
-                          "ELJAZMIN"                = "JAZMIN") # .std_name() can't solve
-    )
-)
+                      "Carvajal-Sevillana"         = "Carvajal-Sevillana")
+  )
 
 # ============================================================================================
 #  Bogotá-specific functions - downloading and its helpers
