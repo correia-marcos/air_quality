@@ -50,6 +50,87 @@ rm(pkgs, ensure_installed)
 # Null-coalesce helper used inside compare_ground_stations
 `%||%` <- function(a, b) if (!is.null(a)) a else b
 
+# -----------------------------------------------------------------------------------
+# Function: build_compare_cfg
+# @Goal   : Generate the validation config sublist dynamically based on city_id.
+# @Details: Keeps production configs (bogota.R) clean by isolating test parameters.
+# -----------------------------------------------------------------------------------
+build_compare_cfg <- function(city_id) {
+  
+  # 1. Base parameters shared across ALL cities
+  base_compare <- list(
+    pipeline_tz      = "UTC",
+    out_root         = here::here("results", "validation_old_version"),
+    city_dir         = file.path("results", "validation_old_version", city_id),
+    compare_years    = 2023L,
+    focus_pollutants = c("pm10", "pm25"),
+    value_cols       = c("pm10", "pm25", "ozone", "co", "no2"),
+    gs_tol           = c(pm10 = 0, pm25 = 0, ozone = 0, co = 0, no2 = 0),
+    census_tol       = 0.001,
+    idw_tol_km       = 0.5,
+    outlier_params   = list(
+      use_legacy_input    = TRUE,  
+      pct_flag            = 0.99,
+      n_sd                = 2,
+      on_missing_temporal = "finish", 
+      on_missing_neighbor = "finish"
+    )
+  )
+  
+  # 2. City-specific overrides and paths
+  city_specific <- switch(
+    city_id,
+    "bogota" = list(
+      legacy_single_csv       = here::here("data", "_legacy", "merged_pollution",
+                                           "bogota", "Air_Pollution_Bogota_2002_2023.csv"),
+      legacy_dir              = here::here("data", "_legacy", "raw_pollution", "bogota"),
+      legacy_pattern          = "^Air_Pollution_Bogota_\\d{4}_\\d{4}\\.csv$",
+      drop_stations           = character(0),
+      residual_map            = c("CENTRODEALTORENDIMIENTO" = "CAR",
+                                  "ELJAZMIN"                = "JAZMIN"),
+      new_metro_gpkg          = here::here("data", "raw", "geospatial_data", "bogota", 
+                                           "bogota_area_metro_2018.gpkg"),
+      new_stations_gpkg       = here::here("data", "raw", "geospatial_data", "bogota",
+                                           "bogota_2018_stations_buffer_metro.gpkg"),
+      legacy_shp_dir          = here::here("data", "_legacy", "cities_shapefiles", 
+                                           "Bogota_metro"),
+      metro_buffer_km         = 20,
+      new_census_collapsed    = here::here("data", "interim", "census",
+                                           "bogota_extended_2005",
+                                           "collapse_metro_area_extended.csv"),
+      legacy_census_collapsed = here::here("data", "_legacy", "census",
+                                           "collapse_bogota_metro.csv"),
+      census_join_key         = "GEO_ID",
+      new_station_dist        = here::here("data", "processed", "distances_matrices",
+                                           "bogota_2018_station_distances.parquet"),
+      legacy_station_dist     = here::here("data", "_legacy", "distances", "bogota",
+                                           "stations_distance_bogota_v2.csv"),
+      new_geo_dist            = here::here("data", "processed", "distances_matrices",
+                                           "bogota_2018_geo_station_distances.parquet"),
+      legacy_geo_dist         = here::here("data", "_legacy", "distances", "bogota",
+                                           "dt_distances.rds"),
+      new_clean_dir           = here::here("data", "processed", "outlier_detection",
+                                           "bogota_metro_clean"),
+      legacy_clean_path       = here::here("data", "_legacy", "outlier", "bogota",
+                                           "pollution_data_balanced_2023.rds"),
+      qmd_path                = here::here(base_compare$out_root, "bogota",
+                                           "bogota_report.qmd"),
+      html_dest               = file.path(base_compare$out_root, city_id, 
+                                          "bogota_validation_report.html")
+      ),
+    "cdmx" = list(
+      # Add CDMX-specific paths here when ready
+      ),
+    "santiago" = list(# Add Santiago-specific paths here when ready
+      ),
+    # Default if city is not matched
+    stop("Validation config not defined for city: ", city_id)
+    )
+  
+  # 3. Merge base and specific lists recursively
+  utils::modifyList(base_compare, city_specific)
+}
+
 # ---------------------------------------------------------------------------
 # prepare_new_bogota_like_legacy — harmonise new Arrow panel
 # ---------------------------------------------------------------------------
@@ -394,15 +475,17 @@ prepare_legacy_single_csv <- function(
   df <- df[, keep_cols, drop = FALSE]
   
   # 9. Optionally expand to balanced station × hour panel
-  if (isTRUE(panelize) && nrow(df) > 0L) {
+  if (isTRUE(panelize) && nrow(df) > 0L && !is.infinite(min(df$year, na.rm = TRUE))) {
     stations  <- sort(unique(df$station))
     y0 <- min(df$year, na.rm = TRUE)
     y1 <- max(df$year, na.rm = TRUE)
+    
+    # ADDED format = "%Y-%m-%d %H:%M:%S" TO PREVENT as.POSIXlt.character ERROR
     start_dt  <- as.POSIXct(
-      sprintf("%d-01-01 00:00:00", y0), tz = tz
+      sprintf("%d-01-01 00:00:00", y0), tz = tz, format = "%Y-%m-%d %H:%M:%S"
     )
     end_dt    <- as.POSIXct(
-      sprintf("%d-12-31 23:00:00", y1), tz = tz
+      sprintf("%d-12-31 23:00:00", y1), tz = tz, format = "%Y-%m-%d %H:%M:%S"
     )
     hours_seq <- seq(start_dt, end_dt, by = "1 hour")
     
@@ -1018,7 +1101,7 @@ compare_ground_stations <- function(
     stop("[", cfg$id, "] Arrow dir not found:\n  ", new_arrow_dir)
   
   # Create the per-city output folder under out_root.
-  out_dir <- file.path(out_root, cfg$id)
+  out_dir <- file.path(out_root, "ground_station_comparison")
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
   
   if (!quiet) {
@@ -1271,158 +1354,139 @@ compare_ground_stations <- function(
 compare_metro_area <- function(
     cfg,
     out_root,
-    new_metro_gpkg    = NULL,
-    new_stations_gpkg = NULL,
-    legacy_shp_dir    = NULL,
-    station_audit     = NULL,
-    buffer_km         = 20,
-    quiet             = FALSE
+    station_audit = NULL,
+    quiet         = FALSE
 ) {
   
   # 0) Dependencies
-  # ---------------------------------------------------------------------------
   req_pkgs <- c("sf", "dplyr", "tibble", "arrow")
   for (p in req_pkgs) {
-    if (!requireNamespace(p, quietly = TRUE))
-      stop("Package '", p, "' required.")
+    if (!requireNamespace(p, quietly = TRUE)) stop("Package '", p, "' required.")
   }
   
-  # 1) Resolve file paths from cfg defaults if not supplied
-  # ---------------------------------------------------------------------------
-  dir_geo <- here::here("data", "raw", "geospatial_data")
+  # 1) Validate cfg and extract paths
+  cmp <- cfg$compare
+  if (is.null(cmp)) stop("[", cfg$id, "] cfg$compare is NULL.")
   
-  if (is.null(new_metro_gpkg))
-    new_metro_gpkg <- here::here(
-      dir_geo, cfg$id,
-      paste0(cfg$id, "_area_metro_2018.gpkg")
-    )
-  if (is.null(new_stations_gpkg))
-    new_stations_gpkg <- here::here(
-      dir_geo, cfg$id,
-      paste0(cfg$id, "_2018_stations_buffer_metro.gpkg")
-    )
-  if (is.null(legacy_shp_dir))
-    legacy_shp_dir <- here::here(
-      "data", "_legacy", "cities_shapefiles",
-      tools::toTitleCase(cfg$id)
-    )
+  req_fields <- c("new_metro_gpkg", "new_stations_gpkg", "legacy_shp_dir")
+  missing_f <- setdiff(req_fields, names(cmp))
+  if (length(missing_f) > 0) {
+    stop("[", cfg$id, "] cfg$compare missing: ", paste(missing_f, collapse = ", "))
+  }
   
-  # Validate inputs
-  if (!file.exists(new_metro_gpkg))
-    stop("[", cfg$id, "] New metro GeoPackage not found:\n  ", new_metro_gpkg)
-  if (!file.exists(new_stations_gpkg))
-    stop("[", cfg$id, "] New stations GeoPackage not found:\n  ", new_stations_gpkg)
-  if (!dir.exists(legacy_shp_dir))
-    stop("[", cfg$id, "] Legacy shapefile dir not found:\n  ", legacy_shp_dir)
+  if (!file.exists(cmp$new_metro_gpkg))
+    stop("[", cfg$id, "] New metro GPKG not found: ", cmp$new_metro_gpkg)
+  if (!file.exists(cmp$new_stations_gpkg))
+    stop("[", cfg$id, "] New stations GPKG not found: ", cmp$new_stations_gpkg)
+  if (!dir.exists(cmp$legacy_shp_dir))
+    stop("[", cfg$id, "] Legacy shapefile dir not found: ", cmp$legacy_shp_dir)
   
   out_dir <- file.path(out_root, cfg$id, "metro_area_comparison")
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
   
-  if (!quiet)
-    message("[", cfg$id, "] Comparing metro area definitions ...")
+  if (!quiet) message("[", cfg$id, "] Comparing metro area definitions ...")
   
   # 2) Load the new pipeline metro area and stations
-  # ---------------------------------------------------------------------------
-  new_metro_sf <- sf::st_read(new_metro_gpkg, quiet = TRUE) |>
+  # sf::st_read loads spatial files. The |> pipe passes the data to st_transform
+  # to standardise the map coordinates to EPSG 4326 (standard GPS Lat/Lon).
+  new_metro_sf <- sf::st_read(cmp$new_metro_gpkg, quiet = TRUE) |>
     sf::st_transform(4326)
   
-  new_stations_sf <- sf::st_read(new_stations_gpkg, quiet = TRUE) |>
+  new_stations_sf <- sf::st_read(cmp$new_stations_gpkg, quiet = TRUE) |>
     sf::st_transform(4326)
   
   # 3) Load the legacy metro area shapefile
-  # ---------------------------------------------------------------------------
+  # Find the main .shp file inside the directory, ignoring sidecar files (.shx, etc)
   shp_file <- list.files(
-    legacy_shp_dir, pattern = "\\.shp$",
+    cmp$legacy_shp_dir, pattern = "\\.shp$", 
     full.names = TRUE, ignore.case = TRUE
   )
   if (length(shp_file) == 0)
-    stop("[", cfg$id, "] No .shp file found in: ", legacy_shp_dir)
+    stop("[", cfg$id, "] No .shp file found in: ", cmp$legacy_shp_dir)
   
   legacy_metro_sf <- sf::st_read(shp_file[1], quiet = TRUE) |>
     sf::st_transform(4326)
   
-  if (!quiet)
-    message(
-      "  New metro: ", nrow(new_metro_sf), " features | ",
-      "Legacy metro: ", nrow(legacy_metro_sf), " features"
-    )
+  if (!quiet) {
+    message("  New metro: ", nrow(new_metro_sf), " features | ",
+            "Legacy metro: ", nrow(legacy_metro_sf), " features")
+  }
   
   # 4) Identify legacy vs new stations
-  # ---------------------------------------------------------------------------
-  # Standardise station names in the new sf for matching
+  # Create a standardised name column to allow safe text matching
   if ("station_name" %in% names(new_stations_sf)) {
     new_stations_sf$station_std <- .std_name(new_stations_sf$station_name)
   }
   
-  # Determine legacy station subset
   if (!is.null(station_audit)) {
-    # Use the audit table from compare_ground_stations()
+    # Extract names confirmed to be in the legacy dataset
     legacy_names <- station_audit$station[station_audit$in_legacy]
+    
+    # Filter the dataset. .data$ is used to safely reference column names.
+    # grepl() searches for the text "RMCAB" inside the source column.
     legacy_stations_sf <- new_stations_sf |>
       dplyr::filter(
         .data$station_std %in% legacy_names |
           grepl("RMCAB", .data$source, ignore.case = TRUE)
       )
-    # Deduplicate: keep only those that match legacy names if possible
+    
+    # Deduplicate: if regex grabbed too many, strict filter by exact name match
     if (nrow(legacy_stations_sf) > length(legacy_names)) {
       legacy_stations_sf <- new_stations_sf |>
         dplyr::filter(.data$station_std %in% legacy_names)
     }
   } else {
-    # Fallback: filter by source column containing "RMCAB"
+    # Fallback if no audit table: just look for RMCAB in the source metadata
     if ("source" %in% names(new_stations_sf)) {
       legacy_stations_sf <- new_stations_sf |>
         dplyr::filter(grepl("RMCAB", .data$source, ignore.case = TRUE))
     } else {
-      warning(
-        "[", cfg$id, "] No station_audit and no 'source' column. ",
-        "Using all stations as legacy."
-      )
+      warning("[", cfg$id, "] No audit or source column. Using all as legacy.")
       legacy_stations_sf <- new_stations_sf
     }
   }
   
-  if (!quiet)
-    message(
-      "  Stations — new pipeline: ", nrow(new_stations_sf),
-      " | legacy universe: ", nrow(legacy_stations_sf)
-    )
+  if (!quiet) {
+    message("  Stations — new pipeline: ", nrow(new_stations_sf),
+            " | legacy universe: ", nrow(legacy_stations_sf))
+  }
   
   # 5) Compute area statistics in metric CRS
-  # ---------------------------------------------------------------------------
-  # Determine a local UTM zone from the metro bbox centroid
+  # To calculate area accurately, we must project coordinates from degrees to meters.
+  # This formula finds the correct local UTM zone based on the map's center.
   bb <- sf::st_bbox(new_metro_sf)
   lon_center <- (bb["xmin"] + bb["xmax"]) / 2
   lat_center <- (bb["ymin"] + bb["ymax"]) / 2
   utm_zone <- floor((lon_center + 180) / 6) + 1
   epsg_utm <- if (lat_center >= 0) 32600 + utm_zone else 32700 + utm_zone
   
+  # Apply the metric projection to polygons
   new_metro_m    <- sf::st_transform(new_metro_sf, epsg_utm)
   legacy_metro_m <- sf::st_transform(legacy_metro_sf, epsg_utm)
   
+  # st_area calculates square meters. Divide by 1e6 to get square kilometers.
   new_area_km2    <- as.numeric(sum(sf::st_area(new_metro_m))) / 1e6
   legacy_area_km2 <- as.numeric(sum(sf::st_area(legacy_metro_m))) / 1e6
   
-  # Count municipalities (features in the metro sf)
-  new_n_muni    <- nrow(new_metro_sf)
-  legacy_n_muni <- nrow(legacy_metro_sf)
-  
-  # Count stations inside each metro polygon
+  # Apply the metric projection to station points
   new_stations_m    <- sf::st_transform(new_stations_sf, epsg_utm)
   legacy_stations_m <- sf::st_transform(legacy_stations_sf, epsg_utm)
   
+  # st_within to return a matrix showing which points fall inside the polygon.
   n_new_inside_new <- sum(sf::st_within(
     new_stations_m, sf::st_union(new_metro_m), sparse = FALSE
   )[, 1])
-  
+
+  # st_union to merge the metro shapes into one solid boundary before checking.
   n_legacy_inside_legacy <- sum(sf::st_within(
     legacy_stations_m, sf::st_union(legacy_metro_m), sparse = FALSE
   )[, 1])
   
+  # Stations outside the metro are simply total stations minus inside stations
   n_new_outside_new <- nrow(new_stations_sf) - n_new_inside_new
   n_legacy_outside_legacy <- nrow(legacy_stations_sf) - n_legacy_inside_legacy
   
-  # Build summary table
+  # Build a tidy data frame to hold the final metrics
   summary_tbl <- tibble::tibble(
     Metric = c(
       "Total area (km\u00b2)",
@@ -1433,14 +1497,14 @@ compare_metro_area <- function(
     ),
     `Dropbox legacy` = c(
       round(legacy_area_km2, 1),
-      legacy_n_muni,
+      nrow(legacy_metro_sf),
       nrow(legacy_stations_sf),
       n_legacy_inside_legacy,
       n_legacy_outside_legacy
     ),
     `New pipeline` = c(
       round(new_area_km2, 1),
-      new_n_muni,
+      nrow(new_metro_sf),
       nrow(new_stations_sf),
       n_new_inside_new,
       n_new_outside_new
@@ -1448,75 +1512,45 @@ compare_metro_area <- function(
   )
   
   # 6) Persist artefacts
-  # ---------------------------------------------------------------------------
-  # Summary as Parquet
+  # Write the summary dataframe to Parquet for fast reading in Quarto
   arrow::write_parquet(
     summary_tbl,
     file.path(out_dir, "metro_summary.parquet"),
     compression = "zstd"
   )
   
-  # Save sf objects as GeoPackage for the Quarto report maps
-  sf::st_write(
-    new_metro_sf,
-    file.path(out_dir, "new_metro.gpkg"),
-    delete_dsn = TRUE, quiet = TRUE
-  )
-  sf::st_write(
-    legacy_metro_sf,
-    file.path(out_dir, "legacy_metro.gpkg"),
-    delete_dsn = TRUE, quiet = TRUE
-  )
-  sf::st_write(
-    new_stations_sf,
-    file.path(out_dir, "new_stations.gpkg"),
-    delete_dsn = TRUE, quiet = TRUE
-  )
-  sf::st_write(
-    legacy_stations_sf,
-    file.path(out_dir, "legacy_stations.gpkg"),
-    delete_dsn = TRUE, quiet = TRUE
-  )
+  # Write spatial objects to GeoPackage format so Quarto can map them
+  sf::st_write(new_metro_sf, file.path(out_dir, "new_metro.gpkg"), 
+               delete_dsn = TRUE, quiet = TRUE)
+  sf::st_write(legacy_metro_sf, file.path(out_dir, "legacy_metro.gpkg"), 
+               delete_dsn = TRUE, quiet = TRUE)
+  sf::st_write(new_stations_sf, file.path(out_dir, "new_stations.gpkg"), 
+               delete_dsn = TRUE, quiet = TRUE)
+  sf::st_write(legacy_stations_sf, file.path(out_dir, "legacy_stations.gpkg"), 
+               delete_dsn = TRUE, quiet = TRUE)
   
-  if (!quiet)
-    message("[", cfg$id, "] Metro comparison saved to: ", out_dir)
+  if (!quiet) message("[", cfg$id, "] Metro comparison saved to: ", out_dir)
   
-  # 7) Return
-  # ---------------------------------------------------------------------------
   invisible(list(
-    summary           = summary_tbl,
-    new_metro_sf      = new_metro_sf,
-    legacy_metro_sf   = legacy_metro_sf,
-    new_stations_sf   = new_stations_sf,
+    summary            = summary_tbl,
+    new_metro_sf       = new_metro_sf,
+    legacy_metro_sf    = legacy_metro_sf,
+    new_stations_sf    = new_stations_sf,
     legacy_stations_sf = legacy_stations_sf,
-    out_dir           = out_dir
+    out_dir            = out_dir
   ))
 }
 
 
 # --------------------------------------------------------------------------------------------
 # compare_census
-# @Arg      : cfg              — city cfg list (must contain $id).
-# @Arg      : out_root         — root output folder; {out_root}/{cfg$id}/ is created.
-# @Arg      : new_collapsed    — character; path to the new pipeline's collapsed census CSV.
-#                                 Default: data/interim/census/bogota_extended_2005/
-#                                          collapse_metro_area_extended.csv
-# @Arg      : new_individual   — character; path to the new pipeline's individual census CSV.
-#                                 Default: data/interim/census/bogota_extended_2005/
-#                                          census_metro_individual_extended.csv
-# @Arg      : legacy_collapsed — character; path to the Dropbox legacy collapsed CSV.
-#                                 Default: data/_legacy/census/collapse_bogota_metro.csv
-# @Arg      : legacy_individual — character; path to the Dropbox legacy individual census CSV.
-#                                  Default: data/_legacy/census/census_bogota_metro.csv
-#                                  Set to NULL to skip individual-level comparison.
-# @Arg      : join_key         — character; column name used to join collapsed datasets.
-#                                 Default "LocCodigo" (the geographic unit identifier shared
-#                                 by both pipelines for the Extended 2005 census).
-# @Arg      : compare_vars     — character vector; variable names to compare in collapsed
-#                                 data. Default covers the core education/labor shares.
-# @Arg      : tol              — numeric; absolute tolerance for value comparisons.
-#                                 Default 0.001 (0.1 percentage point for shares).
-# @Arg      : quiet            — logical; suppress messages. Default FALSE.
+# @Arg cfg          : city cfg list. Must contain a $compare sublist with:
+#                     new_census_collapsed, legacy_census_collapsed, 
+#                     census_join_key, and optionally census_tol and individual paths.
+# @Arg out_root     : root output folder; {out_root}/{cfg$id}/ is created.
+# @Arg compare_vars : character vector; variable names to compare. Default covers 
+#                     core education/labor shares.
+# @Arg quiet        : logical; suppress messages. Default FALSE.
 #
 # @Output   : named list (invisible) with:
 #   $collapsed_summary — tibble; per-variable match statistics
@@ -1562,12 +1596,7 @@ compare_metro_area <- function(
 compare_census <- function(
     cfg,
     out_root,
-    new_collapsed    = NULL,
-    new_individual   = NULL,
-    legacy_collapsed = NULL,
-    legacy_individual = NULL,
-    join_key         = "LocCodigo",
-    compare_vars     = c(
+    compare_vars = c(
       "n", "escolaridad",
       "share_no_education_pop",
       "share_high_school_incomplete_pop",
@@ -1577,131 +1606,106 @@ compare_census <- function(
       "share_graduate_educ_pop",
       "share_employed_pop"
     ),
-    tol   = 0.001,
     quiet = FALSE
 ) {
   
   # 0) Dependencies
-  # ---------------------------------------------------------------------------
   req_pkgs <- c("dplyr", "tidyr", "tibble", "readr", "arrow")
   for (p in req_pkgs) {
-    if (!requireNamespace(p, quietly = TRUE))
-      stop("Package '", p, "' required.")
+    if (!requireNamespace(p, quietly = TRUE)) stop("Package '", p, "' required.")
   }
   
-  # 1) Resolve default file paths
-  # ---------------------------------------------------------------------------
-  if (is.null(new_collapsed))
-    new_collapsed <- here::here(
-      "data", "interim", "census",
-      paste0(cfg$id, "_extended_2005"),
-      "collapse_metro_area_extended.csv"
-    )
-  if (is.null(new_individual))
-    new_individual <- here::here(
-      "data", "interim", "census",
-      paste0(cfg$id, "_extended_2005"),
-      "census_metro_individual_extended.csv"
-    )
-  if (is.null(legacy_collapsed))
-    legacy_collapsed <- here::here(
-      "data", "_legacy", "census",
-      paste0("collapse_", cfg$id, "_metro.csv")
-    )
-  if (is.null(legacy_individual))
-    legacy_individual <- here::here(
-      "data", "_legacy", "census",
-      paste0("census_", cfg$id, "_metro.csv")
-    )
+  # 1) Validate cfg and extract parameters
+  cmp <- cfg$compare
+  if (is.null(cmp)) stop("[", cfg$id, "] cfg$compare is NULL.")
   
-  # Validate that at least the collapsed files exist
+  req_fields <- c("new_census_collapsed", "legacy_census_collapsed", 
+                  "census_join_key")
+  missing_f <- setdiff(req_fields, names(cmp))
+  if (length(missing_f) > 0) {
+    stop("[", cfg$id, "] cfg$compare missing: ", paste(missing_f, collapse = ", "))
+  }
   
-  if (!file.exists(new_collapsed))
-    stop("[", cfg$id, "] New collapsed census not found:\n  ", new_collapsed)
-  if (!file.exists(legacy_collapsed))
-    stop("[", cfg$id, "] Legacy collapsed census not found:\n  ", legacy_collapsed)
+  new_col_path <- cmp$new_census_collapsed
+  leg_col_path <- cmp$legacy_census_collapsed
+  new_ind_path <- cmp$new_census_individual
+  leg_ind_path <- cmp$legacy_census_individual
+  
+  join_key <- cmp$census_join_key
+  tol      <- if (!is.null(cmp$census_tol)) cmp$census_tol else 0.001
+  
+  if (!file.exists(new_col_path))
+    stop("[", cfg$id, "] New collapsed census not found: ", new_col_path)
+  if (!file.exists(leg_col_path))
+    stop("[", cfg$id, "] Legacy collapsed census not found: ", leg_col_path)
   
   out_dir <- file.path(out_root, cfg$id, "census_comparison")
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
   
-  if (!quiet)
-    message("[", cfg$id, "] Comparing census data (Extended 2005) ...")
+  if (!quiet) message("[", cfg$id, "] Comparing census data (Extended 2005) ...")
   
   # 2) Load collapsed datasets
-  # ---------------------------------------------------------------------------
-  new_col <- readr::read_csv(new_collapsed, show_col_types = FALSE) |>
+  new_col <- readr::read_csv(new_col_path, show_col_types = FALSE) |>
     dplyr::mutate(dplyr::across(dplyr::where(is.character), trimws))
   
-  legacy_col <- readr::read_csv(legacy_collapsed, show_col_types = FALSE) |>
-    dplyr::mutate(dplyr::across(dplyr::where(is.character), trimws)) |> 
-    dplyr::mutate(GEO_ID = LocCodigo)
+  legacy_col <- readr::read_csv(leg_col_path, show_col_types = FALSE) |>
+    dplyr::mutate(dplyr::across(dplyr::where(is.character), trimws))
   
-  # Ensure the join key exists in both
-  if (!join_key %in% names(new_col))
-    stop("[", cfg$id, "] join_key '", join_key, "' not in new collapsed data. ",
-         "Available: ", paste(names(new_col), collapse = ", "))
-  if (!join_key %in% names(legacy_col))
-    stop("[", cfg$id, "] join_key '", join_key, "' not in legacy collapsed data. ",
-         "Available: ", paste(names(legacy_col), collapse = ", "))
-  
-  # Harmonise the join key: the new pipeline may store GEO_ID instead of
-  # LocCodigo. For the extended census, GEO_ID == LocCodigo + optional
-  # localidad suffix. If GEO_ID is used, we extract the first 5 chars for
-  # Cundinamarca and use as-is for Bogotá localidades (2-digit codes).
-  if (join_key == "LocCodigo" && "GEO_ID" %in% names(new_col) &&
-      !join_key %in% names(new_col)) {
-    new_col <- new_col |>
-      dplyr::rename(LocCodigo = GEO_ID)
+  # Legacy sets usually have LocCodigo. Standardise if it exists.
+  if ("LocCodigo" %in% names(legacy_col)) {
+    legacy_col <- legacy_col |> dplyr::mutate(GEO_ID = LocCodigo)
   }
   
-  # Standardise key to character
+  if (!join_key %in% names(new_col) && "GEO_ID" %in% names(new_col)) {
+    if (join_key == "LocCodigo") new_col <- new_col |> dplyr::rename(LocCodigo = GEO_ID)
+  }
+  
+  if (!join_key %in% names(new_col))
+    stop("[", cfg$id, "] join_key '", join_key, "' missing in new data.")
+  if (!join_key %in% names(legacy_col))
+    stop("[", cfg$id, "] join_key '", join_key, "' missing in legacy data.")
+  
   new_col[[join_key]]    <- as.character(new_col[[join_key]])
   legacy_col[[join_key]] <- as.character(legacy_col[[join_key]])
   
-  if (!quiet)
-    message(
-      "  Geo units — new: ", dplyr::n_distinct(new_col[[join_key]]),
-      " | legacy: ", dplyr::n_distinct(legacy_col[[join_key]])
-    )
+  if (!quiet) {
+    message("  Geo units — new: ", dplyr::n_distinct(new_col[[join_key]]),
+            " | legacy: ", dplyr::n_distinct(legacy_col[[join_key]]))
+  }
   
   # 3) Geographic coverage audit
-  # ---------------------------------------------------------------------------
   new_geos    <- sort(unique(new_col[[join_key]]))
   legacy_geos <- sort(unique(legacy_col[[join_key]]))
   all_geos    <- sort(union(new_geos, legacy_geos))
   
   geo_coverage <- tibble::tibble(
-    geo_unit   = all_geos,
-    in_new     = all_geos %in% new_geos,
-    in_legacy  = all_geos %in% legacy_geos,
-    overlap    = all_geos %in% intersect(new_geos, legacy_geos)
+    geo_unit  = all_geos,
+    in_new    = all_geos %in% new_geos,
+    in_legacy = all_geos %in% legacy_geos,
+    overlap   = all_geos %in% intersect(new_geos, legacy_geos)
   )
   
-  n_overlap   <- sum(geo_coverage$overlap)
-  n_new_only  <- sum(geo_coverage$in_new & !geo_coverage$in_legacy)
-  n_leg_only  <- sum(geo_coverage$in_legacy & !geo_coverage$in_new)
-  
-  if (!quiet)
+  if (!quiet) {
     message(sprintf(
       "  Overlap: %d | New only: %d | Legacy only: %d",
-      n_overlap, n_new_only, n_leg_only
+      sum(geo_coverage$overlap), 
+      sum(geo_coverage$in_new & !geo_coverage$in_legacy), 
+      sum(geo_coverage$in_legacy & !geo_coverage$in_new)
     ))
+  }
   
   # 4) Compare collapsed values on overlapping geographic units
-  # ---------------------------------------------------------------------------
   overlap_geos <- geo_coverage$geo_unit[geo_coverage$overlap]
   
-  # Restrict compare_vars to columns present in both datasets
-  avail_vars <- intersect(
-    intersect(compare_vars, names(new_col)),
-    names(legacy_col)
-  )
-  missing_vars <- setdiff(compare_vars, avail_vars)
-  if (length(missing_vars) > 0 && !quiet)
-    message(
-      "  Variables not in both datasets (skipped): ",
-      paste(missing_vars, collapse = ", ")
-    )
+  # Use cmp$census_vars if provided, otherwise default args
+  vars_to_check <- if (!is.null(cmp$census_vars)) cmp$census_vars else compare_vars
+  avail_vars    <- intersect(intersect(vars_to_check, names(new_col)), names(legacy_col))
+  missing_vars  <- setdiff(vars_to_check, avail_vars)
+  
+  if (length(missing_vars) > 0 && !quiet) {
+    message("  Variables not in both datasets (skipped): ", 
+            paste(missing_vars, collapse = ", "))
+  }
   
   new_overlap <- new_col |>
     dplyr::filter(.data[[join_key]] %in% overlap_geos) |>
@@ -1711,36 +1715,30 @@ compare_census <- function(
     dplyr::filter(.data[[join_key]] %in% overlap_geos) |>
     dplyr::select(dplyr::all_of(c(join_key, avail_vars)))
   
-  # Full join and compute differences
   joined <- dplyr::full_join(
-    new_overlap,
-    legacy_overlap,
-    by = join_key,
-    suffix = c("_new", "_legacy")
+    new_overlap, legacy_overlap, by = join_key, suffix = c("_new", "_legacy")
   )
   
-  # Build long-format differences
   diffs_list <- lapply(avail_vars, function(v) {
     v_new <- paste0(v, "_new")
     v_leg <- paste0(v, "_legacy")
     if (!all(c(v_new, v_leg) %in% names(joined))) return(NULL)
     
     tibble::tibble(
-      geo_unit  = joined[[join_key]],
-      variable  = v,
-      value_new = as.numeric(joined[[v_new]]),
+      geo_unit     = joined[[join_key]],
+      variable     = v,
+      value_new    = as.numeric(joined[[v_new]]),
       value_legacy = as.numeric(joined[[v_leg]])
     ) |>
       dplyr::mutate(
-        diff     = .data$value_new - .data$value_legacy,
-        abs_diff = abs(.data$diff),
-        within_tol = 
-          .data$abs_diff <= tol | (is.na(.data$value_new) & is.na(.data$value_legacy))
+        diff       = .data$value_new - .data$value_legacy,
+        abs_diff   = abs(.data$diff),
+        within_tol = .data$abs_diff <= tol | 
+          (is.na(.data$value_new) & is.na(.data$value_legacy))
       )
   })
   diffs_long <- dplyr::bind_rows(diffs_list)
   
-  # Per-variable summary
   collapsed_summary <- diffs_long |>
     dplyr::group_by(.data$variable) |>
     dplyr::summarise(
@@ -1754,58 +1752,45 @@ compare_census <- function(
       .groups = "drop"
     )
   
-  # Extract rows that differ
-  collapsed_diffs <- diffs_long |>
-    dplyr::filter(!.data$within_tol)
+  collapsed_diffs <- diffs_long |> dplyr::filter(!.data$within_tol)
   
   if (!quiet) {
-    message(sprintf(
-      "  Variables compared: %d | Overall match rate: %.2f%%",
-      length(avail_vars),
-      100 * mean(collapsed_summary$share_match)
-    ))
+    message(sprintf("  Variables compared: %d | Overall match rate: %.2f%%",
+                    length(avail_vars), 100 * mean(collapsed_summary$share_match)))
   }
   
-  # 5) Individual-level comparison (optional — row counts and key stats)
-  # ---------------------------------------------------------------------------
+  # 5) Individual-level comparison
   individual_summary <- NULL
   
-  if (!is.null(legacy_individual) && file.exists(legacy_individual) &&
-      file.exists(new_individual)) {
+  if (!is.null(leg_ind_path) && file.exists(leg_ind_path) && file.exists(new_ind_path)) {
     if (!quiet) message("  Comparing individual-level census ...")
     
-    # Read only enough to compute summary statistics (not the full micro data)
-    new_ind <- readr::read_csv(new_individual, show_col_types = FALSE)
-    leg_ind <- readr::read_csv(legacy_individual, show_col_types = FALSE)
+    new_ind <- readr::read_csv(new_ind_path, show_col_types = FALSE)
+    leg_ind <- readr::read_csv(leg_ind_path, show_col_types = FALSE)
     
-    # Harmonise column names: legacy may have lowercase or different names
     names(new_ind) <- tolower(names(new_ind))
     names(leg_ind) <- tolower(names(leg_ind))
     
-    # Key comparisons: total rows, adults, mean schooling
     ind_stats <- function(df, label) {
-      edad_col <- intersect(c("edad", "pc09b_edad", "raw_age"), names(df))
-      edad <- if (length(edad_col)) as.numeric(df[[edad_col[1]]]) else NA_real_
-      
-      esc_col <- intersect(c("escolaridad"), names(df))
-      esc <- if (length(esc_col)) as.numeric(df[[esc_col[1]]]) else NA_real_
-      
-      fe_col <- intersect(c("fe"), names(df))
-      fe <- if (length(fe_col)) as.numeric(df[[fe_col[1]]]) else rep(1, nrow(df))
-      
+      edad_col  <- intersect(c("edad", "pc09b_edad", "raw_age"), names(df))
+      edad      <- if (length(edad_col)) as.numeric(df[[edad_col[1]]]) else NA_real_
+      esc_col   <- intersect(c("escolaridad"), names(df))
+      esc       <- if (length(esc_col)) as.numeric(df[[esc_col[1]]]) else NA_real_
+      fe_col    <- intersect(c("fe"), names(df))
+      fe        <- if (length(fe_col)) as.numeric(df[[fe_col[1]]]) else rep(1, nrow(df))
       adult_col <- intersect(c("adult"), names(df))
-      adult <- if (length(adult_col)) as.numeric(df[[adult_col[1]]]) else NA_real_
+      adult     <- if (length(adult_col)) as.numeric(df[[adult_col[1]]]) else NA_real_
       
       tibble::tibble(
-        pipeline           = label,
-        total_rows         = nrow(df),
-        n_adults           = sum(adult == 1, na.rm = TRUE),
-        weighted_n         = sum(fe, na.rm = TRUE),
-        mean_escolaridad   = stats::weighted.mean(esc, fe, na.rm = TRUE),
-        share_women        = if ("women" %in% names(df))
+        pipeline         = label,
+        total_rows       = nrow(df),
+        n_adults         = sum(adult == 1, na.rm = TRUE),
+        weighted_n       = sum(fe, na.rm = TRUE),
+        mean_escolaridad = stats::weighted.mean(esc, fe, na.rm = TRUE),
+        share_women      = if ("women" %in% names(df)) 
           mean(as.numeric(df$women), na.rm = TRUE) else NA_real_,
-        n_geo_units        = dplyr::n_distinct(
-          df[[intersect(c("geo_id", "loccodigo", join_key), names(df))[1]]]
+        n_geo_units      = dplyr::n_distinct(
+          df[[intersect(c("geo_id", "loccodigo", tolower(join_key)), names(df))[1]]]
         )
       )
     }
@@ -1816,36 +1801,27 @@ compare_census <- function(
     )
     
     if (!quiet) {
-      message(sprintf(
-        "  Individual rows — new: %s | legacy: %s",
-        format(nrow(new_ind), big.mark = ","),
-        format(nrow(leg_ind), big.mark = ",")
-      ))
+      message(sprintf("  Individual rows — new: %s | legacy: %s",
+                      format(nrow(new_ind), big.mark = ","),
+                      format(nrow(leg_ind), big.mark = ",")))
     }
   } else if (!quiet) {
     message("  Individual-level comparison skipped (file not found).")
   }
   
   # 6) Persist artefacts as Parquet
-  # ---------------------------------------------------------------------------
-  .wpq <- function(df, name)
-    arrow::write_parquet(
-      dplyr::as_tibble(df),
-      file.path(out_dir, paste0(name, ".parquet")),
-      compression = "zstd"
-    )
+  .wpq <- function(df, name) arrow::write_parquet(
+    dplyr::as_tibble(df), file.path(out_dir, paste0(name, ".parquet")), 
+    compression = "zstd"
+  )
   
   .wpq(collapsed_summary, "collapsed_summary")
   .wpq(collapsed_diffs,   "collapsed_diffs")
   .wpq(geo_coverage,      "geo_coverage")
-  if (!is.null(individual_summary))
-    .wpq(individual_summary, "individual_summary")
+  if (!is.null(individual_summary)) .wpq(individual_summary, "individual_summary")
   
-  if (!quiet)
-    message("[", cfg$id, "] Census comparison saved to: ", out_dir)
+  if (!quiet) message("[", cfg$id, "] Census comparison saved to: ", out_dir)
   
-  # 7) Return
-  # ---------------------------------------------------------------------------
   invisible(list(
     collapsed_summary  = collapsed_summary,
     collapsed_diffs    = collapsed_diffs,
@@ -1858,23 +1834,13 @@ compare_census <- function(
 
 # --------------------------------------------------------------------------------------------
 # compare_idw
-# @Arg      : cfg              — city cfg list (must contain $id).
+# @Arg      : cfg              — city cfg list. Must contain a $compare sublist with:
+#                                new_station_dist, legacy_station_dist, and optionally
+#                                new_geo_dist, legacy_geo_dist, and idw_tol_km.
 # @Arg      : out_root         — root output folder; {out_root}/{cfg$id}/ is created.
-# @Arg      : new_station_dist — character; path to the new pipeline's station-to-station
-#                                 distance Parquet (from compute_distance_matrices()).
-# @Arg      : new_geo_dist     — character; path to the new pipeline's geo-unit-to-station
-#                                 distance Parquet (from compute_distance_matrices()).
-# @Arg      : legacy_station_dist — character; path to the Dropbox legacy station distance
-#                                    file (CSV or RDS). Typically a wide-format matrix with
-#                                    station_code as rows and station names as columns.
-# @Arg      : legacy_geo_dist  — character; path to the Dropbox legacy geo-unit-to-station
-#                                 distance file (RDS). Typically a long-format data.table with
-#                                 station_code, locality, and distance columns.
-# @Arg      : station_audit    — data.frame; output from compare_ground_stations()$station_audit.
-#                                 Used to restrict the new pipeline's distance matrix to the
-#                                 legacy station universe for fair comparison.
-# @Arg      : tol_km           — numeric; tolerance in km for declaring two distances as
-#                                 matching. Default 0.5 (500 m).
+# @Arg      : station_audit    — data.frame; output from compare_ground_stations().
+#                                Used to restrict the new pipeline's distance matrix to 
+#                                the legacy station universe for fair comparison.
 # @Arg      : quiet            — logical; suppress messages. Default FALSE.
 #
 # @Output   : named list (invisible) with:
@@ -1913,48 +1879,43 @@ compare_census <- function(
 compare_idw <- function(
     cfg,
     out_root,
-    new_station_dist   = NULL,
-    new_geo_dist       = NULL,
-    legacy_station_dist = NULL,
-    legacy_geo_dist    = NULL,
-    station_audit      = NULL,
-    tol_km             = 0.5,
-    quiet              = FALSE
+    station_audit = NULL,
+    quiet         = FALSE
 ) {
   
   # 0) Dependencies
   req_pkgs <- c("dplyr", "tidyr", "tibble", "arrow", "data.table")
   for (p in req_pkgs) {
-    if (!requireNamespace(p, quietly = TRUE))
-      stop("Package '", p, "' required.")
+    if (!requireNamespace(p, quietly = TRUE)) stop("Package '", p, "' required.")
   }
   
-  # 1) Resolve default file paths
-  outdir_distances <- here::here("data", "processed", "distances_matrices")
+  # 1) Validate cfg and extract paths
+  cmp <- cfg$compare
+  if (is.null(cmp)) stop("[", cfg$id, "] cfg$compare is NULL.")
   
-  if (is.null(new_station_dist))
-    new_station_dist <- here::here(
-      outdir_distances,
-      paste0(cfg$id, "_2018_station_distances.parquet")
-    )
-  if (is.null(legacy_station_dist))
-    legacy_station_dist <- here::here(
-      "data", "_legacy", "distances",
-      paste0("stations_distance_", cfg$id, "_v2.csv")
-    )
+  req_fields <- c("new_station_dist", "legacy_station_dist")
+  missing_f <- setdiff(req_fields, names(cmp))
+  if (length(missing_f) > 0) {
+    stop("[", cfg$id, "] cfg$compare missing: ", paste(missing_f, collapse = ", "))
+  }
+  
+  new_station_dist    <- cmp$new_station_dist
+  legacy_station_dist <- cmp$legacy_station_dist
+  new_geo_dist        <- cmp$new_geo_dist
+  legacy_geo_dist     <- cmp$legacy_geo_dist
+  tol_km              <- if (!is.null(cmp$idw_tol_km)) cmp$idw_tol_km else 0.5
   
   if (!file.exists(new_station_dist))
-    stop("[", cfg$id, "] New station distance file not found:\n  ", new_station_dist)
+    stop("[", cfg$id, "] New station dist file not found: ", new_station_dist)
   if (!file.exists(legacy_station_dist))
-    stop("[", cfg$id, "] Legacy station distance file not found:\n  ", legacy_station_dist)
+    stop("[", cfg$id, "] Legacy station dist file not found: ", legacy_station_dist)
   
   out_dir <- file.path(out_root, cfg$id, "distance_comparison")
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
   
-  if (!quiet)
-    message("[", cfg$id, "] Comparing distance matrices ...")
+  if (!quiet) message("[", cfg$id, "] Comparing distance matrices ...")
   
-  # 2) Normalisation helper (same as compute_distance_matrices)
+  # 2) Normalisation helper
   .norm <- function(x) {
     x <- toupper(trimws(as.character(x)))
     if (requireNamespace("stringi", quietly = TRUE))
@@ -1962,7 +1923,8 @@ compare_idw <- function(
     gsub('["\']', "", x)
   }
   
-  # 3) Load new pipeline station distances (long format)
+  # 3) Load new pipeline station distances
+  # The new pipeline stores distances in "long" format (station_from, station_to, dist)
   new_sta <- arrow::read_parquet(new_station_dist) |>
     dplyr::as_tibble() |>
     dplyr::mutate(
@@ -1970,18 +1932,18 @@ compare_idw <- function(
       station_to   = .norm(station_to)
     )
   
-  # 4) Load legacy station distances (wide format → long)
+  # 4) Load legacy station distances
   ext <- tools::file_ext(legacy_station_dist)
-  if (ext == "rds") {
-    leg_wide <- readRDS(legacy_station_dist)
-  } else {
-    leg_wide <- data.table::fread(legacy_station_dist)
-  }
+  leg_wide <- if (ext == "rds") {
+    readRDS(legacy_station_dist)
+  } else data.table::fread(legacy_station_dist)
   
-  # Identify the station_code column (first column or named "station_code")
+  # The legacy pipeline stores distances as a wide matrix. We need to convert it 
+  # to long format so we can join it easily with the new pipeline data.
   id_col <- if ("station_code" %in% names(leg_wide)) "station_code" else names(leg_wide)[1]
   sta_cols <- setdiff(names(leg_wide), id_col)
   
+  # pivot_longer collapses the matrix columns down into rows
   leg_long <- leg_wide |>
     tidyr::pivot_longer(
       cols = dplyr::all_of(sta_cols),
@@ -1990,13 +1952,13 @@ compare_idw <- function(
     ) |>
     dplyr::rename(station_from = !!id_col) |>
     dplyr::mutate(
-      station_from = .norm(station_from),
-      station_to   = .norm(station_to),
+      station_from       = .norm(station_from),
+      station_to         = .norm(station_to),
       distance_km_legacy = as.numeric(distance_m_legacy) / 1000
     ) |>
     dplyr::select(station_from, station_to, distance_km_legacy)
   
-  # 5) Restrict new to legacy station universe
+  # 5) Restrict new data to legacy station universe
   if (!is.null(station_audit)) {
     legacy_names <- .norm(station_audit$station[station_audit$in_legacy])
   } else {
@@ -2004,42 +1966,38 @@ compare_idw <- function(
   }
   
   new_sta_filtered <- new_sta |>
-    dplyr::filter(
-      station_from %in% legacy_names,
-      station_to %in% legacy_names
-    ) |>
+    dplyr::filter(station_from %in% legacy_names, station_to %in% legacy_names) |>
     dplyr::rename(distance_km_new = distance_km)
   
-  if (!quiet)
-    message(sprintf(
-      "  Station pairs — new: %s | legacy: %s",
-      format(nrow(new_sta_filtered), big.mark = ","),
-      format(nrow(leg_long), big.mark = ",")
-    ))
+  if (!quiet) {
+    message(sprintf("  Station pairs — new: %s | legacy: %s",
+                    format(nrow(new_sta_filtered), big.mark = ","),
+                    format(nrow(leg_long), big.mark = ",")))
+  }
   
   # 6) Join and compare
+  # full_join matches rows based on the origin and destination stations.
   joined <- dplyr::full_join(
-    new_sta_filtered,
-    leg_long,
-    by = c("station_from", "station_to")
+    new_sta_filtered, leg_long, by = c("station_from", "station_to")
   ) |>
     dplyr::mutate(
       diff_km    = distance_km_new - distance_km_legacy,
       abs_diff   = abs(diff_km),
-      within_tol = abs_diff <= tol_km | (is.na(distance_km_new) & is.na(distance_km_legacy))
+      within_tol = abs_diff <= tol_km | 
+        (is.na(distance_km_new) & is.na(distance_km_legacy))
     )
   
-  # Summary
+  # Summary: filter out self-distances (station A to station A)
   sta_summary <- joined |>
     dplyr::filter(!is.na(distance_km_new) & !is.na(distance_km_legacy)) |>
     dplyr::filter(station_from != station_to) |>
     dplyr::summarise(
-      n_pairs        = dplyr::n(),
-      n_match        = sum(within_tol, na.rm = TRUE),
-      n_diff         = sum(!within_tol, na.rm = TRUE),
-      mean_abs_diff  = mean(abs_diff, na.rm = TRUE),
-      max_abs_diff   = max(abs_diff, na.rm = TRUE),
-      share_match    = n_match / n_pairs
+      n_pairs       = dplyr::n(),
+      n_match       = sum(within_tol, na.rm = TRUE),
+      n_diff        = sum(!within_tol, na.rm = TRUE),
+      mean_abs_diff = mean(abs_diff, na.rm = TRUE),
+      max_abs_diff  = max(abs_diff, na.rm = TRUE),
+      share_match   = n_match / n_pairs
     )
   
   sta_diffs <- joined |>
@@ -2047,15 +2005,11 @@ compare_idw <- function(
     dplyr::arrange(dplyr::desc(abs_diff))
   
   if (!quiet) {
-    message(sprintf(
-      "  Station distances: %d pairs match (%.1f%%), %d differ > %.1f km",
-      sta_summary$n_match, 100 * sta_summary$share_match,
-      sta_summary$n_diff, tol_km
-    ))
-    message(sprintf(
-      "  Mean abs diff: %.3f km | Max: %.3f km",
-      sta_summary$mean_abs_diff, sta_summary$max_abs_diff
-    ))
+    message(sprintf("  Station distances: %d pairs match (%.1f%%), %d differ > %.1f km",
+                    sta_summary$n_match, 100 * sta_summary$share_match,
+                    sta_summary$n_diff, tol_km))
+    message(sprintf("  Mean abs diff: %.3f km | Max: %.3f km",
+                    sta_summary$mean_abs_diff, sta_summary$max_abs_diff))
   }
   
   # 7) Geo-unit distances (optional)
@@ -2071,13 +2025,10 @@ compare_idw <- function(
       dplyr::mutate(station_id = .norm(station_id)) |>
       dplyr::rename(distance_km_new = distance_km)
     
-    if (tools::file_ext(legacy_geo_dist) == "rds") {
-      leg_geo <- data.table::as.data.table(readRDS(legacy_geo_dist))
-    } else {
-      leg_geo <- data.table::fread(legacy_geo_dist)
-    }
+    leg_geo <- if (tools::file_ext(legacy_geo_dist) == "rds") {
+      data.table::as.data.table(readRDS(legacy_geo_dist))
+    } else data.table::fread(legacy_geo_dist)
     
-    # Legacy typically has station_code, locality, distance (in km)
     geo_id_col <- intersect(c("locality", "geo_id", "LocCodigo"), names(leg_geo))[1]
     sta_id_col <- intersect(c("station_code", "station_id"), names(leg_geo))[1]
     dist_col   <- intersect(c("distance", "distance_km"), names(leg_geo))[1]
@@ -2085,18 +2036,15 @@ compare_idw <- function(
     leg_geo_clean <- leg_geo |>
       dplyr::as_tibble() |>
       dplyr::transmute(
-        geo_id = as.character(.data[[geo_id_col]]),
-        station_id = .norm(.data[[sta_id_col]]),
+        geo_id             = as.character(.data[[geo_id_col]]),
+        station_id         = .norm(.data[[sta_id_col]]),
         distance_km_legacy = as.numeric(.data[[dist_col]])
       )
     
-    # Filter new to legacy stations
-    new_geo_filtered <- new_geo |>
-      dplyr::filter(station_id %in% legacy_names)
+    new_geo_filtered <- new_geo |> dplyr::filter(station_id %in% legacy_names)
     
     geo_joined <- dplyr::inner_join(
-      new_geo_filtered, leg_geo_clean,
-      by = c("geo_id", "station_id")
+      new_geo_filtered, leg_geo_clean, by = c("geo_id", "station_id")
     ) |>
       dplyr::mutate(
         diff_km    = distance_km_new - distance_km_legacy,
@@ -2117,11 +2065,10 @@ compare_idw <- function(
       dplyr::filter(!within_tol) |>
       dplyr::arrange(dplyr::desc(abs_diff))
     
-    if (!quiet)
-      message(sprintf(
-        "  Geo distances: %d pairs, %.1f%% match within %.1f km",
-        geo_summary$n_pairs, 100 * geo_summary$share_match, tol_km
-      ))
+    if (!quiet) {
+      message(sprintf("  Geo distances: %d pairs, %.1f%% match within %.1f km",
+                      geo_summary$n_pairs, 100 * geo_summary$share_match, tol_km))
+    }
   }
   
   # 8) Method note
@@ -2132,20 +2079,17 @@ compare_idw <- function(
   )
   
   # 9) Persist
-  .wpq <- function(df, name)
-    arrow::write_parquet(
-      dplyr::as_tibble(df),
-      file.path(out_dir, paste0(name, ".parquet")),
-      compression = "zstd"
-    )
+  .wpq <- function(df, name) arrow::write_parquet(
+    dplyr::as_tibble(df), file.path(out_dir, paste0(name, ".parquet")), 
+    compression = "zstd"
+  )
   
   .wpq(sta_summary, "station_dist_summary")
   if (nrow(sta_diffs) > 0) .wpq(sta_diffs, "station_dist_diffs")
   if (!is.null(geo_summary)) .wpq(geo_summary, "geo_dist_summary")
   if (!is.null(geo_diffs) && nrow(geo_diffs) > 0) .wpq(geo_diffs, "geo_dist_diffs")
   
-  if (!quiet)
-    message("[", cfg$id, "] Distance comparison saved to: ", out_dir)
+  if (!quiet) message("[", cfg$id, "] Distance comparison saved to: ", out_dir)
   
   invisible(list(
     station_dist_summary = sta_summary,
@@ -2158,111 +2102,44 @@ compare_idw <- function(
 }
 
 
-# --------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------
 # compare_outlier_procedure
-# @Arg      : cfg              — city cfg list (must contain $id).
-# @Arg      : out_root         — root output folder; {out_root}/{cfg$id}/ is created.
-# @Arg      : new_clean_dir    — character; path to the new pipeline's cleaned Arrow dataset
-#                                 (output of detect_pollution_outliers()).
-# @Arg      : new_raw_dir      — character; path to the new pipeline's raw Arrow dataset
-#                                 (before outlier detection). Used to compute pre/post counts.
-# @Arg      : legacy_clean_path — character; path to the Dropbox legacy's cleaned data
-#                                  (RDS or CSV with outlier-corrected PM values).
-# @Arg      : legacy_raw_path  — character; path to the Dropbox legacy's raw balanced panel
-#                                 (RDS or CSV before outlier correction).
-# @Arg      : pollutants       — character; pollutants to compare. Default c("pm10", "pm25").
-# @Arg      : compare_years    — integer vector; years to compare. Default 2023.
-# @Arg      : station_audit    — data.frame; from compare_ground_stations()$station_audit.
-# @Arg      : quiet            — logical; suppress messages. Default FALSE.
+# @Arg cfg           : city cfg list (must contain $id and $compare sublist).
+# @Arg out_root      : root output folder; {out_root}/{cfg$id}/ is created.
+# @Arg station_audit : data.frame; from compare_ground_stations().
+# @Arg quiet         : logical; suppress messages. Default FALSE.
 #
-# @Output   : named list (invisible) with:
-#   $step_summary   — tibble; per-pollutant breakdown of the outlier detection steps:
-#                     total obs, flagged (step 1), no benchmark (step 2), no neighbour
-#                     value (step 3), final outliers removed.
-#   $comparison      — tibble; per-station-pollutant: outliers in new vs legacy.
-#   $agreement       — tibble; overlap statistics (both flagged, only new, only legacy).
-#   $out_dir         — path to the output directory
-#   Parquet files written to {out_root}/{cfg$id}/outlier_comparison/.
-#
-# @Purpose  : Compare outlier detection between the new pipeline and Dropbox legacy.
-# @Details  :
-#   PROCEDURE SUMMARY (both pipelines follow the same algorithm)
-#   Step 1 — Flag: identify observations above the 99th percentile within
-#            each station × year-month.
-#   Step 2 — Benchmark: for flagged obs, compute a benchmark from lag/lead
-#            values. Classify as reasonable (within mean ± 2 SD of first
-#            differences) or unreasonable. Obs with no benchmark (no lag
-#            and no lead) are classified as Type 3 (no benchmark).
-#   Step 3 — Neighbour check: unreasonable obs are reclassified as
-#            reasonable if the difference vs the nearest neighbour falls
-#            within mean ± 2 SD of the neighbour-difference distribution.
-#   Final  — Flagged obs that remain unreasonable or have no benchmark
-#            are set to NA (outlier = 1).
-#
-#   METHODOLOGICAL DIFFERENCES
-#   The new pipeline uses AEQD projection distances for nearest-neighbour
-#   identification, while the legacy uses Haversine. The nearest neighbour
-#   is also pollutant-specific in the new pipeline (only stations with data
-#   for the current pollutant are considered), which may occasionally select
-#   a different neighbour than the legacy.
-#
-# @Written_on: 10/04/2026
-# @Written_by: Marcos Paulo
-# --------------------------------------------------------------------------------------------
+# @Output : named list (invisible) with step_summary, comparison, out_dir.
+#           Parquet files written to {out_root}/{cfg$id}/outlier_comparison/.
+# ----------------------------------------------------------------------------------
 compare_outlier_procedure <- function(
     cfg,
     out_root,
-    new_clean_dir     = NULL,
-    new_raw_dir       = NULL,
-    legacy_clean_path = NULL,
-    legacy_raw_path   = NULL,
-    pollutants        = c("pm10", "pm25"),
-    compare_years     = 2023L,
-    station_audit     = NULL,
-    quiet             = FALSE
+    station_audit = NULL,
+    quiet         = FALSE
 ) {
   
-  # 0) Dependencies
   req_pkgs <- c("dplyr", "tibble", "arrow", "data.table")
   for (p in req_pkgs) {
-    if (!requireNamespace(p, quietly = TRUE))
-      stop("Package '", p, "' required.")
+    if (!requireNamespace(p, quietly = TRUE)) stop("Package '", p, "' required.")
   }
   
-  # 1) Resolve default paths
-  if (is.null(new_clean_dir))
-    new_clean_dir <- here::here(
-      "data", "processed", "outlier_detection",
-      paste0(cfg$id, "_metro_clean")
-    )
-  if (is.null(new_raw_dir))
-    new_raw_dir <- here::here(
-      "data", "raw", "monitoring_stations",
-      paste0(cfg$id, "_metro_dataset")
-    )
-  if (is.null(legacy_clean_path))
-    legacy_clean_path <- here::here(
-      "data", "_legacy", "outlier",
-      paste0("pollution_data_balanced_", max(compare_years), ".rds")
-    )
-  if (is.null(legacy_raw_path))
-    legacy_raw_path <- here::here(
-      "data", "_legacy", "pollution",
-      paste0("Air_Pollution_Bogota_2002_2023.csv")
-    )
+  cmp <- cfg$compare
+  if (is.null(cmp)) stop("[", cfg$id, "] cfg$compare is NULL.")
   
-  if (!dir.exists(new_clean_dir))
-    stop("[", cfg$id, "] New clean dir not found:\n  ", new_clean_dir)
-  if (!dir.exists(new_raw_dir))
-    stop("[", cfg$id, "] New raw dir not found:\n  ", new_raw_dir)
+  new_clean_dir     <- cmp$new_clean_dir
+  new_raw_dir       <- here::here("data", "raw", "monitoring_stations", 
+                                  paste0(cfg$id, "_metro_dataset"))
+  legacy_clean_path <- cmp$legacy_clean_path
+  legacy_raw_path   <- cmp$legacy_single_csv
+  station_dist_path <- cmp$new_station_dist
   
-  out_dir <- file.path(out_root, cfg$id, "outlier_comparison")
+  pollutants    <- cmp$focus_pollutants %||% c("pm10", "pm25")
+  compare_years <- cmp$compare_years
+  
+  out_dir <- file.path(out_root, "outlier_comparison")
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
   
-  if (!quiet)
-    message("[", cfg$id, "] Comparing outlier detection procedures ...")
-  
-  # 2) Normalisation helper
   .norm <- function(x) {
     x <- toupper(trimws(as.character(x)))
     if (requireNamespace("stringi", quietly = TRUE))
@@ -2270,109 +2147,157 @@ compare_outlier_procedure <- function(
     gsub('["\']', "", x)
   }
   
-  # Legacy station universe
-  if (!is.null(station_audit)) {
-    legacy_names <- .norm(station_audit$station[station_audit$in_legacy])
-  } else {
-    legacy_names <- NULL
+  # 1) Check Configuration Toggle for Legacy Test
+  out_p <- cmp$outlier_params
+  if (isTRUE(out_p$use_legacy_input) && file.exists(legacy_raw_path)) {
+    if (!quiet) message("  [Toggle] Running NEW algorithm on LEGACY raw data...")
+    if (is.null(station_dist_path)) stop("station_dist_path required for test.")
+    
+    # Manually and safely load legacy data to bypass external pipeline bugs
+    leg_raw <- data.table::fread(legacy_raw_path)
+    names(leg_raw) <- tolower(names(leg_raw))
+    
+    sta_col <- intersect(c("station_code", "station"), names(leg_raw))[1]
+    if (!is.na(sta_col)) leg_raw[, station := .norm(get(sta_col))]
+    
+    if (length(cmp$residual_map) > 0L) {
+      leg_raw[, station := dplyr::recode(station, !!!cmp$residual_map)]
+    }
+    
+    # ROBUST DATE MATH: Extracts date, mathematically adds hours (fixes hour==24)
+    if (!"datetime" %in% names(leg_raw)) {
+      if ("datehour" %in% names(leg_raw)) {
+        leg_raw[, raw_date_str := sub(" .*$", "", trimws(datehour))]
+        parsed_date <- as.Date(leg_raw$raw_date_str, format = "%d%b%Y")
+      } else if ("date" %in% names(leg_raw)) {
+        parsed_date <- as.Date(leg_raw$date, tryFormats = c("%Y-%m-%d", "%d/%m/%Y"))
+      } else {
+        parsed_date <- as.Date(sprintf("%04d-%02d-%02d", year, month, day))
+      }
+      
+      # Convert Date to POSIXct and add seconds. 
+      leg_raw[, datetime := as.POSIXct(format(parsed_date, "%Y-%m-%d"), 
+                                       format = "%Y-%m-%d", 
+                                       tz = "UTC") + (as.integer(hour) * 3600)]
+      attr(leg_raw$datetime, "tzone") <- cmp$pipeline_tz %||% cfg$tz
+    }
+    
+    if (!"year" %in% names(leg_raw)) {
+      leg_raw[, year := as.integer(format(datetime, "%Y"))]
+    }
+    
+    mock_raw <- file.path(tempdir(), "legacy_arrow_raw")
+    mock_out <- file.path(tempdir(), "legacy_arrow_test")
+    if (dir.exists(mock_raw)) unlink(mock_raw, recursive = TRUE)
+    
+    arrow::write_dataset(leg_raw, mock_raw, format="parquet", partitioning="year")
+    
+    detect_pollution_outliers(
+      arrow_dir           = mock_raw,
+      station_dist_path   = station_dist_path,
+      out_dir             = mock_out,
+      out_name            = "legacy_mock",
+      pollutants          = pollutants,
+      pct_flag            = out_p$pct_flag %||% 0.99,
+      n_sd                = out_p$n_sd %||% 2,
+      on_missing_temporal = out_p$on_missing_temporal %||% "finish",
+      on_missing_neighbor = out_p$on_missing_neighbor %||% "finish",
+      quiet               = quiet
+    )
+    
+    new_raw_dir   <- mock_raw
+    new_clean_dir <- file.path(mock_out, "legacy_mock_clean")
   }
   
-  # 3) Load new pipeline: raw + cleaned
+  if (!dir.exists(new_clean_dir)) stop("New clean dir not found: ", new_clean_dir)
+  if (!dir.exists(new_raw_dir)) stop("New raw dir not found: ", new_raw_dir)
+  
+  if (!quiet) message("[", cfg$id, "] Comparing outlier detection procedures ...")
+  
+  legacy_names <- if (!is.null(station_audit)) {
+    .norm(station_audit$station[station_audit$in_legacy])
+  } else NULL
+  
+  # 2) Load target datasets
   new_raw <- arrow::open_dataset(new_raw_dir) |>
     dplyr::filter(year %in% compare_years) |>
-    dplyr::collect() |>
-    data.table::as.data.table()
+    dplyr::collect() |> data.table::as.data.table()
   new_raw[, station := .norm(station)]
   
   new_clean <- arrow::open_dataset(new_clean_dir) |>
     dplyr::filter(year %in% compare_years) |>
-    dplyr::collect() |>
-    data.table::as.data.table()
+    dplyr::collect() |> data.table::as.data.table()
   new_clean[, station := .norm(station)]
   
-  # Restrict to legacy stations if available
   if (!is.null(legacy_names)) {
     new_raw   <- new_raw[station %in% legacy_names]
     new_clean <- new_clean[station %in% legacy_names]
   }
   
-  if (!quiet)
-    message(sprintf(
-      "  New pipeline rows — raw: %s | clean: %s",
-      format(nrow(new_raw), big.mark = ","),
-      format(nrow(new_clean), big.mark = ",")
-    ))
-  
-  # 4) Build step-level summary from the new pipeline
+  # 3) Build step-level summary pulling the new Diagnostic Reason Codes
   step_list <- list()
   for (pol in pollutants) {
-    flag_col <- paste0(pol, "_outlier")
+    flag_col   <- paste0(pol, "_outlier")
+    reason_col <- paste0(pol, "_outlier_reason")
     if (!pol %in% names(new_raw) || !flag_col %in% names(new_clean)) next
     
-    raw_vals  <- new_raw[[pol]]
-    clean_vals <- new_clean[[pol]]
+    raw_vals     <- new_raw[[pol]]
     outlier_flag <- new_clean[[flag_col]]
     
     n_total     <- sum(!is.na(raw_vals))
     n_outlier   <- sum(outlier_flag == 1L, na.rm = TRUE)
-    n_clean_na  <- sum(is.na(clean_vals) & !is.na(raw_vals))
     pct_removed <- round(100 * n_outlier / max(n_total, 1), 3)
     
+    # Extract failure point breakdowns based on new detect_pollution_outliers logic
+    if (reason_col %in% names(new_clean)) {
+      reason_vals <- new_clean[[reason_col]]
+      n_r1 <- sum(reason_vals == 1L, na.rm = TRUE)
+      n_r2 <- sum(reason_vals == 2L, na.rm = TRUE)
+      n_r3 <- sum(reason_vals == 3L, na.rm = TRUE)
+    } else {
+      n_r1 <- NA_integer_; n_r2 <- NA_integer_; n_r3 <- NA_integer_
+    }
+    
     step_list[[pol]] <- tibble::tibble(
-      pollutant       = toupper(pol),
-      total_obs       = n_total,
+      pollutant        = toupper(pol),
+      total_obs        = n_total,
       outliers_removed = n_outlier,
-      pct_removed     = pct_removed
+      pct_removed      = pct_removed,
+      reason_no_temp   = n_r1,
+      reason_no_spat   = n_r2,
+      reason_fail_both = n_r3
     )
   }
   step_summary <- dplyr::bind_rows(step_list)
   
-  # 5) Load legacy cleaned data (if available) and compare
-  comparison  <- NULL
-  agreement   <- NULL
-  
+  # 4) Load legacy cleaned data and compare
+  comparison <- NULL
   if (file.exists(legacy_clean_path)) {
-    if (!quiet) message("  Loading legacy cleaned data ...")
-    
     ext <- tools::file_ext(legacy_clean_path)
-    if (ext == "rds") {
-      leg_clean <- data.table::as.data.table(readRDS(legacy_clean_path))
-    } else {
-      leg_clean <- data.table::fread(legacy_clean_path)
-    }
+    leg_clean <- if (ext == "rds") {
+      data.table::as.data.table(readRDS(legacy_clean_path))
+    } else data.table::fread(legacy_clean_path)
+    
     names(leg_clean) <- tolower(names(leg_clean))
-    
-    # Normalise station column
     sta_col <- intersect(c("station_code", "station"), names(leg_clean))[1]
-    if (!is.na(sta_col)) {
-      leg_clean[, station := .norm(get(sta_col))]
-    }
+    if (!is.na(sta_col)) leg_clean[, station := .norm(get(sta_col))]
     
-    # Load legacy raw if available
     leg_raw_exists <- file.exists(legacy_raw_path)
     if (leg_raw_exists) {
       ext_raw <- tools::file_ext(legacy_raw_path)
-      if (ext_raw == "rds") {
-        leg_raw <- data.table::as.data.table(readRDS(legacy_raw_path))
-      } else {
-        leg_raw <- data.table::fread(legacy_raw_path)
-      }
-      names(leg_raw) <- tolower(names(leg_raw))
-      sta_col_raw <- intersect(c("station_code", "station"), names(leg_raw))[1]
-      if (!is.na(sta_col_raw))
-        leg_raw[, station := .norm(get(sta_col_raw))]
+      leg_raw_chk <- if (ext_raw == "rds") {
+        data.table::as.data.table(readRDS(legacy_raw_path))
+      } else data.table::fread(legacy_raw_path)
       
-      # Filter to compare years
-      if ("year" %in% names(leg_raw))
-        leg_raw <- leg_raw[year %in% compare_years]
+      names(leg_raw_chk) <- tolower(names(leg_raw_chk))
+      sta_col_raw <- intersect(c("station_code", "station"), names(leg_raw_chk))[1]
+      if (!is.na(sta_col_raw)) leg_raw_chk[, station := .norm(get(sta_col_raw))]
+      if ("year" %in% names(leg_raw_chk)) leg_raw_chk <- leg_raw_chk[year %in% compare_years]
     }
     
-    # Per-station-pollutant outlier counts
     comp_list <- list()
     for (pol in pollutants) {
       flag_col <- paste0(pol, "_outlier")
-      
-      # New pipeline outliers per station
       if (flag_col %in% names(new_clean)) {
         new_out <- new_clean[, .(
           outliers_new = sum(get(flag_col) == 1L, na.rm = TRUE),
@@ -2382,65 +2307,37 @@ compare_outlier_procedure <- function(
         ), by = station]
       } else next
       
-      # Legacy: compare raw vs clean to infer outliers
-      if (pol %in% names(leg_clean) && leg_raw_exists && pol %in% names(leg_raw)) {
-        # Legacy outlier = was non-NA in raw but is NA in clean
+      leg_out <- tibble::tibble(station = character(), outliers_legacy = integer())
+      if (pol %in% names(leg_clean) && leg_raw_exists && pol %in% names(leg_raw_chk)) {
         if ("will_be_na" %in% names(leg_clean)) {
           will_na_col <- if (pol == "pm25") "will_be_na_pm25" else "will_be_na"
           if (will_na_col %in% names(leg_clean)) {
             leg_out <- leg_clean[, .(
               outliers_legacy = sum(get(will_na_col) == 1L, na.rm = TRUE)
             ), by = station]
-          } else {
-            leg_out <- tibble::tibble(station = character(), outliers_legacy = integer())
           }
-        } else {
-          leg_out <- tibble::tibble(station = character(), outliers_legacy = integer())
         }
-      } else {
-        leg_out <- tibble::tibble(station = character(), outliers_legacy = integer())
       }
       
-      merged <- dplyr::full_join(
-        dplyr::as_tibble(new_out),
-        dplyr::as_tibble(leg_out),
-        by = "station"
-      ) |>
-        dplyr::mutate(pollutant = toupper(pol))
-      
-      comp_list[[pol]] <- merged
+      comp_list[[pol]] <- dplyr::full_join(
+        dplyr::as_tibble(new_out), dplyr::as_tibble(leg_out), by = "station"
+      ) |> dplyr::mutate(pollutant = toupper(pol))
     }
     comparison <- dplyr::bind_rows(comp_list)
-    
-    if (!quiet && !is.null(comparison))
-      message(sprintf(
-        "  Comparison: %d station-pollutant combinations",
-        nrow(comparison)
-      ))
-  } else if (!quiet) {
-    message("  Legacy cleaned data not found — skipping comparison.")
   }
   
-  # 6) Persist
-  .wpq <- function(df, name)
-    arrow::write_parquet(
-      dplyr::as_tibble(df),
-      file.path(out_dir, paste0(name, ".parquet")),
-      compression = "zstd"
-    )
+  # 5) Persist
+  .wpq <- function(df, name) arrow::write_parquet(
+    dplyr::as_tibble(df), file.path(out_dir, paste0(name, ".parquet")), compression = "zstd"
+  )
   
   .wpq(step_summary, "step_summary")
-  if (!is.null(comparison) && nrow(comparison) > 0)
-    .wpq(comparison, "outlier_comparison")
+  if (!is.null(comparison) && nrow(comparison) > 0) .wpq(comparison, "outlier_comparison")
   
-  if (!quiet)
-    message("[", cfg$id, "] Outlier comparison saved to: ", out_dir)
+  if (!quiet) message("[", cfg$id, "] Outlier comparison saved to: ", out_dir)
   
   invisible(list(
-    step_summary = step_summary,
-    comparison   = comparison,
-    agreement    = agreement,
-    out_dir      = out_dir
+    step_summary = step_summary, comparison = comparison, out_dir = out_dir
   ))
 }
 
