@@ -39,6 +39,7 @@ santiago_stations_csv   <- here::here(outdir_metadata,
                                       "SINCA_metadata_stations_20260113_1616.csv")
 santiago_metro_gpkg     <- here::here(outdir_geospatial, "santiago",
                                       "gran_santiago_area_2024.gpkg")
+
 # Open station location and other spatial data
 station_location <- read.csv(santiago_stations_csv)
 metro_area       <- sf::st_read(santiago_metro_gpkg)
