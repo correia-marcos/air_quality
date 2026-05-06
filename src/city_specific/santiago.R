@@ -1566,10 +1566,8 @@ santiago_process_stations_data_to_parquet <- function(
 # --------------------------------------------------------------------------------------------
 # Function: santiago_process_census_2017
 #
-# @Arg       : sf_data    — sf object; The spatial dataframe containing the
-#                           communes of interest (e.g., metro_area).
-# @Arg       : match_col  — string; The name of the column in sf_data that 
-#                           contains the commune codes (e.g., "CUT").
+# @Arg       : sf_data    — sf object; Spatial dataframe containing communes of interest.
+# @Arg       : match_col  — string; Column in sf_data with commune codes (default "CUT").
 # @Arg       : out_dir    — string; Directory to save processed CSVs.
 # @Arg       : quiet      — logical; Suppress progress messages?
 #
@@ -1577,13 +1575,12 @@ santiago_process_stations_data_to_parquet <- function(
 #
 # @Purpose   : Harmonizes 2017 Census data using a spatial filter.
 #              1. Extracts commune codes from the provided sf object.
-#              2. Connects to local 'censo2017' DuckDB.
-#              3. Filters the Census 'personas' table using those codes.
-#              4. Harmonizes 'escolaridad' (fixing the Stata logic bug).
-#              5. Collapses data to the Commune level.
+#              2. Connects to local 'censo2017' DuckDB and filters 'personas'.
+#              3. Harmonizes 'escolaridad' and injects fe=1 for schema parity.
+#              4. Collapses data to the Commune level.
 #
 # @Written_by: Marcos Paulo
-# @Updated_on: 18/02/2026 (Added dynamic SF filtering)
+# @Updated_on: April 2026
 # --------------------------------------------------------------------------------------------
 santiago_process_census_2017 <- function(
     sf_data,
@@ -1592,74 +1589,65 @@ santiago_process_census_2017 <- function(
     quiet     = FALSE
 ) {
   
-  # 1. Checks & Setup ---------------------------------------------------------
   if (!requireNamespace("censo2017", quietly = TRUE)) {
-    stop("Package 'censo2017' required. Install with install.packages('censo2017')")
+    stop("Package 'censo2017' required.")
   }
+  
+  # Validate spatial inputs
   if (!inherits(sf_data, "sf")) stop("'sf_data' must be an sf spatial object.")
-  if (!match_col %in% names(sf_data)) stop(paste("Column", match_col, "not found in sf_data."))
+  if (!match_col %in% names(sf_data)) stop("Column missing in sf_data.")
   
   if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE)
   
-  # 2. Extract Filter Codes ---------------------------------------------------
-  # We convert to integer because censo2017 uses integer keys for p10comuna
+  # Convert to integer as censo2017 uses integer keys for p10comuna
   filter_codes <- as.integer(unique(sf_data[[match_col]]))
   
-  if (!quiet) message(sprintf("🎯 Filtering for %d communes found in '%s'...", 
-                              length(filter_codes), match_col))
+  if (!quiet) {
+    message(sprintf("[santiago_2017] Filtering for %d communes.", length(filter_codes)))
+    message("[santiago_2017] Connecting to local Census 2017 database...")
+  }
   
-  # 3. Connect to Data --------------------------------------------------------
-  if (!quiet) message("🔌 Connecting to local Census 2017 database...")
   con <- censo2017::censo_conectar()
   
-  # Select columns from 'personas' table
-  # Note: p10comuna is "Comuna de Residencia Habitual"
+  # Validate that the database is actually populated
+  if (!"personas" %in% DBI::dbListTables(con)) {
+    censo2017::censo_desconectar()
+    censo2017::censo_descargar()
+  }
+  
+  con <- censo2017::censo_conectar()
+
+  # Select core demographic and labor columns
   personas_db <- dplyr::tbl(con, "personas") %>% 
     dplyr::select(
-      comuna = p10comuna, 
-      escolaridad, 
-      p14, # Curso aprobado
-      p15, # Nivel aprobado
-      p17, # Employment status
-      p08, # Sexo
-      p09, # Edad
-      p07, # Relacion parentesco
-      p16  # Indigena
+      comuna = p10comuna, escolaridad, p14, p15, p17, p08, p09, p07, p16
     )
   
-  # 4. Filter and Harmonize (Lazy Execution) ----------------------------------
-  if (!quiet) message("⚙️  Applying harmonization rules...")
+  if (!quiet) message("[santiago_2017] Applying harmonization rules...")
   
   processed_db <- personas_db %>%
-    # Dynamic Filter
     dplyr::filter(comuna %in% filter_codes) %>%
-    
     dplyr::mutate(
       
-      # --- Education Harmonization (FIXED LOGIC) ---
-      # case_when evaluates sequentially. We put specific rules BEFORE general rules.
+      # Education harmonization: Specific rules must precede general mappings
       educ_years = dplyr::case_when(
-        
-        # A. PhD Specifics (Logic: 21 is base PhD. P14 adds years?)
-        # Stata logic: replace escolaridad = 23 if (old==21 & p15==14 & p14==4)
         escolaridad == 21 & p15 == 14 & p14 == 4 ~ 23,
         escolaridad == 21 & p15 == 14 & p14 == 3 ~ 22,
         escolaridad == 21 ~ 21,
         
-        # B. Master's (The Fix)
-        # We catch Master's (p15==13) BEFORE we catch the general 20 code.
         escolaridad == 20 & p15 == 13 ~ 19,
         escolaridad == 20 ~ 20,
         
-        # C. General Mappings
         escolaridad >= 18 & escolaridad <= 19 ~ escolaridad,
         escolaridad >= 13 & escolaridad <= 17 ~ escolaridad,
         escolaridad >= 0  & escolaridad <= 12 ~ escolaridad,
-        
         TRUE ~ NA_real_
       ),
       
-      # --- Education Dummies ---
+      # Inject unit expansion factor for cross-city schema parity
+      fe = 1,
+      
+      # Education dummies
       no_education           = if_else(educ_years == 0, 1, 0),
       high_school_incomplete = if_else(educ_years >= 1 & educ_years <= 11, 1, 0),
       high_school_complete   = if_else(educ_years == 12, 1, 0),
@@ -1667,53 +1655,42 @@ santiago_process_census_2017 <- function(
       college_complete       = if_else(educ_years == 17, 1, 0),
       graduate_educ          = if_else(educ_years >= 18, 1, 0),
       
-      # --- Labor & Demographics ---
-      # p17: 1=Paid work, 3=Employed but absent (vacation/sick)
-      employed = if_else(p17 == 1 | p17 == 3, 1, 0),
-      
-      women = if_else(p08 == 2, 1, 0),
-      
-      hh_head = if_else(p07 == 1, 1, 0),
+      # Labor, demographics, and indigenous status
+      employed      = if_else(p17 == 1 | p17 == 3, 1, 0),
+      women         = if_else(p08 == 2, 1, 0),
+      hh_head       = if_else(p07 == 1, 1, 0),
       hh_head_women = if_else(hh_head == 1 & women == 1, 1, 0),
       
       indigena = dplyr::case_when(
         p16 == 1 ~ 1,
-        p16 == 99 ~ NA_real_, # Missing
+        p16 == 99 ~ NA_real_,
         TRUE ~ 0
       ),
-      
       adult = if_else(p09 >= 25, 1, 0)
     )
   
-  # 5. Collect Individual Data ------------------------------------------------
-  if (!quiet) message("⬇️  Collecting individual data into memory...")
+  if (!quiet) message("[santiago_2017] Collecting individual data into memory...")
   
   individual_df <- processed_db %>% 
     dplyr::collect() %>% 
     dplyr::filter(!is.na(educ_years))
   
-  # 6. Collapse (Aggregation) -------------------------------------------------
-  if (!quiet) message("📉 Collapsing to Comuna level (Adults 25+)...")
+  if (!quiet) message("[santiago_2017] Collapsing to Comuna level (Adults 25+)...")
   
+  # Aggregate metrics to the commune level
   collapsed_df <- individual_df %>%
     dplyr::filter(adult == 1) %>%
     dplyr::group_by(comuna) %>%
     dplyr::summarise(
-      n = dplyr::n(),
-      
-      # Mean years of schooling
-      avg_escolaridad = mean(educ_years, na.rm = TRUE),
-      
-      # Counts
-      count_no_ed     = sum(no_education, na.rm = TRUE),
-      count_hs_inc    = sum(high_school_incomplete, na.rm = TRUE),
-      count_hs_com    = sum(high_school_complete, na.rm = TRUE),
-      count_col_inc   = sum(college_incomplete, na.rm = TRUE),
-      count_col_com   = sum(college_complete, na.rm = TRUE),
-      count_grad      = sum(graduate_educ, na.rm = TRUE),
-      count_employed  = sum(employed, na.rm = TRUE),
-      
-      # Shares (Proportions)
+      n                   = dplyr::n(),
+      avg_escolaridad     = mean(educ_years, na.rm = TRUE),
+      count_no_ed         = sum(no_education, na.rm = TRUE),
+      count_hs_inc        = sum(high_school_incomplete, na.rm = TRUE),
+      count_hs_com        = sum(high_school_complete, na.rm = TRUE),
+      count_col_inc       = sum(college_incomplete, na.rm = TRUE),
+      count_col_com       = sum(college_complete, na.rm = TRUE),
+      count_grad          = sum(graduate_educ, na.rm = TRUE),
+      count_employed      = sum(employed, na.rm = TRUE),
       share_no_ed_pop     = mean(no_education, na.rm = TRUE),
       share_hs_inc_pop    = mean(high_school_incomplete, na.rm = TRUE),
       share_hs_com_pop    = mean(high_school_complete, na.rm = TRUE),
@@ -1723,39 +1700,36 @@ santiago_process_census_2017 <- function(
       share_employed_pop  = mean(employed, na.rm = TRUE)
     )
   
-  # 7. Save and Return --------------------------------------------------------
-  if (!quiet) message("💾 Saving outputs to: ", out_dir)
+  if (!quiet) message("[santiago_2017] Saving outputs to: ", out_dir)
   
-  readr::write_csv(individual_df, file.path(out_dir, "census_santiago_individual_2017.csv"))
-  readr::write_csv(collapsed_df, file.path(out_dir, "census_santiago_collapsed_2017.csv"))
+  # Write final analytical files
+  readr::write_csv(individual_df, file.path(out_dir, "census_individual_2017.csv"))
+  readr::write_csv(collapsed_df, file.path(out_dir, "census_collapsed_2017.csv"))
   
   censo2017::censo_desconectar()
-  
   return(list(individual = individual_df, collapsed = collapsed_df))
 }
 
 
-# ------------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------
 # Function: santiago_process_census_2024
 #
 # @Arg       : census_dir — string; folder containing chile_census_2024_people.zip
-# @Arg       : sf_data    — sf object; Spatial dataframe (metro_area) to filter by.
-# @Arg       : match_col  — string; Column in sf_data with Commune codes (e.g., "CUT").
+# @Arg       : sf_data    — sf object; Spatial dataframe to filter by.
+# @Arg       : match_col  — string; Column in sf_data with Commune codes.
 # @Arg       : out_dir    — string; Output folder for processed CSVs.
 # @Arg       : overwrite  — logical; Re-extract ZIP if exists? (default FALSE).
 # @Arg       : quiet      — logical; Suppress messages? (default FALSE).
 #
 # @Output    : list(individual, collapsed); Tibbles with processed data.
 #
-# @Purpose   : 1. Extracts the 2024 Census CSV from the ZIP file.
-#              2. Filters by communes using the 'comuna' variable.
-#              3. Uses the 'escolaridad' variable (pre-calculated by INE).
-#              4. Creates labor/demographic dummies (Adults 25+).
-#              5. Collapses to the commune level (simple count, no factors).
+# @Purpose   : Extracts the 2024 Census CSV, filters by commune, leverages
+#              the pre-calculated 'escolaridad', injects schema-standard
+#              unit weights, and collapses to the commune level.
 #
 # @Written_by: Marcos Paulo
-# @Updated_on: 18/02/2026 (Adjusted to real 2024 variables)
-# ------------------------------------------------------------------------------
+# @Updated_on: April 2026
+# --------------------------------------------------------------------------------------------
 santiago_process_census_2024 <- function(
     census_dir = here::here("data", "downloads", "santiago", "census", "2024"),
     sf_data,
@@ -1765,74 +1739,59 @@ santiago_process_census_2024 <- function(
     quiet      = FALSE
 ) {
   
-  # --- 1. Checks & Setup -----------------------------------------------------
+  # Validate environment and spatial object
   if (!requireNamespace("vroom", quietly = TRUE)) stop("vroom required.")
   if (!requireNamespace("dplyr", quietly = TRUE)) stop("dplyr required.")
   if (!inherits(sf_data, "sf")) stop("'sf_data' must be an sf object.")
   
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
-  
-  # --- 2. Extract ZIP --------------------------------------------------------
   zip_path <- file.path(census_dir, "chile_census_2024_people.zip")
   if (!file.exists(zip_path)) stop("ZIP not found: ", zip_path)
   
-  # List files inside ZIP to find the CSV
+  # Identify target CSV inside the archive
   files_in_zip <- utils::unzip(zip_path, list = TRUE)
   target_csv   <- grep("\\.csv$", files_in_zip$Name, value = TRUE, ignore.case = TRUE)
   
   if (length(target_csv) == 0) stop("No CSV found inside ZIP.")
   target_csv <- target_csv[1] 
-  
-  dest_csv <- file.path(out_dir, basename(target_csv))
+  dest_csv   <- file.path(out_dir, basename(target_csv))
   
   if (!file.exists(dest_csv) || overwrite) {
-    if (!quiet) message("📦 Extracting ", target_csv, "...")
+    if (!quiet) message("[santiago_2024] Extracting ", target_csv, "...")
     utils::unzip(zip_path, files = target_csv, exdir = out_dir, junkpaths = TRUE)
   } else {
-    if (!quiet) message("↪︎ Using existing extracted file.")
+    if (!quiet) message("[santiago_2024] Using existing extracted file.")
   }
   
-  # --- 3. Filter Codes -------------------------------------------------------
-  # Extract codes from SF object
   filter_codes <- as.integer(unique(sf_data[[match_col]]))
-  if (!quiet) message(sprintf("🎯 Target: %d communes.", length(filter_codes)))
+  if (!quiet) message(sprintf("[santiago_2024] Target: %d communes.", length(filter_codes)))
+  if (!quiet) message("[santiago_2024] Reading and filtering CSV...")
   
-  # --- 4. Read & Filter (Vroom) ----------------------------------------------
-  if (!quiet) message("📖 Reading and filtering CSV...")
-  
-  # We use vroom, selecting only necessary columns based on your provided list
+  # Read core columns, enforcing NA standards across INE encodings
   raw_data <- vroom::vroom(
     dest_csv,
     delim = ";",
     col_select = c(
-      comuna,
-      parentesco,          # 1 = Head of Household
-      sexo,                # 1 = Male, 2 = Female
-      edad,                # Numeric
-      escolaridad,         # Numeric 0-24 (Pre-calculated!)
-      sit_fuerza_trabajo,  # 1 = Employed
-      p28_autoid_pueblo    # 1 = Yes (Indigenous)
+      comuna, parentesco, sexo, edad, escolaridad, 
+      sit_fuerza_trabajo, p28_autoid_pueblo
     ),
     show_col_types = FALSE,
-    # Define what strings are considered NA
     na = c("", "NA", "-99", "-66", "99", "999") 
   ) %>%
-    # Immediate geographic filtering
     dplyr::filter(comuna %in% filter_codes)
   
   if (nrow(raw_data) == 0) stop("No data found for the requested communes.")
   
-  # --- 5. Harmonization Logic ------------------------------------------------
-  if (!quiet) message("⚙️  Harmonizing variables...")
+  if (!quiet) message("[santiago_2024] Harmonizing variables...")
   
   df_harm <- raw_data %>%
     dplyr::mutate(
       
-      # 5.1 Education
-      # -------------
-      # Variable 'escolaridad' is already clean (0 to 24 years).
-      # We just ensure it is numeric and generate dummies.
+      # Education uses pre-calculated 0-24 year scale
       educ_years = as.numeric(escolaridad),
+      
+      # Inject unit expansion factor for cross-city schema parity
+      fe = 1L,
       
       no_education           = as.numeric(educ_years == 0),
       high_school_incomplete = as.numeric(educ_years >= 1 & educ_years <= 11),
@@ -1841,56 +1800,37 @@ santiago_process_census_2024 <- function(
       college_complete       = as.numeric(educ_years == 17),
       graduate_educ          = as.numeric(educ_years >= 18),
       
-      # 5.2 Employment (sit_fuerza_trabajo)
-      # -----------------------------------
-      # 1 = Occupied, 2 = Unemployed, 3 = Inactive
-      employed = as.numeric(sit_fuerza_trabajo == 1),
-      
-      # 5.3 Demographics
-      # ----------------
-      # Sex: 1=Male, 2=Female
-      women = as.numeric(sexo == 2),
-      
-      # Relationship: 1=Head of household
-      hh_head = as.numeric(parentesco == 1),
+      # Labor and Demographics
+      employed      = as.numeric(sit_fuerza_trabajo == 1),
+      women         = as.numeric(sexo == 2),
+      hh_head       = as.numeric(parentesco == 1),
       hh_head_women = as.numeric(hh_head == 1 & women == 1),
       
-      # Indigenous: p28_autoid_pueblo (1=Yes, 2=No)
-      # Explicit NA handling
       indigena = dplyr::case_when(
         p28_autoid_pueblo == 1 ~ 1,
         p28_autoid_pueblo == 2 ~ 0,
         TRUE ~ NA_real_
       ),
       
-      # Age
       edad_num = as.numeric(edad),
-      adult = as.numeric(edad_num >= 25)
+      adult    = as.numeric(edad_num >= 25)
     )
   
-  # --- 6. Collapse -----------------------------------------------------------
-  if (!quiet) message("📉 Collapsing to Commune level (Adults 25+)...")
+  if (!quiet) message("[santiago_2024] Collapsing to Commune level (Adults 25+)...")
   
   df_collapse <- df_harm %>%
     dplyr::filter(adult == 1) %>%
     dplyr::group_by(comuna) %>%
     dplyr::summarise(
-      # Simple count (1 row = 1 person, as confirmed no expansion factor)
-      n = dplyr::n(),
-      
-      # Average years of schooling
-      avg_escolaridad = mean(educ_years, na.rm = TRUE),
-      
-      # Absolute counts
-      count_no_ed     = sum(no_education, na.rm = TRUE),
-      count_hs_inc    = sum(high_school_incomplete, na.rm = TRUE),
-      count_hs_com    = sum(high_school_complete, na.rm = TRUE),
-      count_col_inc   = sum(college_incomplete, na.rm = TRUE),
-      count_col_com   = sum(college_complete, na.rm = TRUE),
-      count_grad      = sum(graduate_educ, na.rm = TRUE),
-      count_employed  = sum(employed, na.rm = TRUE),
-      
-      # Proportions (Shares)
+      n                   = dplyr::n(),
+      avg_escolaridad     = mean(educ_years, na.rm = TRUE),
+      count_no_ed         = sum(no_education, na.rm = TRUE),
+      count_hs_inc        = sum(high_school_incomplete, na.rm = TRUE),
+      count_hs_com        = sum(high_school_complete, na.rm = TRUE),
+      count_col_inc       = sum(college_incomplete, na.rm = TRUE),
+      count_col_com       = sum(college_complete, na.rm = TRUE),
+      count_grad          = sum(graduate_educ, na.rm = TRUE),
+      count_employed      = sum(employed, na.rm = TRUE),
       share_no_ed_pop     = mean(no_education, na.rm = TRUE),
       share_hs_inc_pop    = mean(high_school_incomplete, na.rm = TRUE),
       share_hs_com_pop    = mean(high_school_complete, na.rm = TRUE),
@@ -1899,11 +1839,11 @@ santiago_process_census_2024 <- function(
       share_grad_educ_pop = mean(graduate_educ, na.rm = TRUE),
       share_employed_pop  = mean(employed, na.rm = TRUE)
     ) %>%
-    dplyr::rename(CUT = comuna) # Rename to match SF object for future joins
+    dplyr::rename(CUT = comuna)
   
-  # --- 7. Save ---------------------------------------------------------------
-  if (!quiet) message("💾 Saving outputs to: ", out_dir)
+  if (!quiet) message("[santiago_2024] Saving outputs to: ", out_dir)
   
+  # Write final analytical files
   vroom::vroom_write(df_harm, file.path(out_dir, "census_santiago_individual_2024.csv"),
                      delim = ",")
   vroom::vroom_write(df_collapse, file.path(out_dir, "census_santiago_collapsed_2024.csv"),
