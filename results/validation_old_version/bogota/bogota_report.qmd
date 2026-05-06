@@ -1287,10 +1287,40 @@ if (metro_has_sf) {
 # Station-to-locality distances {#distances}
 
 This section compares the distance matrices used for inverse-distance weighting
-(IDW) between the two pipelines. The new pipeline uses an Azimuthal Equidistant
-(AEQD) projection for Euclidean distances, while the legacy uses the Haversine
-great-circle formula. At metro scales (~50–200 km), these methods agree within
-approximately 0.1–0.5 km.
+(IDW) between the two pipelines. The new pipeline utilizes an Azimuthal Equidistant
+(AEQD) projection for highly accurate planar distances, while the legacy code utilized 
+the Haversine great-circle formula. At metro scales (~50–200 km), these coordinate methods
+agree within approximately 0.1–0.5 km.
+
+### Spatial Centroid Algorithms and Polygon Concavity
+
+Beyond coordinate reference systems, distance calculations rely on how the "center" of a 
+geographic unit is defined. In irregular, concave polygons (such as crescent-shaped census
+tracts), a standard mathematical centroid (`st_centroid`) will often fall completely outside
+the physical boundaries of the polygon.
+
+To prevent calculating distances from a point outside the locality, both pipelines employ a 
+topological fallback:
+1.  **Primary:** Calculate the mathematical centroid.
+2.  **Validation:** Check if the centroid intersects the polygon boundary.
+3.  **Fallback:** If the centroid falls outside, utilize `st_point_on_surface()` to guarantee a
+coordinate physically located inside the tract.
+
+Unlike a nearest-boundary projection—which would erroneously anchor the geographic center to 
+the extreme edge of the tract (often along boundary highways or rivers)—`st_point_on_surface()` 
+utilizes a medial-axis algorithm to find a point deep within the polygon's interior area. This 
+guarantees that the representative coordinate is surrounded by the tract's geometry, serving as 
+a vastly more accurate proxy for the geographic center of the actual residential population.
+
+**Methodological Note on Legacy Code:** During validation, we identified a vectorization error 
+in the legacy script's spatial fallback algorithm. The legacy code evaluated the `st_within()` 
+condition strictly on the *first* locality in the dataset and applied that logical outcome 
+globally to all subsequent localities (`in_poly <- st_within(...)[[1]]`). Consequently, if the 
+first locality was well-shaped, the fallback was disabled for all concave localities; if the 
+first was concave, the fallback was applied to perfectly square localities. 
+
+The new automated pipeline corrects this by strictly evaluating the topology row-by-row, 
+ensuring maximum spatial fidelity for exposure calculations.
 
 ## Station-to-station distances
 
