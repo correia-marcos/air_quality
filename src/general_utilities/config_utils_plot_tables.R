@@ -2532,5 +2532,664 @@ plot_exposure_by_quintile <- function(
 }
 
 
+# --------------------------------------------------------------------------------------------
+# Function: plot_exposure_by_quintile_with_ci
+#
+# @Arg ci_table    : data.table as produced by compute_exposure_ci_regression().
+#                    Must contain columns: outcome, pollutant, quintile, estimate,
+#                    ci_low, ci_high.
+# @Arg outcome     : string; which outcome to plot (e.g. "avg" for concentration,
+#                    "hrs_d_it1" for hours above WHO IT1). Must match a value of
+#                    `ci_table$outcome`.
+# @Arg pollutant   : string; filter to one pollutant. Default "pm25".
+# @Arg city_label  : string; shown as plot title.
+# @Arg y_label     : string|NULL; y-axis title. If NULL, a sensible default is picked
+#                    from `outcome`/`pollutant`.
+# @Arg color_line  : string; line/point color. Default "black".
+#
+# @Output : ggplot2 object. Error bars are 95% CIs (or whatever was used upstream).
+#
+# @Purpose: Rebuild of the quintile plots in legacy 4_exposure_plots_*_regCI.R.
+#           Designed to pair 1-to-1 with compute_exposure_ci_regression().
+#
+# @Written_on : 17/04/2026
+# @Written_by : Marcos Paulo
+# --------------------------------------------------------------------------------------------
+plot_exposure_by_quintile_with_ci <- function(
+    ci_table,
+    outcome,
+    pollutant   = "pm25",
+    city_label  = "",
+    y_label     = NULL,
+    color_line  = "black"
+) {
+  stopifnot(is.data.frame(ci_table),
+            all(c("outcome","pollutant","quintile","estimate","ci_low","ci_high")
+                %in% names(ci_table)))
+  # Rename locals so the data.table i-expression below is not shadowed
+  # by the matching column names.
+  oc_  <- outcome
+  pol_ <- pollutant
+  dt <- data.table::as.data.table(ci_table)
+  dt <- dt[outcome == oc_ & pollutant == pol_]
+  if (nrow(dt) == 0L)
+    stop("No rows match outcome='", oc_, "' & pollutant='", pol_, "'.")
+  data.table::setorder(dt, quintile)
+  
+  if (is.null(y_label)) {
+    y_label <- if (startsWith(outcome, "avg"))
+      bquote(.(toupper(pollutant)) ~ "(μg/m³)")
+    else if (grepl("^hrs_d", outcome))
+      paste0("Hours above ", toupper(sub("hrs_d_", "", outcome)))
+    else outcome
+  }
+  
+  ggplot2::ggplot(dt, ggplot2::aes(x = factor(quintile), y = estimate, group = 1)) +
+    ggplot2::geom_errorbar(
+      ggplot2::aes(ymin = ci_low, ymax = ci_high),
+      width = 0.15, linewidth = 0.6, color = color_line
+    ) +
+    ggplot2::geom_line(linewidth = 0.9, color = color_line) +
+    ggplot2::geom_point(size = 2.3, color = color_line) +
+    ggplot2::labs(
+      x     = "Education quintile",
+      y     = y_label,
+      title = city_label
+    ) +
+    ggplot2::theme_minimal(base_family = "Palatino", base_size = 13) +
+    ggplot2::theme(
+      panel.grid.minor = ggplot2::element_blank(),
+      plot.title       = ggplot2::element_text(face = "bold")
+    )
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: plot_kernel_density_by_quintile
+#
+# @Arg exposure_dir    : string; folder with aggregate_idw_exposure() outputs.
+# @Arg out_name        : string; prefix (same as in aggregate_idw_exposure()).
+# @Arg pollutant       : string; one of the columns "avg_<pollutant>" in the file.
+#                         Default "pm25".
+# @Arg quintile_level  : string; "geo" or "individual" (see aggregate_idw_exposure()).
+# @Arg pop_col         : string; weight column. Default "n".
+# @Arg year_filter     : integer|NULL; restrict to one year.
+# @Arg city_label      : string; plot title.
+# @Arg bw_adjust       : numeric; ggplot2::geom_density(adjust = ...). Default 1.
+# @Arg x_trim_q        : numeric in (0,1); trim x above this weighted quantile to
+#                         avoid long tails dominating the plot. Default 0.995.
+#
+# @Output : ggplot2 object (overlaid weighted kernel densities coloured by
+#           education quintile).
+#
+# @Purpose: Rebuild of inputs/1_kernel_plots_quintiles_3km.R / _20km.R.
+#
+# @Written_on : 17/04/2026
+# @Written_by : Marcos Paulo
+# --------------------------------------------------------------------------------------------
+plot_kernel_density_by_quintile <- function(
+    exposure_dir,
+    out_name,
+    pollutant      = "pm25",
+    quintile_level = c("geo", "individual"),
+    pop_col        = "n",
+    year_filter    = NULL,
+    city_label     = "",
+    bw_adjust      = 1,
+    x_trim_q       = 0.995
+) {
+  quintile_level <- match.arg(quintile_level)
+  exp_pq <- file.path(exposure_dir, paste0(out_name, "_idw_exposure.parquet"))
+  ind_pq <- file.path(exposure_dir, paste0(out_name, "_indiv_quintiles.parquet"))
+  if (!file.exists(exp_pq)) stop("Exposure Parquet not found: ", exp_pq)
+  
+  dt <- data.table::as.data.table(arrow::read_parquet(exp_pq))
+  dt[, geo_id := as.character(geo_id)]
+  if (!is.null(year_filter)) dt <- dt[year == year_filter]
+  
+  if (quintile_level == "individual") {
+    if (!file.exists(ind_pq)) stop("Individual file missing: ", ind_pq)
+    ind <- data.table::as.data.table(arrow::read_parquet(ind_pq))
+    ind[, geo_id := as.character(geo_id)]
+    dt <- merge(dt, ind[, .SD, .SDcols = c("geo_id","edu_quintile", pop_col)],
+                by = "geo_id", allow.cartesian = TRUE)
+  }
+  
+  x_col <- paste0("avg_", pollutant)
+  if (!x_col %in% names(dt)) stop("Column ", x_col, " not found.")
+  dt <- dt[!is.na(get(x_col)) & !is.na(edu_quintile)
+           & !is.na(get(pop_col)) & get(pop_col) > 0]
+  
+  # Trim the upper tail by weighted quantile
+  xs <- dt[[x_col]]
+  ws <- dt[[pop_col]]
+  ord <- order(xs); xs_s <- xs[ord]; ws_s <- ws[ord]
+  cutoff <- xs_s[which(cumsum(ws_s) / sum(ws_s) >= x_trim_q)[1L]]
+  if (is.finite(cutoff)) dt <- dt[get(x_col) <= cutoff]
+  
+  ggplot2::ggplot(
+    dt,
+    ggplot2::aes(
+      x      = .data[[x_col]],
+      weight = .data[[pop_col]],
+      colour = factor(edu_quintile),
+      fill   = factor(edu_quintile)
+    )
+  ) +
+    ggplot2::geom_density(alpha = 0.15, adjust = bw_adjust, linewidth = 0.8) +
+    ggplot2::scale_colour_viridis_d(name = "Edu. quintile", option = "D") +
+    ggplot2::scale_fill_viridis_d(name = "Edu. quintile", option = "D") +
+    ggplot2::labs(
+      x     = bquote(.(toupper(pollutant)) ~ "(μg/m³)"),
+      y     = "Density",
+      title = city_label
+    ) +
+    ggplot2::theme_minimal(base_family = "Palatino", base_size = 13) +
+    ggplot2::theme(
+      legend.position  = "bottom",
+      panel.grid.minor = ggplot2::element_blank(),
+      plot.title       = ggplot2::element_text(face = "bold")
+    )
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: table_who_exceedances
+#
+# @Arg exceedances_dt : data.table from compute_who_exceedances() (possibly row-bound
+#                        across cities).
+# @Arg save_latex_table: logical; write LaTeX to file? Default FALSE.
+# @Arg out_file        : path to .tex file if saving.
+# @Arg caption         : LaTeX caption.
+# @Arg label           : LaTeX label.
+# @Arg overwrite_tex   : logical; overwrite existing .tex file. Default FALSE.
+# @Arg digits          : integer; decimal digits in the printed numbers. Default 2.
+# @Arg quiet           : logical; suppress info messages. Default FALSE.
+#
+# @Output : data.table (wide: city × year rows, pollutant columns for city_avg
+#           and exceedance_factor). Optionally writes a booktabs-style LaTeX
+#           table.
+#
+# @Purpose: LaTeX table for legacy inputs/1_AQG_guidelines.R results.
+#
+# @Written_on : 17/04/2026
+# @Written_by : Marcos Paulo
+# --------------------------------------------------------------------------------------------
+table_who_exceedances <- function(
+    exceedances_dt,
+    save_latex_table = FALSE,
+    out_file         = NULL,
+    caption          = "Annual PM concentrations vs. WHO AQG (2021).",
+    label            = "tab:who_exceedances",
+    overwrite_tex    = FALSE,
+    digits           = 2,
+    quiet            = FALSE
+) {
+  stopifnot(is.data.frame(exceedances_dt))
+  req <- c("city","year","pollutant","city_avg","who_aqg","exceedance_factor")
+  if (!all(req %in% names(exceedances_dt)))
+    stop("`exceedances_dt` missing required columns.")
+  dt <- data.table::as.data.table(exceedances_dt)
+  
+  wide <- data.table::dcast(
+    dt, city + year ~ pollutant,
+    value.var = c("city_avg", "exceedance_factor")
+  )
+  data.table::setorder(wide, city, year)
+  
+  if (isTRUE(save_latex_table)) {
+    if (is.null(out_file)) stop("`out_file` is required when save_latex_table = TRUE.")
+    if (file.exists(out_file) && !overwrite_tex)
+      stop("File exists: ", out_file, " (set overwrite_tex = TRUE).")
+    dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
+    
+    num_cols <- setdiff(names(wide), c("city","year"))
+    fmt <- wide[, lapply(.SD, function(x) formatC(x, format = "f", digits = digits)),
+                .SDcols = num_cols]
+    fmt <- cbind(wide[, .(city, year)], fmt)
+    
+    header <- c(
+      "\\begin{table}[!htbp]\\centering",
+      sprintf("\\caption{%s}", caption),
+      sprintf("\\label{%s}", label),
+      "\\begin{tabular}{ll" ,
+      paste(rep("r", length(num_cols)), collapse = ""),
+      "}",
+      "\\toprule",
+      paste(c("City","Year", num_cols), collapse = " & "),
+      "\\\\",
+      "\\midrule"
+    )
+    body <- apply(fmt, 1L, function(r) paste(paste(r, collapse = " & "), "\\\\"))
+    footer <- c("\\bottomrule", "\\end{tabular}", "\\end{table}")
+    
+    writeLines(c(header, body, footer), out_file)
+    if (!quiet) message("📝 Wrote LaTeX table → ", out_file)
+  }
+  
+  invisible(wide)
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: table_stations_by_pollutant
+#
+# @Arg stations_long  : data.table, the $long element from summarize_stations_by_pollutant().
+#                        Must contain (city, year, pollutant, n_stations).
+# @Arg save_latex_table: logical. Default FALSE.
+# @Arg out_file       : path to .tex file.
+# @Arg caption        : LaTeX caption.
+# @Arg label          : LaTeX label.
+# @Arg overwrite_tex  : logical. Default FALSE.
+# @Arg quiet          : logical. Default FALSE.
+#
+# @Output : data.table (wide): city × year × pollutant counts. Side effect: a
+#           booktabs-style LaTeX table when requested.
+#
+# @Purpose: LaTeX-ready rebuild of inputs/1_number_stations_pollutant.R.
+#
+# @Written_on : 17/04/2026
+# @Written_by : Marcos Paulo
+# --------------------------------------------------------------------------------------------
+table_stations_by_pollutant <- function(
+    stations_long,
+    save_latex_table = FALSE,
+    out_file         = NULL,
+    caption          = "Number of monitoring stations reporting each pollutant by city-year.",
+    label            = "tab:stations_by_pollutant",
+    overwrite_tex    = FALSE,
+    quiet            = FALSE
+) {
+  stopifnot(is.data.frame(stations_long))
+  req <- c("city","year","pollutant","n_stations")
+  if (!all(req %in% names(stations_long)))
+    stop("`stations_long` missing required columns.")
+  dt <- data.table::as.data.table(stations_long)
+  
+  wide <- data.table::dcast(
+    dt, city + year ~ pollutant, value.var = "n_stations", fill = 0L
+  )
+  data.table::setorder(wide, city, year)
+  
+  if (isTRUE(save_latex_table)) {
+    if (is.null(out_file)) stop("`out_file` is required.")
+    if (file.exists(out_file) && !overwrite_tex)
+      stop("File exists: ", out_file)
+    dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
+    num_cols <- setdiff(names(wide), c("city","year"))
+    header <- c(
+      "\\begin{table}[!htbp]\\centering",
+      sprintf("\\caption{%s}", caption),
+      sprintf("\\label{%s}", label),
+      paste0("\\begin{tabular}{ll", paste(rep("r", length(num_cols)),
+                                          collapse = ""), "}"),
+      "\\toprule",
+      paste(c("City", "Year", toupper(num_cols)), collapse = " & "),
+      "\\\\",
+      "\\midrule"
+    )
+    body <- apply(wide, 1L, function(r) paste(paste(r, collapse = " & "), "\\\\"))
+    footer <- c("\\bottomrule", "\\end{tabular}", "\\end{table}")
+    writeLines(c(header, body, footer), out_file)
+    if (!quiet) message("📝 Wrote LaTeX table → ", out_file)
+  }
+  
+  invisible(wide)
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: table_missing_by_dimension
+#
+# @Arg missing_list    : list; output of compute_missing_proportions() (names are dims).
+# @Arg dim             : string; which dimension to render. Must be a name in `missing_list`.
+# @Arg city_label      : string; first column ("City") value in the rendered table.
+# @Arg save_latex_table: logical; default FALSE.
+# @Arg out_file        : path to .tex file.
+# @Arg caption         : LaTeX caption.
+# @Arg label           : LaTeX label.
+# @Arg overwrite_tex   : logical. Default FALSE.
+# @Arg digits          : integer; decimal digits. Default 1.
+# @Arg quiet           : logical. Default FALSE.
+#
+# @Output : data.table; the selected dimension table plus a city column.
+#           Side effect: a booktabs LaTeX table when requested.
+#
+# @Purpose: LaTeX rebuild of the missing-proportion tables from legacy
+#           Missing analysis/auxiliar_missings.R and 5_stats_non_missing.R.
+#
+# @Written_on : 17/04/2026
+# @Written_by : Marcos Paulo
+# --------------------------------------------------------------------------------------------
+table_missing_by_dimension <- function(
+    missing_list,
+    dim,
+    city_label,
+    save_latex_table = FALSE,
+    out_file         = NULL,
+    caption          = NULL,
+    label            = NULL,
+    overwrite_tex    = FALSE,
+    digits           = 1,
+    quiet            = FALSE
+) {
+  stopifnot(is.list(missing_list), dim %in% names(missing_list))
+  dt <- data.table::copy(data.table::as.data.table(missing_list[[dim]]))
+  dt[, city := city_label]
+  data.table::setcolorder(dt, c("city", setdiff(names(dt), "city")))
+  
+  pct_cols <- grep("_missing_pct$", names(dt), value = TRUE)
+  if (length(pct_cols) == 0L)
+    stop("No *_missing_pct columns found in missing_list[[dim]].")
+  
+  if (isTRUE(save_latex_table)) {
+    if (is.null(out_file)) stop("`out_file` is required.")
+    if (is.null(caption))
+      caption <- sprintf("Share (%%) of missing observations by %s — %s.",
+                         dim, city_label)
+    if (is.null(label))
+      label <- sprintf("tab:missing_%s_%s", dim,
+                       gsub("[^a-z0-9]", "_", tolower(city_label)))
+    if (file.exists(out_file) && !overwrite_tex)
+      stop("File exists: ", out_file)
+    dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
+    
+    pretty <- data.table::copy(dt)
+    for (c in pct_cols)
+      pretty[[c]] <- formatC(pretty[[c]], format = "f", digits = digits)
+    
+    n_cols <- ncol(pretty)
+    header <- c(
+      "\\begin{table}[!htbp]\\centering",
+      sprintf("\\caption{%s}", caption),
+      sprintf("\\label{%s}", label),
+      paste0("\\begin{tabular}{", paste(rep("l", n_cols), collapse = ""), "}"),
+      "\\toprule",
+      paste(toupper(names(pretty)), collapse = " & "),
+      "\\\\",
+      "\\midrule"
+    )
+    body <- apply(pretty, 1L, function(r) paste(paste(r, collapse = " & "), "\\\\"))
+    footer <- c("\\bottomrule", "\\end{tabular}", "\\end{table}")
+    writeLines(c(header, body, footer), out_file)
+    if (!quiet) message("📝 Wrote LaTeX table → ", out_file)
+  }
+  invisible(dt)
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: plot_scatter_pollutants
+#
+# @Arg arrow_dir    : string; Arrow dataset (hourly).
+# @Arg x_pol        : string; pollutant on x-axis. Default "pm10".
+# @Arg y_pol        : string; pollutant on y-axis. Default "pm25".
+# @Arg city_label   : string; shown in plot title.
+# @Arg year_filter  : integer|NULL; restrict to one year.
+# @Arg by_station   : logical; facet by station if TRUE (and few enough stations).
+#                      Default FALSE.
+# @Arg sample_n     : integer; random subsample of hourly points for plotting (rendering
+#                      millions of points is slow). Default 50000. Use NA for full data.
+# @Arg point_alpha  : numeric in (0,1]. Default 0.3.
+# @Arg add_45       : logical; overlay the y = x reference line. Default TRUE.
+# @Arg mem_gb       : numeric; DuckDB memory ceiling in GB. Default 4.
+#
+# @Output : ggplot2 object (scatter + optional facets + 45° reference).
+#
+# @Purpose: Rebuild of the scatter plots in legacy 6_scatter_plots.do.
+#
+# @Written_on : 17/04/2026
+# @Written_by : Marcos Paulo
+# --------------------------------------------------------------------------------------------
+plot_scatter_pollutants <- function(
+    arrow_dir,
+    x_pol       = "pm10",
+    y_pol       = "pm25",
+    city_label  = "",
+    year_filter = NULL,
+    by_station  = FALSE,
+    sample_n    = 50000L,
+    point_alpha = 0.3,
+    add_45      = TRUE,
+    mem_gb      = 4
+) {
+  stopifnot(dir.exists(arrow_dir))
+  con <- DBI::dbConnect(duckdb::duckdb())
+  on.exit(try(DBI::dbDisconnect(con, shutdown = TRUE), silent = TRUE), add = TRUE)
+  DBI::dbExecute(con, sprintf("PRAGMA memory_limit='%dGB';", as.integer(mem_gb)))
+  
+  glob_q <- paste0("'", gsub("\\\\", "/", arrow_dir), "/**/*.parquet'")
+  DBI::dbExecute(con, paste0(
+    "CREATE VIEW pollution AS SELECT * FROM read_parquet(",
+    glob_q, ", hive_partitioning = true);"
+  ))
+  col_info <- DBI::dbGetQuery(con, "PRAGMA table_info('pollution');")
+  present  <- tolower(col_info$name)
+  x_pol <- tolower(x_pol); y_pol <- tolower(y_pol)
+  if (!all(c(x_pol, y_pol) %in% present))
+    stop("Requested pollutant columns not found in dataset.")
+  
+  yr_filter_sql <- if (is.null(year_filter)) ""
+  else sprintf("AND EXTRACT(year FROM datetime) = %d", as.integer(year_filter))
+  sample_sql <- if (is.na(sample_n) || is.null(sample_n)) ""
+  else sprintf("USING SAMPLE %d ROWS", as.integer(sample_n))
+  
+  q <- sprintf(
+    "SELECT station, %s AS x, %s AS y
+     FROM pollution
+     WHERE %s IS NOT NULL AND %s IS NOT NULL %s
+     %s;",
+    x_pol, y_pol, x_pol, y_pol, yr_filter_sql, sample_sql
+  )
+  d <- data.table::as.data.table(DBI::dbGetQuery(con, q))
+  if (nrow(d) == 0L) stop("No data returned.")
+  
+  p <- ggplot2::ggplot(d, ggplot2::aes(x = x, y = y)) +
+    ggplot2::geom_point(alpha = point_alpha, size = 0.6) +
+    ggplot2::labs(
+      x     = bquote(.(toupper(x_pol)) ~ "(μg/m³)"),
+      y     = bquote(.(toupper(y_pol)) ~ "(μg/m³)"),
+      title = city_label
+    ) +
+    ggplot2::theme_minimal(base_family = "Palatino", base_size = 13) +
+    ggplot2::theme(
+      panel.grid.minor = ggplot2::element_blank(),
+      plot.title       = ggplot2::element_text(face = "bold")
+    )
+  
+  if (add_45) {
+    p <- p + ggplot2::geom_abline(slope = 1, intercept = 0,
+                                  linetype = "dashed", linewidth = 0.4)
+  }
+  if (isTRUE(by_station) && data.table::uniqueN(d$station) <= 30L) {
+    p <- p + ggplot2::facet_wrap(~ station, scales = "free")
+  }
+  p
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: plot_hours_above_target_by_quintile
+#
+# @Arg exposure_dir    : string; folder with aggregate_idw_exposure() outputs.
+# @Arg out_name        : string; prefix used in aggregate_idw_exposure().
+# @Arg quintile_level  : string; "geo" or "individual".
+# @Arg pop_col         : string; weight column. Default "n".
+# @Arg pollutant       : string; "pm10" or "pm25". Default "pm25".
+# @Arg who_it          : string; which interim target. Default "it1".
+# @Arg year_filter     : integer|NULL; restrict to one year.
+# @Arg city_label      : string; plot title.
+# @Arg bar_fill        : string; fill color. Default "grey35".
+#
+# @Output : ggplot2 object — bar chart of population-weighted mean hours above the
+#           requested WHO interim target, by education quintile.
+#
+# @Purpose: Complements plot_exposure_by_quintile() with a WHO-target view,
+#           which is the second panel in the legacy 4_exposure_plots_*_PM.R scripts.
+#
+# @Written_on : 17/04/2026
+# @Written_by : Marcos Paulo
+# --------------------------------------------------------------------------------------------
+plot_hours_above_target_by_quintile <- function(
+    exposure_dir,
+    out_name,
+    quintile_level = c("geo", "individual"),
+    pop_col        = "n",
+    pollutant      = "pm25",
+    who_it         = "it1",
+    year_filter    = NULL,
+    city_label     = "",
+    bar_fill       = "grey35"
+) {
+  quintile_level <- match.arg(quintile_level)
+  exp_pq <- file.path(exposure_dir, paste0(out_name, "_idw_exposure.parquet"))
+  ind_pq <- file.path(exposure_dir, paste0(out_name, "_indiv_quintiles.parquet"))
+  if (!file.exists(exp_pq)) stop("Exposure Parquet not found: ", exp_pq)
+  
+  dt <- data.table::as.data.table(arrow::read_parquet(exp_pq))
+  dt[, geo_id := as.character(geo_id)]
+  if (!is.null(year_filter)) dt <- dt[year == year_filter]
+  
+  if (quintile_level == "individual") {
+    if (!file.exists(ind_pq)) stop("Individual file missing: ", ind_pq)
+    ind <- data.table::as.data.table(arrow::read_parquet(ind_pq))
+    ind[, geo_id := as.character(geo_id)]
+    dt <- merge(dt, ind[, .SD, .SDcols = c("geo_id","edu_quintile", pop_col)],
+                by = "geo_id", allow.cartesian = TRUE)
+  }
+  
+  y_col <- paste0("hrs_d_", pollutant, "_", who_it)
+  if (!y_col %in% names(dt))
+    stop("Column ", y_col, " not in exposure file — re-run aggregate_idw_exposure() ",
+         "with this interim target.")
+  dt <- dt[!is.na(get(y_col)) & !is.na(edu_quintile)
+           & !is.na(get(pop_col)) & get(pop_col) > 0]
+  
+  agg <- dt[,
+            .(hrs = sum(get(y_col) * get(pop_col)) / sum(get(pop_col))),
+            by = edu_quintile]
+  data.table::setorder(agg, edu_quintile)
+  
+  ggplot2::ggplot(agg, ggplot2::aes(x = factor(edu_quintile), y = hrs)) +
+    ggplot2::geom_col(fill = bar_fill, width = 0.7) +
+    ggplot2::labs(
+      x     = "Education quintile",
+      y     = sprintf("Hours above %s (%s)", toupper(who_it), toupper(pollutant)),
+      title = city_label
+    ) +
+    ggplot2::theme_minimal(base_family = "Palatino", base_size = 13) +
+    ggplot2::theme(
+      panel.grid.major.x = ggplot2::element_blank(),
+      panel.grid.minor   = ggplot2::element_blank(),
+      plot.title         = ggplot2::element_text(face = "bold")
+    )
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: plot_missing_heatmap
+#
+# @Arg missing_list : list; output of compute_missing_proportions() with at least two
+#                      dimensions of interest (default: "month" and "hour").
+# @Arg row_dim      : string; dimension on the y-axis. Default "month".
+# @Arg col_dim      : string; dimension on the x-axis. Default "hour".
+# @Arg pollutant    : string; which {pollutant}_missing_pct column to render.
+#                      Default "pm25".
+# @Arg city_label   : string; plot title.
+# @Arg arrow_dir    : string|NULL; if given, a secondary query is run to get the
+#                      two-way aggregation directly (recommended: ignoring row_dim/col_dim
+#                      in missing_list). If NULL, the function falls back to a naive
+#                      outer-join reconstruction, which only works when the dims are
+#                      independent.
+# @Arg mem_gb       : numeric; DuckDB memory ceiling. Default 4.
+#
+# @Output : ggplot2 heatmap.
+#
+# @Purpose: Quick visual rebuild of the "missing by month × hour" diagnostic from
+#           legacy 7_missing_analysis.do. Prefer passing `arrow_dir` so the
+#           two-way shares are computed exactly.
+#
+# @Written_on : 17/04/2026
+# @Written_by : Marcos Paulo
+# --------------------------------------------------------------------------------------------
+plot_missing_heatmap <- function(
+    missing_list,
+    row_dim    = "month",
+    col_dim    = "hour",
+    pollutant  = "pm25",
+    city_label = "",
+    arrow_dir  = NULL,
+    mem_gb     = 4
+) {
+  pct_col <- paste0(tolower(pollutant), "_missing_pct")
+  
+  if (!is.null(arrow_dir)) {
+    stopifnot(dir.exists(arrow_dir))
+    con <- DBI::dbConnect(duckdb::duckdb())
+    on.exit(try(DBI::dbDisconnect(con, shutdown = TRUE), silent = TRUE), add = TRUE)
+    DBI::dbExecute(con, sprintf("PRAGMA memory_limit='%dGB';", as.integer(mem_gb)))
+    glob_q <- paste0("'", gsub("\\\\", "/", arrow_dir), "/**/*.parquet'")
+    DBI::dbExecute(con, paste0(
+      "CREATE VIEW pollution AS SELECT * FROM read_parquet(",
+      glob_q, ", hive_partitioning = true);"
+    ))
+    dim_expr <- list(
+      month = "EXTRACT(month FROM datetime)",
+      hour  = "EXTRACT(hour FROM datetime)",
+      day_of_week = "EXTRACT(isodow FROM datetime)",
+      year  = "EXTRACT(year FROM datetime)"
+    )
+    if (!(row_dim %in% names(dim_expr) && col_dim %in% names(dim_expr)))
+      stop("row_dim / col_dim must be month, hour, day_of_week, or year.")
+    q <- sprintf(
+      "SELECT %s AS %s, %s AS %s,
+              100.0 * SUM(CASE WHEN %s IS NULL THEN 1 ELSE 0 END) / COUNT(*) AS pct
+       FROM pollution
+       GROUP BY 1, 2 ORDER BY 1, 2;",
+      dim_expr[[row_dim]], row_dim,
+      dim_expr[[col_dim]], col_dim,
+      tolower(pollutant)
+    )
+    d <- data.table::as.data.table(DBI::dbGetQuery(con, q))
+  } else {
+    # Reconstruct a 2-way view by "outer product" of the 1-way tables. This
+    # assumes independence between row_dim and col_dim and is only an
+    # approximation — hence the warning.
+    warning("arrow_dir not provided; the heatmap assumes independence between ",
+            row_dim, " and ", col_dim, ".")
+    r <- data.table::as.data.table(missing_list[[row_dim]])
+    c <- data.table::as.data.table(missing_list[[col_dim]])
+    d <- data.table::CJ(
+      row = r[[row_dim]], col = c[[col_dim]]
+    )
+    data.table::setnames(d, c("row","col"), c(row_dim, col_dim))
+    d <- merge(d, r[, .SD, .SDcols = c(row_dim, pct_col)], by = row_dim)
+    d <- merge(d, c[, .SD, .SDcols = c(col_dim, pct_col)], by = col_dim,
+               suffixes = c(".r", ".c"))
+    d[, pct := (get(paste0(pct_col,".r")) + get(paste0(pct_col,".c"))) / 2]
+  }
+  
+  ggplot2::ggplot(
+    d,
+    ggplot2::aes(x = .data[[col_dim]], y = .data[[row_dim]], fill = pct)
+  ) +
+    ggplot2::geom_tile(colour = "white") +
+    ggplot2::scale_fill_viridis_c(
+      option = "C", name = "% missing", limits = c(0, 100)
+    ) +
+    ggplot2::labs(
+      x     = tools::toTitleCase(col_dim),
+      y     = tools::toTitleCase(row_dim),
+      title = sprintf("%s — %s missing heatmap",
+                      city_label, toupper(pollutant))
+    ) +
+    ggplot2::theme_minimal(base_family = "Palatino", base_size = 13) +
+    ggplot2::theme(
+      panel.grid = ggplot2::element_blank(),
+      plot.title = ggplot2::element_text(face = "bold")
+    )
+}
+
+
 # Print a success message for when running inside Docker Container
 cat("Config script parsed successfully!\n")
