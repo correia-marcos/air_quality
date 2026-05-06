@@ -1480,7 +1480,7 @@ sp_process_stations_data_to_parquet <- function(
 }
 
 
-# ------------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------
 # Function: sp_process_census_2010
 #
 # @Arg       : sf_data    — sf object; Spatial weighting areas.
@@ -1497,7 +1497,7 @@ sp_process_stations_data_to_parquet <- function(
 #              5. Collapses using Expansion Weights (V0010) for adults 25+.
 #
 # @Written_on: 19/02/2026
-# ------------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------
 sp_process_census_2010 <- function(
     sf_data,
     match_col = "code_weighting",
