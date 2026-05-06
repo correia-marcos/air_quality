@@ -1317,7 +1317,8 @@ in the legacy script's spatial fallback algorithm. The legacy code evaluated the
 condition strictly on the *first* locality in the dataset and applied that logical outcome 
 globally to all subsequent localities (`in_poly <- st_within(...)[[1]]`). Consequently, if the 
 first locality was well-shaped, the fallback was disabled for all concave localities; if the 
-first was concave, the fallback was applied to perfectly square localities. 
+first locality’s centroid was outside its polygon, `st_point_on_surface()` was applied to all 
+localities, including those whose mathematical centroids were already valid.
 
 The new automated pipeline corrects this by strictly evaluating the topology row-by-row, 
 ensuring maximum spatial fidelity for exposure calculations.
