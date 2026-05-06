@@ -1,14 +1,18 @@
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-# @Goal: 
+# @Goal: Identify and flag anomalous hourly air pollution sensor readings across all cities.
 # 
-# @Description: 
+# @Description: This script processes hive-partitioned Arrow datasets of raw ground station 
+# data alongside pre-computed spatial distance matrices. It applies temporal and spatial 
+# algorithms (e.g., nearest neighbor comparison) to detect and flag outlier observations 
+# without loading the entire datasets into active memory.
 # 
 # @Summary: 
-#   I.   
-#   II.  
-#   III. 
+#   I.   Import data: Define directory paths for raw Arrow datasets and distance matrices.
+#   II.  Process: Apply the detection algorithm sequentially for Bogotá, CDMX, Santiago, 
+#        and São Paulo using out-of-core data structures.
+#   III. Save: Export the cleaned and flagged datasets as partitioned Parquet files.
 # 
 # @Date: January 2026
 # @Author: Marcos
