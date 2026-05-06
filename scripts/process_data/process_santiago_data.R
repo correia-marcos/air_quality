@@ -66,7 +66,7 @@ santiago_stations_data <- santiago_process_stations_data_to_parquet(
 )
 
 # Apply function to process the census data of 2017 - through a package
-process_harmonize_census <- santiago_process_census_2017(
+process_harmonize_census_2017 <- santiago_process_census_2017(
   out_dir    = here::here("data", "interim", "census", "santiago_2017"),
   sf_data    = metro_area,
   match_col  = "CUT",
