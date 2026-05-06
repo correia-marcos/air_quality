@@ -56,7 +56,7 @@ stations_kept <- bogota_filter_stations_in_metro(
                              "bogota_2018_stations_buffer_metro.gpkg"))
 
 # Apply function to filter the stations in the metro area + 20 km radius (2005)
-stations_kept <- bogota_filter_stations_in_metro(
+stations_kept_2005 <- bogota_filter_stations_in_metro(
   rmcab_df      = stations_bogota,
   metadata_dir  = outdir_metadata,
   radius_km     = 20,
