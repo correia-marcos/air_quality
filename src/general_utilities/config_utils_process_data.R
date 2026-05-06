@@ -1234,15 +1234,38 @@ aggregate_idw_exposure <- function(
   if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE)
   
   # 2. Helpers
-  .dq_path <- function(p) paste0("'", gsub("'", "''", gsub("\\\\", "/", p)), "'")
+  .dq_path <- function(p) {
+    paste0("'", gsub("'", "''", gsub("\\\\", "/", p)), "'")
+  }
   
-  # Prevent joining errors on high-precision numeric IDs
+  # Convert geographic IDs to strings without corrupting integer64 IDs
   .safe_chr <- function(x) {
-    if (is.character(x)) return(x)
-    if (any(!is.na(x) & abs(x) > 1e25)) {
-      warning("geo_id > 1e15 loses precision. Best-effort string conversion applied.")
+    if (inherits(x, "integer64")) {
+      return(as.character(x))
     }
-    ifelse(is.na(x), NA_character_, sprintf("%.0f", x))
+    
+    if (is.character(x)) {
+      return(trimws(x))
+    }
+    
+    if (is.integer(x)) {
+      return(as.character(x))
+    }
+    
+    if (is.numeric(x)) {
+      is_bad_large <- !is.na(x) & abs(x) > 2^53
+      
+      if (any(is_bad_large)) {
+        warning(
+          "Large numeric geo IDs may have lost precision before conversion. ",
+          "Prefer reading them as character or integer64."
+        )
+      }
+      
+      return(ifelse(is.na(x), NA_character_, sprintf("%.0f", x)))
+    }
+    
+    as.character(x)
   }
   
   # 3. DuckDB disk-backed connection
@@ -1372,7 +1395,7 @@ aggregate_idw_exposure <- function(
   all_years[, geo_id := as.character(geo_id)]
   
   # 8. Census processing 
-  census_dt <- data.table::as.data.table(census_col)
+  census_dt <- data.table::copy(data.table::as.data.table(census_col))
   data.table::setnames(census_dt, geo_id_col, "geo_id")
   census_dt[, geo_id := .safe_chr(geo_id)]
   
