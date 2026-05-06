@@ -69,21 +69,21 @@ dir.create(outdir_exp, recursive = TRUE, showWarnings = FALSE)
 
 for (buffer in c(3, 5)) {
   # Bogotá — 2018 CNPV
-  # exp_bogota <- aggregate_idw_exposure(
-  #   arrow_dir      = arrow_bogota_dir,
-  #   geo_sta_pq     = bogota_geo_dist,
-  #   census_col     = bogota_census,
-  #   geo_id_col     = "GEO_ID",
-  #   pop_col        = "fe",
-  #   edu_col        = "escolaridad",
-  #   quintile_level = "individual",
-  #   buffer_km      = buffer,
-  #   distance_power = 2,
-  #   mem_gb         = 32,
-  #   out_dir        = here::here(outdir_exp, "bogota_2018"),
-  #   out_name       = sprintf("bogota_2018_%dkm", buffer)
-  # )
-  # message("Bogotá ", buffer, " km: ", exp_bogota$exposure_path)
+  exp_bogota <- aggregate_idw_exposure(
+    arrow_dir      = arrow_bogota_dir,
+    geo_sta_pq     = bogota_geo_dist,
+    census_col     = bogota_census,
+    geo_id_col     = "GEO_ID",
+    pop_col        = "fe",
+    edu_col        = "escolaridad",
+    quintile_level = "individual",
+    buffer_km      = buffer,
+    distance_power = 2,
+    mem_gb         = 32,
+    out_dir        = here::here(outdir_exp, "bogota_2018"),
+    out_name       = sprintf("bogota_2018_%dkm", buffer)
+  )
+  message("Bogotá ", buffer, " km: ", exp_bogota$exposure_path)
 
   # CDMX — Censo 2020
   exp_cdmx <- aggregate_idw_exposure(
