@@ -59,7 +59,7 @@ cdmx_stations_data <- cdmx_merge_pollution_data(
   primary_data_dir     = here::here(cdmx_cfg$dl_dir, "ground_stations"),
   secondary_data_dir   = here::here(cdmx_cfg$dl_dir, "ground_stations_raw_missing_data"),
   stations_sf          = stations_kept,
-  tz                   = "America/Mexico_City",
+  tz                   = "UTC",
   years                = cdmx_cfg$years,
   out_dir              = outdir_pollution,
   out_name             = "cdmx_metro",
