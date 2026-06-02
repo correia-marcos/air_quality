@@ -54,7 +54,7 @@ gran_santiago <- santiago_download_metro_area(
   overwrite_gpkg    = TRUE,
   quiet             = FALSE
 )
-gran_santiago_census_tracksa <- santiago_download_metro_area(
+gran_santiago_census_tracks <- santiago_download_metro_area(
   type              = "gran_santiago",
   level             = "manzana",
   base_url          = santiago_cfg$base_url_shp,
