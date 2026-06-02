@@ -580,47 +580,60 @@ compute_correlations_for_cities <- function(city_dfs,
 # --------------------------------------------------------------------------------------------
 # Function: compute_distance_matrices
 #
-# @Arg stations_sf     : sf POINT object; monitoring stations.
-# @Arg station_id_col  : string; column in stations_sf with station IDs.
-# @Arg geo_sf          : sf POLYGON object or NULL; geographic units.
-# @Arg geo_id_col      : string or NULL; unique ID column in geo_sf.
-# @Arg out_dir         : string; output directory.
-# @Arg out_name        : string; prefix, e.g. "bogota_2018".
-# @Arg distance_metric : string; "aeqd", "haversine", or "euclidean".
-# @Arg overwrite       : logical; skip if output exists. Default TRUE.
-# @Arg quiet           : logical; suppress messages. Default FALSE.
+# @Arg stations_sf          : sf POINT object; monitoring stations.
+# @Arg station_id_col       : string; column in stations_sf with station IDs.
+# @Arg geo_sf               : sf POLYGON object or NULL; geographic units.
+# @Arg geo_id_col           : string or NULL; unique ID column in geo_sf.
+# @Arg out_dir              : string; output directory.
+# @Arg out_name             : string; prefix, e.g. "bogota_2018".
+# @Arg distance_metric      : string; "aeqd", "haversine", "euclidean",
+#                             or "geosphere".
+# @Arg representative_point : string; "point_on_surface" or "math_centroid".
+# @Arg overwrite            : logical; skip if output exists. Default TRUE.
+# @Arg quiet                : logical; suppress messages. Default FALSE.
 #
 # @Output : Named list of data.tables for station and geo distances.
 # @Details:
 #   Calculates station-to-station and geo-to-station distance matrices.
-#   Includes a topological fallback for concave polygons: if the mathematical
-#   centroid falls outside the boundaries, it uses st_point_on_surface() to
-#   guarantee a coordinate physically located inside the tract.
+#   If representative_point = "point_on_surface", it uses an internal point
+#   returned by st_point_on_surface() for every geographic unit.
+#   If representative_point = "math_centroid", it uses st_centroid() with an
+#   internal-point fallback for polygons whose centroid is outside.
+#   The "geosphere" metric is included for legacy replication because the old
+#   station-distance scripts used geosphere::distm(..., fun = distHaversine).
 # @Written_on : 01/02/2026
 # @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 compute_distance_matrices <- function(
     stations_sf,
     station_id_col,
-    geo_sf          = NULL,
-    geo_id_col      = NULL,
+    geo_sf               = NULL,
+    geo_id_col           = NULL,
     out_dir,
     out_name,
-    distance_metric = c("aeqd", "haversine", "euclidean"),
-    overwrite       = TRUE,
-    quiet           = FALSE
+    distance_metric      = c("aeqd", "haversine", "euclidean", "geosphere"),
+    representative_point = c("point_on_surface", "math_centroid"),
+    overwrite            = TRUE,
+    quiet                = FALSE
 ) {
+  
+  # Match the requested distance and representative-point methods first
+  dist_metric <- match.arg(distance_metric)
+  representative_point <- match.arg(representative_point)
   
   # Check for required packages before running
   pkgs <- c("sf", "data.table", "arrow", "stringi")
+  
+  # geosphere is only needed for the legacy metric
+  if (dist_metric == "geosphere") {
+    pkgs <- c(pkgs, "geosphere")
+  }
+  
   for (p in pkgs) {
     if (!requireNamespace(p, quietly = TRUE)) {
       stop("Package '", p, "' required. Add to renv.")
     }
   }
-  
-  # Match the requested distance metric
-  dist_metric <- match.arg(distance_metric)
   
   # Normalize station IDs: uppercase, strip accents and quotes
   .normalize <- function(x) {
@@ -637,48 +650,75 @@ compute_distance_matrices <- function(
     )
   }
   
-  # Safely calculate centroids with point-on-surface fallback
-  .st_centroid_within <- function(poly) {
-    # Calculate standard mathematical centroids
+  # Create one representative point per polygon
+  .representative_points <- function(poly, method) {
+    
+    # Use guaranteed internal points for all polygons
+    if (method == "point_on_surface") {
+      return(suppressWarnings(sf::st_point_on_surface(poly)))
+    }
+    
+    # Calculate mathematical centroids first
     cents <- suppressWarnings(
       sf::st_centroid(poly, of_largest_polygon = TRUE)
     )
     
-    # Check intersection row-by-row for accurate topology
-    intersect_mat <- suppressWarnings(
+    # Check whether centroid i intersects polygon i
+    inside_mat <- suppressWarnings(
       sf::st_intersects(cents, poly, sparse = FALSE)
     )
     
-    # Extract the diagonal (does centroid i intersect polygon i?)
+    # Extract diagonal relation: point i versus polygon i
     is_inside <- as.logical(
-      intersect_mat[cbind(seq_len(nrow(poly)), seq_len(nrow(poly)))]
+      inside_mat[cbind(seq_len(nrow(poly)), seq_len(nrow(poly)))]
     )
     
-    # Apply fallback only to polygons where centroid is outside
+    # Replace external centroids with guaranteed internal points
     if (any(!is_inside, na.rm = TRUE)) {
       bad_idx <- which(!is_inside)
+      
       cents[bad_idx, ] <- suppressWarnings(
         sf::st_point_on_surface(poly[bad_idx, ])
       )
     }
-    
     return(cents)
   }
   
+  # Calculate geosphere Haversine distances from two sf POINT objects
+  .geosphere_distance_km <- function(from_sf, to_sf) {
+    # geosphere expects longitude-latitude coordinates in WGS84
+    from_wgs <- sf::st_transform(from_sf, crs = 4326)
+    to_wgs   <- sf::st_transform(to_sf,   crs = 4326)
+    
+    # Extract coordinates as lon-lat matrices
+    from_xy <- sf::st_coordinates(from_wgs)[, c("X", "Y"), drop = FALSE]
+    to_xy   <- sf::st_coordinates(to_wgs)[,   c("X", "Y"), drop = FALSE]
+    
+    # geosphere::distm returns meters
+    dist_m <- geosphere::distm(
+      x   = from_xy,
+      y   = to_xy,
+      fun = geosphere::distHaversine
+    )
+    # Convert meters to kilometers
+    return(as.numeric(dist_m) / 1000)
+  }
   # Validate stations input
   if (!inherits(stations_sf, "sf")) {
     stop("`stations_sf` must be an sf object.")
   }
-  
   # Validate station column exists
   if (!station_id_col %in% names(stations_sf)) {
     stop("Column '", station_id_col, "' not found.")
   }
-  
   # Validate geographic data if provided
   if (!is.null(geo_sf)) {
-    if (!inherits(geo_sf, "sf")) stop("`geo_sf` must be an sf object.")
-    if (is.null(geo_id_col)) stop("`geo_id_col` is required.")
+    if (!inherits(geo_sf, "sf")) {
+      stop("`geo_sf` must be an sf object.")
+    }
+    if (is.null(geo_id_col)) {
+      stop("`geo_id_col` is required.")
+    }
     if (!geo_id_col %in% names(geo_sf)) {
       stop("Column '", geo_id_col, "' not found.")
     }
@@ -687,74 +727,89 @@ compute_distance_matrices <- function(
   # Create directory if it does not exist
   if (!dir.exists(out_dir)) {
     dir.create(out_dir, recursive = TRUE)
-    if (!quiet) message("Created output directory: ", out_dir)
+    
+    if (!quiet) {
+      message("Created output directory: ", out_dir)
+    }
   }
   
   # Define file paths for output Parquet files
-  path_sta <- file.path(
-    out_dir, paste0(out_name, "_station_distances.parquet")
-  )
-  path_geo <- file.path(
-    out_dir, paste0(out_name, "_geo_station_distances.parquet")
-  )
+  path_sta <- file.path(out_dir, paste0(out_name, "_station_distances.parquet"))
+  path_geo <- file.path(out_dir, paste0(out_name, "_geo_station_distances.parquet"))
   
   # Check if files already exist to skip computation
   geo_ready <- is.null(geo_sf) || file.exists(path_geo)
+  
   if (!overwrite && file.exists(path_sta) && geo_ready) {
-    if (!quiet) message("Files exist and overwrite = FALSE.")
+    if (!quiet) {
+      message("Files exist and overwrite = FALSE.")
+    }
     
-    # Return list with loaded datatables
     return(invisible(list(
       station_matrix = data.table::as.data.table(
         arrow::read_parquet(path_sta)
       ),
       geo_station_matrix = if (!is.null(geo_sf)) {
         data.table::as.data.table(arrow::read_parquet(path_geo))
-      } else NULL
+      } else {
+        NULL
+      }
     )))
   }
   
-  if (!quiet) message("[", out_name, "] Metric: ", dist_metric)
+  if (!quiet) {
+    message("[", out_name, "] Metric: ", dist_metric)
+    message("[", out_name, "] Representative point: ", representative_point)
+  }
   
   # Enforce standard WGS84 and keep only the ID column to save memory
   stations_wgs <- sf::st_transform(stations_sf, crs = 4326)
   stations_wgs <- stations_wgs[, station_id_col]
   
+  # Save initial S2 setting to restore later
+  s2_initial <- sf::sf_use_s2()
+  on.exit(sf::sf_use_s2(s2_initial), add = TRUE)
+  
+  # Disable spherical geometry only for the simple Euclidean approximation
+  if (dist_metric == "euclidean") {
+    sf::sf_use_s2(FALSE)
+  }
+  
   # Handle projection based on selected metric
   if (dist_metric == "aeqd") {
+    
     # Calculate center of all stations to center the AEQD
     cen <- sf::st_coordinates(
       sf::st_centroid(sf::st_union(stations_wgs))
     )
+    # Build local equidistant projection
     proj_aeqd <- .aeqd_proj(lon0 = cen[1, "X"], lat0 = cen[1, "Y"])
     stations_eval <- sf::st_transform(stations_wgs, crs = proj_aeqd)
   } else {
-    # Keep WGS84 for haversine and euclidean
+    # Keep WGS84 for haversine, geosphere, and euclidean
     stations_eval <- stations_wgs
   }
-  
   # Extract and normalize station IDs
-  station_ids <- .normalize(as.character(stations_eval[[station_id_col]]))
+  station_ids <- .normalize(as.character(stations_wgs[[station_id_col]]))
   n_sta <- length(station_ids)
   
-  if (!quiet) message("[", out_name, "] Station distances...")
+  if (!quiet) {
+    message("[", out_name, "] Station distances...")
+  }
   
-  # Save initial S2 setting to restore later
-  s2_initial <- sf::sf_use_s2()
-  
-  # Disable spherical geometry if Euclidean is requested
-  if (dist_metric == "euclidean") sf::sf_use_s2(FALSE)
-  
-  # Calculate distance matrix using sf engine
-  dist_sta_raw <- as.numeric(
-    sf::st_distance(stations_eval, stations_eval)
-  )
-  
-  # Convert to kilometers based on metric
-  dist_sta_km <- if (dist_metric == "euclidean") {
-    dist_sta_raw * 111.32 # Degrees to km approximation
+  # Calculate station-to-station distances
+  if (dist_metric == "geosphere") {
+    dist_sta_km <- .geosphere_distance_km(stations_wgs, stations_wgs)
   } else {
-    dist_sta_raw / 1000   # Meters to km
+    dist_sta_raw <- as.numeric(
+      sf::st_distance(stations_eval, stations_eval)
+    )
+    
+    dist_sta_km <- if (dist_metric == "euclidean") {
+      dist_sta_raw * 111.32
+    } else {
+      dist_sta_raw / 1000
+    }
   }
   
   # Build data table with combinations
@@ -763,43 +818,52 @@ compute_distance_matrices <- function(
     station_to   = rep(station_ids, each  = n_sta),
     distance_km  = dist_sta_km
   )
-  
+
   # Save station matrix
-  if (!quiet) message("[", out_name, "] Writing: ", path_sta)
+  if (!quiet) {message("[", out_name, "] Writing: ", path_sta)}
+  
   arrow::write_parquet(station_dt, path_sta)
   
   geo_station_dt <- NULL
   
   # Calculate geo-to-station matrix if geo_sf is provided
   if (!is.null(geo_sf)) {
-    if (!quiet) message("[", out_name, "] Geo distances...")
+    if (!quiet) {
+      message("[", out_name, "] Geo distances...")
+    }
     
-    # Transform geo units to WGS84
+    # Transform geo units to WGS84 and fix invalid polygons
     geo_wgs <- sf::st_transform(sf::st_make_valid(geo_sf), crs = 4326)
     
-    # Extract reliable centroids using the fallback function
-    geo_centroids <- .st_centroid_within(geo_wgs)
+    # Extract representative points using the requested method
+    geo_points <- .representative_points(
+      poly   = geo_wgs,
+      method = representative_point
+    )
     
     # Apply AEQD projection if required
     if (dist_metric == "aeqd") {
-      geo_eval <- sf::st_transform(geo_centroids, crs = proj_aeqd)
+      geo_eval <- sf::st_transform(geo_points, crs = proj_aeqd)
     } else {
-      geo_eval <- geo_centroids
+      geo_eval <- geo_points
     }
     
     # Extract geographic unit IDs
-    geo_ids <- as.character(geo_centroids[[geo_id_col]])
+    geo_ids <- as.character(geo_points[[geo_id_col]])
     
-    # Calculate distances from centroids to stations
-    dist_geo_raw <- as.numeric(
-      sf::st_distance(geo_eval, stations_eval)
-    )
-    
-    # Convert to kilometers
-    dist_geo_km <- if (dist_metric == "euclidean") {
-      dist_geo_raw * 111.32
+    # Calculate distances from representative points to stations
+    if (dist_metric == "geosphere") {
+      dist_geo_km <- .geosphere_distance_km(geo_points, stations_wgs)
     } else {
-      dist_geo_raw / 1000
+      dist_geo_raw <- as.numeric(
+        sf::st_distance(geo_eval, stations_eval)
+      )
+      
+      dist_geo_km <- if (dist_metric == "euclidean") {
+        dist_geo_raw * 111.32
+      } else {
+        dist_geo_raw / 1000
+      }
     }
     
     # Build data table for geo distances
@@ -810,12 +874,12 @@ compute_distance_matrices <- function(
     )
     
     # Save geo matrix
-    if (!quiet) message("[", out_name, "] Writing: ", path_geo)
+    if (!quiet) {
+      message("[", out_name, "] Writing: ", path_geo)
+    }
+
     arrow::write_parquet(geo_station_dt, path_geo)
   }
-  
-  # Restore original S2 setting to prevent side-effects
-  sf::sf_use_s2(s2_initial)
   
   # Return both matrices invisibly
   invisible(list(
@@ -835,19 +899,24 @@ compute_distance_matrices <- function(
 # @Arg pollutants          : character; default c("pm10", "pm25").
 # @Arg pct_flag            : numeric [0,1]; upper-tail quantile. Default 0.99.
 # @Arg n_sd                : numeric; tolerance half-width in SD units. Default 2.
-# @Arg on_missing_temporal : string; "finish" (mark outlier) or "continue" (skip 
-#                            temporal and attempt spatial check). Default "finish".
-# @Arg on_missing_neighbor : string; "finish" (mark outlier) or "second" (fallback
-#                            to the second closest station). Default "finish".
+# @Arg on_missing_temporal : string; "finish" or "continue". Default "continue".
+# @Arg on_missing_neighbor : string; "finish" or "second". Default "second".
 # @Arg overwrite           : logical; skip if output exists. Default TRUE.
 # @Arg quiet               : logical; suppress messages. Default FALSE.
 #
-# @Details: 
-#   Creates `{pollutant}_outlier_reason` columns to track the exact failure point:
-#     0 = Valid (or not flagged in the 99th percentile)
-#     1 = Flagged, missing temporal benchmark (Type 3)
-#     2 = Flagged, failed temporal, missing spatial benchmark
+# @Details:
+#   Creates `{pollutant}_outlier_reason` columns:
+#     0 = Valid or not flagged
+#     1 = Flagged, no temporal benchmark, no feasible spatial rescue
+#     2 = Flagged, failed temporal, no feasible spatial rescue
 #     3 = Flagged, failed temporal, failed spatial
+#     4 = Flagged, no temporal benchmark, failed spatial
+#
+#   Also creates diagnostic count columns:
+#     `{pollutant}_n_missing_temporal_sd`
+#     `{pollutant}_n_zero_temporal_sd`
+#     `{pollutant}_n_missing_spatial_sd`
+#     `{pollutant}_n_zero_spatial_sd`
 #
 # @Written_on : 02/02/2026
 # @Written_by : Marcos Paulo
@@ -860,40 +929,94 @@ detect_pollution_outliers <- function(
     pollutants          = c("pm10", "pm25"),
     pct_flag            = 0.99,
     n_sd                = 2,
-    on_missing_temporal = "finish",
-    on_missing_neighbor = "finish",
+    on_missing_temporal = "continue",
+    on_missing_neighbor = "second",
     overwrite           = TRUE,
     quiet               = FALSE
 ) {
   
   # 0. Dependencies
   # -----------------------------------------------------------------------
-  pkgs <- c("arrow", "data.table", "dplyr")
+  # stringi is required to harmonize station identifiers across files.
+  pkgs <- c("arrow", "data.table", "dplyr", "stringi")
+  
   for (p in pkgs) {
-    if (!requireNamespace(p, quietly = TRUE)) stop("Package '", p, "' required.")
+    if (!requireNamespace(p, quietly = TRUE)) {
+      stop("Package '", p, "' required.")
+    }
+  }
+  
+  # Validate behavioral options early to avoid silent mistakes.
+  on_missing_temporal <- match.arg(
+    on_missing_temporal,
+    c("finish", "continue")
+  )
+  
+  on_missing_neighbor <- match.arg(
+    on_missing_neighbor,
+    c("finish", "second")
+  )
+  
+  # Normalize station IDs in the same way as the distance-matrix code.
+  # This avoids failed joins due to accents, quotes, case, or whitespace.
+  .normalize_station <- function(x) {
+    x <- toupper(trimws(as.character(x)))
+    x <- stringi::stri_trans_general(x, id = "Latin-ASCII")
+    gsub('"', "", x)
   }
   
   # 1. Output path + early exit
   # -----------------------------------------------------------------------
   out_path <- file.path(out_dir, paste0(out_name, "_clean"))
   
+  # Skip computation only when explicitly requested.
   if (!overwrite && dir.exists(out_path)) {
-    if (!quiet) message("Output exists; overwrite=FALSE — skipping.")
+    if (!quiet) {
+      message("Output exists; overwrite=FALSE — skipping.")
+    }
+    
     return(invisible(out_path))
   }
   
-  if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE)
-  if (dir.exists(out_path)) unlink(out_path, recursive = TRUE)
+  # Create output root if needed.
+  if (!dir.exists(out_dir)) {
+    dir.create(out_dir, recursive = TRUE)
+  }
+  
+  # Replace previous output when overwrite = TRUE.
+  if (dir.exists(out_path)) {
+    unlink(out_path, recursive = TRUE)
+  }
+  
   dir.create(out_path)
   
-  # 2. Load full distance table
+  # 2. Load and validate station-distance table
   # -----------------------------------------------------------------------
-  dist_dt <- data.table::as.data.table(arrow::read_parquet(station_dist_path))
-  if (!quiet) message("Distance table loaded.")
+  # This table is used only to define nearest monitoring stations.
+  dist_dt <- data.table::as.data.table(
+    arrow::read_parquet(station_dist_path)
+  )
   
-  # 3. Open Arrow dataset; collect year index
+  # Require the schema produced by compute_distance_matrices().
+  req_dist_cols <- c("station_from", "station_to", "distance_km")
+  miss_dist_cols <- setdiff(req_dist_cols, names(dist_dt))
+  
+  if (length(miss_dist_cols) > 0L) {
+    stop("Distance table is missing: ", paste(miss_dist_cols, collapse = ", "))
+  }
+  
+  # Harmonize station names in the distance table.
+  dist_dt[, station_from := .normalize_station(station_from)]
+  dist_dt[, station_to   := .normalize_station(station_to)]
+  
+  if (!quiet) {
+    message("Distance table loaded.")
+  }
+  
+  # 3. Open Arrow dataset and collect available years
   # -----------------------------------------------------------------------
   arrow_ds <- arrow::open_dataset(arrow_dir)
+  
   years <- arrow_ds |>
     dplyr::select(year) |>
     dplyr::distinct()   |>
@@ -901,61 +1024,119 @@ detect_pollution_outliers <- function(
     dplyr::pull(year)   |>
     sort()
   
-  # 4. Inner helper — flags one pollutant at a time
+  # 4. Inner helper: flag one pollutant at a time
   # -----------------------------------------------------------------------
-  .flag_pollutant <- function(dt, pol, dist_dt, pct_flag, n_sd, 
+  .flag_pollutant <- function(dt, pol, dist_dt, pct_flag, n_sd,
                               miss_temp, miss_neigh) {
     
-    if (!pol %in% names(dt)) return(invisible(NULL))
+    # Skip pollutant if it is absent in this city/year dataset.
+    if (!pol %in% names(dt)) {
+      return(invisible(NULL))
+    }
     
+    # Main output columns for this pollutant.
     flag_col   <- paste0(pol, "_outlier")
     reason_col <- paste0(pol, "_outlier_reason")
     
+    # Diagnostic columns repeated within station-month cells.
+    miss_tsd_col <- paste0(pol, "_n_missing_temporal_sd")
+    zero_tsd_col <- paste0(pol, "_n_zero_temporal_sd")
+    miss_ssd_col <- paste0(pol, "_n_missing_spatial_sd")
+    zero_ssd_col <- paste0(pol, "_n_zero_spatial_sd")
+    
+    # Initialize classification outputs.
     dt[, (flag_col)   := 0L]
-    dt[, (reason_col) := 0L] 
+    dt[, (reason_col) := 0L]
     
-    if (all(is.na(dt[[pol]]))) return(invisible(NULL))
+    # Initialize diagnostics to zero.
+    dt[, (miss_tsd_col) := 0L]
+    dt[, (zero_tsd_col) := 0L]
+    dt[, (miss_ssd_col) := 0L]
+    dt[, (zero_ssd_col) := 0L]
     
-    # -- (1) Dynamic Nearest Neighbors ----------------------------------
+    # Nothing to classify if the pollutant is entirely missing.
+    if (all(is.na(dt[[pol]]))) {
+      return(invisible(NULL))
+    }
+    
+    # -- (1) Dynamic nearest neighbors ----------------------------------
+    # Eligible neighbors must have at least one non-missing observation
+    # for the pollutant in the current year-level working data.
     has_data <- dt[!is.na(get(pol)), unique(station)]
-    near_dt  <- dist_dt[distance_km > 0 & station_to %in% has_data]
     
+    # Restrict distance table to stations available for this pollutant.
+    near_dt <- dist_dt[
+      distance_km > 0 &
+        station_from %in% has_data &
+        station_to %in% has_data
+    ]
+    
+    # Rank possible neighbors by distance within origin station.
     data.table::setorder(near_dt, station_from, distance_km)
     near_dt[, rank := seq_len(.N), by = station_from]
     
-    near_1 <- near_dt[rank == 1, .(station = station_from, near1 = station_to)]
+    # Attach closest eligible neighbor.
+    near_1 <- near_dt[
+      rank == 1L,
+      .(station = station_from, near1 = station_to)
+    ]
+    
     dt[near_1, .t_near1 := i.near1, on = "station"]
     
+    # Attach second closest eligible neighbor only when requested.
     if (miss_neigh == "second") {
-      near_2 <- near_dt[rank == 2, .(station = station_from, near2 = station_to)]
+      near_2 <- near_dt[
+        rank == 2L,
+        .(station = station_from, near2 = station_to)
+      ]
+      
       dt[near_2, .t_near2 := i.near2, on = "station"]
     }
     
-    # -- (2) Lag, lead, and differences ---------------------------------
+    # -- (2) Lag, lead, and temporal differences -------------------------
+    # The panel is balanced before this helper runs, so adjacent rows
+    # represent adjacent hours within each station.
     dt[, `:=`(
       .t_lag  = data.table::shift(get(pol), 1L, type = "lag"),
       .t_lead = data.table::shift(get(pol), 1L, type = "lead")
     ), by = station]
     
+    # First difference used to define normal temporal volatility.
     dt[, .t_diff := get(pol) - .t_lag]
     
+    # Lookup table for simultaneous neighbor values.
     tmp_lkp <- dt[, .(station, datetime, tmp_p = get(pol))]
     
-    dt[tmp_lkp, .t_vn1 := i.tmp_p, on = .(.t_near1 = station, datetime)]
+    # Pull simultaneous value at closest neighbor.
+    dt[
+      tmp_lkp,
+      .t_vn1 := i.tmp_p,
+      on = .(.t_near1 = station, datetime)
+    ]
+    
     dt[, .t_diff_nb1 := get(pol) - .t_vn1]
     
+    # Pull simultaneous value at second closest neighbor when requested.
     if (miss_neigh == "second") {
-      dt[tmp_lkp, .t_vn2 := i.tmp_p, on = .(.t_near2 = station, datetime)]
+      dt[
+        tmp_lkp,
+        .t_vn2 := i.tmp_p,
+        on = .(.t_near2 = station, datetime)
+      ]
+      
       dt[, .t_diff_nb2 := get(pol) - .t_vn2]
     }
+    
     rm(tmp_lkp)
     
-    # -- (3) Benchmarks -------------------------------------------------
+    # -- (3) Temporal benchmark construction -----------------------------
+    # Type 1: both adjacent readings; Type 2: one adjacent reading;
+    # Type 3: no adjacent reading.
     dt[, .t_bench := data.table::fcase(
-      !is.na(.t_lag) & !is.na(.t_lead), (.t_lag + .t_lead) / 2, 
-      !is.na(.t_lag),  .t_lag,                                  
-      !is.na(.t_lead), .t_lead,                                 
-      default = NA_real_                                        
+      !is.na(.t_lag) & !is.na(.t_lead), (.t_lag + .t_lead) / 2,
+      !is.na(.t_lag),  .t_lag,
+      !is.na(.t_lead), .t_lead,
+      default = NA_real_
     )]
     
     dt[, .t_btype := data.table::fcase(
@@ -963,19 +1144,27 @@ detect_pollution_outliers <- function(
       !is.na(.t_lag) | !is.na(.t_lead), 2L,
       default = 3L
     )]
+    
+    # Difference between the observed value and the temporal benchmark.
     dt[, .t_diff_b := get(pol) - .t_bench]
     
-    # -- (4) Flag 99th pct ----------------------------------------------
+    # -- (4) Flag station-month right-tail observations ------------------
+    # Only values above this threshold can become outliers.
     dt[, .t_ym := format(datetime, "%Y-%m")]
+    
     dt[, .t_p99 := as.numeric(
       stats::quantile(.SD[[1]], probs = pct_flag, na.rm = TRUE)
     ), by = .(station, .t_ym), .SDcols = pol]
     
     dt[, .t_flag := data.table::fifelse(
-      !is.na(get(pol)) & get(pol) > .t_p99, 1L, 0L
+      !is.na(get(pol)) & !is.na(.t_p99) & get(pol) > .t_p99,
+      1L,
+      0L
     )]
     
-    # -- (5) Station-month stats ----------------------------------------
+    # -- (5) Station-month temporal and spatial statistics ---------------
+    # Temporal stats are based on own-station first differences.
+    # Spatial stats are based on station-neighbor simultaneous differences.
     if (miss_neigh == "second") {
       dt[, `:=`(
         .t_md   = mean(.t_diff,     na.rm = TRUE),
@@ -994,67 +1183,167 @@ detect_pollution_outliers <- function(
       ), by = .(station, .t_ym)]
     }
     
-    # -- (6) Classify: 1=reasonable, 2=unreasonable, 3=no bench ---------
+    # -- (6) Diagnostic counts ------------------------------------------
+    # sd() is NA when there are fewer than two non-missing differences.
+    # sd() is zero when the station-month differences are constant.
+    dt[, .t_missing_tsd := is.na(.t_sd)]
+    dt[, .t_zero_tsd    := !is.na(.t_sd) & .t_sd == 0]
+    
+    dt[, .t_missing_ssd1 := is.na(.t_snb1)]
+    dt[, .t_zero_ssd1    := !is.na(.t_snb1) & .t_snb1 == 0]
+    
+    # For the second-neighbor case, diagnose whether all spatial
+    # alternatives are missing and whether any feasible one has zero SD.
+    if (miss_neigh == "second") {
+      dt[, .t_missing_ssd2 := is.na(.t_snb2)]
+      dt[, .t_zero_ssd2    := !is.na(.t_snb2) & .t_snb2 == 0]
+      
+      dt[, .t_missing_ssd := .t_missing_ssd1 & .t_missing_ssd2]
+      dt[, .t_zero_ssd    := .t_zero_ssd1 | .t_zero_ssd2]
+    } else {
+      dt[, .t_missing_ssd := .t_missing_ssd1]
+      dt[, .t_zero_ssd    := .t_zero_ssd1]
+    }
+    
+    # Store flagged-observation diagnostics as station-month counts.
+    dt[, (miss_tsd_col) := sum(.t_flag == 1L & .t_missing_tsd),
+       by = .(station, .t_ym)]
+    
+    dt[, (zero_tsd_col) := sum(.t_flag == 1L & .t_zero_tsd),
+       by = .(station, .t_ym)]
+    
+    dt[, (miss_ssd_col) := sum(.t_flag == 1L & .t_missing_ssd),
+       by = .(station, .t_ym)]
+    
+    dt[, (zero_ssd_col) := sum(.t_flag == 1L & .t_zero_ssd),
+       by = .(station, .t_ym)]
+    
+    # -- (7) Temporal classification ------------------------------------
+    # 1 = reasonable, 2 = unreasonable, 3 = no temporal benchmark.
     dt[, .t_cat := data.table::fcase(
       .t_btype == 3L, 3L,
-      !is.na(.t_diff_b) & 
-        .t_diff_b > (.t_md - n_sd * .t_sd) & 
+      !is.na(.t_diff_b) &
+        !is.na(.t_md) & !is.na(.t_sd) &
+        .t_diff_b > (.t_md - n_sd * .t_sd) &
         .t_diff_b < (.t_md + n_sd * .t_sd), 1L,
       default = 2L
     )]
     
+    # If temporal missingness is allowed to continue, Type 3 values
+    # can still be rescued by the spatial check.
     cats_check <- if (miss_temp == "continue") c(2L, 3L) else 2L
     
-    # -- (7) Spatial rescue ---------------------------------------------
+    # -- (8) Spatial rescue using closest neighbor -----------------------
+    # A spatial check is feasible only when both the current difference
+    # and the station-month spatial benchmark exist.
+    dt[, .t_spat1_feasible := !is.na(.t_diff_nb1) &
+         !is.na(.t_mnb1) & !is.na(.t_snb1)]
+    
+    dt[, .t_spat1_pass := .t_spat1_feasible &
+         .t_diff_nb1 > (.t_mnb1 - n_sd * .t_snb1) &
+         .t_diff_nb1 < (.t_mnb1 + n_sd * .t_snb1)]
+    
+    # If closest-neighbor spatial check passes, keep the observation.
     dt[
-      .t_cat %in% cats_check &
-        !is.na(.t_diff_nb1)  & !is.na(.t_mnb1) & !is.na(.t_snb1) &
-        .t_diff_nb1 > (.t_mnb1 - n_sd * .t_snb1) &
-        .t_diff_nb1 < (.t_mnb1 + n_sd * .t_snb1),
+      .t_cat %in% cats_check & .t_spat1_pass == TRUE,
       .t_cat := 1L
     ]
     
+    # -- (9) Spatial rescue using second closest neighbor ----------------
     if (miss_neigh == "second") {
+      
+      # The second neighbor is used only when the first check is infeasible.
+      dt[, .t_spat2_feasible := !is.na(.t_diff_nb2) &
+           !is.na(.t_mnb2) & !is.na(.t_snb2)]
+      
+      dt[, .t_spat2_pass := .t_spat2_feasible &
+           .t_diff_nb2 > (.t_mnb2 - n_sd * .t_snb2) &
+           .t_diff_nb2 < (.t_mnb2 + n_sd * .t_snb2)]
+      
+      # Rescue observations when the first neighbor cannot be used
+      # and the second neighbor validates the reading.
       dt[
-        .t_cat %in% cats_check & 
-          is.na(.t_diff_nb1)   & 
-          !is.na(.t_diff_nb2)  & !is.na(.t_mnb2) & !is.na(.t_snb2) &
-          .t_diff_nb2 > (.t_mnb2 - n_sd * .t_snb2) &
-          .t_diff_nb2 < (.t_mnb2 + n_sd * .t_snb2),
+        .t_cat %in% cats_check &
+          .t_spat1_feasible == FALSE &
+          .t_spat2_pass == TRUE,
         .t_cat := 1L
       ]
-    }
-    
-    # -- (8) Identify missing spatial capacity --------------------------
-    if (miss_neigh == "second") {
-      dt[, .t_no_spat := (is.na(.t_diff_nb1) | is.na(.t_mnb1) | is.na(.t_snb1)) &
-           (is.na(.t_diff_nb2) | is.na(.t_mnb2) | is.na(.t_snb2))]
+      
+      # No spatial check exists if neither neighbor is feasible.
+      dt[, .t_no_spat := .t_spat1_feasible == FALSE &
+           .t_spat2_feasible == FALSE]
+      
+      # Spatial failure is assigned to the feasible check that was used.
+      dt[, .t_failed_spat := .t_spat1_feasible == TRUE &
+           .t_spat1_pass == FALSE]
+      
+      dt[
+        .t_spat1_feasible == FALSE & .t_spat2_feasible == TRUE,
+        .t_failed_spat := .t_spat2_pass == FALSE
+      ]
     } else {
-      dt[, .t_no_spat := (is.na(.t_diff_nb1) | is.na(.t_mnb1) | is.na(.t_snb1))]
+      
+      # Without second-neighbor fallback, only the closest neighbor matters.
+      dt[, .t_no_spat := .t_spat1_feasible == FALSE]
+      
+      dt[, .t_failed_spat := .t_spat1_feasible == TRUE &
+           .t_spat1_pass == FALSE]
     }
     
-    # -- (9) Assign Diagnostic Reason Codes -----------------------------
-    # 1: No temporal benchmark
-    dt[.t_flag == 1L & .t_cat == 3L, (reason_col) := 1L]
+    # -- (10) Assign diagnostic reason codes -----------------------------
+    # Reason 1: flagged Type 3, no feasible spatial rescue.
+    dt[
+      .t_flag == 1L & .t_cat == 3L & .t_no_spat == TRUE,
+      (reason_col) := 1L
+    ]
     
-    # 2: Failed temporal, but no spatial neighbor was available to check
-    dt[.t_flag == 1L & .t_cat == 2L & .t_no_spat == TRUE, (reason_col) := 2L]
+    # Reason 2: flagged temporal failure, no feasible spatial rescue.
+    dt[
+      .t_flag == 1L & .t_cat == 2L & .t_no_spat == TRUE,
+      (reason_col) := 2L
+    ]
     
-    # 3: Failed temporal, checked spatial and failed spatial too
-    dt[.t_flag == 1L & .t_cat == 2L & .t_no_spat == FALSE, (reason_col) := 3L]
+    # Reason 3: flagged temporal failure and spatial check failed.
+    dt[
+      .t_flag == 1L & .t_cat == 2L & .t_failed_spat == TRUE,
+      (reason_col) := 3L
+    ]
     
-    # -- (10) Final Masking ---------------------------------------------
+    # Reason 4: flagged Type 3 and spatial check failed.
+    dt[
+      .t_flag == 1L & .t_cat == 3L & .t_failed_spat == TRUE,
+      (reason_col) := 4L
+    ]
+    
+    # Legacy-style behavior: missing temporal benchmark is final.
+    # This reproduces the older, more punitive rule when requested.
+    if (miss_temp == "finish") {
+      dt[.t_flag == 1L & .t_cat == 3L, (reason_col) := 1L]
+    }
+    
+    # -- (11) Final masking ----------------------------------------------
+    # Only observations with positive reason codes are removed.
     dt[get(reason_col) > 0L, (flag_col) := 1L]
     dt[get(flag_col) == 1L, (pol) := NA_real_]
     
-    # Cleanup temporary columns
-    drop_cols <- c(".t_lag", ".t_lead", ".t_diff", ".t_diff_nb1", ".t_bench", 
-                   ".t_btype", ".t_diff_b", ".t_ym", ".t_p99", ".t_flag", 
-                   ".t_md", ".t_sd", ".t_mnb1", ".t_snb1", ".t_cat", 
-                   ".t_near1", ".t_vn1", ".t_no_spat")
+    # -- (12) Cleanup temporary columns ----------------------------------
+    # Keep final flags, reason codes, diagnostics, and cleaned pollutant.
+    drop_cols <- c(
+      ".t_lag", ".t_lead", ".t_diff", ".t_diff_nb1", ".t_bench",
+      ".t_btype", ".t_diff_b", ".t_ym", ".t_p99", ".t_flag",
+      ".t_md", ".t_sd", ".t_mnb1", ".t_snb1", ".t_cat",
+      ".t_near1", ".t_vn1", ".t_missing_tsd", ".t_zero_tsd",
+      ".t_missing_ssd1", ".t_zero_ssd1", ".t_missing_ssd",
+      ".t_zero_ssd", ".t_spat1_feasible", ".t_spat1_pass",
+      ".t_no_spat", ".t_failed_spat"
+    )
+    
     if (miss_neigh == "second") {
-      drop_cols <- c(drop_cols, ".t_diff_nb2", ".t_mnb2", ".t_snb2", 
-                     ".t_near2", ".t_vn2")
+      drop_cols <- c(
+        drop_cols, ".t_diff_nb2", ".t_mnb2", ".t_snb2",
+        ".t_near2", ".t_vn2", ".t_missing_ssd2", ".t_zero_ssd2",
+        ".t_spat2_feasible", ".t_spat2_pass"
+      )
     }
     
     drop_cols <- intersect(drop_cols, names(dt))
@@ -1066,19 +1355,29 @@ detect_pollution_outliers <- function(
   # 5. Year loop
   # -----------------------------------------------------------------------
   for (yr in years) {
-    if (!quiet) message("  [", yr, "] Collecting ...")
+    if (!quiet) {
+      message("  [", yr, "] Collecting ...")
+    }
     
+    # Collect one year at a time to limit memory use.
     dt_yr <- arrow_ds |>
       dplyr::filter(year == yr) |>
       dplyr::collect()          |>
       data.table::as.data.table()
     
-    if (nrow(dt_yr) == 0) next
+    if (nrow(dt_yr) == 0L) {
+      next
+    }
+    
+    # Normalize station identifiers before balancing and joining.
+    dt_yr[, station := .normalize_station(station)]
     
     all_sta  <- unique(dt_yr$station)
     yr_start <- min(dt_yr$datetime)
     yr_end   <- max(dt_yr$datetime)
     
+    # Add one boundary hour before and after the year.
+    # This avoids losing lag/lead information at year boundaries.
     prev_cutoff <- yr_start - 3600
     next_cutoff <- yr_end   + 3600
     prev_yr     <- as.integer(format(prev_cutoff, "%Y"))
@@ -1086,44 +1385,80 @@ detect_pollution_outliers <- function(
     
     bnd_prev <- arrow_ds |>
       dplyr::filter(year == prev_yr, datetime == prev_cutoff) |>
-      dplyr::collect() |> data.table::as.data.table()
-    bnd_prev <- bnd_prev[station %in% all_sta]
+      dplyr::collect() |>
+      data.table::as.data.table()
+    
+    if (nrow(bnd_prev) > 0L) {
+      bnd_prev[, station := .normalize_station(station)]
+      bnd_prev <- bnd_prev[station %in% all_sta]
+    }
     
     bnd_next <- arrow_ds |>
       dplyr::filter(year == next_yr, datetime == next_cutoff) |>
-      dplyr::collect() |> data.table::as.data.table()
-    bnd_next <- bnd_next[station %in% all_sta]
+      dplyr::collect() |>
+      data.table::as.data.table()
     
+    if (nrow(bnd_next) > 0L) {
+      bnd_next[, station := .normalize_station(station)]
+      bnd_next <- bnd_next[station %in% all_sta]
+    }
+    
+    # Create a balanced station-hour grid for the year.
     all_hours <- seq(yr_start, yr_end, by = "hour")
     grid      <- data.table::CJ(station = all_sta, datetime = all_hours)
-    non_key   <- setdiff(names(dt_yr), c("station", "datetime", "year"))
+    
+    # Keep all variables except keys and year; year is reassigned below.
+    non_key <- setdiff(names(dt_yr), c("station", "datetime", "year"))
     
     dt_bal <- data.table::merge.data.table(
       grid,
       dt_yr[, c("station", "datetime", non_key), with = FALSE],
-      by = c("station", "datetime"), all.x = TRUE
+      by = c("station", "datetime"),
+      all.x = TRUE
     )
+    
     dt_bal[, year := yr]
     
+    # Attach boundary rows for lag/lead computation.
     dt_bal <- data.table::rbindlist(
-      list(dt_bal, bnd_prev, bnd_next), fill = TRUE, use.names = TRUE
+      list(dt_bal, bnd_prev, bnd_next),
+      fill = TRUE,
+      use.names = TRUE
     )
     
+    # Ensure shift() uses the correct station-hour order.
     data.table::setorder(dt_bal, station, datetime)
+    
+    # Mark rows belonging to the target year before adding boundary rows.
     in_yr <- dt_bal$datetime >= yr_start & dt_bal$datetime <= yr_end
     
+    # Apply the outlier procedure pollutant by pollutant.
     for (pol in pollutants) {
-      .flag_pollutant(dt_bal, pol, dist_dt, pct_flag, n_sd, 
-                      on_missing_temporal, on_missing_neighbor)
+      .flag_pollutant(
+        dt         = dt_bal,
+        pol        = pol,
+        dist_dt    = dist_dt,
+        pct_flag   = pct_flag,
+        n_sd       = n_sd,
+        miss_temp  = on_missing_temporal,
+        miss_neigh = on_missing_neighbor
+      )
     }
     
+    # Drop boundary rows before saving.
     dt_out <- dt_bal[in_yr]
+    
+    # Write partitioned output in the same year=YYYY structure.
     yr_dir <- file.path(out_path, paste0("year=", yr))
     dir.create(yr_dir, showWarnings = FALSE)
+    
     arrow::write_parquet(
-      dt_out, file.path(yr_dir, "data.parquet"), compression = "snappy"
+      dt_out,
+      file.path(yr_dir, "data.parquet"),
+      compression = "snappy"
     )
     
+    # Explicit cleanup after each year helps with large city panels.
     rm(dt_yr, dt_bal, dt_out, grid, bnd_prev, bnd_next, in_yr)
     gc(verbose = FALSE)
   }
@@ -1135,110 +1470,166 @@ detect_pollution_outliers <- function(
 # --------------------------------------------------------------------------------------------
 # Function: aggregate_idw_exposure
 #
-# @Arg arrow_dir       : string; path to partitioned Arrow/Parquet dataset.
-# @Arg geo_sta_pq      : string; geo-station distance Parquet path.
-# @Arg census_col      : data.frame; census data. Content depends on quintile_level.
-# @Arg geo_id_col      : string; geo ID column in census_col. Default "GEO_ID".
-# @Arg pop_col         : string; population/weight column in census_col.
-# @Arg edu_col         : string; education column in census_col.
-# @Arg quintile_level  : string; "geo" (default) or "individual". 
-# @Arg indiv_adult_col : string; adult filter column. Default "adult".
-# @Arg buffer_km       : numeric; max centroid-to-station distance. Default 3.
-# @Arg distance_power  : numeric; distance decay exponent (p). Default 1.
-# @Arg target_years    : numeric vector; years to process. Default NULL (all years).
-# @Arg pollutants      : character vector; default c("pm10", "pm25").
-# @Arg who_it          : named list of WHO interim target thresholds (μg/m³).
-# @Arg mem_gb          : numeric; DuckDB memory ceiling in GB. Default 16.
-# @Arg out_dir         : string; output directory.
-# @Arg out_name        : string; file prefix.
-# @Arg overwrite       : logical; skip if output exists. Default TRUE.
-# @Arg quiet           : logical; suppress messages. Default FALSE.
+# @Arg arrow_dir           : string; path to partitioned Arrow/Parquet hourly data.
+# @Arg geo_sta_pq          : string; path to geo-station distance Parquet file.
+# @Arg census_col          : data.frame; census data used for quintile assignment.
+# @Arg geo_id_col          : string; geographic ID column in census_col.
+# @Arg pop_col             : string; population or expansion-weight column.
+# @Arg edu_col             : string; education column used to define quintiles.
+# @Arg quintile_level      : string; "geo" or "individual". Default "geo".
+# @Arg indiv_adult_col     : string; adult filter column. Default "adult".
+# @Arg buffer_km           : numeric; maximum geo-to-station distance. Default 3.
+# @Arg distance_power      : numeric; IDW distance exponent. Default 2.
+# @Arg target_years        : numeric vector or NULL; years to process.
+# @Arg pollutants          : character vector; pollutant columns to aggregate.
+# @Arg who_it              : named list; WHO interim target thresholds.
+# @Arg mem_gb              : numeric; DuckDB memory ceiling in GB. Default 40.
+# @Arg n_threads           : integer; DuckDB worker threads. Default 2.
+# @Arg duckdb_temp_dir     : string or NULL; DuckDB spill directory.
+# @Arg out_dir             : string; output directory.
+# @Arg out_name            : string; output file prefix.
+# @Arg overwrite           : logical; skip computation if outputs exist.
+# @Arg quiet               : logical; suppress messages. Default FALSE.
+# @Arg return_data         : logical; return data.tables in memory. Default FALSE.
+# @Arg fail_on_query_error : logical; stop if a SQL query fails. Default TRUE.
+# @Arg chunk_by_month      : logical; process each year-pollutant by month.
+#
+# @Output : Named list with saved file paths and, optionally, data.tables.
+#
+# @Details:
+#   Aggregates hourly station pollution to geographic units using missingness-aware
+#   inverse-distance weighting. For each geo-hour-pollutant cell, only stations
+#   within buffer_km and with non-missing readings enter the numerator and
+#   denominator. DuckDB is configured with conservative memory settings and a
+#   spill directory. Monthly chunking reduces peak memory for large city-buffer
+#   combinations while preserving annual averages and exceedance counts.
 #
 # @Written_on : 02/02/2026
 # @Written_by : Marcos Paulo
-# @Updated_on : April 2026 (Added on-the-fly SQL string normalization for safe joins)
 # --------------------------------------------------------------------------------------------
 aggregate_idw_exposure <- function(
     arrow_dir,
     geo_sta_pq,
     census_col,
-    geo_id_col      = "GEO_ID",
-    pop_col         = "n",
-    edu_col         = "escolaridad_avg",
-    quintile_level  = c("geo", "individual"),
-    indiv_adult_col = "adult",
-    buffer_km       = 3,
-    distance_power  = 1,
-    target_years    = NULL,
-    pollutants      = c("pm10", "pm25"),
-    who_it          = list(
+    geo_id_col          = "GEO_ID",
+    pop_col             = "n",
+    edu_col             = "escolaridad_avg",
+    quintile_level      = c("geo", "individual"),
+    indiv_adult_col     = "adult",
+    buffer_km           = 3,
+    distance_power      = 2,
+    target_years        = NULL,
+    pollutants          = c("pm10", "pm25"),
+    who_it              = list(
       pm10 = c(it1 = 150, it2 = 100, it3 = 75,  it4 = 50),
       pm25 = c(it1 = 75,  it2 = 50,  it3 = 37.5, it4 = 25)
     ),
-    mem_gb          = 16,
-    out_dir         = "data/interim/exposure",
+    mem_gb              = 40,
+    n_threads           = 2L,
+    duckdb_temp_dir     = NULL,
+    out_dir             = "data/interim/exposure",
     out_name,
-    overwrite       = TRUE,
-    quiet           = FALSE
+    overwrite           = TRUE,
+    quiet               = FALSE,
+    return_data         = FALSE,
+    fail_on_query_error = TRUE,
+    chunk_by_month      = TRUE
 ) {
   
-  # 0. Dependencies + argument matching
-  pkgs <- c("duckdb", "DBI", "arrow", "data.table", "dplyr")
+  # 0. Dependencies and argument matching
+  # -----------------------------------------------------------------------
+  pkgs <- c("duckdb", "DBI", "arrow", "data.table", "dplyr", "stringi")
+  
   for (p in pkgs) {
-    if (!requireNamespace(p, quietly = TRUE)) stop("Package missing: ", p)
+    if (!requireNamespace(p, quietly = TRUE)) {
+      stop("Package missing: ", p)
+    }
   }
   
-  # Check DuckDB version for out-of-core stability
-  if (utils::packageVersion("duckdb") < "0.9.2") stop("DuckDB >= 0.9.2 required.")
+  # Check DuckDB version for out-of-core stability.
+  if (utils::packageVersion("duckdb") < "0.9.2") {
+    stop("DuckDB >= 0.9.2 required.")
+  }
+  
   quintile_level <- match.arg(quintile_level)
   
-  # Validate directories and columns
-  if (!dir.exists(arrow_dir)) stop("`arrow_dir` not found: ", arrow_dir)
-  if (!file.exists(geo_sta_pq)) stop("`geo_sta_pq` not found: ", geo_sta_pq)
-  
-  # Check census required columns
-  for (col in c(geo_id_col, pop_col, edu_col)) {
-    if (!col %in% names(census_col)) stop("Column '", col, "' missing.")
+  # Validate main inputs.
+  if (!dir.exists(arrow_dir)) {
+    stop("`arrow_dir` not found: ", arrow_dir)
   }
   
-  # Ensure adult filter exists for individual mode
-  if (quintile_level == "individual" && !indiv_adult_col %in% names(census_col)) {
+  if (!file.exists(geo_sta_pq)) {
+    stop("`geo_sta_pq` not found: ", geo_sta_pq)
+  }
+  
+  # Check census required columns.
+  for (col in c(geo_id_col, pop_col, edu_col)) {
+    if (!col %in% names(census_col)) {
+      stop("Column '", col, "' missing.")
+    }
+  }
+  
+  # Individual mode requires an adult indicator.
+  if (quintile_level == "individual" &&
+      !indiv_adult_col %in% names(census_col)) {
     stop("Column '", indiv_adult_col, "' not found for individual mode.")
   }
   
-  # 1. Output paths + early exit
+  # 1. Output paths and early exit
+  # -----------------------------------------------------------------------
   out_path   <- file.path(out_dir, paste0(out_name, "_idw_exposure.parquet"))
   indiv_path <- file.path(out_dir, paste0(out_name, "_indiv_quintiles.parquet"))
   
-  # Skip computation if files exist and overwrite is FALSE
+  # Skip computation if all relevant outputs already exist.
   if (!overwrite) {
     geo_done   <- file.exists(out_path)
     indiv_done <- quintile_level == "geo" || file.exists(indiv_path)
     
     if (geo_done && indiv_done) {
-      if (!quiet) message("Outputs exist — skipping.")
-      out <- list(
-        exposure_yearly = data.table::as.data.table(arrow::read_parquet(out_path)),
-        exposure_path   = out_path
-      )
-      if (quintile_level == "individual") {
-        out$individual_quintiles <- data.table::as.data.table(
-          arrow::read_parquet(indiv_path)
-        )
-        out$individual_path <- indiv_path
+      if (!quiet) {
+        message("Outputs exist; skipping.")
       }
+      
+      out <- list(exposure_path = out_path)
+      
+      if (isTRUE(return_data)) {
+        out$exposure_yearly <- data.table::as.data.table(
+          arrow::read_parquet(out_path)
+        )
+      }
+      
+      if (quintile_level == "individual") {
+        out$individual_path <- indiv_path
+        
+        if (isTRUE(return_data)) {
+          out$individual_quintiles <- data.table::as.data.table(
+            arrow::read_parquet(indiv_path)
+          )
+        }
+      }
+      
       return(invisible(out))
     }
   }
   
-  if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE)
+  if (!dir.exists(out_dir)) {
+    dir.create(out_dir, recursive = TRUE)
+  }
   
   # 2. Helpers
+  # -----------------------------------------------------------------------
   .dq_path <- function(p) {
     paste0("'", gsub("'", "''", gsub("\\\\", "/", p)), "'")
   }
   
-  # Convert geographic IDs to strings without corrupting integer64 IDs
+  # Normalize station identifiers consistently with the distance step.
+  .normalize_station <- function(x) {
+    x <- toupper(trimws(as.character(x)))
+    x <- stringi::stri_trans_general(x, id = "Latin-ASCII")
+    gsub('"', "", x)
+  }
+  
+  # Convert geographic IDs to strings without corrupting integer64 IDs.
   .safe_chr <- function(x) {
     if (inherits(x, "integer64")) {
       return(as.character(x))
@@ -1268,197 +1659,660 @@ aggregate_idw_exposure <- function(
     as.character(x)
   }
   
-  # 3. DuckDB disk-backed connection
-  if (!quiet) message("[", out_name, "] Starting DuckDB engine ...")
+  # Query helper: fail by default to avoid incomplete output files.
+  .run_query <- function(con, query, context) {
+    tryCatch(
+      data.table::as.data.table(DBI::dbGetQuery(con, query)),
+      error = function(e) {
+        msg <- paste0("Query failed for ", context, ": ", e$message)
+        
+        if (isTRUE(fail_on_query_error)) {
+          stop(msg, call. = FALSE)
+        }
+        
+        warning(msg)
+        NULL
+      }
+    )
+  }
   
-  # Establish temporary database for memory spillage
+  # 3. DuckDB disk-backed connection
+  # -----------------------------------------------------------------------
+  if (!quiet) {
+    message("[", out_name, "] Starting DuckDB engine ...")
+  }
+  
+  # Temporary database; DuckDB may use this file during execution.
   dbdir <- tempfile("idw_duck_", fileext = ".db")
   con   <- DBI::dbConnect(duckdb::duckdb(dbdir = dbdir))
+  
+  # Track whether the function created its own DuckDB spill directory.
+  delete_duckdb_temp <- is.null(duckdb_temp_dir)
+  duckdb_temp_root   <- NULL
   
   on.exit({
     try(DBI::dbDisconnect(con, shutdown = TRUE), silent = TRUE)
     try(unlink(dbdir, recursive = TRUE, force = TRUE), silent = TRUE)
+    
+    if (isTRUE(delete_duckdb_temp) && exists("duckdb_temp_dir")) {
+      try(unlink(duckdb_temp_dir, recursive = TRUE, force = TRUE), silent = TRUE)
+    }
+    
+    if (isTRUE(delete_duckdb_temp) && exists("duckdb_temp_root")) {
+      if (!is.null(duckdb_temp_root) && dir.exists(duckdb_temp_root)) {
+        remaining_files <- list.files(
+          duckdb_temp_root,
+          all.files = TRUE,
+          no.. = TRUE
+        )
+        
+        if (length(remaining_files) == 0L) {
+          try(unlink(duckdb_temp_root, recursive = TRUE, force = TRUE),
+              silent = TRUE)
+        }
+      }
+    }
   }, add = TRUE)
   
-  # Configure threads and memory
-  n_thr <- max(1L, parallel::detectCores() - 1L)
-  DBI::dbExecute(con, sprintf("PRAGMA threads=%d;", n_thr))
-  DBI::dbExecute(con, sprintf("PRAGMA memory_limit='%dGB';", as.integer(mem_gb)))
+  # Configure DuckDB with conservative memory settings.
+  n_threads <- as.integer(max(1L, n_threads))
+  mem_gb    <- as.integer(mem_gb)
   
-  # 4. Compute Distance Matrix View
-  if (!quiet) message("[", out_name, "] Loading distances ...")
+  DBI::dbExecute(con, sprintf("PRAGMA threads=%d;", n_threads))
+  DBI::dbExecute(con, sprintf("PRAGMA memory_limit='%dGB';", mem_gb))
   
-  # Pre-calculate inverse distances using the requested power
-  DBI::dbExecute(con, paste0(
-    "CREATE TABLE dist_tbl AS\n",
-    "SELECT geo_id, station_id,\n",
-    "       1.0 / POWER(distance_km, ", distance_power, ") AS inv_d\n",
-    "FROM read_parquet(", .dq_path(geo_sta_pq), ")\n",
-    "WHERE distance_km > 0 AND distance_km <= ", buffer_km, ";"
-  ))
+  # Disable insertion-order preservation to reduce memory pressure.
+  DBI::dbExecute(con, "SET preserve_insertion_order = false;")
   
-  # Validate matrix dimensions
-  n_geo <- DBI::dbGetQuery(con, "SELECT COUNT(DISTINCT geo_id) AS n FROM dist_tbl;")$n
-  n_sta <- DBI::dbGetQuery(con, "SELECT COUNT(DISTINCT station_id) AS n FROM dist_tbl;")$n
-  if (n_geo == 0L) stop("No geo-station pairs within ", buffer_km, " km.")
+  # Allow DuckDB to spill intermediate results to disk.
+  if (is.null(duckdb_temp_dir)) {
+    duckdb_temp_root <- file.path(out_dir, "_duckdb_tmp")
+    duckdb_temp_dir  <- file.path(duckdb_temp_root, out_name)
+  }
   
-  # 5. Pollution VIEW
+  dir.create(duckdb_temp_dir, recursive = TRUE, showWarnings = FALSE)
+  
+  DBI::dbExecute(
+    con,
+    paste0("SET temp_directory = ", .dq_path(duckdb_temp_dir), ";")
+  )
+  
+  # 4. Load and normalize distance matrix
+  # -----------------------------------------------------------------------
+  if (!quiet) {
+    message("[", out_name, "] Loading and normalizing distances ...")
+  }
+  
+  dist_dt <- data.table::as.data.table(arrow::read_parquet(geo_sta_pq))
+  
+  # Require the schema produced by compute_distance_matrices().
+  req_dist_cols <- c("geo_id", "station_id", "distance_km")
+  miss_dist_cols <- setdiff(req_dist_cols, names(dist_dt))
+  
+  if (length(miss_dist_cols) > 0L) {
+    stop("Distance table is missing: ", paste(miss_dist_cols, collapse = ", "))
+  }
+  
+  # Normalize join keys before registering the table in DuckDB.
+  dist_dt[, geo_id := .safe_chr(geo_id)]
+  dist_dt[, station_id := .normalize_station(station_id)]
+  
+  # Diagnose zero-distance pairs before dropping them from IDW denominators.
+  n_zero_dist <- dist_dt[!is.na(distance_km) & distance_km == 0, .N]
+  
+  if (n_zero_dist > 0L && !quiet) {
+    message(
+      "[", out_name, "] Diagnostic: ", n_zero_dist,
+      " geo-station pair(s) have distance_km == 0 and will be excluded."
+    )
+  }
+  
+  # Keep positive distances inside the requested buffer.
+  dist_dt <- dist_dt[
+    !is.na(distance_km) & distance_km > 0 & distance_km <= buffer_km
+  ]
+  
+  if (nrow(dist_dt) == 0L) {
+    stop("No geo-station pairs within ", buffer_km, " km.")
+  }
+  
+  # Pre-compute inverse-distance weights in R.
+  dist_dt[, inv_d := 1 / (distance_km ^ distance_power)]
+  dist_dt <- dist_dt[, .(geo_id, station_id, inv_d)]
+  
+  # Register normalized distance table in DuckDB.
+  DBI::dbWriteTable(con, "dist_tbl", dist_dt, overwrite = TRUE)
+  
+  # Validate matrix dimensions after filtering.
+  n_geo <- DBI::dbGetQuery(
+    con, "SELECT COUNT(DISTINCT geo_id) AS n FROM dist_tbl;"
+  )$n
+  
+  n_sta <- DBI::dbGetQuery(
+    con, "SELECT COUNT(DISTINCT station_id) AS n FROM dist_tbl;"
+  )$n
+  
+  if (n_geo == 0L || n_sta == 0L) {
+    stop("Distance table is empty after filtering.")
+  }
+  
+  if (!quiet) {
+    message(
+      "[", out_name, "] Distance table: ", n_geo,
+      " geo unit(s), ", n_sta, " station(s)."
+    )
+  }
+  
+  # Release R-side distance object after registering it in DuckDB.
+  rm(dist_dt)
+  gc(verbose = FALSE)
+  
+  # 5. Pollution view and station crosswalk
+  # -----------------------------------------------------------------------
   poll_glob <- paste0(gsub("\\\\", "/", arrow_dir), "/**/*.parquet")
+  
   DBI::dbExecute(con, paste0(
     "CREATE VIEW pollution AS\n",
-    "SELECT * FROM read_parquet(", .dq_path(poll_glob), ", hive_partitioning = true);"
+    "SELECT * FROM read_parquet(",
+    .dq_path(poll_glob), ", hive_partitioning = true);"
   ))
   
+  # Read distinct raw station names only; this is small relative to the data.
+  station_xwalk <- data.table::as.data.table(
+    DBI::dbGetQuery(
+      con,
+      "SELECT DISTINCT CAST(station AS VARCHAR) AS station_raw FROM pollution;"
+    )
+  )
+  
+  if (!"station_raw" %in% names(station_xwalk)) {
+    stop("Column `station` not found in pollution dataset.")
+  }
+  
+  # Normalize raw pollution station names in R, not inside DuckDB SQL.
+  station_xwalk[, station_id := .normalize_station(station_raw)]
+  
+  # Remove missing or empty station identifiers.
+  station_xwalk <- station_xwalk[
+    !is.na(station_raw) & !is.na(station_id) & station_id != ""
+  ]
+  
+  DBI::dbWriteTable(con, "station_xwalk", station_xwalk, overwrite = TRUE)
+  
+  # Validate station overlap between pollution and distance matrix.
+  station_overlap <- DBI::dbGetQuery(con, paste0(
+    "SELECT\n",
+    "  (SELECT COUNT(DISTINCT station_id) FROM station_xwalk) AS n_poll_sta,\n",
+    "  (SELECT COUNT(DISTINCT station_id) FROM dist_tbl) AS n_dist_sta,\n",
+    "  (SELECT COUNT(DISTINCT x.station_id)\n",
+    "   FROM station_xwalk x\n",
+    "   INNER JOIN dist_tbl d ON x.station_id = d.station_id) AS n_overlap;"
+  ))
+  
+  if (!quiet) {
+    message(
+      "[", out_name, "] Station overlap: ",
+      station_overlap$n_overlap, " of ", station_overlap$n_poll_sta,
+      " pollution station(s) overlap distance matrix."
+    )
+  }
+  
+  if (station_overlap$n_overlap == 0L) {
+    stop(
+      "No station overlap between pollution data and distance matrix after ",
+      "normalization. Check station names in `arrow_dir` and `geo_sta_pq`."
+    )
+  }
+  
+  rm(station_xwalk)
+  gc(verbose = FALSE)
+  
   # 6. Year list filtering
+  # -----------------------------------------------------------------------
   avail_years <- sort(
     DBI::dbGetQuery(con, "SELECT DISTINCT year FROM pollution ORDER BY year;")$year
   )
   
-  # Subset to requested target years if specified
-  years <- if (!is.null(target_years)) intersect(avail_years, target_years) else avail_years
-  if (length(years) == 0L) stop("No data found for requested target_years.")
+  # Subset to requested target years if specified.
+  years <- if (!is.null(target_years)) {
+    intersect(avail_years, target_years)
+  } else {
+    avail_years
+  }
   
-  if (!quiet) message("[", out_name, "] Processing ", length(years), " year(s).")
+  if (length(years) == 0L) {
+    stop("No data found for requested target_years.")
+  }
   
-  # 7. Year × pollutant loop
+  if (!quiet) {
+    message("[", out_name, "] Processing ", length(years), " year(s).")
+  }
+  
+  # 7. Year x pollutant loop
+  # -----------------------------------------------------------------------
   yearly_list <- vector("list", length(years))
   names(yearly_list) <- as.character(years)
   
+  poll_fields <- DBI::dbListFields(con, "pollution")
+  
   for (yr in years) {
-    if (!quiet) message("[", out_name, "] Year ", yr, " ...")
+    if (!quiet) {
+      message("[", out_name, "] Year ", yr, " ...")
+    }
+    
     poll_results <- vector("list", length(pollutants))
     names(poll_results) <- pollutants
     
     for (poll in pollutants) {
       
-      # Build threshold aggregations dynamically
-      who_frag <- ""
+      # Skip absent pollutants gracefully.
+      if (!poll %in% poll_fields) {
+        if (!quiet) {
+          message("[", out_name, "] Pollutant absent, skipping: ", poll)
+        }
+        next
+      }
+      
+      # Build WHO threshold columns for annual reconstruction.
       thr <- who_it[[poll]]
-      if (!is.null(thr) && length(thr) > 0) {
+      who_cols <- character(0)
+      who_frag <- ""
+      
+      if (!is.null(thr) && length(thr) > 0L) {
+        who_cols <- paste0("hrs_d_", poll, "_", names(thr))
+        
         who_frag <- paste(
-          vapply(names(thr), function(nm) {
+          vapply(seq_along(thr), function(i) {
             sprintf(
-              paste0(",\n        SUM(CASE WHEN idw >= %s",
-                     " THEN 1 ELSE 0 END) AS %s"),
-              thr[[nm]], paste0("hrs_d_", poll, "_", nm)
+              paste0(
+                ",\n       SUM(CASE WHEN idw >= %s ",
+                "THEN 1 ELSE 0 END) AS %s"
+              ),
+              thr[[i]],
+              who_cols[[i]]
             )
           }, character(1)),
           collapse = ""
         )
       }
       
-      # Ejecutar cruce espacial IDW con normalización de strings on-the-fly
-      query <- paste0(
-        "WITH hr_geo AS (\n",
-        "  SELECT d.geo_id, h.datetime,\n",
-        "         SUM(h.val * d.inv_d) / SUM(d.inv_d) AS idw\n",
-        "  FROM (\n",
-        "    SELECT REPLACE(UPPER(TRIM(STRIP_ACCENTS(CAST(station AS VARCHAR)))),
-        '\"', '') AS norm_station,\n",
-        "           datetime, ", poll, " AS val\n",
-        "    FROM pollution\n",
-        "    WHERE year = ", yr, " AND ", poll, " IS NOT NULL\n",
-        "  ) h\n",
-        "  JOIN dist_tbl d ON h.norm_station = d.station_id\n",
-        "  GROUP BY d.geo_id, h.datetime\n",
-        ")\n",
-        "SELECT geo_id,\n",
-        "       AVG(idw)    AS avg_", poll, ",\n",
-        "       COUNT(*)    AS total_hrs_", poll,
-        who_frag, "\n",
-        "FROM hr_geo\n",
-        "GROUP BY geo_id;"
-      )
+      # Use monthly chunks for memory-heavy city-buffer combinations.
+      month_ids <- if (isTRUE(chunk_by_month)) seq_len(12L) else NA_integer_
+      month_list <- vector("list", length(month_ids))
       
-      res <- tryCatch(
-        data.table::as.data.table(DBI::dbGetQuery(con, query)),
-        error = function(e) { warning("Query failed: ", e$message); NULL }
-      )
+      for (i in seq_along(month_ids)) {
+        mo <- month_ids[[i]]
+        
+        if (!quiet && isTRUE(chunk_by_month)) {
+          message(
+            "[", out_name, "] Year ", yr,
+            ", ", poll, ", month ", sprintf("%02d", mo), " ..."
+          )
+        }
+        
+        # Add a month filter only in monthly mode.
+        month_filter <- if (isTRUE(chunk_by_month)) {
+          paste0("    AND EXTRACT(month FROM p.datetime) = ", mo, "\n")
+        } else {
+          ""
+        }
+        
+        # Compute monthly or annual IDW summaries.
+        query <- paste0(
+          "WITH h AS (\n",
+          "  SELECT x.station_id, p.datetime, p.", poll, " AS val\n",
+          "  FROM pollution p\n",
+          "  INNER JOIN station_xwalk x\n",
+          "    ON CAST(p.station AS VARCHAR) = x.station_raw\n",
+          "  WHERE p.year = ", yr, "\n",
+          month_filter,
+          "    AND p.", poll, " IS NOT NULL\n",
+          "),\n",
+          "hr_geo AS (\n",
+          "  SELECT d.geo_id, h.datetime,\n",
+          "         SUM(h.val * d.inv_d) / SUM(d.inv_d) AS idw\n",
+          "  FROM h\n",
+          "  INNER JOIN dist_tbl d ON h.station_id = d.station_id\n",
+          "  GROUP BY d.geo_id, h.datetime\n",
+          ")\n",
+          "SELECT geo_id,\n",
+          "       SUM(idw) AS sum_idw_", poll, ",\n",
+          "       COUNT(*) AS total_hrs_", poll,
+          who_frag, "\n",
+          "FROM hr_geo\n",
+          "GROUP BY geo_id;"
+        )
+        
+        context <- if (isTRUE(chunk_by_month)) {
+          paste0(poll, " in ", yr, ", month ", mo)
+        } else {
+          paste0(poll, " in ", yr)
+        }
+        
+        res <- .run_query(con, query, context)
+        
+        if (!is.null(res) && nrow(res) > 0L) {
+          month_list[[i]] <- res
+        }
+        
+        rm(res)
+        gc(verbose = FALSE)
+      }
       
-      if (!is.null(res) && nrow(res) > 0L) poll_results[[poll]] <- res
+      # Combine monthly or annual chunks into one annual pollutant table.
+      valid_chunks <- Filter(Negate(is.null), month_list)
+      
+      if (length(valid_chunks) == 0L) {
+        next
+      }
+      
+      chunk_dt <- data.table::rbindlist(valid_chunks, fill = TRUE)
+      
+      sum_col <- paste0("sum_idw_", poll)
+      hrs_col <- paste0("total_hrs_", poll)
+      avg_col <- paste0("avg_", poll)
+      
+      agg_cols <- c(sum_col, hrs_col, who_cols)
+      agg_cols <- intersect(agg_cols, names(chunk_dt))
+      
+      annual_dt <- chunk_dt[
+        ,
+        lapply(.SD, sum, na.rm = TRUE),
+        by = geo_id,
+        .SDcols = agg_cols
+      ]
+      
+      annual_dt[
+        get(hrs_col) > 0,
+        (avg_col) := get(sum_col) / get(hrs_col)
+      ]
+      
+      annual_dt[, (sum_col) := NULL]
+      poll_results[[poll]] <- annual_dt
+      
+      rm(month_list, valid_chunks, chunk_dt, annual_dt)
+      gc(verbose = FALSE)
     }
     
-    # Merge pollutants for the active year
+    # Merge pollutant-specific exposure tables for the active year.
     valid <- Filter(Negate(is.null), poll_results)
-    if (length(valid) == 0L) next
     
-    yr_exp <- Reduce(function(a, b) merge(a, b, by = "geo_id", all = TRUE), valid)
+    if (length(valid) == 0L) {
+      next
+    }
+    
+    yr_exp <- Reduce(
+      function(a, b) merge(a, b, by = "geo_id", all = TRUE),
+      valid
+    )
+    
     yr_exp[, year := yr]
     yearly_list[[as.character(yr)]] <- yr_exp
+    
+    rm(poll_results, valid, yr_exp)
+    gc(verbose = FALSE)
   }
   
-  # Stack results
+  # Stack yearly results.
   all_years <- data.table::rbindlist(
-    Filter(Negate(is.null), yearly_list), fill = TRUE
+    Filter(Negate(is.null), yearly_list),
+    fill = TRUE
   )
-  if (nrow(all_years) == 0L) stop("No exposure data produced.")
+  
+  if (nrow(all_years) == 0L) {
+    stop("No exposure data produced.")
+  }
+  
   all_years[, geo_id := as.character(geo_id)]
   
-  # 8. Census processing 
+  # 8. Census processing
+  # -----------------------------------------------------------------------
   census_dt <- data.table::copy(data.table::as.data.table(census_col))
   data.table::setnames(census_dt, geo_id_col, "geo_id")
   census_dt[, geo_id := .safe_chr(geo_id)]
   
   if (quintile_level == "geo") {
     
-    # Sort geo units by average education
+    # Sort geo units by average education.
     data.table::setorderv(census_dt, edu_col)
     
-    # Assign quintiles based on cumulative geographic population shares
+    # Assign quintiles based on cumulative geographic population shares.
     census_dt[
       !is.na(get(edu_col)) & !is.na(get(pop_col)),
-      `:=`(cum_pop = cumsum(get(pop_col)), tot_pop = sum(get(pop_col)))
+      `:=`(
+        cum_pop = cumsum(get(pop_col)),
+        tot_pop = sum(get(pop_col))
+      )
     ]
+    
     census_dt[
       !is.na(cum_pop),
       edu_quintile := data.table::fcase(
-        cum_pop / tot_pop <= 0.2, 1L, cum_pop / tot_pop <= 0.4, 2L,
-        cum_pop / tot_pop <= 0.6, 3L, cum_pop / tot_pop <= 0.8, 4L,
+        cum_pop / tot_pop <= 0.2, 1L,
+        cum_pop / tot_pop <= 0.4, 2L,
+        cum_pop / tot_pop <= 0.6, 3L,
+        cum_pop / tot_pop <= 0.8, 4L,
         default = 5L
       )
     ]
+    
     census_dt[, c("cum_pop", "tot_pop") := NULL]
     
     result <- merge(all_years, census_dt, by = "geo_id", all.x = TRUE)
     arrow::write_parquet(result, out_path)
     
-    return(invisible(list(exposure_yearly = result, exposure_path = out_path)))
+    out <- list(exposure_path = out_path)
+    
+    if (isTRUE(return_data)) {
+      out$exposure_yearly <- result
+    }
+    
+    return(invisible(out))
     
   } else {
     
-    # Filter to adult individuals only
+    # Filter to adult individuals only.
     census_dt <- census_dt[get(indiv_adult_col) == 1]
-    if (nrow(census_dt) == 0L) stop("No adult rows after filtering.")
     
-    # Sort individuals by personal education
+    if (nrow(census_dt) == 0L) {
+      stop("No adult rows after filtering.")
+    }
+    
+    # Sort individuals by personal education.
     data.table::setorderv(census_dt, edu_col)
     
-    # Assign quintiles based on city-wide expansion factors
+    # Assign quintiles based on city-wide expansion factors.
     census_dt[
       !is.na(get(edu_col)) & !is.na(get(pop_col)),
-      `:=`(cum_pop = cumsum(get(pop_col)), tot_pop = sum(get(pop_col)))
+      `:=`(
+        cum_pop = cumsum(get(pop_col)),
+        tot_pop = sum(get(pop_col))
+      )
     ]
+    
     census_dt[
       !is.na(cum_pop),
       edu_quintile := data.table::fcase(
-        cum_pop / tot_pop <= 0.2, 1L, cum_pop / tot_pop <= 0.4, 2L,
-        cum_pop / tot_pop <= 0.6, 3L, cum_pop / tot_pop <= 0.8, 4L,
+        cum_pop / tot_pop <= 0.2, 1L,
+        cum_pop / tot_pop <= 0.4, 2L,
+        cum_pop / tot_pop <= 0.6, 3L,
+        cum_pop / tot_pop <= 0.8, 4L,
         default = 5L
       )
     ]
+    
     census_dt[, c("cum_pop", "tot_pop") := NULL]
     
-    # Save datasets independently to prevent massive year-individual matrices
+    # Save datasets independently to avoid a huge year-individual matrix.
     arrow::write_parquet(all_years, out_path)
     arrow::write_parquet(census_dt, indiv_path)
     
+    out <- list(
+      exposure_path   = out_path,
+      individual_path = indiv_path
+    )
+    
+    if (isTRUE(return_data)) {
+      out$exposure_yearly <- all_years
+      out$individual_quintiles <- census_dt
+    }
+    
+    return(invisible(out))
+  }
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: run_idw_city
+#
+# @Arg city_label     : string; city name used in progress messages.
+# @Arg city_id        : string; city identifier used in output folders and file names.
+# @Arg arrow_dir      : string; path to cleaned partitioned Arrow/Parquet data.
+# @Arg distance_power : numeric; IDW distance exponent.
+# @Arg geo_sta_pq     : string; path to geo-station distance Parquet file.
+# @Arg geo_census     : data.frame; collapsed geographic-unit census data.
+# @Arg micro_census   : data.frame; individual-level census microdata.
+# @Arg geo_id_col     : string; geographic ID column in collapsed census data.
+# @Arg geo_pop_col    : string; population column in collapsed census data.
+# @Arg geo_edu_col    : string; education column in collapsed census data.
+# @Arg micro_id_col   : string; geographic ID column in individual census data.
+# @Arg micro_pop_col  : string; weight column in individual census data.
+# @Arg micro_edu_col  : string; education column in individual census data.
+# @Arg buffer_km      : numeric; maximum geo-to-station distance.
+# @Arg outdir_exp     : string; root output directory for IDW estimates.
+# @Arg mem_gb         : numeric; DuckDB memory ceiling in GB. Default 40.
+# @Arg n_threads      : integer; DuckDB worker threads. Default 2.
+# @Arg overwrite      : logical; overwrite existing outputs. Default TRUE.
+# @Arg return_data    : logical; return data objects in memory. Default FALSE.
+#
+# @Output : Named list with two elements:
+#   geo        : output path for geo-level exposure with geo quintiles.
+#   individual : output paths for exposure and individual quintiles.
+#
+# @Details:
+#   Computes the expensive IDW exposure table once using individual mode.
+#   Then it builds the geo-level exposure output by merging the same exposure
+#   table with collapsed census data and assigning geo-level education quintiles.
+#
+# @Written_on : April 2026
+# @Written_by : Marcos Paulo
+# --------------------------------------------------------------------------------------------
+run_idw_city <- function(
+    city_label,
+    city_id,
+    arrow_dir,
+    distance_power,
+    geo_sta_pq,
+    geo_census,
+    micro_census,
+    geo_id_col,
+    geo_pop_col,
+    geo_edu_col,
+    micro_id_col,
+    micro_pop_col,
+    micro_edu_col,
+    buffer_km,
+    outdir_exp,
+    mem_gb      = 40,
+    n_threads   = 8L,
+    overwrite   = TRUE,
+    return_data = FALSE
+) {
+  
+  message("\n--- Processing ", city_label, " | ", buffer_km, " km ---")
+  
+  # Define output folder and common output prefix.
+  city_out_dir <- here::here(outdir_exp, city_id)
+  dir.create(city_out_dir, recursive = TRUE, showWarnings = FALSE)
+  
+  out_base <- sprintf("%s_%dkm", city_id, buffer_km)
+  
+  # Compute IDW exposure once and save individual quintiles.
+  exp_indiv <- aggregate_idw_exposure(
+    arrow_dir      = arrow_dir,
+    geo_sta_pq     = geo_sta_pq,
+    census_col     = micro_census,
+    geo_id_col     = micro_id_col,
+    pop_col        = micro_pop_col,
+    edu_col        = micro_edu_col,
+    quintile_level = "individual",
+    buffer_km      = buffer_km,
+    distance_power = distance_power,
+    mem_gb         = mem_gb,
+    n_threads      = n_threads,
+    out_dir        = city_out_dir,
+    out_name       = out_base,
+    overwrite      = overwrite,
+    return_data    = FALSE
+  )
+  
+  message(city_label, " exposure: ", exp_indiv$exposure_path)
+  message(city_label, " individual quintiles: ", exp_indiv$individual_path)
+  
+  # Read the saved geo-level exposure table.
+  exposure_dt <- data.table::as.data.table(
+    arrow::read_parquet(exp_indiv$exposure_path)
+  )
+  
+  # Prepare collapsed census data for geo-level quintiles.
+  geo_dt <- data.table::copy(data.table::as.data.table(geo_census))
+  
+  data.table::setnames(geo_dt, geo_id_col, "geo_id")
+  geo_dt[, geo_id := as.character(geo_id)]
+  
+  # Sort geographic units by education and assign population-weighted quintiles.
+  data.table::setorderv(geo_dt, geo_edu_col)
+  
+  geo_dt[
+    !is.na(get(geo_edu_col)) & !is.na(get(geo_pop_col)),
+    `:=`(
+      cum_pop = cumsum(get(geo_pop_col)),
+      tot_pop = sum(get(geo_pop_col))
+    )
+  ]
+  
+  geo_dt[
+    !is.na(cum_pop),
+    edu_quintile := data.table::fcase(
+      cum_pop / tot_pop <= 0.2, 1L,
+      cum_pop / tot_pop <= 0.4, 2L,
+      cum_pop / tot_pop <= 0.6, 3L,
+      cum_pop / tot_pop <= 0.8, 4L,
+      default = 5L
+    )
+  ]
+  
+  geo_dt[, c("cum_pop", "tot_pop") := NULL]
+  
+  # Merge exposure with collapsed census.
+  geo_result <- merge(exposure_dt, geo_dt, by = "geo_id", all.x = TRUE)
+  
+  geo_path <- file.path(
+    city_out_dir,
+    paste0(out_base, "_geo_idw_exposure.parquet")
+  )
+  
+  arrow::write_parquet(geo_result, geo_path)
+  message(city_label, " geo exposure: ", geo_path)
+  
+  # Return paths only by default to avoid retaining large objects.
+  if (!isTRUE(return_data)) {
+    rm(exposure_dt, geo_dt, geo_result)
+    gc(verbose = FALSE)
+    
     return(invisible(list(
-      exposure_yearly      = all_years,
-      exposure_path        = out_path,
-      individual_quintiles = census_dt,
-      individual_path      = indiv_path
+      geo = list(exposure_path = geo_path),
+      individual = exp_indiv
     )))
   }
+  
+  invisible(list(
+    geo = list(
+      exposure_yearly = geo_result,
+      exposure_path = geo_path
+    ),
+    individual = exp_indiv
+  ))
 }
 
 
@@ -2245,210 +3099,1311 @@ compute_missing_proportions <- function(
 }
 
 
-# ------------------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------
 # Function: compute_exposure_ci_regression
 #
-# @Arg exposure_parquet : string; path to geo-level IDW exposure Parquet.
-# @Arg individual_pq    : string|NULL; path to individual-quintiles Parquet.
+# Estimates exposure differences across socioeconomic groups and returns tidy
+# estimates with confidence intervals. Accepts IN-MEMORY data.tables so the caller
+# can inspect exactly what is being modeled (see the runnable script).
+#
+# @Arg exposure_dt      : data.table; geo-level IDW exposure (already in memory).
+# @Arg individual_dt    : data.table or NULL; individual/group table (already in memory).
 # @Arg geo_id_col       : string; geographic ID column. Default "geo_id".
-# @Arg pop_col          : string; weight column ("n", "fe", "weight"). Default "n".
-# @Arg pollutants       : character; default c("pm10","pm25").
-# @Arg outcome_pattern  : string; regex for outcomes to model. Default "^(avg|hrs_d)_".
-# @Arg year_filter      : integer|NULL; restrict to a single year. Default NULL.
-# @Arg conf_level       : numeric; CI level. Default 0.95.
-# @Arg base_quintile    : integer in 1:5; reference omitted quintile. Default 5.
-# @Arg normalized       : logical; if TRUE, returns coefficients as relative 
-#                         differences from the base quintile (legacy style).
-#                         if FALSE, returns absolute predicted levels. Default FALSE.
-# @Arg quiet            : logical; suppress info messages. Default FALSE.
+# @Arg pop_col          : string; population / expansion-weight column.
+# @Arg group_col        : string; group variable, e.g. "edu_quintile".
+# @Arg group_values     : numeric vector; valid groups, e.g. 1:5.
+# @Arg base_group       : numeric; omitted reference group.
+# @Arg pollutants       : character; pollutants to include.
+# @Arg outcome_pattern  : string; regex for outcome columns.
+# @Arg year_filter      : integer or NULL; restrict to one year.
+# @Arg conf_level       : numeric; confidence level. Default 0.95.
+# @Arg normalized       : logical; divide by base-group mean and report gaps.
+# @Arg regression_unit  : string; "geo_group", "individual", or "geo".
+# @Arg se_type          : string; "classic", "HC1", or "cluster_geo".
+# @Arg quiet            : logical; suppress messages. Default FALSE.
 #
-# @Output : data.table (long) with estimates, CIs, and n_obs.
+# @Output : data.table with estimates, standard errors, CIs, and metadata.
+# @Author : Marcos Paulo
+# @Updated_on: May 2026
+# --------------------------------------------------------------------------------------------
+compute_exposure_ci_regression <- function(
+    exposure_dt,
+    individual_dt   = NULL,
+    geo_id_col      = "geo_id",
+    pop_col         = "n",
+    group_col       = "edu_quintile",
+    group_values    = 1:5,
+    base_group      = max(group_values),
+    pollutants      = c("pm10", "pm25"),
+    outcome_pattern = "^(avg|hrs_d)_",
+    year_filter     = NULL,
+    conf_level      = 0.95,
+    normalized      = FALSE,
+    regression_unit = c("geo_group", "individual", "geo"),
+    se_type         = c("classic", "HC1", "cluster_geo"),
+    quiet           = FALSE
+) {
+  
+  # 0. Dependencies and argument checks
+  # -----------------------------------------------------------------------
+  for (p in c("data.table")) {
+    if (!requireNamespace(p, quietly = TRUE)) {
+      stop("Package '", p, "' required.")
+    }
+  }
+  
+  se_type         <- match.arg(se_type)
+  regression_unit <- match.arg(regression_unit)
+  
+  if (se_type %in% c("HC1", "cluster_geo") &&
+      !requireNamespace("sandwich", quietly = TRUE)) {
+    stop("Package 'sandwich' required for robust or clustered SEs.")
+  }
+  
+  if (!data.table::is.data.table(exposure_dt)) {
+    stop("`exposure_dt` must be a data.table held in memory.")
+  }
+  
+  if (!(conf_level > 0 && conf_level < 1)) {
+    stop("`conf_level` must be between 0 and 1.")
+  }
+  
+  if (!base_group %in% group_values) {
+    stop("`base_group` must belong to `group_values`.")
+  }
+  
+  # 1. Copy and (optionally) filter the exposure table
+  # -----------------------------------------------------------------------
+  # Copy so we never mutate the caller's inspected object by reference.
+  dt <- data.table::copy(exposure_dt)
+  
+  if (!is.null(year_filter)) {
+    dt <- dt[year == year_filter]
+  }
+  
+  if (!geo_id_col %in% names(dt)) {
+    stop("geo_id_col '", geo_id_col, "' not found in exposure data.")
+  }
+  
+  dt[, (geo_id_col) := as.character(get(geo_id_col))]
+  
+  # 2. Merge individual/group data when the estimator needs it
+  # -----------------------------------------------------------------------
+  needs_individual <- regression_unit %in% c("geo_group", "individual")
+  
+  if (needs_individual) {
+    if (is.null(individual_dt)) {
+      stop("`individual_dt` required for regression_unit = ", regression_unit)
+    }
+    
+    ind <- data.table::copy(individual_dt)
+    
+    for (col in c(geo_id_col, group_col, pop_col)) {
+      if (!col %in% names(ind)) {
+        stop("Column '", col, "' not found in individual data.")
+      }
+    }
+    
+    ind[, (geo_id_col) := as.character(get(geo_id_col))]
+    
+    # Drop a pre-existing group column on exposure to avoid merge conflicts.
+    if (group_col %in% names(dt)) {
+      dt[, (group_col) := NULL]
+    }
+    
+    dt <- merge(
+      dt,
+      ind[, .SD, .SDcols = c(geo_id_col, group_col, pop_col)],
+      by              = geo_id_col,
+      allow.cartesian = TRUE
+    )
+  } else {
+    for (col in c(group_col, pop_col)) {
+      if (!col %in% names(dt)) {
+        stop("Column '", col, "' not found in exposure data.")
+      }
+    }
+  }
+  
+  # Keep valid groups and strictly positive weights only.
+  dt <- dt[
+    !is.na(get(group_col)) &
+      get(group_col) %in% group_values &
+      !is.na(get(pop_col)) &
+      get(pop_col) > 0
+  ]
+  
+  # 3. Identify the outcome columns to model
+  # -----------------------------------------------------------------------
+  out_cols <- select_outcome_cols(names(dt), outcome_pattern, pollutants)
+  
+  if (length(out_cols) == 0L) {
+    stop("No outcome columns match the requested pattern and pollutants.")
+  }
+  
+  # 4. Fit every outcome with the requested estimator
+  # -----------------------------------------------------------------------
+  # One named, top-level fitter per outcome -> easy to call on a single column
+  # in RStudio when debugging (e.g. fit_geo_group_outcome(dt, out_cols[1], ...)).
+  fit_one <- function(col) {
+    if (regression_unit == "geo_group") {
+      return(fit_geo_group_outcome(
+        merged_dt = dt, col = col, geo_id_col = geo_id_col,
+        group_col = group_col, pop_col = pop_col,
+        group_values = group_values, base_group = base_group,
+        pollutants = pollutants, se_type = se_type,
+        conf_level = conf_level, normalized = normalized
+      ))
+    }
+    
+    fit_standard_outcome(
+      model_source_dt = dt, col = col, geo_id_col = geo_id_col,
+      group_col = group_col, pop_col = pop_col,
+      group_values = group_values, base_group = base_group,
+      pollutants = pollutants, regression_unit = regression_unit,
+      se_type = se_type, conf_level = conf_level, normalized = normalized
+    )
+  }
+  
+  res <- data.table::rbindlist(lapply(out_cols, fit_one), fill = TRUE)
+  
+  # 5. Handle the empty case with a typed, zero-row table
+  # -----------------------------------------------------------------------
+  if (nrow(res) == 0L) {
+    if (!quiet) {
+      message("[ci] Warning: insufficient data to fit any models.")
+    }
+    
+    return(data.table::data.table(
+      outcome = character(), pollutant = character(), group = numeric(),
+      estimate = numeric(), std_error = numeric(), ci_low = numeric(),
+      ci_high = numeric(), n_units = integer(), base_group = numeric(),
+      group_col = character(), regression_unit = character(),
+      se_type = character()
+    ))
+  }
+  
+  data.table::setorder(res, outcome, pollutant, group)
+  
+  if (!quiet) {
+    message(
+      "[ci] ", length(out_cols), " outcome(s) fit using regression_unit = '",
+      regression_unit, "' and se_type = '", se_type, "'."
+    )
+  }
+  
+  res[]
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: compute_exposure_group_summaries
 #
-# @Details: Executes a population-weighted Ordinary Least Squares (OLS) regression 
-#           to estimate pollution exposure across educational quintiles. 
-#           Supports two distinct statistical methodologies:
-#           1. Individual Mode: Passes `individual_pq` to run true microdata 
-#              regressions, actively avoiding the Ecological Fallacy.
-#           2. Geo Mode: Leaves `individual_pq` NULL to run regressions on spatially 
-#              aggregated polygons (perfectly replicating the legacy pipeline).
+# Weighted group-level exposure summaries (means, medians, counts). Accepts
+# IN-MEMORY data.tables for the same inspectability reason as above.
 #
-# @Written_on : 17/04/2026
-# @Written_by : Marcos Paulo
+# @Arg exposure_dt     : data.table; geo-level IDW exposure (in memory).
+# @Arg individual_dt   : data.table; individual/group table (in memory).
+# @Arg geo_id_col      : string; geographic ID column. Default "geo_id".
+# @Arg pop_col         : string; population / expansion-weight column.
+# @Arg group_col       : string; group variable, e.g. "edu_quintile".
+# @Arg group_values    : numeric vector; valid groups.
+# @Arg pollutants      : character; pollutants to include.
+# @Arg outcome_pattern : string; regex for outcomes to summarize.
+# @Arg year_filter     : integer or NULL; restrict to a year.
+# @Arg quiet           : logical; suppress messages. Default FALSE.
+#
+# @Output : data.table with weighted means, weighted medians, and counts.
+# @Author    : Marcos Paulo  
+# @Updated_on: May 2026
+# --------------------------------------------------------------------------------------------
+compute_exposure_group_summaries <- function(
+    exposure_dt,
+    individual_dt,
+    geo_id_col      = "geo_id",
+    pop_col         = "n",
+    group_col       = "edu_quintile",
+    group_values    = 1:5,
+    pollutants      = c("pm10", "pm25"),
+    outcome_pattern = "^(avg|hrs_d)_",
+    year_filter     = NULL,
+    quiet           = FALSE
+) {
+  
+  # 0. Dependencies and checks
+  # -----------------------------------------------------------------------
+  for (p in c("data.table")) {
+    if (!requireNamespace(p, quietly = TRUE)) {
+      stop("Package '", p, "' required.")
+    }
+  }
+  
+  if (!data.table::is.data.table(exposure_dt)) {
+    stop("`exposure_dt` must be a data.table held in memory.")
+  }
+  
+  if (!data.table::is.data.table(individual_dt)) {
+    stop("`individual_dt` must be a data.table held in memory.")
+  }
+  
+  # 1. Copy, filter, and merge
+  # -----------------------------------------------------------------------
+  exp_dt <- data.table::copy(exposure_dt)
+  ind_dt <- data.table::copy(individual_dt)
+  
+  if (!is.null(year_filter)) {
+    exp_dt <- exp_dt[year == year_filter]
+  }
+  
+  if (!geo_id_col %in% names(exp_dt)) {
+    stop("Column '", geo_id_col, "' missing in exposure data.")
+  }
+  
+  for (col in c(geo_id_col, pop_col, group_col)) {
+    if (!col %in% names(ind_dt)) {
+      stop("Column '", col, "' missing in individual data.")
+    }
+  }
+  
+  exp_dt[, (geo_id_col) := as.character(get(geo_id_col))]
+  ind_dt[, (geo_id_col) := as.character(get(geo_id_col))]
+  
+  # Keep only valid groups / positive weights and the needed columns.
+  ind_dt <- ind_dt[
+    !is.na(get(group_col)) &
+      get(group_col) %in% group_values &
+      !is.na(get(pop_col)) &
+      get(pop_col) > 0,
+    .SD,
+    .SDcols = c(geo_id_col, group_col, pop_col)
+  ]
+  
+  dt <- merge(exp_dt, ind_dt, by = geo_id_col, allow.cartesian = TRUE)
+  
+  # 2. Identify outcomes
+  # -----------------------------------------------------------------------
+  out_cols <- select_outcome_cols(names(dt), outcome_pattern, pollutants)
+  
+  if (length(out_cols) == 0L) {
+    stop("No outcome columns match the requested pattern and pollutants.")
+  }
+  
+  # 3. Collapse to geo-by-group cells (exposure constant within geo unit)
+  # -----------------------------------------------------------------------
+  by_cols <- c(geo_id_col, group_col)
+  
+  geo_group <- dt[
+    ,
+    c(
+      list(group_pop = sum(get(pop_col), na.rm = TRUE)),
+      lapply(.SD, function(x) {
+        stats::weighted.mean(x, get(pop_col), na.rm = TRUE)
+      })
+    ),
+    by      = by_cols,
+    .SDcols = out_cols
+  ]
+  
+  geo_group <- geo_group[!is.na(group_pop) & group_pop > 0]
+  
+  # 4. Group-level weighted summaries, one outcome at a time
+  # -----------------------------------------------------------------------
+  res_list <- vector("list", length(out_cols))
+  
+  for (i in seq_along(out_cols)) {
+    col  <- out_cols[[i]]
+    meta <- parse_outcome_label(col, pollutants)
+    
+    tmp <- geo_group[
+      !is.na(get(col)),
+      .(
+        weighted_mean = stats::weighted.mean(get(col), group_pop, na.rm = TRUE),
+        weighted_median = weighted_median_value(get(col), group_pop),
+        weighted_population = sum(group_pop, na.rm = TRUE),
+        n_geo_group_cells = .N,
+        n_geo_units = data.table::uniqueN(get(geo_id_col))
+      ),
+      by = group_col
+    ]
+    
+    data.table::setnames(tmp, group_col, "group")
+    
+    tmp[, `:=`(
+      outcome   = meta$outcome,
+      pollutant = meta$pollutant,
+      group_col = group_col
+    )]
+    
+    res_list[[i]] <- tmp
+  }
+  
+  res <- data.table::rbindlist(res_list, fill = TRUE)
+  data.table::setorder(res, outcome, pollutant, group)
+  
+  if (!quiet) {
+    message("[summary] ", length(out_cols), " outcome(s) summarized.")
+  }
+  
+  res[]
+}
+
+
 # ------------------------------------------------------------------------------------
+# Function: run_exposure_results_for_city
+#
+# City-level wrapper used by the runnable script. It receives the in-memory
+# exposure and individual data.tables for ONE city (read eagerly in the script so
+# coauthors can inspect them), runs the main CI regression and the raw group
+# summaries, and stamps city/year/buffer metadata columns onto both outputs.
+#
+# @Arg exposure_dt      : data.table; this city's IDW exposure (in memory).
+# @Arg individual_dt    : data.table; this city's individual/group table (in memory).
+# @Arg spec_row         : one-row data.table from `city_specs` (city, city_id, pop_col).
+# @Arg analysis_year    : integer; year to restrict to (e.g. 2023).
+# @Arg buffer_km        : integer; buffer used for exposure (for metadata only).
+# @Arg group_col        : string; group variable, e.g. "edu_quintile".
+# @Arg group_values     : numeric vector; valid groups, e.g. 1:5.
+# @Arg base_group       : numeric; omitted reference group.
+# @Arg pollutants       : character; pollutants to include.
+# @Arg summary_outcomes : string; regex for the raw-summary outcomes.
+# @Arg ci_outcomes      : string; regex for the regression outcomes.
+# @Arg confidence_level : numeric; confidence level for CIs.
+# @Arg main_reg_unit    : string; main regression unit (e.g. "geo_group").
+# @Arg main_se_type     : string; main SE type (e.g. "cluster_geo").
+# @Arg normalized       : logical; normalized gaps for the CI regression.
+# @Arg socioeconomic_var: string; human-readable label, e.g. "education".
+# @Arg group_type       : string; human-readable label, e.g. "quintile" / "decile".
+# @Arg validate_inputs  : logical; if TRUE, check required columns up front.
+#
+# @Output : list(ci = data.table, summary = data.table), each with metadata cols.
+# @Author : Marcos Paulo
+# @Updated_on: May 2026
+# ------------------------------------------------------------------------------------
+run_exposure_results_for_city <- function(
+    exposure_dt,
+    individual_dt,
+    spec_row,
+    analysis_year,
+    buffer_km,
+    group_col,
+    group_values,
+    base_group,
+    pollutants,
+    summary_outcomes,
+    ci_outcomes,
+    confidence_level,
+    main_reg_unit,
+    main_se_type,
+    normalized,
+    socioeconomic_var = "education",
+    group_type        = "quintile",
+    validate_inputs   = TRUE
+) {
+  
+  # 0. Read the per-city population/weight column from the spec row
+  # -----------------------------------------------------------------------
+  pop_col <- spec_row$pop_col
+  city    <- spec_row$city
+  city_id <- spec_row$city_id
+  
+  # 1. Optional up-front validation (fail early with a clear message)
+  # -----------------------------------------------------------------------
+  if (isTRUE(validate_inputs)) {
+    if (!"geo_id" %in% names(exposure_dt)) {
+      stop("[", city, "] exposure data missing 'geo_id'.")
+    }
+    
+    for (col in c("geo_id", group_col, pop_col)) {
+      if (!col %in% names(individual_dt)) {
+        stop("[", city, "] individual data missing '", col, "'.")
+      }
+    }
+  }
+  
+  # 2. Main regression CIs (paper spec: geo_group + clustered SEs + gaps)
+  # -----------------------------------------------------------------------
+  ci <- compute_exposure_ci_regression(
+    exposure_dt     = exposure_dt,
+    individual_dt   = individual_dt,
+    geo_id_col      = "geo_id",
+    pop_col         = pop_col,
+    group_col       = group_col,
+    group_values    = group_values,
+    base_group      = base_group,
+    pollutants      = pollutants,
+    outcome_pattern = ci_outcomes,
+    year_filter     = analysis_year,
+    conf_level      = confidence_level,
+    normalized      = normalized,
+    regression_unit = main_reg_unit,
+    se_type         = main_se_type,
+    quiet           = TRUE
+  )
+  
+  # 3. Raw weighted group summaries (annual means + exceedance hours)
+  # -----------------------------------------------------------------------
+  summary <- compute_exposure_group_summaries(
+    exposure_dt     = exposure_dt,
+    individual_dt   = individual_dt,
+    geo_id_col      = "geo_id",
+    pop_col         = pop_col,
+    group_col       = group_col,
+    group_values    = group_values,
+    pollutants      = pollutants,
+    outcome_pattern = summary_outcomes,
+    year_filter     = analysis_year,
+    quiet           = TRUE
+  )
+  
+  # 4. Stamp shared metadata columns expected by the script's setcolorder
+  # -----------------------------------------------------------------------
+  # socioeconomic_var and group_type are passed in as human-readable labels
+  # (e.g. "education" / "quintile") rather than derived, for clear output.
+  for (tbl in list(ci, summary)) {
+    tbl[, `:=`(
+      city              = city,
+      city_id           = city_id,
+      year              = analysis_year,
+      buffer_km         = buffer_km,
+      socioeconomic_var = socioeconomic_var,
+      group_type        = group_type
+    )]
+  }
+  
+  list(ci = ci[], summary = summary[])
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: compute_exposure_ci_regression
+#
+# @Arg exposure_parquet   : string; path to geo-level IDW exposure Parquet.
+# @Arg individual_pq      : string or NULL; path to individual group Parquet.
+# @Arg geo_id_col         : string; geographic ID column. Default "geo_id".
+# @Arg pop_col            : string; population or expansion-weight column.
+# @Arg group_col          : string; group variable, e.g. "edu_quintile".
+# @Arg group_values       : integer/numeric vector; valid groups, e.g. 1:5.
+# @Arg base_group         : integer/numeric; omitted reference group.
+# @Arg pollutants         : character; pollutants to include.
+# @Arg outcome_pattern    : string; regex for outcome columns.
+# @Arg year_filter        : integer or NULL; restrict to one year.
+# @Arg conf_level         : numeric; confidence level. Default 0.95.
+# @Arg normalized         : logical; divide by base group mean and report gaps.
+# @Arg regression_unit    : string; "geo_group", "individual", or "geo".
+# @Arg se_type            : string; "classic", "HC1", or "cluster_geo".
+# @Arg quiet              : logical; suppress messages. Default FALSE.
+#
+# @Output : data.table with estimates, standard errors, CIs, and metadata.
+#
+# @Details:
+#   Estimates exposure differences across socioeconomic groups. The default
+#   "geo_group" mode reproduces the legacy paper estimator by collapsing the
+#   merged individual-exposure data to geographic-unit-by-group cells and
+#   weighting each cell by its share of total group population.
+#
+# @Written_by: Marcos Paulo
+# @Updated_on: May 2026
+# --------------------------------------------------------------------------------------------
 compute_exposure_ci_regression <- function(
     exposure_parquet,
     individual_pq   = NULL,
     geo_id_col      = "geo_id",
     pop_col         = "n",
+    group_col       = "edu_quintile",
+    group_values    = 1:5,
+    base_group      = max(group_values),
     pollutants      = c("pm10", "pm25"),
     outcome_pattern = "^(avg|hrs_d)_",
     year_filter     = NULL,
     conf_level      = 0.95,
-    base_quintile   = 5L,
     normalized      = FALSE,
+    regression_unit = c("geo_group", "individual", "geo"),
+    se_type         = c("classic", "HC1", "cluster_geo"),
     quiet           = FALSE
 ) {
+  
+  # 0. Dependencies
+  # -----------------------------------------------------------------------
   pkgs <- c("arrow", "data.table")
+  
   for (p in pkgs) {
-    if (!requireNamespace(p, quietly = TRUE)) stop("Package '", p, "' required.")
+    if (!requireNamespace(p, quietly = TRUE)) {
+      stop("Package '", p, "' required.")
+    }
   }
   
-  stopifnot(
-    file.exists(exposure_parquet),
-    conf_level > 0, conf_level < 1,
-    base_quintile %in% 1:5
-  )
+  se_type <- match.arg(se_type)
+  regression_unit <- match.arg(regression_unit)
   
+  if (se_type %in% c("HC1", "cluster_geo") &&
+      !requireNamespace("sandwich", quietly = TRUE)) {
+    stop("Package 'sandwich' required for robust or clustered SEs.")
+  }
+  
+  if (!file.exists(exposure_parquet)) {
+    stop("`exposure_parquet` not found: ", exposure_parquet)
+  }
+  
+  if (!(conf_level > 0 && conf_level < 1)) {
+    stop("`conf_level` must be between 0 and 1.")
+  }
+  
+  if (!base_group %in% group_values) {
+    stop("`base_group` must belong to `group_values`.")
+  }
+  
+  # 1. Read exposure data
+  # -----------------------------------------------------------------------
   dt <- data.table::as.data.table(arrow::read_parquet(exposure_parquet))
-  if (!is.null(year_filter)) dt <- dt[year == year_filter]
+  
+  if (!is.null(year_filter)) {
+    dt <- dt[year == year_filter]
+  }
   
   if (!geo_id_col %in% names(dt)) {
     stop("geo_id_col '", geo_id_col, "' not found in exposure file.")
   }
-  # Coerce to character safely for joining
+  
   dt[, (geo_id_col) := as.character(get(geo_id_col))]
   
-  # Process Individual Microdata Weights if provided
-  if (!is.null(individual_pq)) {
+  # 2. Merge individual/group data when required
+  # -----------------------------------------------------------------------
+  needs_individual <- regression_unit %in% c("geo_group", "individual")
+  
+  if (needs_individual) {
+    if (is.null(individual_pq)) {
+      stop("`individual_pq` required for regression_unit = ", regression_unit)
+    }
+    
     if (!file.exists(individual_pq)) {
       stop("`individual_pq` not found: ", individual_pq)
     }
+    
     ind <- data.table::as.data.table(arrow::read_parquet(individual_pq))
     
-    if (!geo_id_col %in% names(ind)) {
-      stop("geo_id_col '", geo_id_col, "' not found in individual file.")
-    }
-    ind[, (geo_id_col) := as.character(get(geo_id_col))]
-    
-    if (!pop_col %in% names(ind)) stop("pop_col '", pop_col, "' not found.")
-    
-    # Safely remove existing quintile to prevent merge conflicts
-    if ("edu_quintile" %in% names(dt)) dt[, edu_quintile := NULL]
-    
-    dt <- merge(
-      dt,
-      ind[, .SD, .SDcols = c(geo_id_col, "edu_quintile", pop_col)],
-      by = geo_id_col, allow.cartesian = TRUE
-    )
-  } else {
-    if (!"edu_quintile" %in% names(dt)) {
-      stop("'edu_quintile' missing and no individual_pq provided.")
-    }
-    if (!pop_col %in% names(dt)) stop("pop_col '", pop_col, "' not found.")
-  }
-  
-  # Remove NAs and enforce positive population weights
-  dt <- dt[!is.na(edu_quintile) & !is.na(get(pop_col)) & get(pop_col) > 0]
-  
-  all_cols <- grep(outcome_pattern, names(dt), value = TRUE)
-  out_cols <- all_cols[
-    vapply(all_cols,
-           function(c) any(grepl(paste(pollutants, collapse = "|"), c)),
-           logical(1))
-  ]
-  
-  if (length(out_cols) == 0L) {
-    stop("No outcome columns match pattern '", outcome_pattern, "'.")
-  }
-  
-  z <- stats::qnorm(1 - (1 - conf_level) / 2)
-  
-  # Core modeling helper function
-  .fit_one <- function(col) {
-    d <- dt[!is.na(get(col)),
-            .(y = get(col),
-              q = factor(edu_quintile,
-                         levels = c(base_quintile, setdiff(1:5, base_quintile))),
-              w = get(pop_col))]
-    
-    if (nrow(d) < 5L) return(NULL)
-    
-    # Run standard WLS on raw data
-    fit <- stats::lm(y ~ q, data = d, weights = w)
-    sm  <- summary(fit)$coefficients
-    base_mean <- unname(sm["(Intercept)", "Estimate"])
-    
-    # Extract pollutant and metric name for the final table
-    pol <- pollutants[which(vapply(pollutants,
-                                   function(p) grepl(p, col, fixed = TRUE),
-                                   logical(1)))[1]]
-    oc  <- sub(paste0("_", pol, "_?"), "_", col)
-    oc  <- sub("_$", "", oc)
-    oc  <- sub("^_", "", oc)
-    
-    out_rows <- vector("list", 5L)
-    
-    # Handle the Base Quintile (Q5)
-    if (normalized) {
-      out_rows[[1L]] <- data.table::data.table(
-        outcome = oc, pollutant = pol, quintile = base_quintile,
-        estimate = 0, std_error = 0,
-        ci_low = 0, ci_high = 0,
-        n_obs = nrow(d), base_quintile = base_quintile
-      )
-    } else {
-      out_rows[[1L]] <- data.table::data.table(
-        outcome = oc, pollutant = pol, quintile = base_quintile,
-        estimate = base_mean, std_error = 0,
-        ci_low = base_mean, ci_high = base_mean,
-        n_obs = nrow(d), base_quintile = base_quintile
-      )
-    }
-    
-    # Handle the Relative Quintiles (Q1 - Q4)
-    non_base <- setdiff(1:5, base_quintile)
-    for (i in seq_along(non_base)) {
-      rn <- paste0("q", non_base[i])
-      if (!rn %in% rownames(sm)) next
-      
-      est <- unname(sm[rn, "Estimate"])
-      se  <- unname(sm[rn, "Std. Error"])
-      
-      if (normalized) {
-        # OLS linearity allows dividing raw slopes by intercept (Ratio - 1)
-        norm_est <- est / base_mean
-        norm_se  <- se  / base_mean
-        
-        out_rows[[i + 1L]] <- data.table::data.table(
-          outcome = oc, pollutant = pol, quintile = non_base[i],
-          estimate = norm_est, std_error = norm_se,
-          ci_low = norm_est - z * norm_se, ci_high = norm_est + z * norm_se,
-          n_obs = nrow(d), base_quintile = base_quintile
-        )
-      } else {
-        # Calculate Absolute Means (Intercept + Slope)
-        lvl <- base_mean + est
-        out_rows[[i + 1L]] <- data.table::data.table(
-          outcome = oc, pollutant = pol, quintile = non_base[i],
-          estimate = lvl, std_error = se,
-          ci_low = lvl - z * se, ci_high = lvl + z * se,
-          n_obs = nrow(d), base_quintile = base_quintile
-        )
+    for (col in c(geo_id_col, group_col, pop_col)) {
+      if (!col %in% names(ind)) {
+        stop("Column '", col, "' not found in individual file.")
       }
     }
     
-    data.table::rbindlist(Filter(Negate(is.null), out_rows))
+    ind[, (geo_id_col) := as.character(get(geo_id_col))]
+    
+    # Remove group column from exposure data to avoid merge conflicts.
+    if (group_col %in% names(dt)) {
+      dt[, (group_col) := NULL]
+    }
+    
+    dt <- merge(
+      dt,
+      ind[, .SD, .SDcols = c(geo_id_col, group_col, pop_col)],
+      by = geo_id_col,
+      allow.cartesian = TRUE
+    )
+  } else {
+    for (col in c(group_col, pop_col)) {
+      if (!col %in% names(dt)) {
+        stop("Column '", col, "' not found in exposure file.")
+      }
+    }
   }
   
-  res <- data.table::rbindlist(lapply(out_cols, .fit_one), fill = TRUE)
+  # Keep valid groups and positive weights only.
+  dt <- dt[
+    !is.na(get(group_col)) &
+      get(group_col) %in% group_values &
+      !is.na(get(pop_col)) &
+      get(pop_col) > 0
+  ]
   
-  # Guard against empty results
-  if (nrow(res) == 0) {
-    if (!quiet) message("[ci] Warning: Insufficient data to fit any models.")
+  # 3. Identify outcomes
+  # -----------------------------------------------------------------------
+  all_cols <- grep(outcome_pattern, names(dt), value = TRUE)
+  
+  out_cols <- all_cols[
+    vapply(
+      all_cols,
+      function(x) any(grepl(paste(pollutants, collapse = "|"), x)),
+      logical(1)
+    )
+  ]
+  
+  if (length(out_cols) == 0L) {
+    stop("No outcome columns match the requested pattern and pollutants.")
+  }
+  
+  # Parse outcome and pollutant labels.
+  .parse_outcome <- function(col) {
+    pol <- pollutants[
+      which(vapply(
+        pollutants,
+        function(p) grepl(p, col, fixed = TRUE),
+        logical(1)
+      ))[1L]
+    ]
+    
+    oc <- sub(paste0("_", pol, "_?"), "_", col)
+    oc <- sub("_$", "", oc)
+    oc <- sub("^_", "", oc)
+    
+    list(outcome = oc, pollutant = pol)
+  }
+  
+  # 4. Variance-covariance helper
+  # -----------------------------------------------------------------------
+  .vcov_model <- function(fit, d) {
+    if (se_type == "classic") {
+      return(stats::vcov(fit))
+    }
+    
+    if (se_type == "HC1") {
+      return(sandwich::vcovHC(fit, type = "HC1"))
+    }
+    
+    if (se_type == "cluster_geo") {
+      if (!".cluster_geo" %in% names(d)) {
+        stop("Internal cluster column missing.")
+      }
+      
+      return(sandwich::vcovCL(fit, cluster = d$.cluster_geo, type = "HC1"))
+    }
+  }
+  
+  # Extract coefficient table using selected vcov.
+  .coef_table <- function(fit, d) {
+    vc <- .vcov_model(fit, d)
+    est <- stats::coef(fit)
+    se <- sqrt(diag(vc))
+    
+    alpha <- 1 - conf_level
+    crit <- stats::qnorm(1 - alpha / 2)
+    
+    data.table::data.table(
+      term = names(est),
+      estimate = unname(est),
+      std_error = unname(se),
+      ci_low = unname(est - crit * se),
+      ci_high = unname(est + crit * se)
+    )
+  }
+  
+  # Base group row for plotting.
+  .base_row <- function(meta, n_obs) {
+    data.table::data.table(
+      outcome = meta$outcome,
+      pollutant = meta$pollutant,
+      group = base_group,
+      estimate = 0,
+      std_error = 0,
+      ci_low = 0,
+      ci_high = 0,
+      n_obs = n_obs,
+      base_group = base_group,
+      group_col = group_col,
+      regression_unit = regression_unit,
+      se_type = se_type
+    )
+  }
+  
+  # 5. Legacy-style geo-by-group estimator
+  # -----------------------------------------------------------------------
+  .fit_geo_group <- function(col) {
+    d0 <- dt[!is.na(get(col))]
+    
+    if (nrow(d0) < length(group_values)) {
+      return(NULL)
+    }
+    
+    if (isTRUE(normalized)) {
+      base_mean <- d0[
+        get(group_col) == base_group,
+        stats::weighted.mean(get(col), get(pop_col), na.rm = TRUE)
+      ]
+      
+      if (is.na(base_mean) || base_mean == 0) {
+        return(NULL)
+      }
+      
+      d0[, y_model := get(col) / base_mean]
+    } else {
+      d0[, y_model := get(col)]
+    }
+    
+    by_cols <- c(geo_id_col, group_col)
+    
+    # Collapse to geographic-unit-by-group cells.
+    d <- d0[
+      !is.na(y_model),
+      .(
+        geo_population = sum(get(pop_col), na.rm = TRUE),
+        y = stats::weighted.mean(y_model, get(pop_col), na.rm = TRUE)
+      ),
+      by = by_cols
+    ]
+    
+    d <- d[!is.na(y) & !is.na(geo_population) & geo_population > 0]
+    
+    if (nrow(d) < length(group_values)) {
+      return(NULL)
+    }
+    
+    # Weight each cell by its population share within the group.
+    d[, total_population_g := sum(geo_population, na.rm = TRUE),
+      by = group_col]
+    
+    d[, w := geo_population / total_population_g]
+    d <- d[!is.na(w) & w > 0]
+    
+    if (nrow(d) < length(group_values)) {
+      return(NULL)
+    }
+    
+    # Store cluster ID for clustered standard errors.
+    d[, .cluster_geo := get(geo_id_col)]
+    
+    d[, g := factor(
+      get(group_col),
+      levels = c(base_group, setdiff(group_values, base_group))
+    )]
+    
+    fit <- stats::lm(y ~ g, data = d, weights = w)
+    ct <- .coef_table(fit, d)
+    
+    meta <- .parse_outcome(col)
+    out_rows <- list(.base_row(meta, nrow(d)))
+    
+    non_base <- setdiff(group_values, base_group)
+    
+    for (grp in non_base) {
+      rn <- paste0("g", grp)
+      row <- ct[term == rn]
+      
+      if (nrow(row) == 0L) {
+        next
+      }
+      
+      if (isTRUE(normalized)) {
+        est <- row$estimate
+        low <- row$ci_low
+        high <- row$ci_high
+      } else {
+        # Non-normalized coefficient is a difference from the base group.
+        est <- row$estimate
+        low <- row$ci_low
+        high <- row$ci_high
+      }
+      
+      out_rows[[length(out_rows) + 1L]] <- data.table::data.table(
+        outcome = meta$outcome,
+        pollutant = meta$pollutant,
+        group = grp,
+        estimate = est,
+        std_error = row$std_error,
+        ci_low = low,
+        ci_high = high,
+        n_obs = nrow(d),
+        base_group = base_group,
+        group_col = group_col,
+        regression_unit = regression_unit,
+        se_type = se_type
+      )
+    }
+    
+    data.table::rbindlist(out_rows, fill = TRUE)
+  }
+  
+  # 6. Individual or geo-level estimator
+  # -----------------------------------------------------------------------
+  .fit_standard <- function(col) {
+    d <- dt[
+      !is.na(get(col)),
+      .(
+        y = get(col),
+        g = factor(
+          get(group_col),
+          levels = c(base_group, setdiff(group_values, base_group))
+        ),
+        w = get(pop_col),
+        .cluster_geo = get(geo_id_col)
+      )
+    ]
+    
+    if (nrow(d) < length(group_values)) {
+      return(NULL)
+    }
+    
+    if (isTRUE(normalized)) {
+      base_mean <- d[
+        g == as.character(base_group),
+        stats::weighted.mean(y, w, na.rm = TRUE)
+      ]
+      
+      if (is.na(base_mean) || base_mean == 0) {
+        return(NULL)
+      }
+      
+      d[, y := y / base_mean]
+    }
+    
+    fit <- stats::lm(y ~ g, data = d, weights = w)
+    ct <- .coef_table(fit, d)
+    
+    meta <- .parse_outcome(col)
+    out_rows <- list(.base_row(meta, nrow(d)))
+    
+    non_base <- setdiff(group_values, base_group)
+    
+    for (grp in non_base) {
+      rn <- paste0("g", grp)
+      row <- ct[term == rn]
+      
+      if (nrow(row) == 0L) {
+        next
+      }
+      
+      out_rows[[length(out_rows) + 1L]] <- data.table::data.table(
+        outcome = meta$outcome,
+        pollutant = meta$pollutant,
+        group = grp,
+        estimate = row$estimate,
+        std_error = row$std_error,
+        ci_low = row$ci_low,
+        ci_high = row$ci_high,
+        n_obs = nrow(d),
+        base_group = base_group,
+        group_col = group_col,
+        regression_unit = regression_unit,
+        se_type = se_type
+      )
+    }
+    
+    data.table::rbindlist(out_rows, fill = TRUE)
+  }
+  
+  # 7. Fit all outcomes
+  # -----------------------------------------------------------------------
+  fit_fun <- switch(
+    regression_unit,
+    geo_group  = .fit_geo_group,
+    individual = .fit_standard,
+    geo        = .fit_standard
+  )
+  
+  res <- data.table::rbindlist(lapply(out_cols, fit_fun), fill = TRUE)
+  
+  if (nrow(res) == 0L) {
+    if (!quiet) {
+      message("[ci] Warning: insufficient data to fit any models.")
+    }
+    
     return(data.table::data.table(
-      outcome = character(), pollutant = character(), quintile = integer(),
-      estimate = numeric(), std_error = numeric(), ci_low = numeric(), 
-      ci_high = numeric(), n_obs = integer(), base_quintile = integer()
+      outcome = character(),
+      pollutant = character(),
+      group = numeric(),
+      estimate = numeric(),
+      std_error = numeric(),
+      ci_low = numeric(),
+      ci_high = numeric(),
+      n_obs = integer(),
+      base_group = numeric(),
+      group_col = character(),
+      regression_unit = character(),
+      se_type = character()
     ))
   }
   
-  data.table::setorder(res, outcome, pollutant, quintile)
-  if (!quiet) message(
-    "[ci] ", length(out_cols), " outcome(s) x ",
-    length(pollutants), " pollutant(s) fit."
-  )
+  data.table::setorder(res, outcome, pollutant, group)
+  
+  if (!quiet) {
+    message(
+      "[ci] ", length(out_cols), " outcome(s) fit using regression_unit = '",
+      regression_unit, "' and se_type = '", se_type, "'."
+    )
+  }
   
   return(res)
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: compute_exposure_group_summaries
+#
+# @Arg exposure_parquet : string; path to geo-level IDW exposure Parquet.
+# @Arg individual_pq    : string; path to individual-level group Parquet.
+# @Arg geo_id_col       : string; geographic ID column. Default "geo_id".
+# @Arg pop_col          : string; population or expansion-weight column.
+# @Arg group_col        : string; group variable, e.g. "edu_quintile".
+# @Arg group_values     : numeric vector; valid groups, e.g. 1:5 or 1:10.
+# @Arg pollutants       : character; pollutants to include.
+# @Arg outcome_pattern  : string; regex for outcomes to summarize.
+# @Arg year_filter      : integer or NULL; restrict to a year.
+# @Arg quiet            : logical; suppress messages. Default FALSE.
+#
+# @Output : data.table with weighted means, weighted medians, and counts.
+#
+# @Details:
+#   Merges geo-level exposure with individual/group data and computes weighted
+#   group-level summaries. Since exposure is constant within geographic unit,
+#   the function first collapses to geo-by-group cells to avoid unnecessary
+#   individual-level expansion in the final summaries.
+#
+# @Written_by: Marcos Paulo
+# @Updated_on: May 2026
+# --------------------------------------------------------------------------------------------
+compute_exposure_group_summaries <- function(
+    exposure_parquet,
+    individual_pq,
+    geo_id_col      = "geo_id",
+    pop_col         = "n",
+    group_col       = "edu_quintile",
+    group_values    = 1:5,
+    pollutants      = c("pm10", "pm25"),
+    outcome_pattern = "^(avg|hrs_d)_",
+    year_filter     = NULL,
+    quiet           = FALSE
+) {
+  
+  # 0. Dependencies
+  # -----------------------------------------------------------------------
+  pkgs <- c("arrow", "data.table")
+  
+  for (p in pkgs) {
+    if (!requireNamespace(p, quietly = TRUE)) {
+      stop("Package '", p, "' required.")
+    }
+  }
+  
+  if (!file.exists(exposure_parquet)) {
+    stop("`exposure_parquet` not found: ", exposure_parquet)
+  }
+  
+  if (!file.exists(individual_pq)) {
+    stop("`individual_pq` not found: ", individual_pq)
+  }
+  
+  # 1. Read and merge data
+  # -----------------------------------------------------------------------
+  exp_dt <- data.table::as.data.table(arrow::read_parquet(exposure_parquet))
+  ind_dt <- data.table::as.data.table(arrow::read_parquet(individual_pq))
+  
+  if (!is.null(year_filter)) {
+    exp_dt <- exp_dt[year == year_filter]
+  }
+  
+  for (col in c(geo_id_col)) {
+    if (!col %in% names(exp_dt)) {
+      stop("Column '", col, "' missing in exposure file.")
+    }
+  }
+  
+  for (col in c(geo_id_col, pop_col, group_col)) {
+    if (!col %in% names(ind_dt)) {
+      stop("Column '", col, "' missing in individual file.")
+    }
+  }
+  
+  exp_dt[, (geo_id_col) := as.character(get(geo_id_col))]
+  ind_dt[, (geo_id_col) := as.character(get(geo_id_col))]
+  
+  # Keep necessary individual columns.
+  ind_dt <- ind_dt[
+    !is.na(get(group_col)) &
+      get(group_col) %in% group_values &
+      !is.na(get(pop_col)) &
+      get(pop_col) > 0,
+    .SD,
+    .SDcols = c(geo_id_col, group_col, pop_col)
+  ]
+  
+  dt <- merge(exp_dt, ind_dt, by = geo_id_col, allow.cartesian = TRUE)
+  
+  # 2. Identify outcomes
+  # -----------------------------------------------------------------------
+  all_cols <- grep(outcome_pattern, names(dt), value = TRUE)
+  
+  out_cols <- all_cols[
+    vapply(
+      all_cols,
+      function(x) any(grepl(paste(pollutants, collapse = "|"), x)),
+      logical(1)
+    )
+  ]
+  
+  if (length(out_cols) == 0L) {
+    stop("No outcome columns match the requested pattern and pollutants.")
+  }
+  
+  # Weighted median helper.
+  .weighted_median <- function(x, w) {
+    ok <- !is.na(x) & !is.na(w) & w > 0
+    
+    if (!any(ok)) {
+      return(NA_real_)
+    }
+    
+    x <- x[ok]
+    w <- w[ok]
+    ord <- order(x)
+    x <- x[ord]
+    w <- w[ord]
+    
+    cw <- cumsum(w) / sum(w)
+    x[which(cw >= 0.5)[1L]]
+  }
+  
+  # Parse outcome and pollutant labels.
+  .parse_outcome <- function(col) {
+    pol <- pollutants[
+      which(vapply(
+        pollutants,
+        function(p) grepl(p, col, fixed = TRUE),
+        logical(1)
+      ))[1L]
+    ]
+    
+    oc <- sub(paste0("_", pol, "_?"), "_", col)
+    oc <- sub("_$", "", oc)
+    oc <- sub("^_", "", oc)
+    
+    list(outcome = oc, pollutant = pol)
+  }
+  
+  # 3. Collapse to geo-by-group cells
+  # -----------------------------------------------------------------------
+  by_cols <- c(geo_id_col, group_col)
+  
+  geo_group <- dt[
+    ,
+    c(
+      list(group_pop = sum(get(pop_col), na.rm = TRUE)),
+      lapply(.SD, function(x) {
+        stats::weighted.mean(x, get(pop_col), na.rm = TRUE)
+      })
+    ),
+    by = by_cols,
+    .SDcols = out_cols
+  ]
+  
+  geo_group <- geo_group[!is.na(group_pop) & group_pop > 0]
+  
+  # 4. Compute group-level summaries
+  # -----------------------------------------------------------------------
+  res_list <- vector("list", length(out_cols))
+  
+  for (i in seq_along(out_cols)) {
+    col <- out_cols[[i]]
+    meta <- .parse_outcome(col)
+    
+    tmp <- geo_group[
+      !is.na(get(col)),
+      .(
+        weighted_mean = stats::weighted.mean(
+          get(col),
+          group_pop,
+          na.rm = TRUE
+        ),
+        weighted_median = .weighted_median(get(col), group_pop),
+        weighted_population = sum(group_pop, na.rm = TRUE),
+        n_geo_group_cells = .N,
+        n_geo_units = data.table::uniqueN(get(geo_id_col))
+      ),
+      by = group_col
+    ]
+    
+    data.table::setnames(tmp, group_col, "group")
+    
+    tmp[, `:=`(
+      outcome = meta$outcome,
+      pollutant = meta$pollutant,
+      group_col = group_col
+    )]
+    
+    res_list[[i]] <- tmp
+  }
+  
+  res <- data.table::rbindlist(res_list, fill = TRUE)
+  data.table::setorder(res, outcome, pollutant, group)
+  
+  if (!quiet) {
+    message("[summary] ", length(out_cols), " outcome(s) summarized.")
+  }
+  
+  return(res)
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: run_exposure_results_for_city
+#
+# @Arg spec_row          : one-row data.table with city inputs and metadata.
+# @Arg analysis_year     : integer; year used in the regression and summaries.
+# @Arg buffer_km         : integer/numeric; buffer used in the exposure file.
+# @Arg group_col         : string; socioeconomic group variable.
+# @Arg group_values      : numeric vector; valid group values.
+# @Arg base_group        : numeric; omitted reference group in regressions.
+# @Arg pollutants        : character vector; pollutants to include.
+# @Arg summary_outcomes  : string; regex for raw summary outcomes.
+# @Arg ci_outcomes       : string; regex for regression outcomes.
+# @Arg confidence_level  : numeric; confidence level for intervals.
+# @Arg main_reg_unit     : string; regression unit passed to compute function.
+# @Arg main_se_type      : string; standard-error type passed to compute function.
+# @Arg normalized        : logical; whether to normalize by base-group mean.
+# @Arg validate_inputs   : logical; whether to read and check inputs before estimation.
+#
+# @Output : list with two data.tables: ci and summary.
+#
+# @Details:
+#   Runs the two final exposure-output routines for a single city. The raw summary
+#   reports weighted exposure values by socioeconomic group. The regression output
+#   reports differences relative to the base group. The preferred paper
+#   specification uses geo_id x education-quintile cells with geo-clustered
+#   standard errors.
+#
+# @Written_by: Marcos Paulo
+# @Updated_on: May 2026
+# --------------------------------------------------------------------------------------------
+run_exposure_results_for_city <- function(
+    spec_row,
+    analysis_year,
+    buffer_km,
+    group_col,
+    group_values,
+    base_group,
+    pollutants,
+    summary_outcomes,
+    ci_outcomes,
+    confidence_level = 0.95,
+    main_reg_unit = "geo_group",
+    main_se_type = "cluster_geo",
+    normalized = TRUE,
+    validate_inputs = TRUE
+) {
+  
+  # 0. Basic checks
+  # ------------------------------------------------------------------------------------------
+  if (!requireNamespace("arrow", quietly = TRUE)) {
+    stop("Package 'arrow' is required.")
+  }
+  
+  if (!requireNamespace("data.table", quietly = TRUE)) {
+    stop("Package 'data.table' is required.")
+  }
+  
+  if (nrow(spec_row) != 1L) {
+    stop("`spec_row` must contain exactly one city.")
+  }
+  
+  needed_spec_cols <- c(
+    "city",
+    "city_id",
+    "exposure_parquet",
+    "individual_pq",
+    "pop_col"
+  )
+  
+  missing_spec_cols <- setdiff(needed_spec_cols, names(spec_row))
+  
+  if (length(missing_spec_cols) > 0L) {
+    stop(
+      "Missing column(s) in `spec_row`: ",
+      paste(missing_spec_cols, collapse = ", ")
+    )
+  }
+  
+  if (!file.exists(spec_row$exposure_parquet)) {
+    stop("Exposure file not found: ", spec_row$exposure_parquet)
+  }
+  
+  if (!file.exists(spec_row$individual_pq)) {
+    stop("Individual/group file not found: ", spec_row$individual_pq)
+  }
+  
+  message("Processing exposure results for ", spec_row$city, "...")
+  
+  # 1. Optional validation of input data
+  # ------------------------------------------------------------------------------------------
+  if (isTRUE(validate_inputs)) {
+    exposure_dt <- data.table::as.data.table(
+      arrow::read_parquet(spec_row$exposure_parquet)
+    )
+    
+    individual_dt <- data.table::as.data.table(
+      arrow::read_parquet(spec_row$individual_pq)
+    )
+    
+    required_exp_cols <- c("geo_id", "year")
+    required_ind_cols <- c("geo_id", group_col, spec_row$pop_col)
+    
+    missing_exp_cols <- setdiff(required_exp_cols, names(exposure_dt))
+    missing_ind_cols <- setdiff(required_ind_cols, names(individual_dt))
+    
+    if (length(missing_exp_cols) > 0L) {
+      stop(
+        "Missing exposure column(s) for ", spec_row$city, ": ",
+        paste(missing_exp_cols, collapse = ", ")
+      )
+    }
+    
+    if (length(missing_ind_cols) > 0L) {
+      stop(
+        "Missing individual column(s) for ", spec_row$city, ": ",
+        paste(missing_ind_cols, collapse = ", ")
+      )
+    }
+    
+    rm(exposure_dt, individual_dt)
+  }
+  
+  # 2. Regression coefficients and confidence intervals
+  # ------------------------------------------------------------------------------------------
+  ci_dt <- compute_exposure_ci_regression(
+    exposure_parquet = spec_row$exposure_parquet,
+    individual_pq    = spec_row$individual_pq,
+    geo_id_col       = "geo_id",
+    pop_col          = spec_row$pop_col,
+    group_col        = group_col,
+    group_values     = group_values,
+    base_group       = base_group,
+    pollutants       = pollutants,
+    outcome_pattern  = ci_outcomes,
+    year_filter      = analysis_year,
+    conf_level       = confidence_level,
+    normalized       = normalized,
+    regression_unit  = main_reg_unit,
+    se_type          = main_se_type,
+    quiet            = FALSE
+  )
+  
+  # 3. Raw weighted exposure values by group
+  # ------------------------------------------------------------------------------------------
+  summary_dt <- compute_exposure_group_summaries(
+    exposure_parquet = spec_row$exposure_parquet,
+    individual_pq    = spec_row$individual_pq,
+    geo_id_col       = "geo_id",
+    pop_col          = spec_row$pop_col,
+    group_col        = group_col,
+    group_values     = group_values,
+    pollutants       = pollutants,
+    outcome_pattern  = summary_outcomes,
+    year_filter      = analysis_year,
+    quiet            = FALSE
+  )
+  
+  # 4. Add common metadata
+  # ------------------------------------------------------------------------------------------
+  common_meta <- list(
+    city = spec_row$city,
+    city_id = spec_row$city_id,
+    buffer_km = buffer_km,
+    year = analysis_year,
+    socioeconomic_var = "education",
+    group_type = "quintile"
+  )
+  
+  ci_dt[, names(common_meta) := common_meta]
+  summary_dt[, names(common_meta) := common_meta]
+  
+  return(list(ci = ci_dt, summary = summary_dt))
 }
 
 
@@ -2571,6 +4526,315 @@ save_raw_data_tidy_formatted <- function(
   invisible(paths)
 }
 
+
+# --------------------------------------------------------------------------------------------
+# Small shared helpers (top-level, individually testable)
+# --------------------------------------------------------------------------------------------
+
+# Parse an outcome column name into its outcome label and pollutant.
+# Example: "hrs_d_pm25_it1" -> list(outcome = "hrs_d_it1", pollutant = "pm25").
+parse_outcome_label <- function(col, pollutants) {
+  # Find which pollutant string appears in the column name.
+  hit <- which(vapply(
+    pollutants,
+    function(p) grepl(p, col, fixed = TRUE),
+    logical(1)
+  ))[1L]
+  
+  pol <- pollutants[hit]
+  
+  # Strip the pollutant token and tidy leftover underscores.
+  oc <- sub(paste0("_", pol, "_?"), "_", col)
+  oc <- sub("_$", "", oc)
+  oc <- sub("^_", "", oc)
+  
+  list(outcome = oc, pollutant = pol)
+}
+
+# Select outcome columns by regex pattern AND pollutant membership.
+select_outcome_cols <- function(dt_names, outcome_pattern, pollutants) {
+  # First filter by the outcome regex (e.g. annual means or exceedance hours).
+  candidate <- grep(outcome_pattern, dt_names, value = TRUE)
+  
+  # Then keep only those mentioning a requested pollutant.
+  keep <- vapply(
+    candidate,
+    function(x) any(grepl(paste(pollutants, collapse = "|"), x)),
+    logical(1)
+  )
+  
+  candidate[keep]
+}
+
+# Weighted median used by the group summaries.
+weighted_median_value <- function(x, w) {
+  ok <- !is.na(x) & !is.na(w) & w > 0
+  
+  if (!any(ok)) {
+    return(NA_real_)
+  }
+  
+  # Sort values, carry weights, and take the 50% cumulative-weight point.
+  x <- x[ok]
+  w <- w[ok]
+  ord <- order(x)
+  x <- x[ord]
+  w <- w[ord]
+  
+  cw <- cumsum(w) / sum(w)
+  x[which(cw >= 0.5)[1L]]
+}
+
+# Build the variance-covariance matrix for a fitted lm under the chosen SE type.
+build_vcov <- function(fit, model_dt, se_type) {
+  if (se_type == "classic") {
+    return(stats::vcov(fit))
+  }
+  
+  if (se_type == "HC1") {
+    return(sandwich::vcovHC(fit, type = "HC1"))
+  }
+  
+  # Geo-clustered SEs require a cluster column placed on the model frame.
+  if (se_type == "cluster_geo") {
+    if (!".cluster_geo" %in% names(model_dt)) {
+      stop("Internal cluster column '.cluster_geo' missing.")
+    }
+    
+    return(sandwich::vcovCL(fit, cluster = model_dt$.cluster_geo, type = "HC1"))
+  }
+  
+  stop("Unknown se_type: ", se_type)
+}
+
+# Turn a fitted lm + vcov into a tidy term/estimate/CI table.
+coef_table_from_fit <- function(fit, model_dt, se_type, conf_level) {
+  vc  <- build_vcov(fit, model_dt, se_type)
+  est <- stats::coef(fit)
+  se  <- sqrt(diag(vc))
+  
+  alpha <- 1 - conf_level
+  
+  # Critical value choice:
+  #  - "classic": t-distribution on the model's residual df, matching the legacy
+  #    confint() on lm() exactly (the paper's inference).
+  #  - robust / clustered: normal approximation, the usual sandwich convention.
+  if (se_type == "classic") {
+    crit <- stats::qt(1 - alpha / 2, df = stats::df.residual(fit))
+  } else {
+    crit <- stats::qnorm(1 - alpha / 2)
+  }
+  
+  data.table::data.table(
+    term      = names(est),
+    estimate  = unname(est),
+    std_error = unname(se),
+    ci_low    = unname(est - crit * se),
+    ci_high   = unname(est + crit * se)
+  )
+}
+
+# A zero-valued row for the omitted base group, so plots show all groups.
+# n_units is the number of rows in the fitted model frame. Its meaning depends on
+# regression_unit (the adjacent column): geo_group -> geo-by-group cells;
+# individual -> individuals; geo -> geo units. It is identical across groups
+# within one outcome, so it is a diagnostic, not a per-group sample size.
+base_group_row <- function(meta, n_units, base_group, group_col,
+                           regression_unit, se_type) {
+  data.table::data.table(
+    outcome         = meta$outcome,
+    pollutant       = meta$pollutant,
+    group           = base_group,
+    estimate        = 0,
+    std_error       = 0,
+    ci_low          = 0,
+    ci_high         = 0,
+    n_units         = n_units,
+    base_group      = base_group,
+    group_col       = group_col,
+    regression_unit = regression_unit,
+    se_type         = se_type
+  )
+}
+
+# ------------------------------------------------------------------------------------
+# Estimator 1: legacy geo-by-group estimator (the paper's main spec)
+#
+# Collapses merged individual-exposure data to geographic-unit-by-group cells and
+# weights each cell by its share of total group population. Returns one tidy table
+# for a single outcome column, or NULL if there is not enough data.
+# ------------------------------------------------------------------------------------
+fit_geo_group_outcome <- function(merged_dt, col, geo_id_col, group_col, pop_col,
+                                  group_values, base_group, pollutants,
+                                  se_type, conf_level, normalized) {
+  d0 <- merged_dt[!is.na(get(col))]
+  
+  if (nrow(d0) < length(group_values)) {
+    return(NULL)
+  }
+  
+  # Optionally normalize the outcome by the base-group weighted mean (gap form).
+  if (isTRUE(normalized)) {
+    base_mean <- d0[
+      get(group_col) == base_group,
+      stats::weighted.mean(get(col), get(pop_col), na.rm = TRUE)
+    ]
+    
+    if (is.na(base_mean) || base_mean == 0) {
+      return(NULL)
+    }
+    
+    d0[, y_model := get(col) / base_mean]
+  } else {
+    d0[, y_model := get(col)]
+  }
+  
+  by_cols <- c(geo_id_col, group_col)
+  
+  # Collapse to geo-by-group cells (exposure is constant within a geo unit).
+  d <- d0[
+    !is.na(y_model),
+    .(
+      geo_population = sum(get(pop_col), na.rm = TRUE),
+      y = stats::weighted.mean(y_model, get(pop_col), na.rm = TRUE)
+    ),
+    by = by_cols
+  ]
+  
+  d <- d[!is.na(y) & !is.na(geo_population) & geo_population > 0]
+  
+  if (nrow(d) < length(group_values)) {
+    return(NULL)
+  }
+  
+  # Each cell is weighted by its population share within its group.
+  d[, total_population_g := sum(geo_population, na.rm = TRUE), by = group_col]
+  d[, w := geo_population / total_population_g]
+  d <- d[!is.na(w) & w > 0]
+  
+  if (nrow(d) < length(group_values)) {
+    return(NULL)
+  }
+  
+  # Cluster ID column for geo-clustered standard errors.
+  d[, .cluster_geo := get(geo_id_col)]
+  
+  # Factor with the base group first so it becomes the omitted reference.
+  d[, g := factor(
+    get(group_col),
+    levels = c(base_group, setdiff(group_values, base_group))
+  )]
+  
+  fit <- stats::lm(y ~ g, data = d, weights = w)
+  ct  <- coef_table_from_fit(fit, d, se_type, conf_level)
+  
+  meta <- parse_outcome_label(col, pollutants)
+  
+  # Start the output with the base-group reference row.
+  out_rows <- list(
+    base_group_row(meta, nrow(d), base_group, group_col, "geo_group", se_type)
+  )
+  
+  # Add one row per non-base group from the coefficient table.
+  for (grp in setdiff(group_values, base_group)) {
+    row <- ct[term == paste0("g", grp)]
+    
+    if (nrow(row) == 0L) {
+      next
+    }
+    
+    out_rows[[length(out_rows) + 1L]] <- data.table::data.table(
+      outcome         = meta$outcome,
+      pollutant       = meta$pollutant,
+      group           = grp,
+      estimate        = row$estimate,
+      std_error       = row$std_error,
+      ci_low          = row$ci_low,
+      ci_high         = row$ci_high,
+      n_units         = nrow(d),
+      base_group      = base_group,
+      group_col       = group_col,
+      regression_unit = "geo_group",
+      se_type         = se_type
+    )
+  }
+  
+  data.table::rbindlist(out_rows, fill = TRUE)
+}
+
+# ------------------------------------------------------------------------------------
+# Estimator 2: standard estimator for "individual" or "geo" regression units
+#
+# Fits the outcome directly (no geo-by-group collapse). Used for robustness checks.
+# ------------------------------------------------------------------------------------
+fit_standard_outcome <- function(model_source_dt, col, geo_id_col, group_col, pop_col,
+                                 group_values, base_group, pollutants,
+                                 regression_unit, se_type, conf_level, normalized) {
+  d <- model_source_dt[
+    !is.na(get(col)),
+    .(
+      y = get(col),
+      g = factor(
+        get(group_col),
+        levels = c(base_group, setdiff(group_values, base_group))
+      ),
+      w = get(pop_col),
+      .cluster_geo = get(geo_id_col)
+    )
+  ]
+  
+  if (nrow(d) < length(group_values)) {
+    return(NULL)
+  }
+  
+  # Optional normalization by base-group weighted mean.
+  if (isTRUE(normalized)) {
+    base_mean <- d[
+      g == as.character(base_group),
+      stats::weighted.mean(y, w, na.rm = TRUE)
+    ]
+    
+    if (is.na(base_mean) || base_mean == 0) {
+      return(NULL)
+    }
+    
+    d[, y := y / base_mean]
+  }
+  
+  fit <- stats::lm(y ~ g, data = d, weights = w)
+  ct  <- coef_table_from_fit(fit, d, se_type, conf_level)
+  
+  meta <- parse_outcome_label(col, pollutants)
+  
+  out_rows <- list(
+    base_group_row(meta, nrow(d), base_group, group_col, regression_unit, se_type)
+  )
+  
+  for (grp in setdiff(group_values, base_group)) {
+    row <- ct[term == paste0("g", grp)]
+    
+    if (nrow(row) == 0L) {
+      next
+    }
+    
+    out_rows[[length(out_rows) + 1L]] <- data.table::data.table(
+      outcome         = meta$outcome,
+      pollutant       = meta$pollutant,
+      group           = grp,
+      estimate        = row$estimate,
+      std_error       = row$std_error,
+      ci_low          = row$ci_low,
+      ci_high         = row$ci_high,
+      n_units         = nrow(d),
+      base_group      = base_group,
+      group_col       = group_col,
+      regression_unit = regression_unit,
+      se_type         = se_type
+    )
+  }
+  
+  data.table::rbindlist(out_rows, fill = TRUE)
+}
 
 # Print a success message for when running inside Docker Container
 cat("Config script parsed successfully!\n")
