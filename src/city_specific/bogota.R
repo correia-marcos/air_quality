@@ -3439,16 +3439,19 @@ bogota_filter_census_2018 <- function(
 
 # --------------------------------------------------------------------------------------------
 # Function: bogota_harmonize_census_2018_data
-# @Arg        : extract_paths - List output from bogota_filter_census_2018
-# @Arg        : metro_codes - Vector of municipality codes for filtering (first 5 digits)
-# @Arg        : out_dir - Where to save processed data
-# @Arg        : quiet - Suppress progress messages
 #
-# @Output     : Saves CSV files; returns list of processed dataframes
-# @Purpose    : 1. Merges Person (PER) and Geo (MGN) files on COD_ENCUESTAS.
-#               2. Filters for Metro Area using COD_DANE_ANM.
-#               3. Harmonizes Education (Years), Age, Sex, Work.
-#               4. Collapses to Manzana/Block level.
+# @Arg extract_paths : list; output from bogota_filter_census_2018.
+# @Arg metro_codes   : character; municipality codes to filter.
+# @Arg out_dir       : string; output folder for processed data.
+# @Arg quiet         : logical; suppress progress messages. Default FALSE.
+#
+# @Output : list(individual, collapsed); processed census data.
+#
+# @Purpose:
+#   Merges person and geographic files, filters the Bogota metro area,
+#   harmonizes education and demographic variables, and collapses adults
+#   aged 25+ to the block level.
+#
 # @Written_on : 01/02/2026
 # @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------------
@@ -3459,34 +3462,44 @@ bogota_harmonize_census_2018_data <- function(
     quiet       = FALSE
 ) {
   
-  if (!requireNamespace("vroom", quietly = TRUE)) stop("vroom required.")
-  if (!requireNamespace("dplyr", quietly = TRUE)) stop("dplyr required.")
+  # Check required packages
+  if (!requireNamespace("vroom", quietly = TRUE)) {
+    stop("vroom required.")
+  }
+  if (!requireNamespace("dplyr", quietly = TRUE)) {
+    stop("dplyr required.")
+  }
+  if (!requireNamespace("stringr", quietly = TRUE)) {
+    stop("stringr required.")
+  }
   
+  # Create output folder
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
   
-  # --- Helper: Education Mapping 2018 ---
-  # Maps P_NIVEL_ANOSR (1-10) to approximate Years of Schooling
+  # Map 2018 categorical schooling variable into approximate years
   map_education_2018 <- function(x) {
     dplyr::case_when(
-      x == 10 ~ 0,  # Ninguno
-      x == 1  ~ 0,  # Preescolar
-      x == 2  ~ 5,  # Básica primaria (Assuming completion)
-      x == 3  ~ 9,  # Básica secundaria
-      x == 4  ~ 11, # Media academica
-      x == 5  ~ 11, # Media tecnica
-      x == 6  ~ 13, # Normalista
-      x == 7  ~ 14, # Técnica profesional o Tecnológica (Avg 13-15)
-      x == 8  ~ 17, # Universitario
-      x == 9  ~ 19, # Esp/Maest/Doc (Avg 18-23, conservative 19)
+      x == 10 ~ 0,
+      x == 1  ~ 0,
+      x == 2  ~ 5,
+      x == 3  ~ 9,
+      x == 4  ~ 11,
+      x == 5  ~ 11,
+      x == 6  ~ 13,
+      x == 7  ~ 14,
+      x == 8  ~ 17,
+      x == 9  ~ 19,
       TRUE    ~ NA_real_
     )
   }
   
-  # --- Processing Logic ---
+  # Process one department folder
   process_dept_files <- function(folder) {
-    if (is.null(folder)) return(NULL)
+    if (is.null(folder)) {
+      return(NULL)
+    }
     
-    # Identify files
+    # Identify person and geographic files
     files <- list.files(folder, full.names = TRUE)
     f_per <- files[grepl("5PER", basename(files))][1]
     f_mgn <- files[grepl("MGN", basename(files))][1]
@@ -3496,123 +3509,136 @@ bogota_harmonize_census_2018_data <- function(
       return(NULL)
     }
     
-    if (!quiet) message("📖 Reading: ", basename(f_per), " + ", basename(f_mgn))
+    if (!quiet) {
+      message("Reading: ", basename(f_per), " + ", basename(f_mgn))
+    }
     
-    # 1. Read Persons (Selected Columns only to save RAM)
-    # Note: Added FACTOR/F_EXP check, but defaulting to 1 if missing
+    # Read person file
     df_per <- vroom::vroom(
-      f_per, 
+      f_per,
       col_types = vroom::cols(.default = "c"),
       show_col_types = FALSE
     ) %>%
       dplyr::select(
-        COD_ENCUESTAS, 
-        P_SEXO, 
-        P_EDADR, 
-        P_NIVEL_ANOSR, 
+        COD_ENCUESTAS,
+        P_SEXO,
+        P_EDADR,
+        P_NIVEL_ANOSR,
         P_TRABAJO
-        # Add FACTOR here if it exists in your specific CSV version
       )
     
-    # 2. Read Geo (Selected Columns)
+    # Read geographic file
     df_mgn <- vroom::vroom(
-      f_mgn, 
-      col_types = vroom::cols(.default = "c"), 
+      f_mgn,
+      col_types = vroom::cols(.default = "c"),
       show_col_types = FALSE
     ) %>%
       dplyr::select(COD_ENCUESTAS, COD_DANE_ANM)
     
-    # 3. Join & Filter
+    # Merge people with geography and filter municipalities
     joined <- df_per %>%
       dplyr::inner_join(df_mgn, by = "COD_ENCUESTAS") %>%
-      # Extract Muni Code (First 5 chars of COD_DANE_ANM)
       dplyr::mutate(MUNI_CODE = stringr::str_sub(COD_DANE_ANM, 1, 5)) %>%
       dplyr::filter(MUNI_CODE %in% metro_codes)
     
-    # 4. Harmonize Variables
+    # Harmonize variables
     joined <- joined %>%
       dplyr::mutate(
-        # Geo ID
         GEO_ID = COD_DANE_ANM,
-        
-        # Sex (1=Man, 2=Woman)
         women = as.numeric(P_SEXO == "2"),
         
-        # Age (Bins to Numeric Midpoint)
-        # Group 6 is 25-29. 
-        # Formula: (Group - 1)*5 + 2.5 gives midpoint (e.g., Grp 1 -> 2.5)
         raw_group = as.numeric(P_EDADR),
-        edad = (raw_group - 1) * 5 + 2.5,
-        adult = as.numeric(raw_group >= 6), # 25+ years old
+        edad      = (raw_group - 1) * 5 + 2.5,
+        adult     = as.numeric(raw_group >= 6),
         
-        # Education
         escolaridad = map_education_2018(as.numeric(P_NIVEL_ANOSR)),
         
-        # Education Dummies
         no_education         = as.numeric(escolaridad == 0),
         high_school_complete = as.numeric(escolaridad %in% 11:12),
         college_complete     = as.numeric(escolaridad == 17),
         graduate_educ        = as.numeric(escolaridad >= 18),
         
-        # Work
-        # 1=Worked paid, 2=Worked unpaid. (3=Has job but didn't work?)
-        # 2005 used 1 & 2. We stick to that for consistency.
-        employed = ifelse(adult == 1, 
-                          as.numeric(P_TRABAJO %in% c("1", "2")), 
-                          NA_real_),
+        employed = ifelse(
+          adult == 1,
+          as.numeric(P_TRABAJO %in% c("1", "2")),
+          NA_real_
+        ),
         
-        # Expansion Factor 
-        # (Defaulting to 1 as 2018 is full census, unless weighting column exists)
-        fe = 1 
+        fe = 1
       )
     
     return(joined)
   }
   
-  # --- Execute ---
-  if (!quiet) message("🔄 Processing Bogotá...")
+  # Process Bogota and Cundinamarca
+  if (!quiet) {
+    message("Processing Bogota.")
+  }
   df_bog <- process_dept_files(extract_paths$bogota)
   
-  if (!quiet) message("🔄 Processing Cundinamarca...")
+  if (!quiet) {
+    message("Processing Cundinamarca.")
+  }
   df_cun <- process_dept_files(extract_paths$cundinamarca)
   
+  # Bind all departments
   all_census <- dplyr::bind_rows(df_bog, df_cun)
   
-  # --- Collapse/Aggregate ---
-  if (!quiet) message("∑  Collapsing to Block level (Adults only)...")
+  # Collapse adults to block level
+  if (!quiet) {
+    message("Collapsing to block level using adults 25+.")
+  }
   
   collapse_data <- all_census %>%
     dplyr::filter(adult == 1) %>%
     dplyr::group_by(GEO_ID) %>%
     dplyr::summarise(
-      n = sum(fe, na.rm = TRUE),
-      escolaridad_avg = weighted.mean(escolaridad, fe, na.rm = TRUE),
+      weight = sum(fe, na.rm = TRUE),
+      n      = weight,
       
-      # Weighted shares
-      dplyr::across(
-        c(no_education, high_school_complete, college_complete, 
-          graduate_educ, employed, women),
-        ~ sum(.x * fe, na.rm = TRUE) / sum(fe, na.rm = TRUE),
-        .names = "share_{.col}_pop"
-      )
+      education_mean = sum(escolaridad * fe, na.rm = TRUE) / weight,
+      escolaridad     = education_mean,
+      escolaridad_avg = education_mean,
+      
+      count_no_ed   = sum(no_education * fe, na.rm = TRUE),
+      count_hs_com  = sum(high_school_complete * fe, na.rm = TRUE),
+      count_col_com = sum(college_complete * fe, na.rm = TRUE),
+      count_grad    = sum(graduate_educ * fe, na.rm = TRUE),
+      
+      count_employed = sum(employed * fe, na.rm = TRUE),
+      count_women    = sum(women * fe, na.rm = TRUE),
+      
+      .groups = "drop"
+    ) %>%
+    dplyr::mutate(
+      share_no_ed_pop   = count_no_ed / weight,
+      share_hs_com_pop  = count_hs_com / weight,
+      share_col_com_pop = count_col_com / weight,
+      share_grad_pop    = count_grad / weight,
+      
+      share_employed_pop = count_employed / weight,
+      share_women_pop    = count_women / weight,
+      
+      share_graduate_educ_pop = share_grad_pop,
+      share_employed          = share_employed_pop
     )
   
-  # --- Export ---
-  if (!quiet) message("💾 Saving files...")
+  # Save outputs
+  if (!quiet) {
+    message("Saving processed Bogota census files.")
+  }
   
   vroom::vroom_write(
-    all_census, 
-    file.path(out_dir, "census_2018_metro_individual.csv"), 
+    all_census,
+    file.path(out_dir, "census_2018_metro_individual.csv"),
     delim = ","
   )
   
   vroom::vroom_write(
-    collapse_data, 
-    file.path(out_dir, "census_2018_metro_collapsed.csv"), 
+    collapse_data,
+    file.path(out_dir, "census_2018_metro_collapsed.csv"),
     delim = ","
   )
-  
-  if (!quiet) message("✅ Done.")
   
   return(list(individual = all_census, collapsed = collapse_data))
 }
