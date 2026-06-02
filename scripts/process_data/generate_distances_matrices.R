@@ -45,7 +45,7 @@ gpkg_bogota_2018_metro_area <- here::here(dir_geospatial, "bogota",
 gpkg_cdmx_metro_area        <- here::here(dir_geospatial, "cdmx",
                                           "cdmx_area_metro.gpkg")
 gpkg_santiago_2024_metro_area <- here::here(dir_geospatial, "santiago",
-                                            "santiago_metro_area_2024.gpkg")
+                                            "gran_santiago_area_2024.gpkg")
 gpkg_sp_2010_metro_area       <- here::here(dir_geospatial, "sao_paulo",
                                             "sao_paulo_metro_2010_weighting_areas.gpkg")
 
@@ -67,80 +67,52 @@ sp_metro_2010_sf       <- sf::st_read(gpkg_sp_2010_metro_area)
 # Create the geographic distances output folder, if not created
 dir.create(outdir_data, recursive = TRUE, showWarnings = FALSE)
 
-# Apply function to calculate distance matrices for Bogota (Stations only)
-bogota_distances_stations <- compute_distance_matrices(
-  stations_sf    = bogota_stations_2018_sf,
-  station_id_col = "station_name",
-  geo_sf         = NULL,
-  out_dir        = here::here(outdir_data, "bogota_2018"),
-  out_name       = "matrix"
+# Calculate distance matrices for Bogota
+bogota_distances <- compute_distance_matrices(
+  stations_sf          = bogota_stations_2018_sf,
+  station_id_col       = "station_name",
+  geo_sf               = bogota_metro_2018_sf,
+  geo_id_col           = "GEO_ID",
+  distance_metric      = "aeqd",
+  representative_point = "point_on_surface",
+  out_dir              = here::here(outdir_data, "bogota_2018"),
+  out_name             = "matrix"
 )
 
-# Apply function to calculate distance matrices for Bogota (Geo to Stations)
-bogota_distances_geo_id_stations <- compute_distance_matrices(
-  stations_sf    = bogota_stations_2018_sf,
-  station_id_col = "station_name",
-  geo_sf         = bogota_metro_2018_sf,
-  geo_id_col     = "GEO_ID",
-  out_dir        = here::here(outdir_data, "bogota_2018"),
-  out_name       = "matrix"
+# Calculate distance matrices for CDMX
+cdmx_distances <- compute_distance_matrices(
+  stations_sf          = cdmx_stations_sf,
+  station_id_col       = "station",
+  geo_sf               = cdmx_metro_sf,
+  geo_id_col           = "CVEGEO",
+  distance_metric      = "aeqd",
+  representative_point = "point_on_surface",
+  out_dir              = here::here(outdir_data, "cdmx_2020"),
+  out_name             = "matrix"
 )
 
-# Apply function to calculate distance matrices for CDMX (Stations only)
-cdmx_distances_stations <- compute_distance_matrices(
-  stations_sf    = cdmx_stations_sf,
-  station_id_col = "station",
-  geo_sf         = NULL,
-  out_dir        = here::here(outdir_data, "cdmx_2020"),
-  out_name       = "matrix"
+# Calculate distance matrices for Santiago
+santiago_distances <- compute_distance_matrices(
+  stations_sf          = santiago_stations_2024_sf,
+  station_id_col       = "station_name",
+  geo_sf               = santiago_metro_2024_sf,
+  geo_id_col           = "CUT",
+  distance_metric      = "aeqd",
+  representative_point = "point_on_surface",
+  out_dir              = here::here(outdir_data, "santiago_2024"),
+  out_name             = "matrix"
 )
 
-# Apply function to calculate distance matrices for CDMX (Geo to Stations)
-cdmx_distances_geo_id_stations <- compute_distance_matrices(
-  stations_sf    = cdmx_stations_sf,
-  station_id_col = "station",
-  geo_sf         = cdmx_metro_sf,
-  geo_id_col     = "CVEGEO",
-  out_dir        = here::here(outdir_data, "cdmx_2020"),
-  out_name       = "matrix"
-)
-
-# Apply function to calculate distance matrices for Santiago (Stations only)
-santiago_distances_stations <- compute_distance_matrices(
-  stations_sf    = santiago_stations_2024_sf,
-  station_id_col = "station_name",
-  geo_sf         = NULL,
-  out_dir        = here::here(outdir_data, "santiago_2024"),
-  out_name       = "matrix"
-)
-
-# Apply function to calculate distance matrices for Santiago (Geo to Stations)
-santiago_distances_geo_id_stations <- compute_distance_matrices(
-  stations_sf    = santiago_stations_2024_sf,
-  station_id_col = "station_name",
-  geo_sf         = santiago_metro_2024_sf,
-  geo_id_col     = "ID_DISTRITO",
-  out_dir        = here::here(outdir_data, "santiago_2024"),
-  out_name       = "matrix"
-)
-
-# Apply function to calculate distance matrices for São Paulo (Stations only)
-sao_paulo_distances_stations <- compute_distance_matrices(
-  stations_sf    = sp_stations_2010_sf,
-  station_id_col = "station_name",
-  geo_sf         = NULL,
-  out_dir        = here::here(outdir_data, "sao_paulo_2010"),
-  out_name       = "matrix"
-)
-
-# Apply function to calculate distance matrices for São Paulo (Geo to Stations)
-sao_paulo_distances_geo_id_stations <- compute_distance_matrices(
-  stations_sf    = sp_stations_2010_sf,
-  station_id_col = "station_name",
-  geo_sf         = sp_metro_2010_sf,
-  geo_id_col     = "code_weighting",
-  out_dir        = here::here(outdir_data, "sao_paulo_2010"),
-  out_name       = "matrix"
+# Calculate distance matrices for Sao Paulo
+sao_paulo_distances <- compute_distance_matrices(
+  stations_sf          = sp_stations_2010_sf,
+  station_id_col       = "station_name",
+  geo_sf               = sp_metro_2010_sf,
+  geo_id_col           = "code_weighting",
+  distance_metric      = "aeqd",
+  representative_point = "point_on_surface",
+  out_dir              = here::here(outdir_data, "sao_paulo_2010"),
+  out_name             = "matrix"
 )
 
 # Print a success message for when running inside Docker Container
