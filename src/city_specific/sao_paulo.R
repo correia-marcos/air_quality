@@ -1483,20 +1483,20 @@ sp_process_stations_data_to_parquet <- function(
 # --------------------------------------------------------------------------------------------
 # Function: sp_process_census_2010
 #
-# @Arg       : sf_data    — sf object; Spatial weighting areas.
-# @Arg       : match_col  — string; Column with weighting area codes.
-# @Arg       : out_dir    — string; Output folder for processed CSVs.
-# @Arg       : quiet      — logical; Suppress messages?
+# @Arg sf_data   : sf object; spatial weighting areas.
+# @Arg match_col : string; column with weighting area codes.
+# @Arg out_dir   : string; output folder for processed CSVs.
+# @Arg quiet     : logical; suppress messages. Default FALSE.
 #
-# @Output    : list(individual, collapsed); Tibbles with processed data.
+# @Output : list(individual, collapsed); processed census data.
 #
-# @Purpose   : 1. Connects to 2010 Census via censobr (Arrow backend).
-#              2. Filters geographically using 'code_weighting' (V0011).
-#              3. Harmonizes education variables exactly as per methodology.
-#              4. Fixes gender and demographic mappings.
-#              5. Collapses using Expansion Weights (V0010) for adults 25+.
+# @Purpose:
+#   Connects to the 2010 Census through censobr, filters weighting areas,
+#   harmonizes education and demographic variables, and collapses adults
+#   aged 25+ using expansion weights.
 #
-# @Written_on: 19/02/2026
+# @Written_on : 19/02/2026
+# @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 sp_process_census_2010 <- function(
     sf_data,
@@ -1505,59 +1505,68 @@ sp_process_census_2010 <- function(
     quiet     = FALSE
 ) {
   
-  # 1. Checks & Setup ----------------------------------------------------------
+  # Check required packages and spatial input
   req_pkgs <- c("censobr", "dplyr", "arrow", "readr")
-  for(p in req_pkgs) {
-    if (!requireNamespace(p, quietly = TRUE)) stop(paste("Need", p))
-  }
-  if (!inherits(sf_data, "sf")) stop("'sf_data' must be an sf object.")
   
+  for (p in req_pkgs) {
+    if (!requireNamespace(p, quietly = TRUE)) {
+      stop("Need ", p)
+    }
+  }
+  
+  if (!inherits(sf_data, "sf")) {
+    stop("'sf_data' must be an sf object.")
+  }
+  
+  # Create output folder
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
   
-  # 2. Extract Filter Codes ----------------------------------------------------
+  # Extract target weighting areas
   filter_codes <- as.character(unique(sf_data[[match_col]]))
-  if (!quiet) message(sprintf("🎯 Target: %d weighting areas.", 
-                              length(filter_codes)))
   
-  # 3. Connect to censobr ------------------------------------------------------
-  if (!quiet) message("🔌 Connecting to 2010 Census data via censobr...")
+  if (!quiet) {
+    message("Target weighting areas: ", length(filter_codes))
+  }
   
-  # Download/Load only the necessary columns into an Arrow dataset
+  # Connect to censobr
+  if (!quiet) {
+    message("Connecting to 2010 Census data through censobr.")
+  }
+  
   raw_db <- censobr::read_population(
     year = 2010,
-    columns = c("V0011", "V0010", "V1004", "V0601", "V0606", 
-                "V0633", "V0634", "V0648", "V6036", "V6400"),
+    columns = c(
+      "V0011", "V0010", "V1004", "V0601", "V0606",
+      "V0633", "V0634", "V0648", "V6036", "V6400"
+    ),
     showProgress = !quiet
   )
   
-  # 4. Filter and Harmonize (Lazy Execution) -----------------------------------
-  if (!quiet) message("⚙️  Applying harmonization rules...")
+  # Filter and harmonize variables
+  if (!quiet) {
+    message("Applying harmonization rules.")
+  }
   
   processed_db <- raw_db |>
-    collect() |>
+    dplyr::collect() |>
     dplyr::filter(V1004 == "20") |>
     dplyr::filter(V0011 %in% filter_codes) |>
     dplyr::mutate(
-      
-      # Expansion Weight & Age
       weight = as.numeric(V0010),
       age    = as.numeric(V6036),
       adult  = dplyr::if_else(age >= 25, 1, 0),
       
-      # --- Demographics & Labor (Fixed logic) ---
-      # V0601: 1=Male, 2=Female
       women = dplyr::if_else(V0601 == "2", 1, 0),
       
-      # V0606: 1=White, 2=Black, 4=Pardo
       white       = dplyr::if_else(V0606 == "1", 1, 0),
       black_pardo = dplyr::if_else(V0606 %in% c("2", "4"), 1, 0),
       
-      # Employment (V0648)
-      employed     = dplyr::if_else(V0648 %in% as.character(1:6), 1, 0),
-      formal_emp   = dplyr::if_else(V0648 %in% c("1", "2", "3", "6"), 1, 0),
+      employed = dplyr::if_else(V0648 %in% as.character(1:6), 1, 0),
+      formal_emp = dplyr::if_else(
+        V0648 %in% c("1", "2", "3", "6"), 1, 0
+      ),
       informal_emp = dplyr::if_else(V0648 %in% c("4", "5"), 1, 0),
       
-      # --- Education Harmonization ---
       years_schooling = dplyr::case_when(
         V0633 == "01" ~ 0,
         V0633 == "02" & V0634 == "2" ~ 0,
@@ -1568,10 +1577,10 @@ sp_process_census_2010 <- function(
         V0633 == "04" & V0634 == "1" ~ 9,
         V0633 == "05" & V0634 == "2" ~ 0,
         V0633 == "05" & V0634 == "1" ~ 4,
-        V0633 == "05" & is.na(V0634) ~ 2,   # Imputed
+        V0633 == "05" & is.na(V0634) ~ 2,
         V0633 == "06" & V0634 == "2" ~ 4,
         V0633 == "06" & V0634 == "1" ~ 5,
-        V0633 == "06" & is.na(V0634) ~ 4.5, # Imputed
+        V0633 == "06" & is.na(V0634) ~ 4.5,
         V0633 == "07" & V0634 == "2" ~ 5,
         V0633 == "07" & V0634 == "1" ~ 9,
         V0633 == "08" & V0634 == "2" ~ 0,
@@ -1591,39 +1600,43 @@ sp_process_census_2010 <- function(
         TRUE ~ NA_real_
       ),
       
-      # Education Dummies
-      no_education   = dplyr::if_else(years_schooling == 0, 1, 0),
-      hs_incomplete  = dplyr::if_else(years_schooling >= 1 & 
-                                        years_schooling <= 11, 1, 0),
-      hs_complete    = dplyr::if_else(years_schooling == 12, 1, 0),
-      col_incomplete = dplyr::if_else(years_schooling >= 13 & 
-                                        years_schooling <= 16, 1, 0),
-      col_complete   = dplyr::if_else(years_schooling == 17, 1, 0),
-      graduate_educ  = dplyr::if_else(years_schooling >= 18, 1, 0)
+      no_education = dplyr::if_else(years_schooling == 0, 1, 0),
+      hs_incomplete = dplyr::if_else(
+        years_schooling >= 1 & years_schooling <= 11, 1, 0
+      ),
+      hs_complete = dplyr::if_else(years_schooling == 12, 1, 0),
+      col_incomplete = dplyr::if_else(
+        years_schooling >= 13 & years_schooling <= 16, 1, 0
+      ),
+      col_complete  = dplyr::if_else(years_schooling == 17, 1, 0),
+      graduate_educ = dplyr::if_else(years_schooling >= 18, 1, 0)
     )
   
-  # 5. Collect Individual Data -------------------------------------------------
-  if (!quiet) message("⬇️  Pulling individual records into memory...")
+  # Collect individual records
+  if (!quiet) {
+    message("Collecting individual records into memory.")
+  }
   
-  indiv_df <- processed_db |> 
-    dplyr::collect() |> 
+  indiv_df <- processed_db |>
+    dplyr::collect() |>
     dplyr::rename(code_weighting = V0011)
   
-  # 6. Weighted Collapse -------------------------------------------------------
-  if (!quiet) message("📉 Collapsing using Expansion Weights (Adults 25+)...")
+  # Collapse adults to weighting-area level
+  if (!quiet) {
+    message("Collapsing to weighting areas using adults 25+.")
+  }
   
-  # Note: Safe weighted summaries using V0010 (weight)
   collapse_df <- indiv_df |>
     dplyr::filter(adult == 1) |>
     dplyr::group_by(code_weighting) |>
     dplyr::summarise(
-      total_adult_pop = sum(weight, na.rm = TRUE),
+      weight = sum(weight, na.rm = TRUE),
+      n      = weight,
       
-      # Weighted means
-      avg_escolaridad = sum(years_schooling * weight, na.rm = TRUE) / 
-        total_adult_pop,
+      education_mean = sum(years_schooling * weight, na.rm = TRUE) / weight,
+      years_schooling = education_mean,
+      avg_escolaridad = education_mean,
       
-      # Weighted absolute counts
       count_no_ed   = sum(no_education * weight, na.rm = TRUE),
       count_hs_inc  = sum(hs_incomplete * weight, na.rm = TRUE),
       count_hs_com  = sum(hs_complete * weight, na.rm = TRUE),
@@ -1635,29 +1648,47 @@ sp_process_census_2010 <- function(
       count_formal   = sum(formal_emp * weight, na.rm = TRUE),
       count_informal = sum(informal_emp * weight, na.rm = TRUE),
       
-      # Proportions
-      share_no_ed_pop   = count_no_ed / total_adult_pop,
-      share_hs_inc_pop  = count_hs_inc / total_adult_pop,
-      share_hs_com_pop  = count_hs_com / total_adult_pop,
-      share_col_inc_pop = count_col_inc / total_adult_pop,
-      share_col_com_pop = count_col_com / total_adult_pop,
-      share_grad_pop    = count_grad / total_adult_pop,
+      count_women       = sum(women * weight, na.rm = TRUE),
+      count_white       = sum(white * weight, na.rm = TRUE),
+      count_black_pardo = sum(black_pardo * weight, na.rm = TRUE),
       
-      share_employed = count_employed / total_adult_pop,
-      share_female   = sum(women * weight, na.rm = TRUE) / total_adult_pop,
-      share_black    = sum(black_pardo * weight, na.rm = TRUE) / total_adult_pop
+      .groups = "drop"
     ) |>
-    dplyr::ungroup()
+    dplyr::mutate(
+      share_no_ed_pop   = count_no_ed / weight,
+      share_hs_inc_pop  = count_hs_inc / weight,
+      share_hs_com_pop  = count_hs_com / weight,
+      share_col_inc_pop = count_col_inc / weight,
+      share_col_com_pop = count_col_com / weight,
+      share_grad_pop    = count_grad / weight,
+      
+      share_employed_pop = count_employed / weight,
+      share_formal_pop   = count_formal / weight,
+      share_informal_pop = count_informal / weight,
+      share_women_pop    = count_women / weight,
+      share_white_pop    = count_white / weight,
+      share_black_pop    = count_black_pardo / weight,
+      
+      total_adult_pop = weight,
+      share_employed  = share_employed_pop,
+      share_female    = share_women_pop,
+      share_black     = share_black_pop
+    )
   
-  # 7. Save --------------------------------------------------------------------
-  if (!quiet) message("💾 Saving outputs...")
+  # Save outputs
+  if (!quiet) {
+    message("Saving processed Sao Paulo census files.")
+  }
   
-  readr::write_csv(indiv_df, 
-                   file.path(out_dir, "census_sp_individual_2010.csv"))
-  readr::write_csv(collapse_df, 
-                   file.path(out_dir, "census_sp_collapsed_2010.csv"))
+  readr::write_csv(
+    indiv_df,
+    file.path(out_dir, "census_sp_individual_2010.csv")
+  )
   
-  if (!quiet) message("✅ Finished.")
+  readr::write_csv(
+    collapse_df,
+    file.path(out_dir, "census_sp_collapsed_2010.csv")
+  )
   
   return(list(individual = indiv_df, collapsed = collapse_df))
 }
