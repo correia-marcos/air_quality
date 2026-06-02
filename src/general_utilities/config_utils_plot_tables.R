@@ -3191,5 +3191,179 @@ plot_missing_heatmap <- function(
 }
 
 
+# --------------------------------------------------------------------------------------------
+# Function: write_exposure_summary_table_tex
+#
+# @Arg summary_dt : data.table; output from compute_exposure_group_summaries().
+# @Arg out_path   : string; path to save .tex table.
+# @Arg digits     : integer; number of decimal places. Default 2.
+# @Arg caption    : string; LaTeX table caption.
+# @Arg label      : string; LaTeX table label.
+#
+# @Output : Invisibly returns out_path.
+#
+# @Details:
+#   Writes a compact LaTeX table with weighted means and medians by group.
+#
+# @Written_by: Marcos Paulo
+# --------------------------------------------------------------------------------------------
+write_exposure_summary_table_tex <- function(
+    summary_dt,
+    out_path,
+    digits  = 2,
+    caption = "Exposure summary by socioeconomic group",
+    label   = "tab:exposure_summary"
+) {
+  
+  # Dependencies.
+  if (!requireNamespace("data.table", quietly = TRUE)) {
+    stop("Package 'data.table' required.")
+  }
+  
+  dt <- data.table::copy(data.table::as.data.table(summary_dt))
+  
+  req_cols <- c("outcome", "pollutant", "group", "weighted_mean",
+                "weighted_median")
+  miss_cols <- setdiff(req_cols, names(dt))
+  
+  if (length(miss_cols) > 0L) {
+    stop("Missing columns: ", paste(miss_cols, collapse = ", "))
+  }
+  
+  dir.create(dirname(out_path), recursive = TRUE, showWarnings = FALSE)
+  
+  dt[, weighted_mean := round(weighted_mean, digits)]
+  dt[, weighted_median := round(weighted_median, digits)]
+  
+  lines <- c(
+    "\\begin{table}[!htbp]",
+    "\\centering",
+    paste0("\\caption{", caption, "}"),
+    paste0("\\label{", label, "}"),
+    "\\begin{tabular}{llrrr}",
+    "\\toprule",
+    "Outcome & Pollutant & Group & Mean & Median \\\\",
+    "\\midrule"
+  )
+  
+  body <- dt[
+    ,
+    sprintf(
+      "%s & %s & %s & %s & %s \\\\",
+      outcome,
+      pollutant,
+      group,
+      format(weighted_mean, nsmall = digits),
+      format(weighted_median, nsmall = digits)
+    )
+  ]
+  
+  lines <- c(
+    lines,
+    body,
+    "\\bottomrule",
+    "\\end{tabular}",
+    "\\end{table}"
+  )
+  
+  writeLines(lines, out_path)
+  invisible(out_path)
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: plot_exposure_ci
+#
+# @Arg ci_dt        : data.table; output from compute_exposure_ci_regression().
+# @Arg out_path     : string; path to save figure.
+# @Arg title        : string; figure title.
+# @Arg y_label      : string; y-axis label.
+# @Arg group_label  : string; x-axis label.
+# @Arg percent_axis : logical; multiply y-axis by 100. Default TRUE.
+#
+# @Output : Invisibly returns out_path.
+#
+# @Details:
+#   Creates a coefficient plot with 95 percent confidence intervals by group.
+#
+# @Written_by: Marcos Paulo
+# --------------------------------------------------------------------------------------------
+plot_exposure_ci <- function(
+    ci_dt,
+    out_path,
+    title        = NULL,
+    y_label      = "Difference relative to reference group",
+    group_label  = "Group",
+    percent_axis = TRUE
+) {
+  
+  # Dependencies.
+  if (!requireNamespace("ggplot2", quietly = TRUE)) {
+    stop("Package 'ggplot2' required.")
+  }
+  
+  if (!requireNamespace("data.table", quietly = TRUE)) {
+    stop("Package 'data.table' required.")
+  }
+  
+  dt <- data.table::copy(data.table::as.data.table(ci_dt))
+  
+  req_cols <- c("group", "estimate", "ci_low", "ci_high", "pollutant")
+  miss_cols <- setdiff(req_cols, names(dt))
+  
+  if (length(miss_cols) > 0L) {
+    stop("Missing columns: ", paste(miss_cols, collapse = ", "))
+  }
+  
+  if (isTRUE(percent_axis)) {
+    dt[, `:=`(
+      estimate = 100 * estimate,
+      ci_low = 100 * ci_low,
+      ci_high = 100 * ci_high
+    )]
+    
+    y_label <- paste0(y_label, " (%)")
+  }
+  
+  dt[, group := factor(group, levels = sort(unique(group)))]
+  
+  p <- ggplot2::ggplot(
+    dt,
+    ggplot2::aes(
+      x = group,
+      y = estimate,
+      ymin = ci_low,
+      ymax = ci_high,
+      group = pollutant,
+      linetype = pollutant,
+      shape = pollutant
+    )
+  ) +
+    ggplot2::geom_hline(yintercept = 0, linetype = "dashed") +
+    ggplot2::geom_point(position = ggplot2::position_dodge(width = 0.35)) +
+    ggplot2::geom_errorbar(
+      width = 0.15,
+      position = ggplot2::position_dodge(width = 0.35)
+    ) +
+    ggplot2::labs(
+      title = title,
+      x = group_label,
+      y = y_label,
+      linetype = "Pollutant",
+      shape = "Pollutant"
+    ) +
+    ggplot2::theme_minimal()
+  
+  dir.create(dirname(out_path), recursive = TRUE, showWarnings = FALSE)
+  
+  ggplot2::ggsave(
+    filename = out_path,
+    plot = p,
+    width = 7,
+    height = 5
+  )
+  
+  invisible(out_path)
+}
 # Print a success message for when running inside Docker Container
 cat("Config script parsed successfully!\n")
