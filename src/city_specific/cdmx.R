@@ -4819,19 +4819,20 @@ mexico_filter_census <- function(
 
 # --------------------------------------------------------------------------------------------
 # Function: mexico_harmonize_census_data
-# @Arg extract_index: Tibble output from mexico_filter_census (file list)
-# @Arg metro_codes  : Vector of "SSMMM" strings (State+Muni) to keep. 
-#                     If NULL, keeps all.
-# @Arg out_dir      : Where to save the processed individual and collapsed data
-# @Arg quiet        : Suppress progress messages
 #
-# @Output           : Saves CSV files; returns list of processed dataframes
-# @Purpose          : Replicates Stata logic: Harmonizes education (escoacum), 
-#                     creates labor/demographic dummies, filters adults (25+), 
-#                     and collapses to municipality level (CVE_MUN).
+# @Arg extract_index : data.frame; output from mexico_filter_census.
+# @Arg metro_codes   : vector; municipality codes to keep. If NULL, keeps all.
+# @Arg out_dir       : string; output folder for processed data.
+# @Arg quiet         : logical; suppress progress messages. Default FALSE.
 #
-# @Written_on       : 05/02/2026
-# @Written_by       : Marcos Paulo
+# @Output : list(individual, collapsed); processed census data.
+#
+# @Purpose:
+#   Replicates the Stata schooling logic, harmonizes demographic and labor
+#   variables, filters adults aged 25+, and collapses to municipality level.
+#
+# @Written_on : 05/02/2026
+# @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 mexico_harmonize_census_data <- function(
     extract_index,
@@ -4840,216 +4841,238 @@ mexico_harmonize_census_data <- function(
     quiet       = FALSE
 ) {
   
-  # --- 1. Checks & Setup -----------------------------------------------------
-  if (!requireNamespace("dplyr", quietly = TRUE)) stop("dplyr required.")
-  if (!requireNamespace("vroom", quietly = TRUE)) stop("vroom required.")
-  if (!requireNamespace("stringr", quietly = TRUE)) stop("stringr required.")
+  # Check required packages
+  if (!requireNamespace("dplyr", quietly = TRUE)) {
+    stop("dplyr required.")
+  }
+  if (!requireNamespace("vroom", quietly = TRUE)) {
+    stop("vroom required.")
+  }
+  if (!requireNamespace("stringr", quietly = TRUE)) {
+    stop("stringr required.")
+  }
   
+  # Create output folder
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
   
-  # --- 2. Helper: Stata Education Logic Replica ------------------------------
-  # Applies the exact 'replace' cascade found in the Stata code.
+  # Replicate Stata schooling replacement logic
   harmonize_education_mx <- function(df) {
-    # Ensure inputs are numeric to match Stata behavior
+    
+    # Convert inputs to numeric
     df <- df %>%
       dplyr::mutate(
-        ac = as.numeric(ESCOACUM), # escoacum
-        na = as.numeric(NIVACAD),  # nivacad
-        es = as.numeric(ESCOLARI)  # escolari
+        ac = as.numeric(ESCOACUM),
+        na = as.numeric(NIVACAD),
+        es = as.numeric(ESCOLARI)
       )
     
-    # We use a temporary vector 'val' to mimic Stata's sequential replacement
+    # Sequential replacement vector
     val <- rep(NA_real_, nrow(df))
     
-    # 1. Base rule: 0 to 12
-    # replace escolaridad = escoacum if (escoacum >= 0 & escoacum <= 12)
+    # Base and technical schooling rules
     val <- ifelse(df$ac >= 0 & df$ac <= 12, df$ac, val)
     
-    # 2. Technical corrections (mapping to 12)
-    # replace escolaridad = 12 if escoacum == 13 & nivacad == 7 (etc)
-    mask_tech_12 <- (df$ac == 13 & df$na %in% c(7, 8, 9))
+    mask_tech_12 <- df$ac == 13 & df$na %in% c(7, 8, 9)
     val[mask_tech_12] <- 12
     
-    # 3. Technical corrections (mapping to 13-16)
-    # replace escolaridad = 13 if nivacad == 8 & escolari == 1 (etc)
     val[df$na == 8 & df$es == 1] <- 13
     val[df$na == 8 & df$es == 2] <- 14
     val[df$na == 8 & df$es == 3] <- 15
     val[df$na == 8 & df$es == 4] <- 16
     
-    # 4. Base rule: 13 to 17 and 18 to 19
-    # replace escolaridad = escoacum if ...
     val <- ifelse(df$ac >= 13 & df$ac <= 17, df$ac, val)
     val <- ifelse(df$ac >= 18 & df$ac <= 19, df$ac, val)
     
-    # 5. Professional / Bachelor complete
     val[df$na == 12] <- 17
     
-    # 6. Master's Logic (nivacad == 13)
     val[df$na == 13 & df$es == 1] <- 18
     val[df$na == 13 & df$es %in% 2:6] <- 19
     
-    # 7. Previous level cleanup (nivacad 11 -> 17)
     val[df$na == 11 & df$es %in% 6:8] <- 17
-    val[df$na == 10 & df$es == 6]     <- 17
+    val[df$na == 10 & df$es == 6] <- 17
     
-    # 8. PhD Logic (nivacad == 14)
     val[df$na == 14 & df$es == 1] <- 20
     val[df$na == 14 & df$es == 2] <- 21
     val[df$na == 14 & df$es == 3] <- 22
     val[df$na == 14 & df$es >= 4] <- 23
     
-    # 9. Missing handling
+    # Missing-value cleanup
     val[df$es == 99] <- NA_real_
     val[df$ac == 99] <- NA_real_
     val[df$ac == 0]  <- 0
     
-    # Assign back and create derived dummies
+    # Add schooling and education indicators
     df %>%
       dplyr::mutate(
         escolaridad = val,
         no_education = as.numeric(escolaridad == 0),
-        high_school_incomplete = as.numeric(escolaridad >= 1 & escolaridad <= 11),
-        high_school_complete   = as.numeric(escolaridad == 12),
-        college_incomplete     = as.numeric(escolaridad >= 13 & escolaridad <= 16),
-        college_complete       = as.numeric(escolaridad == 17),
-        graduate_educ          = as.numeric(escolaridad >= 18)
+        high_school_incomplete = as.numeric(
+          escolaridad >= 1 & escolaridad <= 11
+        ),
+        high_school_complete = as.numeric(escolaridad == 12),
+        college_incomplete = as.numeric(
+          escolaridad >= 13 & escolaridad <= 16
+        ),
+        college_complete = as.numeric(escolaridad == 17),
+        graduate_educ = as.numeric(escolaridad >= 18)
       ) %>%
-      dplyr::select(-ac, -na, -es) # Remove temps
+      dplyr::select(-ac, -na, -es)
   }
   
-  # --- 3. Processing Pipeline ------------------------------------------------
+  # Process one census file
   process_mx_file <- function(path) {
-    if (!quiet) message("📖 Processing: ", basename(path))
     
-    # Read raw (all chars for safety)
+    if (!quiet) {
+      message("Processing: ", basename(path))
+    }
+    
+    # Read raw data as character for stable parsing
     raw <- vroom::vroom(
-      path, 
-      col_types = vroom::cols(.default = "c"), 
+      path,
+      col_types = vroom::cols(.default = "c"),
       show_col_types = FALSE,
       delim = ",",
       trim_ws = TRUE,
-      na = c("", " ", "NA", "999") # 999 is often NA in age
-    ) %>% 
+      na = c("", " ", "NA", "999")
+    ) %>%
       dplyr::rename_with(toupper)
     
-    # Core transformation
+    # Harmonize variables
     df <- raw %>%
       dplyr::mutate(
-        # ID Generation: ENT (2) + MUN (3)
         CVE_MUN = as.numeric(sprintf(
-          "%02d%03d", 
-          as.numeric(ENT), 
+          "%02d%03d",
+          as.numeric(ENT),
           as.numeric(MUN)
         )),
         
-        # Demographics
-        # Stata: sexo==3 is Women (In MX census: 1=Hombre, 3=Mujer)
         women = as.numeric(SEXO == "3"),
         
-        # Stata: hh_head = parentesco==101
         hh_head = as.numeric(PARENTESCO == "101"),
         hh_head_women = as.numeric(hh_head == 1 & women == 1),
         
-        # Stata: indigena = perte_indigena==1 (clean 9s)
         pi = as.numeric(PERTE_INDIGENA),
         indigena = dplyr::case_when(
           pi == 1 ~ 1,
           pi == 9 ~ NA_real_,
-          TRUE ~ 0 # Stata implies 0 if not 1 and not 9/missing
+          TRUE    ~ 0
         ),
         
-        # Age & Adult filter
         edad_num = as.numeric(EDAD),
-        adult = as.numeric(edad_num >= 25),
+        adult    = as.numeric(edad_num >= 25),
         
-        # Labor: conact specific codes
-        # 10-20 range usually implies working/job
         ca = as.numeric(CONACT),
-        employed = as.numeric(ca %in% c(10, 20, 13, 14, 15, 16, 17, 18, 19)),
+        employed = as.numeric(ca %in% c(
+          10, 20, 13, 14, 15, 16, 17, 18, 19
+        )),
         
-        # Income
         ingtrmen = as.numeric(INGTRMEN),
-        
-        # Weights
-        factor = as.numeric(FACTOR)
+        factor   = as.numeric(FACTOR)
       ) %>%
       harmonize_education_mx()
     
-    # Filter Metro Area (If codes provided)
+    # Filter metro area when requested
     if (!is.null(metro_codes)) {
       df <- df %>% dplyr::filter(CVE_MUN %in% metro_codes)
     }
     
-    # Return specific columns to save memory
+    # Keep analytical variables
     df %>%
       dplyr::select(
-        CVE_MUN, FACTOR = factor,
-        escolaridad, no_education, high_school_incomplete, 
-        high_school_complete, college_incomplete, college_complete, 
-        graduate_educ, employed, ingtrmen, 
-        edad = edad_num, adult, indigena, women, 
-        hh_head, hh_head_women
+        CVE_MUN,
+        FACTOR = factor,
+        escolaridad,
+        no_education,
+        high_school_incomplete,
+        high_school_complete,
+        college_incomplete,
+        college_complete,
+        graduate_educ,
+        employed,
+        ingtrmen,
+        edad = edad_num,
+        adult,
+        indigena,
+        women,
+        hh_head,
+        hh_head_women
       )
   }
   
-  # --- 4. Execution Loop -----------------------------------------------------
+  # Validate file list
   file_list <- extract_index$file
   
-  if (length(file_list) == 0) stop("No files found in index.")
+  if (length(file_list) == 0) {
+    stop("No files found in index.")
+  }
   
-  # Map over all files and bind
+  # Process all files
   all_census <- dplyr::bind_rows(lapply(file_list, process_mx_file))
   
   if (nrow(all_census) == 0) {
-    warning("Resulting dataframe is empty (Check metro_codes?).")
+    warning("Resulting dataframe is empty. Check metro_codes.")
     return(NULL)
   }
   
-  # --- 5. Aggregation (Collapse) ---------------------------------------------
-  if (!quiet) message("📉 Collapsing to Municipality level (Adults 25+)...")
+  # Collapse adults to municipality level
+  if (!quiet) {
+    message("Collapsing to municipality level using adults 25+.")
+  }
   
-  # Define variables to sum/mean exactly like Stata
   collapse_data <- all_census %>%
     dplyr::filter(adult == 1) %>%
     dplyr::group_by(CVE_MUN) %>%
     dplyr::summarise(
-      # Count (sum of weights)
-      n = sum(FACTOR, na.rm = TRUE),
+      weight = sum(FACTOR, na.rm = TRUE),
+      n      = weight,
       
-      # Mean variables
-      escolaridad = weighted.mean(escolaridad, FACTOR, na.rm = TRUE),
-      ingtrmen    = weighted.mean(ingtrmen, FACTOR, na.rm = TRUE),
+      education_mean = sum(escolaridad * FACTOR, na.rm = TRUE) / weight,
+      escolaridad    = education_mean,
       
-      # Sum variables (weighted count of condition)
-      dplyr::across(
-        c(no_education, high_school_incomplete, high_school_complete,
-          college_incomplete, college_complete, graduate_educ, employed),
-        ~ sum(.x * FACTOR, na.rm = TRUE)
-      )
+      ingtrmen = sum(ingtrmen * FACTOR, na.rm = TRUE) / weight,
+      
+      count_no_ed   = sum(no_education * FACTOR, na.rm = TRUE),
+      count_hs_inc  = sum(high_school_incomplete * FACTOR, na.rm = TRUE),
+      count_hs_com  = sum(high_school_complete * FACTOR, na.rm = TRUE),
+      count_col_inc = sum(college_incomplete * FACTOR, na.rm = TRUE),
+      count_col_com = sum(college_complete * FACTOR, na.rm = TRUE),
+      count_grad    = sum(graduate_educ * FACTOR, na.rm = TRUE),
+      
+      count_employed = sum(employed * FACTOR, na.rm = TRUE),
+      count_women    = sum(women * FACTOR, na.rm = TRUE),
+      count_indigena = sum(indigena * FACTOR, na.rm = TRUE),
+      
+      .groups = "drop"
     ) %>%
-    # Calculate shares
     dplyr::mutate(
-      dplyr::across(
-        c(no_education, high_school_incomplete, high_school_complete,
-          college_incomplete, college_complete, graduate_educ, employed),
-        ~ .x / n,
-        .names = "share_{.col}_pop"
-      )
+      share_no_ed_pop   = count_no_ed / weight,
+      share_hs_inc_pop  = count_hs_inc / weight,
+      share_hs_com_pop  = count_hs_com / weight,
+      share_col_inc_pop = count_col_inc / weight,
+      share_col_com_pop = count_col_com / weight,
+      share_grad_pop    = count_grad / weight,
+      
+      share_employed_pop = count_employed / weight,
+      share_women_pop    = count_women / weight,
+      share_indigena_pop = count_indigena / weight,
+      
+      share_grad_educ_pop = share_grad_pop
     )
   
-  # --- 6. Export -------------------------------------------------------------
-  if (!quiet) message("💾 Saving outputs to: ", out_dir)
+  # Save outputs
+  if (!quiet) {
+    message("Saving processed Mexico census files.")
+  }
   
   vroom::vroom_write(
-    all_census, 
-    file.path(out_dir, "census_metro_individual_2020.csv"), 
+    all_census,
+    file.path(out_dir, "census_metro_individual_2020.csv"),
     delim = ","
   )
   
   vroom::vroom_write(
-    collapse_data, 
-    file.path(out_dir, "collapse_metro_area_2020.csv"), 
+    collapse_data,
+    file.path(out_dir, "collapse_metro_area_2020.csv"),
     delim = ","
   )
   
