@@ -1832,6 +1832,181 @@ compare_census <- function(
 }
 
 
+# ----------------------------------------------------------------------------------------
+# Function: aggregate_idw_exposure_legacy
+#
+# @Arg arrow_dir      : string; cleaned partitioned Arrow/Parquet hourly data.
+# @Arg geo_sta_pq     : string; geo-station distance Parquet (geo_id, station_id,
+#                       distance_km) from compute_distance_matrices().
+# @Arg census_col     : data.frame; individual-level census (one row per person).
+# @Arg geo_id_col     : string; geo ID column in census_col.
+# @Arg pop_col        : string; expansion-weight column in census_col.
+# @Arg group_var      : string; schooling variable to quintile (e.g. "escolaridad").
+# @Arg adult_col      : string; adult filter column. Default "adult".
+# @Arg target_year    : integer; the single year to process (legacy ran 2023).
+# @Arg buffer_km      : numeric; max geo-to-station distance. Default 3.
+# @Arg out_dir        : string; output directory.
+# @Arg out_name       : string; output file prefix.
+# @Arg quiet          : logical; suppress messages. Default FALSE.
+#
+# @Output : list(exposure_path, individual_path); writes two parquet files.
+#
+# @Details:
+#   STEP-0 LEGACY REPLICATION ONLY — reproduces the *old* IDW scheme so the
+#   Quarto report can compare it to aggregate_idw_exposure() on identical data.
+#   It is intentionally NOT missingness-aware: inverse-distance weights are
+#   normalized over ALL in-buffer stations in a geo-hour (including those
+#   missing the pollutant that hour), then missing products are dropped by a
+#   na.rm sum. The kept denominator therefore includes absent stations, which
+#   deflates the estimate relative to the corrected method. Quintiles follow
+#   the legacy weighted rule: sort adults by schooling, cut on the cumulative
+#   expansion-weight share cumsum(fe)/sum(fe) at 0.2 steps. This is the legacy
+#   Bogota/CDMX construction; Santiago (fe == 1) is the special case that
+#   reduces to equal individual counts. Single year, PM10/PM2.5, power-1
+#   weights — matching the 2023 legacy script.
+#   Do not use for paper results; use aggregate_idw_exposure() instead.
+#
+# @Written_on : June 2026
+# @Written_by : Marcos Paulo
+# ----------------------------------------------------------------------------------------
+aggregate_idw_exposure_legacy <- function(
+    arrow_dir,
+    geo_sta_pq,
+    census_col,
+    geo_id_col   = "GEO_ID",
+    pop_col      = "fe",
+    group_var    = "escolaridad",
+    adult_col    = "adult",
+    target_year  = 2023L,
+    buffer_km    = 3,
+    out_dir,
+    out_name,
+    quiet        = FALSE
+) {
+  
+  pkgs <- c("arrow", "data.table", "stringi")
+  for (p in pkgs) if (!requireNamespace(p, quietly = TRUE)) stop("Missing: ", p)
+  
+  # Normalize station IDs the same way as the distance/IDW steps.
+  .norm_sta <- function(x) {
+    x <- toupper(trimws(as.character(x)))
+    x <- stringi::stri_trans_general(x, id = "Latin-ASCII")
+    gsub('"', "", x)
+  }
+  
+  if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE)
+  pollutants <- c("pm10", "pm25")
+  # Only it1/it2 reach the yearly table in the legacy script.
+  who_it <- list(pm10 = c(it1 = 150, it2 = 100),
+                 pm25 = c(it1 = 75,  it2 = 50))
+  
+  # 1. Distances: keep in-buffer pairs. Legacy used `distance_km <= 3` with no
+  # positive-distance filter, so a d == 0 pair would give inv_d = Inf. Match
+  # legacy literally but warn if any d == 0 exists.
+  dist_dt <- data.table::as.data.table(arrow::read_parquet(geo_sta_pq))
+  dist_dt[, geo_id := as.character(geo_id)]
+  dist_dt[, station_id := .norm_sta(station_id)]
+  dist_dt <- dist_dt[!is.na(distance_km) & distance_km <= buffer_km]
+  n_zero <- dist_dt[distance_km == 0, .N]
+  if (n_zero > 0L && !quiet) {
+    message("[", out_name, "] WARNING: ", n_zero,
+            " pair(s) with distance_km == 0 (inv_d = Inf), kept to match legacy.")
+  }
+  if (nrow(dist_dt) == 0L) stop("No geo-station pairs within ", buffer_km, " km.")
+  dist_dt[, inv_d := 1 / distance_km]              # power 1, as legacy
+  dist_dt <- dist_dt[, .(geo_id, station_id, inv_d)]
+  
+  # 2. Hourly pollution for the single target year.
+  ds <- arrow::open_dataset(arrow_dir)
+  poll <- ds |>
+    dplyr::filter(year == target_year) |>
+    dplyr::select(station, datetime, dplyr::all_of(pollutants)) |>
+    dplyr::collect() |>
+    data.table::as.data.table()
+  if (nrow(poll) == 0L) stop("No pollution rows for year ", target_year, ".")
+  poll[, station_id := .norm_sta(station)]
+  
+  # 3. Per-pollutant legacy IDW. The denominator is normalized over ALL
+  # in-buffer stations present in the geo-hour BEFORE dropping missing values,
+  # reproducing the deflating-denominator behavior.
+  yearly <- vector("list", length(pollutants))
+  names(yearly) <- pollutants
+  
+  for (pol in pollutants) {
+    # Long station-hour readings (value may be NA).
+    ph <- poll[, .(station_id, datetime, val = get(pol))]
+    
+    # Cartesian merge of in-buffer stations to each geo via station_id.
+    # Every in-buffer station-hour row is kept, missing val included.
+    gh <- merge(ph, dist_dt, by = "station_id", allow.cartesian = TRUE)
+    
+    # Weight normalized over ALL in-buffer stations in the geo-hour
+    # (na.rm only guards Inf/NA in inv_d, not missing values).
+    gh[, weight := inv_d / sum(inv_d, na.rm = TRUE),
+       by = .(geo_id, datetime)]
+    
+    # Weighted value; missing val -> NA product, dropped by the na.rm sum.
+    gh[, wval := val * weight]
+    agg <- gh[, .(idw = sum(wval, na.rm = TRUE)),
+              by = .(geo_id, datetime)]
+    
+    # WHO indicators on the (deflated) hourly estimate.
+    thr <- who_it[[pol]]
+    agg[, d_it1 := as.integer(idw >= thr[["it1"]])]
+    agg[, d_it2 := as.integer(idw >= thr[["it2"]])]
+    
+    # Annual: mean over all geo-hours (legacy used mean(agg, na.rm=TRUE) with
+    # .N total hours; every geo-hour here has a value, possibly 0).
+    yr <- agg[, .(
+      avg          = mean(idw, na.rm = TRUE),
+      hrs_d_it1    = sum(d_it1, na.rm = TRUE),
+      hrs_d_it2    = sum(d_it2, na.rm = TRUE),
+      total_hrs    = .N
+    ), by = geo_id]
+    
+    data.table::setnames(yr, c("avg", "hrs_d_it1", "hrs_d_it2", "total_hrs"),
+                         paste0(c("avg_", "hrs_d_it1_", "hrs_d_it2_",
+                                  "total_hrs_"), pol))
+    yearly[[pol]] <- yr
+  }
+  
+  # Merge pollutants into one geo-level table.
+  exposure <- Reduce(function(a, b) merge(a, b, by = "geo_id", all = TRUE),
+                     yearly)
+  exposure[, year := target_year]
+  
+  # 4. Legacy quintiles: adults only, expansion-weighted cumulative cut. Sort by
+  # schooling, take cumsum(fe)/sum(fe), cut on seq(0,1,0.2). This is the legacy
+  # Bogota/CDMX method; Santiago is the fe == 1 special case (then it reduces to
+  # equal individual counts, matching legacy's frank-random partition).
+  ce <- data.table::copy(data.table::as.data.table(census_col))
+  data.table::setnames(ce, geo_id_col, "geo_id")
+  ce[, geo_id := as.character(geo_id)]
+  ce <- ce[get(adult_col) == 1]
+  if (nrow(ce) == 0L) stop("No adult rows after filtering.")
+  
+  # Drop NA schooling (no quintile, no contribution to any quintile mean).
+  ce <- ce[!is.na(get(group_var))]
+  data.table::setorderv(ce, group_var)
+  ce[, .cum_w := cumsum(get(pop_col)) / sum(get(pop_col))]
+  # include.lowest puts cum_w == 0.2 in bin 1, matching the legacy cut.
+  ce[, edu_quintile := as.integer(cut(.cum_w, breaks = seq(0, 1, 0.2),
+                                      include.lowest = TRUE, labels = 1:5))]
+  ce[, .cum_w := NULL]
+  
+  # 5. Write outputs (exposure + individual quintiles), mirroring the
+  # individual-mode outputs of aggregate_idw_exposure().
+  exp_path   <- file.path(out_dir, paste0(out_name, "_idw_exposure.parquet"))
+  indiv_path <- file.path(out_dir, paste0(out_name, "_indiv_groups.parquet"))
+  arrow::write_parquet(exposure, exp_path)
+  arrow::write_parquet(ce, indiv_path)
+  
+  if (!quiet) message("[", out_name, "] Legacy IDW written: ", exp_path)
+  
+  invisible(list(exposure_path = exp_path, individual_path = indiv_path))
+}
+
+
 # --------------------------------------------------------------------------------------------
 # compare_idw
 # @Arg      : cfg              — city cfg list. Must contain a $compare sublist with:
