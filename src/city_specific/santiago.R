@@ -47,73 +47,171 @@ santiago_cfg <- list(
 # --------------------------------------------------------------------------------------------
 # Function: santiago_download_metro_area
 #
-# @Arg       : type              — string; "metro_santiago" (Decree 337) or "gran_santiago".
-# @Arg       : level             — string; "mpio" (Administrative/Urban Zones) or 
-#                                  "manzana" (Census Blocks).
-# @Arg       : base_url          — string; INE Census 2024 results URL.
-# @Arg       : keep_municipality — character vector; List of Comunas for Metro Area.
-#                                  (Default: santiago_cfg$cities_in_metro)
-# @Arg       : download_dir      — string; Local path to save the raw ZIP file.
-# @Arg       : out_file          — string; Local path to save the processed GeoPackage.
-# @Arg       : overwrite_zip     — logical; If TRUE, re-downloads ZIP even if it exists.
-# @Arg       : overwrite_gpkg    — logical; If TRUE, overwrites the output .gpkg file.
-# @Arg       : container         — logical; TRUE if running inside Docker Selenium.
-# @Arg       : quiet             — logical; If TRUE, suppresses progress messages.
+# @Arg type              : string; "metro_santiago" or "gran_santiago".
+# @Arg level             : string; "mpio" or "manzana".
+# @Arg base_url          : string; INE Census 2024 results URL.
+# @Arg keep_municipality : character vector; municipalities to keep.
+# @Arg download_dir      : string; local path to save the raw ZIP file.
+# @Arg out_file          : string; local path to save the processed GeoPackage.
+# @Arg overwrite_zip     : logical; re-download ZIP if it exists. Default FALSE.
+# @Arg overwrite_gpkg    : logical; overwrite output GeoPackage. Default TRUE.
+# @Arg container         : logical; TRUE if running with Docker Selenium.
+# @Arg quiet             : logical; suppress messages. Default FALSE.
 #
-# @Output    : An sf object (invisible) containing the filtered spatial data.
-#              Side effect: Writes a .gpkg file to disk.
+# @Output : sf object containing the filtered spatial data.
+# @Details:
+#   Downloads the INE 2024 census cartography, filters the requested Santiago
+#   spatial definition, linearizes curved geometries, repairs validity, and
+#   saves the result as a GeoPackage. Linearization is required because the INE
+#   layer can contain MULTISURFACE/CURVEPOLYGON geometries that may fail in
+#   st_make_valid() and downstream distance calculations.
 #
-# @Purpose   : Scrapes the INE Censo 2024 website to download the national cartography
-#              (via Selenium) and filters it to represent Santiago.
-#              - "gran_santiago": Uses 'Limite_Urbano_CPV24' to define the area.
-#              - "metro_santiago": Uses 'Distrital_CPV24' to define the area.
-#              - If level="manzana", it joins these definitions with 'Manzanas_CPV24'.
-#
-# @Written_on: 25/10/2025
+# @Written_on : 25/10/2025
+# @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 santiago_download_metro_area <- function(
     type              = c("metro_santiago", "gran_santiago"),
     level             = c("mpio", "manzana"),
     base_url          = santiago_cfg$base_url_shp,
-    keep_municipality = santiago$cities_in_metro,
+    keep_municipality = santiago_cfg$cities_in_metro,
     download_dir      = here::here("data", "downloads", "Administrative", "Chile"),
-    out_file          = here::here("data", "raw", "admin", "Chile", "santiago_metro.gpkg"),
+    out_file          = here::here("data", "raw", "admin", "Chile",
+                                   "santiago_metro.gpkg"),
     overwrite_zip     = FALSE,
     overwrite_gpkg    = TRUE,
     container         = TRUE,
     quiet             = FALSE
 ) {
   
+  # 0. Match arguments and check packages
+  # -----------------------------------------------------------------------
   type  <- match.arg(tolower(type), c("metro_santiago", "gran_santiago"))
   level <- match.arg(tolower(level), c("mpio", "manzana"))
   
-  # 1) Define Paths
+  pkgs <- c("sf", "selenium")
+  
+  for (p in pkgs) {
+    if (!requireNamespace(p, quietly = TRUE)) {
+      stop("Package '", p, "' required. Add to renv.")
+    }
+  }
+  
+  # 1. Define paths
+  # -----------------------------------------------------------------------
   root_dl_dir <- here::here("data", "downloads")
   
   dir.create(download_dir, recursive = TRUE, showWarnings = FALSE)
   dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
   
-  zip_browser_name <- "Cartografia_censo2024_Pais.zip" 
-  zip_landing_path <- file.path(root_dl_dir, zip_browser_name) # Root download
-  zip_target_path  <- file.path(download_dir, zip_browser_name) # Target destination
+  zip_browser_name <- "Cartografia_censo2024_Pais.zip"
+  zip_landing_path <- file.path(root_dl_dir, zip_browser_name)
+  zip_target_path  <- file.path(download_dir, zip_browser_name)
   
-  # 2) Selenium Download Logic
-  # ------------------------------------------------------------------------------------
-  if (!file.exists(zip_target_path) || isTRUE(overwrite_zip)) {
-    if (!quiet) message("⬇️  Starting Selenium to scrape INE Census Data...")
+  # 2. Helpers
+  # -----------------------------------------------------------------------
+  # Normalize Spanish municipality names for matching.
+  .norm_name <- function(x) {
+    x <- toupper(x)
+    x <- chartr("áéíóúÁÉÍÓÚñÑ", "AEIOUAEIOUnN", x)
+    trimws(x)
+  }
+  
+  # Linearize curved geometries and repair validity.
+  .regularize_polygon_geometry <- function(x) {
     
-    # -- Docker Setup --
-    if (!container) {
-      if (!quiet) message("   🚀 Starting local Selenium on 4445…")
-      cid <- system(paste("docker run -d -p 4445:4444 --shm-size=2g", 
-                          "selenium/standalone-firefox:4.34.0-20250717"), intern = TRUE)
-      on.exit(try(system(sprintf("docker rm -f %s", cid), intern=TRUE), silent=TRUE), add=TRUE)
-      selenium_host <- "localhost"; selenium_port <- 4445L
-    } else {
-      selenium_host <- "selenium";  selenium_port <- 4444L
+    # Remove Z/M dimensions if present.
+    x <- sf::st_zm(x, drop = TRUE, what = "ZM")
+    
+    # Detect curved or surface geometry types.
+    geom_types <- as.character(sf::st_geometry_type(x, by_geometry = TRUE))
+    
+    has_curves <- any(
+      grepl("CURVE|SURFACE|CIRCULAR|COMPOUND", geom_types,
+            ignore.case = TRUE)
+    )
+    
+    # GDAL linearization is safer than st_make_valid() for CURVEPOLYGON.
+    if (has_curves) {
+      tmp_in  <- tempfile("santiago_curved_", fileext = ".gpkg")
+      tmp_out <- tempfile("santiago_linear_", fileext = ".gpkg")
+      
+      on.exit(unlink(c(tmp_in, tmp_out), recursive = TRUE, force = TRUE),
+              add = TRUE)
+      
+      sf::st_write(
+        x,
+        tmp_in,
+        layer = "geo",
+        delete_dsn = TRUE,
+        quiet = TRUE
+      )
+      
+      sf::gdal_utils(
+        util = "vectortranslate",
+        source = tmp_in,
+        destination = tmp_out,
+        options = c(
+          "-f", "GPKG",
+          "-nlt", "CONVERT_TO_LINEAR",
+          "-nln", "geo"
+        )
+      )
+      
+      x <- sf::st_read(tmp_out, layer = "geo", quiet = TRUE)
     }
     
-    download_dir_container <- if (container) "/home/seluser/Downloads" else root_dl_dir
+    # Repair validity after linearization.
+    x <- sf::st_make_valid(x)
+    
+    # Keep polygonal components if validation returns geometry collections.
+    x <- suppressWarnings(sf::st_collection_extract(x, "POLYGON"))
+    
+    # Use MULTIPOLYGON for stable downstream processing.
+    x <- suppressWarnings(sf::st_cast(x, "MULTIPOLYGON", warn = FALSE))
+    
+    return(x)
+  }
+  
+  # 3. Download ZIP with Selenium, if needed
+  # -----------------------------------------------------------------------
+  if (!file.exists(zip_target_path) || isTRUE(overwrite_zip)) {
+    
+    if (!quiet) {
+      message("[santiago_area] Starting Selenium download from INE.")
+    }
+    
+    if (!container) {
+      if (!quiet) {
+        message("[santiago_area] Starting local Selenium container on 4445.")
+      }
+      
+      cid <- system(
+        paste(
+          "docker run -d -p 4445:4444 --shm-size=2g",
+          "selenium/standalone-firefox:4.34.0-20250717"
+        ),
+        intern = TRUE
+      )
+      
+      on.exit(
+        try(system(sprintf("docker rm -f %s", cid), intern = TRUE),
+            silent = TRUE),
+        add = TRUE
+      )
+      
+      selenium_host <- "localhost"
+      selenium_port <- 4445L
+      
+    } else {
+      selenium_host <- "selenium"
+      selenium_port <- 4444L
+    }
+    
+    download_dir_container <- if (container) {
+      "/home/seluser/Downloads"
+    } else {
+      root_dl_dir
+    }
     
     caps <- list(
       browserName = "firefox",
@@ -122,219 +220,338 @@ santiago_download_metro_area <- function(
           "browser.download.folderList" = 2L,
           "browser.download.dir" = download_dir_container,
           "browser.download.useDownloadDir" = TRUE,
-          "browser.helperApps.neverAsk.saveToDisk" = "application/zip,application/octet-stream"
+          "browser.helperApps.neverAsk.saveToDisk" =
+            "application/zip,application/octet-stream"
         )
       )
     )
     
     session <- selenium::SeleniumSession$new(
-      browser = "firefox", host = selenium_host, port = selenium_port, 
-      capabilities = caps, timeout = 120
+      browser = "firefox",
+      host = selenium_host,
+      port = selenium_port,
+      capabilities = caps,
+      timeout = 120
     )
-    on.exit(try(session$close(), silent=TRUE), add = TRUE)
     
-    # -- Navigation --
-    if (!quiet) message("   🔎 Navigating to: ", base_url)
-    session$navigate(base_url)
-    Sys.sleep(8) 
+    on.exit(try(session$close(), silent = TRUE), add = TRUE)
     
-    if (!quiet) message("   🔀 Switching context to Iframe...")
-    frames <- session$find_elements("css selector", ".iframe-container iframe")
-    if (length(frames) == 0) frames <- session$find_elements("css selector", "iframe")
-    if (length(frames) > 0) {
-      session$switch_to_frame(frames[[1]])
-      Sys.sleep(2) 
-    } else {
-      stop("❌ Could not find the application Iframe.")
+    if (!quiet) {
+      message("[santiago_area] Navigating to: ", base_url)
     }
     
-    if (!quiet) message("   🖱️  Clicking 'Resultados'...")
-    xpath_res <- "//button[contains(@class, 'tab') and contains(text(), 'Resultados')]"
+    session$navigate(base_url)
+    Sys.sleep(8)
+    
+    if (!quiet) {
+      message("[santiago_area] Switching to application iframe.")
+    }
+    
+    frames <- session$find_elements("css selector", ".iframe-container iframe")
+    
+    if (length(frames) == 0L) {
+      frames <- session$find_elements("css selector", "iframe")
+    }
+    
+    if (length(frames) > 0L) {
+      session$switch_to_frame(frames[[1]])
+      Sys.sleep(2)
+    } else {
+      stop("Could not find the application iframe.")
+    }
+    
+    if (!quiet) {
+      message("[santiago_area] Opening results tab.")
+    }
+    
+    xpath_res <- paste0(
+      "//button[contains(@class, 'tab') and contains(text(), 'Resultados')]"
+    )
+    
     clicked_res <- FALSE
-    for(k in 1:5) {
-      el <- try(session$find_element("xpath", xpath_res), silent=TRUE)
-      if (!inherits(el, "try-error")) { el$click(); clicked_res <- TRUE; break }
+    
+    for (k in 1:5) {
+      el <- try(session$find_element("xpath", xpath_res), silent = TRUE)
+      
+      if (!inherits(el, "try-error")) {
+        el$click()
+        clicked_res <- TRUE
+        break
+      }
+      
       Sys.sleep(1)
     }
-    if(!clicked_res) stop("Could not find 'Resultados' button.")
+    
+    if (!clicked_res) {
+      stop("Could not find the 'Resultados' button.")
+    }
+    
     Sys.sleep(2)
     
-    if (!quiet) message("   🖱️  Clicking 'Cartografía Censal'...")
-    session$find_element("xpath", "//button[contains(., 'Cartografía Censal')]")$click()
+    if (!quiet) {
+      message("[santiago_area] Opening census cartography section.")
+    }
+    
+    session$find_element(
+      "xpath",
+      "//button[contains(., 'Cartografía Censal')]"
+    )$click()
+    
     Sys.sleep(3)
     
-    if (!quiet) message("   🖱️  Clicking Download...")
+    if (!quiet) {
+      message("[santiago_area] Starting cartography download.")
+    }
+    
     xpath_dl <- paste0(
       "//li[.//strong[contains(text(), 'Cartografía País Censo 2024')]]",
       "//button[contains(@class, 'btn-descargar')]"
     )
-    dl_btn <- try(session$find_element("xpath", xpath_dl), silent=TRUE)
+    
+    dl_btn <- try(session$find_element("xpath", xpath_dl), silent = TRUE)
+    
     if (inherits(dl_btn, "try-error")) {
-      xpath_dl_alt <- paste0("//button[contains(@class, 'btn-descargar')]",
-                             "[.//ancestor::li[contains(., 'Cartografía País')]]")
+      xpath_dl_alt <- paste0(
+        "//button[contains(@class, 'btn-descargar')]",
+        "[.//ancestor::li[contains(., 'Cartografía País')]]"
+      )
+      
       dl_btn <- session$find_element("xpath", xpath_dl_alt)
     }
+    
     dl_btn$click()
     
-    # -- Wait & Move & Delete --
-    if (!quiet) message("   ⏳ Waiting for file download in: ", root_dl_dir)
+    if (!quiet) {
+      message("[santiago_area] Waiting for ZIP download in: ", root_dl_dir)
+    }
     
     download_success <- FALSE
-    for (i in 1:900) { # 15 mins max
+    
+    for (i in 1:900) {
+      
       if (file.exists(zip_landing_path)) {
-        # Check for .part files (firefox temporary download file)
-        parts <- list.files(root_dl_dir, pattern = "\\.part$", full.names = TRUE)
-        if (length(parts) == 0) {
-          # Check size stability (simple check > 100MB)
-          if (file.info(zip_landing_path)$size > 100 * 1024^2) {
+        parts <- list.files(root_dl_dir, pattern = "\\.part$",
+                            full.names = TRUE)
+        
+        if (length(parts) == 0L) {
+          file_size <- file.info(zip_landing_path)$size
+          
+          if (!is.na(file_size) && file_size > 100 * 1024^2) {
             
-            if (!quiet) message("   📦 Moving file to: ", zip_target_path)
+            if (!quiet) {
+              message("[santiago_area] Moving ZIP to: ", zip_target_path)
+            }
             
-            # 1. Ensure target is clear
-            if (file.exists(zip_target_path)) unlink(zip_target_path)
+            if (file.exists(zip_target_path)) {
+              unlink(zip_target_path)
+            }
             
-            # 2. Copy
-            copy_ok <- file.copy(from = zip_landing_path, to = zip_target_path,
-                                 overwrite = TRUE)
+            copy_ok <- file.copy(
+              from = zip_landing_path,
+              to = zip_target_path,
+              overwrite = TRUE
+            )
             
             if (copy_ok) {
-              # 3. DELETE ORIGINAL
-              unlink(zip_landing_path) 
-              if (!quiet) message("   ✅ Download & Move Complete.")
+              unlink(zip_landing_path)
+              
+              if (!quiet) {
+                message("[santiago_area] Download completed.")
+              }
+              
               download_success <- TRUE
               break
             } else {
-              stop("Failed to copy file. Check permissions.")
+              stop("Failed to copy ZIP file. Check permissions.")
             }
           }
         }
       }
+      
       Sys.sleep(1)
-      if (i %% 30 == 0 && !quiet) message("      ... still downloading ...")
+      
+      if (i %% 30 == 0L && !quiet) {
+        message("[santiago_area] Download still in progress.")
+      }
     }
     
-    if (!download_success) stop("Timeout: File never appeared in ", root_dl_dir)
+    if (!download_success) {
+      stop("Timeout: ZIP file did not appear in ", root_dl_dir)
+    }
     
   } else {
-    if (!quiet) message("↪︎ ZIP already present: ", zip_target_path)
+    if (!quiet) {
+      message("[santiago_area] ZIP already present: ", zip_target_path)
+    }
   }
   
-  # 3) Extraction
-  # ------------------------------------------------------------------------------------
-  if (!quiet) message("📦 Extracting Data (this may take a moment)...")
-  exdir <- file.path(tempdir(), "santiago_carto_2024")
-  if (dir.exists(exdir)) unlink(exdir, recursive = TRUE, force = TRUE)
-  dir.create(exdir)
+  # 4. Extract ZIP and locate GeoPackage
+  # -----------------------------------------------------------------------
+  if (!quiet) {
+    message("[santiago_area] Extracting cartography ZIP.")
+  }
   
+  exdir <- file.path(tempdir(), "santiago_carto_2024")
+  
+  if (dir.exists(exdir)) {
+    unlink(exdir, recursive = TRUE, force = TRUE)
+  }
+  
+  dir.create(exdir)
   utils::unzip(zip_target_path, exdir = exdir)
   
-  # Locate GPKG
   gpkg_found <- file.path(exdir, "Cartografia_censo2024_Pais.gpkg")
+  
   if (!file.exists(gpkg_found)) {
-    candidates <- list.files(exdir, pattern = "Cartografia_censo2024_Pais\\.gpkg$", 
-                             full.names = TRUE, recursive = TRUE)
-    if (length(candidates) > 0) gpkg_found <- candidates[1]
-    else stop("Could not find 'Cartografia_censo2024_Pais.gpkg' inside the ZIP.")
+    candidates <- list.files(
+      exdir,
+      pattern = "Cartografia_censo2024_Pais\\.gpkg$",
+      full.names = TRUE,
+      recursive = TRUE
+    )
+    
+    if (length(candidates) > 0L) {
+      gpkg_found <- candidates[1]
+    } else {
+      stop("Could not find 'Cartografia_censo2024_Pais.gpkg' in ZIP.")
+    }
   }
   
-  if (!quiet) message("   📂 Found GPKG: ", basename(gpkg_found))
+  if (!quiet) {
+    message("[santiago_area] Found GeoPackage: ", basename(gpkg_found))
+  }
   
-  # 4) Processing
-  # ------------------------------------------------------------------------------------
+  # 5. Process requested spatial definition
+  # -----------------------------------------------------------------------
   sf_out <- NULL
   
   if (type == "gran_santiago") {
-    # --- Case A: Gran Santiago (Urban Footprint) ---
     
+    # Gran Santiago uses the urban-limit layer.
     layer_admin <- "Limite_Urbano_CPV24"
-    if (!quiet) message("🗺️  Reading Admin Layer: ", layer_admin)
     
-    # 1. Load Admin Layer to find the Entity ID for Gran Santiago
+    if (!quiet) {
+      message("[santiago_area] Reading layer: ", layer_admin)
+    }
+    
     sf_admin <- sf::st_read(gpkg_found, layer = layer_admin, quiet = TRUE)
     
-    # Filter for Gran Santiago
-    # Note: INE attributes can vary (LOCALIDAD vs NOM_LOCALIDAD), check generically if needed
-    col_loc <- grep("LOCALIDAD", names(sf_admin), value = TRUE, ignore.case = TRUE)[2]
+    # INE has multiple LOCALIDAD-like columns; the second matched the earlier code.
+    loc_cols <- grep("LOCALIDAD", names(sf_admin), value = TRUE,
+                     ignore.case = TRUE)
     
-    if (is.na(col_loc)) stop("Column 'LOCALIDAD' missing in layer ", layer_admin)
+    if (length(loc_cols) == 0L) {
+      stop("No LOCALIDAD-like column found in layer ", layer_admin)
+    }
+    
+    col_loc <- if (length(loc_cols) >= 2L) loc_cols[2] else loc_cols[1]
     
     sf_filtered <- sf_admin[sf_admin[[col_loc]] == "GRAN SANTIAGO", ]
     
-    if (nrow(sf_filtered) == 0) stop("Could not find 'GRAN SANTIAGO' in ", layer_admin)
+    if (nrow(sf_filtered) == 0L) {
+      stop("Could not find 'GRAN SANTIAGO' in ", layer_admin)
+    }
     
-    # 2. Return based on Level
     if (level == "mpio") {
-      # If level is mpio/admin, we return the Urban Limit polygon itself
       sf_out <- sf_filtered
       
     } else {
-      # If level is manzana, we use ID_ENTIDAD to fetch blocks
       target_ids <- unique(as.character(sf_filtered$ID_ENTIDAD))
       
-      if (!quiet) message(
-        "🧱  Reading Block Layer: Manzanas_CPV24 (filtering by ID_ENTIDAD)...")
+      if (!quiet) {
+        message("[santiago_area] Reading Manzanas_CPV24 by ID_ENTIDAD.")
+      }
       
-      # Use SQL query to speed up reading if supported, otherwise read & filter
-      # Manzanas layer is heavy, reading filtered is better if possible.
-      # st_read supports SQL for GPKG.
-      
-      query <- sprintf("SELECT * FROM Manzanas_CPV24 WHERE ID_ENTIDAD IN ('%s')", 
-                       paste(target_ids, collapse = "','"))
+      query <- sprintf(
+        "SELECT * FROM Manzanas_CPV24 WHERE ID_ENTIDAD IN ('%s')",
+        paste(target_ids, collapse = "','")
+      )
       
       sf_out <- sf::st_read(gpkg_found, query = query, quiet = TRUE)
     }
     
   } else {
-    # --- Case B: Metro Santiago (Administrative Districts) ---
     
+    # Metro Santiago uses administrative districts.
     layer_admin <- "Distrital_CPV24"
-    if (!quiet) message("🗺️  Reading Admin Layer: ", layer_admin)
     
-    # 1. Load Admin Layer to find District IDs belonging to the Comunas
+    if (!quiet) {
+      message("[santiago_area] Reading layer: ", layer_admin)
+    }
+    
     sf_admin <- sf::st_read(gpkg_found, layer = layer_admin, quiet = TRUE)
     
-    col_comuna <- grep("COMUNA", names(sf_admin), value = TRUE, ignore.case = TRUE)[1]
-    if (is.na(col_comuna)) stop("Column 'COMUNA' missing in layer ", layer_admin)
+    col_comuna <- grep("COMUNA", names(sf_admin), value = TRUE,
+                       ignore.case = TRUE)[1]
     
-    norm_name <- function(x) toupper(chartr("áéíóú", "AEIOU", x))
-    target_comunas_norm <- norm_name(keep_municipality)
+    if (is.na(col_comuna)) {
+      stop("Column 'COMUNA' missing in layer ", layer_admin)
+    }
     
-    sf_filtered <- sf_admin[norm_name(sf_admin[[col_comuna]]) %in% target_comunas_norm, ]
+    target_comunas_norm <- .norm_name(keep_municipality)
     
-    if (nrow(sf_filtered) == 0) stop("No Comunas matched for Metro Santiago.")
-    if (!quiet) message("🔎 Matched ", length(unique(sf_filtered[[col_comuna]])), " Comunas.")
+    sf_filtered <- sf_admin[
+      .norm_name(sf_admin[[col_comuna]]) %in% target_comunas_norm,
+    ]
     
-    # 2. Return based on Level
+    if (nrow(sf_filtered) == 0L) {
+      stop("No communes matched for Metro Santiago.")
+    }
+    
+    if (!quiet) {
+      message(
+        "[santiago_area] Matched ",
+        length(unique(sf_filtered[[col_comuna]])),
+        " commune(s)."
+      )
+    }
+    
     if (level == "mpio") {
-      # Return the District polygons
       sf_out <- sf_filtered
       
     } else {
-      # If level is manzana, we use ID_DISTRITO to fetch blocks
-      # ID_DISTRITO connects Distrital_CPV24 with Manzanas_CPV24
       target_ids <- unique(as.character(sf_filtered$ID_DISTRITO))
       
-      if (!quiet) message(
-        "🧱  Reading Block Layer: Manzanas_CPV24 (filtering by ID_DISTRITO)...")
+      if (!quiet) {
+        message("[santiago_area] Reading Manzanas_CPV24 by ID_DISTRITO.")
+      }
       
-      query <- sprintf("SELECT * FROM Manzanas_CPV24 WHERE ID_DISTRITO IN ('%s')", 
-                       paste(target_ids, collapse = "','"))
+      query <- sprintf(
+        "SELECT * FROM Manzanas_CPV24 WHERE ID_DISTRITO IN ('%s')",
+        paste(target_ids, collapse = "','")
+      )
       
       sf_out <- sf::st_read(gpkg_found, query = query, quiet = TRUE)
     }
   }
   
-  # 5) Save
-  # ------------------------------------------------------------------------------------
+  # 6. Regularize geometry before saving
+  # -----------------------------------------------------------------------
+  if (!quiet) {
+    message("[santiago_area] Regularizing polygon geometries.")
+  }
+  
+  sf_out <- .regularize_polygon_geometry(sf_out)
+  
+  # 7. Save output GeoPackage
+  # -----------------------------------------------------------------------
   if (file.exists(out_file) && !overwrite_gpkg) {
-    if (!quiet) message("↪︎ Output exists. Skipping write.")
+    if (!quiet) {
+      message("[santiago_area] Output exists and overwrite_gpkg = FALSE.")
+    }
   } else {
-    if (!quiet) message("💾 Writing GeoPackage → ", out_file)
-    if (file.exists(out_file)) unlink(out_file)
+    if (!quiet) {
+      message("[santiago_area] Writing GeoPackage: ", out_file)
+    }
+    
+    if (file.exists(out_file)) {
+      unlink(out_file)
+    }
+    
     sf::st_write(sf_out, out_file, quiet = TRUE)
   }
   
-  invisible(sf_out)
+  return(invisible(sf_out))
 }
 
 
@@ -936,7 +1153,7 @@ santiago_download_station_info <- function(
 }
 
 
-# -----------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------
 # Function: santiago_download_census_data
 #
 # @Arg       : type            — string; The dataset to download.
@@ -965,7 +1182,7 @@ santiago_download_station_info <- function(
 #              to use the 'censo2017' R package due to unstable URLs.
 # @Written_by: Marcos Paulo
 # @Written_on: 16/01/2026
-# -----------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------
 santiago_download_census_data <- function(
     type            = "people",
     year            = 2017,
@@ -1152,117 +1369,315 @@ santiago_download_census_data <- function(
 
 # --------------------------------------------------------------------------------------------
 # Function: santiago_filter_stations_in_metro
-# @Arg       : stations_df    — The raw dataframe (station_location)
-# @Arg       : metro_area     — sf (MULTI)POLYGON of the metropolitan area
-# @Arg       : radius_km      — numeric; max distance to keep (default 20)
-# @Arg       : out_file       — where to write the cropped GeoPackage
-# @Arg       : overwrite_gpkg — logical; overwrite output GeoPackage if exists
-# @Arg       : dissolve       — logical; TRUE unions metro polygons (default TRUE)
-# 
-# @Output    : sf POINT data.frame of unique stations inside/near metro_area
-# @Purpose   : Parses text UTM coordinates, converts to sf, and spatially filters.
+#
+# @Arg stations_df    : data.frame; raw SINCA station-location data.
+# @Arg metro_area     : sf POLYGON/MULTIPOLYGON; metropolitan area boundary.
+# @Arg radius_km      : numeric; max distance from metro area to keep. Default 20.
+# @Arg out_file       : string; output GeoPackage path.
+# @Arg overwrite_gpkg : logical; overwrite output GeoPackage if exists. Default TRUE.
+# @Arg dissolve       : logical; union metro polygons before filtering. Default TRUE.
+# @Arg correct_sinca  : logical; apply documented SINCA metadata corrections.
+# @Arg quiet          : logical; suppress messages. Default FALSE.
+#
+# @Output : sf POINT data.frame of unique stations inside/near metro_area.
+# @Details:
+#   Parses SINCA text UTM coordinates, converts stations to EPSG:32719, applies
+#   documented metadata corrections, validates plausible UTM coordinates, and
+#   spatially filters stations within radius_km of the metropolitan boundary.
+#   Manual corrections are keyed by SINCA station id and based on map locations
+#   checked from the station pages.
+#
+# @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 santiago_filter_stations_in_metro <- function(
     stations_df,
     metro_area,
     radius_km      = 20,
-    out_file       = here::here("data", "raw", "geospatial_data", "santiago", "stations.gpkg"),
+    out_file       = here::here(
+      "data", "raw", "geospatial_data", "santiago", "stations.gpkg"
+    ),
     overwrite_gpkg = TRUE,
-    dissolve       = TRUE
+    dissolve       = TRUE,
+    correct_sinca  = TRUE,
+    quiet          = FALSE
 ) {
   
-  # 0) Dependency & Input Checks
-  if (!inherits(metro_area, "sf")) stop("'metro_area' must be an sf object.")
+  # 0. Dependencies and input checks
+  # -----------------------------------------------------------------------
+  pkgs <- c("sf", "dplyr", "tidyr", "stringr", "tibble")
   
-  # Ensure output directory exists
+  for (p in pkgs) {
+    if (!requireNamespace(p, quietly = TRUE)) {
+      stop("Package '", p, "' required. Add to renv.")
+    }
+  }
+  
+  # Validate metropolitan area input.
+  if (!inherits(metro_area, "sf")) {
+    stop("'metro_area' must be an sf object.")
+  }
+  
+  # Validate expected coordinate column.
+  if (!"coordenadas_utm" %in% names(stations_df)) {
+    stop("Column 'coordenadas_utm' not found in stations_df.")
+  }
+  
+  # Ensure output directory exists.
   dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
   
-  message("🔄 Starting Santiago Data Integration...")
+  if (!quiet) {
+    message("[santiago_stations] Starting station integration.")
+  }
   
-  # PART I: Process & Parse Coordinates
-  # ----------------------------------------------------------------------------
-  # Input format example: "346716 E 6233063 N"
-  # Logic: Extract the first number as X (Easting), second as Y (Northing).
-  # EPSG for Chile (Zone 19S): 32719
+  # 1. Inner helpers
+  # -----------------------------------------------------------------------
+  # Extract the SINCA numeric station id from the source URL when available.
+  .extract_sinca_id <- function(x) {
+    id_chr <- stringr::str_extract(as.character(x), "(?<=/id/)\\d+")
+    as.integer(id_chr)
+  }
   
+  # Convert WGS84 lon-lat coordinates to UTM 19S coordinates.
+  .wgs_to_utm19s <- function(lon, lat) {
+    pt_wgs <- sf::st_sfc(sf::st_point(c(lon, lat)), crs = 4326)
+    pt_utm <- sf::st_transform(pt_wgs, crs = 32719)
+    
+    as.numeric(sf::st_coordinates(pt_utm)[1, c("X", "Y")])
+  }
+  
+  # Check whether UTM 19S coordinates are plausible for central Chile.
+  .valid_utm19s <- function(x, y) {
+    !is.na(x) & !is.na(y) &
+      x >= 160000 & x <= 834000 &
+      y >= 6000000 & y <= 6600000
+  }
+  
+  # 2. Parse SINCA coordinate strings
+  # -----------------------------------------------------------------------
+  # Input format example: "346716 E 6233063 N".
   df_clean <- stations_df |>
-    # 1. Remove rows with empty coords
     tidyr::drop_na(coordenadas_utm) |>
     dplyr::filter(coordenadas_utm != "") |>
-    
-    # 2. Extract numeric parts using regex
-    # We capture all digits, assuming the first group is Easting, second is Northing
     dplyr::mutate(
+      sinca_id = if ("source_url" %in% names(stations_df)) {
+        .extract_sinca_id(source_url)
+      } else {
+        NA_integer_
+      },
       utm_x_str = stringr::str_extract(coordenadas_utm, "^\\d+"),
-      utm_y_str = stringr::str_extract(coordenadas_utm, "\\d+(?=\\s*N$)"), # Digits before 'N'
-      
-      # Fallback regex if the specific structure varies slightly (just grabs 1st and 2nd number)
-      utm_x = as.numeric(ifelse(is.na(utm_x_str), 
-                                stringr::str_split_fixed(coordenadas_utm, "\\D+", 4)[,1], 
-                                utm_x_str)),
-      utm_y = as.numeric(ifelse(is.na(utm_y_str), 
-                                stringr::str_split_fixed(coordenadas_utm, "\\D+", 4)[,2], 
-                                utm_y_str))
+      utm_y_str = stringr::str_extract(coordenadas_utm, "\\d+(?=\\s*N$)")
     ) |>
+    dplyr::mutate(
+      utm_x = as.numeric(dplyr::if_else(
+        is.na(utm_x_str),
+        stringr::str_split_fixed(coordenadas_utm, "\\D+", 4)[, 1],
+        utm_x_str
+      )),
+      utm_y = as.numeric(dplyr::if_else(
+        is.na(utm_y_str),
+        stringr::str_split_fixed(coordenadas_utm, "\\D+", 4)[, 2],
+        utm_y_str
+      ))
+    ) |>
+    dplyr::select(-utm_x_str, -utm_y_str)
+  
+  if (!quiet) {
+    message(
+      "[santiago_stations] Parsed coordinates for ",
+      nrow(df_clean), " station(s)."
+    )
+  }
+  
+  # 3. Apply documented SINCA metadata corrections
+  # -----------------------------------------------------------------------
+  if (isTRUE(correct_sinca)) {
     
-    # 3. Clean and Reorder Columns (source_url last)
-    dplyr::select(-utm_x_str, -utm_y_str) |>
-    dplyr::relocate(source_url, .after = dplyr::last_col())
+    # Coordinates are lon-lat from station map locations.
+    sinca_corrections <- tibble::tibble(
+      sinca_id = c(131L, 142L, 183L, 202L),
+      station_name_correction = c(
+        "Chagres Meteorologia",
+        "La Palma",
+        "Quintero",
+        "Concon MMA"
+      ),
+      lon = c(
+        -70.960136,
+        -71.208665,
+        -71.535269,
+        -71.512130
+      ),
+      lat = c(
+        -32.805891,
+        -32.891753,
+        -32.772478,
+        -32.926136
+      ),
+      correction_note = c(
+        "SINCA UTM field appears truncated.",
+        "SINCA UTM easting appears malformed.",
+        "SINCA UTM northing appears malformed.",
+        "SINCA UTM field appears to encode lon-lat digits."
+      )
+    )
+    
+    # Convert each documented lon-lat correction to UTM 19S.
+    correction_xy <- lapply(
+      seq_len(nrow(sinca_corrections)),
+      function(i) {
+        .wgs_to_utm19s(
+          lon = sinca_corrections$lon[i],
+          lat = sinca_corrections$lat[i]
+        )
+      }
+    )
+    
+    sinca_corrections$utm_x <- vapply(correction_xy, `[`, numeric(1), 1)
+    sinca_corrections$utm_y <- vapply(correction_xy, `[`, numeric(1), 2)
+    
+    corrected_n <- 0L
+    
+    # Apply corrections only when the corresponding SINCA id is present.
+    for (i in seq_len(nrow(sinca_corrections))) {
+      id_i <- sinca_corrections$sinca_id[i]
+      row_i <- !is.na(df_clean$sinca_id) & df_clean$sinca_id == id_i
+      
+      if (any(row_i)) {
+        df_clean[row_i, "utm_x"] <- sinca_corrections$utm_x[i]
+        df_clean[row_i, "utm_y"] <- sinca_corrections$utm_y[i]
+        corrected_n <- corrected_n + sum(row_i)
+      }
+    }
+    
+    if (corrected_n > 0L && !quiet) {
+      message(
+        "[santiago_stations] Applied ", corrected_n,
+        " documented SINCA coordinate correction(s)."
+      )
+    }
+  }
   
-  message("   ✅ Parsed coordinates for ", nrow(df_clean), " stations.")
+  # 4. Validate UTM coordinates before sf conversion
+  # -----------------------------------------------------------------------
+  valid_utm <- .valid_utm19s(df_clean$utm_x, df_clean$utm_y)
   
-  # PART II: Spatial Conversion
-  # ----------------------------------------------------------------------------
-  # Chile is UTM Zone 19S => EPSG:32719
+  if (any(!valid_utm)) {
+    bad_rows <- df_clean[!valid_utm, , drop = FALSE]
+    
+    if (!quiet) {
+      warning(
+        "[santiago_stations] Dropping ", nrow(bad_rows),
+        " station(s) with implausible UTM coordinates after corrections."
+      )
+    }
+  }
+  
+  df_clean <- df_clean[valid_utm, , drop = FALSE]
+  
+  if (nrow(df_clean) == 0L) {
+    stop("No valid station coordinates remain after UTM validation.")
+  }
+  
+  # Keep source_url as the last non-geometry column when present.
+  if ("source_url" %in% names(df_clean)) {
+    df_clean <- df_clean |>
+      dplyr::relocate(source_url, .after = dplyr::last_col())
+  }
+  
+  # 5. Convert stations to sf
+  # -----------------------------------------------------------------------
   stations_sf <- sf::st_as_sf(
     df_clean,
     coords = c("utm_x", "utm_y"),
-    crs = 32719 
+    crs = 32719,
+    remove = FALSE
   )
   
-  # PART III: Spatial Filter (Radius Logic)
-  # ----------------------------------------------------------------------------
-  message("🔄 Applying Spatial Filter (Radius: ", radius_km, "km)...")
+  # 6. Prepare metropolitan area and local metric projection
+  # -----------------------------------------------------------------------
+  if (!quiet) {
+    message(
+      "[santiago_stations] Applying spatial filter with radius ",
+      radius_km, " km."
+    )
+  }
   
-  # 1. Prepare Metro Polygon
-  metro_valid <- metro_area %>% 
-    sf::st_cast("MULTIPOLYGON") %>%
+  # Fix geometries and cast the metropolitan area safely.
+  metro_valid <- metro_area |>
+    sf::st_cast("MULTIPOLYGON") |>
     sf::st_make_valid()
-  if (dissolve) metro_valid <- sf::st_union(metro_valid)
   
-  # 2. Build Safe AEQD Projection (Same robustness logic as Bogota)
-  # Center on the metro area to create a perfect metric ruler
-  metro_wgs <- sf::st_transform(metro_valid, 4326)
-  cen       <- sf::st_coordinates(sf::st_centroid(metro_wgs))
+  # Optionally dissolve all metro polygons into one boundary.
+  if (isTRUE(dissolve)) {
+    metro_valid <- sf::st_union(metro_valid)
+  }
+  
+  # Build an AEQD projection centered on the metro area.
+  metro_wgs <- sf::st_transform(metro_valid, crs = 4326)
+  cen <- sf::st_coordinates(sf::st_centroid(metro_wgs))
   
   aeqd_proj <- sprintf(
     "+proj=aeqd +lat_0=%f +lon_0=%f +units=m +datum=WGS84 +no_defs",
-    cen[2], cen[1]
+    cen[1, "Y"],
+    cen[1, "X"]
   )
   
-  # 3. Transform everything to Meters using that Ruler
-  metro_m    <- sf::st_transform(metro_valid, aeqd_proj)
-  stations_m <- sf::st_transform(stations_sf, aeqd_proj)
+  # Transform station points and metro boundary to the local metric CRS.
+  metro_m <- sf::st_transform(metro_valid, crs = aeqd_proj)
+  stations_m <- sf::st_transform(stations_sf, crs = aeqd_proj)
   
-  # 4. Filter
-  radius_m   <- radius_km * 1000
-  within_idx <- sf::st_is_within_distance(stations_m, metro_m, dist = radius_m)
-  keep_mask  <- lengths(within_idx) > 0
+  # Guard against invalid transformed points.
+  empty_geom <- sf::st_is_empty(stations_m)
   
+  if (any(empty_geom)) {
+    if (!quiet) {
+      warning(
+        "[santiago_stations] Dropping ", sum(empty_geom),
+        " station(s) with empty geometry after transformation."
+      )
+    }
+    
+    stations_sf <- stations_sf[!empty_geom, ]
+    stations_m <- stations_m[!empty_geom, ]
+  }
+  
+  # 7. Spatial filter using distance to metro boundary
+  # -----------------------------------------------------------------------
+  radius_m <- radius_km * 1000
+  
+  within_idx <- sf::st_is_within_distance(
+    stations_m,
+    metro_m,
+    dist = radius_m
+  )
+  
+  keep_mask <- lengths(within_idx) > 0
   stations_final <- stations_sf[keep_mask, ]
   
-  message("     Filter Stats: Input=", nrow(stations_sf), 
-          " -> Output=", nrow(stations_final), 
-          " (Dropped ", nrow(stations_sf) - nrow(stations_final), ")")
+  if (!quiet) {
+    message(
+      "[santiago_stations] Filter stats: input = ", nrow(stations_sf),
+      "; output = ", nrow(stations_final),
+      "; dropped = ", nrow(stations_sf) - nrow(stations_final), "."
+    )
+  }
   
-  # PART IV: Save Output
-  # ----------------------------------------------------------------------------
-  if (file.exists(out_file) && !overwrite_gpkg) {
-    message("↪︎ Output exists and overwrite=FALSE. Skipping write.")
+  # 8. Save output
+  # -----------------------------------------------------------------------
+  if (file.exists(out_file) && !isTRUE(overwrite_gpkg)) {
+    if (!quiet) {
+      message("[santiago_stations] Output exists and overwrite = FALSE.")
+    }
   } else {
-    if (file.exists(out_file)) unlink(out_file)
+    if (file.exists(out_file)) {
+      unlink(out_file)
+    }
+    
     sf::st_write(stations_final, out_file, quiet = TRUE, append = FALSE)
-    message("💾 Saved GeoPackage: ", out_file)
+    
+    if (!quiet) {
+      message("[santiago_stations] Saved GeoPackage: ", out_file)
+    }
   }
   
   return(stations_final)
@@ -1272,23 +1687,31 @@ santiago_filter_stations_in_metro <- function(
 # --------------------------------------------------------------------------------------------
 # Function: santiago_process_stations_data_to_parquet
 #
-# @Arg       : data_folder     — string; folder containing the station .txt files.
-# @Arg       : stations_sf     — sf object; Spatial registry of stations to keep. 
-# @Arg       : out_dir         — string; base output directory.
-# @Arg       : out_name        — string; name of the dataset (default: "santiago_metro_air").
-# @Arg       : years           — int vector; years to filter.
-# @Arg       : tz              — string; Olson timezone (default "America/Santiago").
-# @Arg       : verbose         — logical; print progress messages?
+# @Arg       : data_folder   — string; folder with the station .txt files.
+# @Arg       : stations_sf   — sf object; spatial registry of stations to keep.
+# @Arg       : out_dir       — string; base output directory.
+# @Arg       : out_name      — string; dataset name (default "santiago_metro_air").
+# @Arg       : years         — int vector; years to filter.
+# @Arg       : tz            — string; Olson tz. Default "UTC". Datetimes are stored
+#                              as the source wall clock with no tz shift (see
+#                              DATETIME CONVENTION).
+# @Arg       : verbose       — logical; print progress messages?
 #
-# @Output    : Arrow Dataset connection.
+# @Output    : Arrow Dataset connection. One row per (station, datetime) per year,
+#              wide (one column per pollutant); datetime is a naive hourly TIMESTAMP.
 #
 # @Purpose   : Ingests raw .txt files from SINCA/Chile.
-#              1. Parses complex filenames to identify Station and Pollutant.
-#              2. Matches filenames to the provided spatial registry (fuzzy normalization).
-#              3. Reads custom text format (skipping headers/footers).
-#              4. Coalesces valid/preliminary/unvalidated data columns.
+#              1. Parses filenames to identify station and pollutant.
+#              2. Matches filenames to the spatial registry (fuzzy normalization).
+#              3. Reads the custom text format (skipping header/footer).
+#              4. Coalesces validated/preliminary/unvalidated value columns.
 #              5. Pivots and saves to Partitioned Parquet via DuckDB.
 #
+# DATETIME CONVENTION (gold standard, shared with Bogota/CDMX/SP):
+#   The SINCA timestamp is YYMMDD HHMM. We parse it with ymd_hm (which resolves
+#   the 2-digit-year century correctly: 97->1997, 00->2000; data span 1997-2026),
+#   serialize the result to a naive ISO string, stage it as VARCHAR, and STRPTIME
+#   it back to a plain TIMESTAMP.
 # @Written_on: 18/02/2026
 # @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
@@ -1298,32 +1721,28 @@ santiago_process_stations_data_to_parquet <- function(
     out_dir,
     out_name    = "santiago_metro_air",
     years       = 2000:2024,
-    tz          = "America/Santiago",
+    tz          = "UTC",
     verbose     = TRUE
 ) {
   
-  # --- HELPER: Normalize Strings for Matching ---
-  # Removes accents, spaces, punctuation, and uppercase for robust comparison
+  # --- HELPER: Normalize strings for matching (accents, punct, case) ---
   normalize_key <- function(x) {
     x <- toupper(x)
-    # Remove accents
     x <- stringi::stri_trans_general(x, id = "Latin-ASCII")
-    # Remove region prefix common in filenames to isolate station name
+    # Drop the region prefix so the station name can be isolated.
     x <- gsub("METROPOLITANA DE SANTIAGO", "", x)
     x <- gsub("METROPOLITANA_DE_SANTIAGO", "", x)
-    # Remove all non-alphanumeric
     x <- gsub("[^A-Z0-9]", "", x)
     return(x)
   }
   
-  # --- HELPER: Pollutant Mapper ---
-  # Maps filename strings to standard database column names
+  # --- HELPER: Map filename to standard pollutant code ---
   get_pollutant_code <- function(filename) {
     fn <- toupper(filename)
     if (grepl("MP10|PM10", fn)) return("pm10")
     if (grepl("MP2.5|PM2.5|MP25|PM25", fn)) return("pm25")
     if (grepl("NO2", fn)) return("no2")
-    if (grepl("_NO_", fn)) return("no") # Ensure NO doesn't match NO2
+    if (grepl("_NO_", fn)) return("no")   # keep NO distinct from NO2
     if (grepl("NOX", fn)) return("nox")
     if (grepl("O3|OZONO", fn)) return("ozone")
     if (grepl("_CO_", fn)) return("co")
@@ -1335,23 +1754,26 @@ santiago_process_stations_data_to_parquet <- function(
     return(NA_character_)
   }
   
-  # 1) Check Dependencies
+  # --- HELPER: Serialize POSIXct to naive ISO text (gold standard) ---
+  to_iso <- function(x) format(x, "%Y-%m-%d %H:%M:%S", tz = "UTC")
+  
+  # 1) Dependencies
   req_pkgs <- c("duckdb", "DBI", "arrow", "dplyr", "readr", "stringi", "lubridate")
   for(p in req_pkgs) {
     if (!requireNamespace(p, quietly = TRUE)) stop(paste("Package", p, "required."))
   }
   
-  # 2) Validate Station Index
+  # 2) Validate station index
   if (!inherits(stations_sf, "sf") || !"station_name" %in% names(stations_sf)) {
     stop("'stations_sf' must be an sf object with a 'station_name' column.")
   }
   
-  # Create Lookup Map: Normalized Key -> Real Station Name
+  # Lookup map: normalized key -> real station name.
   valid_stations <- unique(stations_sf$station_name)
   station_lookup <- setNames(valid_stations, normalize_key(valid_stations))
   
   # 3) Setup DuckDB
-  if (verbose) message("⬜️ Starting Unified Engine (DuckDB)...")
+  if (verbose) message("Starting Unified Engine (DuckDB)...")
   
   dbdir <- tempfile("santiago_air_", fileext = ".db")
   con   <- DBI::dbConnect(duckdb::duckdb(dbdir = dbdir))
@@ -1360,22 +1782,23 @@ santiago_process_stations_data_to_parquet <- function(
     unlink(dbdir, force = TRUE)
   }, add = TRUE)
   
-  DBI::dbExecute(con, "PRAGMA memory_limit='8GB';") 
+  DBI::dbExecute(con, "PRAGMA memory_limit='8GB';")
   
-  # Staging Table
+  # Staging table: datetime is VARCHAR here (see DATETIME CONVENTION);
+  # converted to a naive TIMESTAMP at the pivot step.
   DBI::dbExecute(con, "CREATE TABLE staging_sinca (
-       datetime TIMESTAMP, 
-       station VARCHAR, 
-       year INTEGER, 
-       param VARCHAR, 
+       datetime VARCHAR,
+       station VARCHAR,
+       year INTEGER,
+       param VARCHAR,
        value DOUBLE
     );")
   
-  # 4) Process Files
+  # 4) Process files
   txt_files <- list.files(data_folder, pattern = "\\.txt$", full.names = TRUE)
   
   if (length(txt_files) == 0) stop("No .txt files found in data_folder.")
-  if (verbose) message(sprintf("📂 Found %d raw files. Beginning processing...",
+  if (verbose) message(sprintf("Found %d raw files. Beginning processing...",
                                length(txt_files)))
   
   count_ingest <- 0
@@ -1383,150 +1806,109 @@ santiago_process_stations_data_to_parquet <- function(
   for (f in txt_files) {
     fname <- basename(f)
     
-    # A. Determine Station and Pollutant from Filename
-    # ------------------------------------------------
+    # A. Station and pollutant from filename.
     f_key <- normalize_key(fname)
     param_code <- get_pollutant_code(fname)
+    if (is.na(param_code)) next
     
-    if (is.na(param_code)) {
-      # if (verbose) warning("Skipping unknown pollutant file: ", fname)
-      next 
-    }
-    
-    # Match Station: Check which valid station key is a substring of the file key
-    # e.g., Station Key "LASCONDESACREDITADA" is inside File Key "LASCONDESACREDITADANO2..."
+    # Keep the file only if a registry station key is a substring of it.
     match_idx <- which(sapply(names(station_lookup), function(k) grepl(k, f_key)))
+    if (length(match_idx) == 0) next
     
-    if (length(match_idx) == 0) {
-      # Station in file is not in our spatial filter list
-      next 
-    }
-    
-    # Pick the longest match (in case of subset names)
-    best_match <- names(station_lookup)[match_idx
-                                        [which.max(nchar(names(station_lookup)[match_idx]))]]
+    # Longest match wins (avoids subset-name collisions).
+    cand <- names(station_lookup)[match_idx]
+    best_match <- cand[which.max(nchar(cand))]
     real_station_name <- station_lookup[[best_match]]
     
-    # B. Read the Messy Text File
-    # ------------------------------------------------
-    # We read lines to find #DATA (or EOH) and EOF
-    lines <- readLines(f, warn = FALSE)
+    # B. Read the file. Latin-1: headers contain accented text (ano, Poblacion).
+    # Station/pollutant come from the filename
+    lines <- readLines(f, warn = FALSE, encoding = "latin1")
     
-    # Find start: Look for line starting with #DATA or just DATA, or after EOH
+    # Data block runs from #DATA/EOH (+1) to EOF (-1).
     start_idx <- grep("^#DATA", lines)
     if (length(start_idx) == 0) start_idx <- grep("^EOH", lines)
     if (length(start_idx) == 0) start_idx <- grep("^050114", lines)
-    
-    # Find end: Look for EOF
     end_idx <- grep("^EOF", lines)
-    
     if (length(start_idx) == 0) next
     
-    # Extract the data chunk
-    # We start reading 1 line after #DATA
     first_data_line <- start_idx[1] + 1
     last_data_line  <- if (length(end_idx) > 0) end_idx[1] - 1 else length(lines)
-    
     if (first_data_line > last_data_line) next
     
     raw_data <- lines[first_data_line:last_data_line]
     
-    # Parse CSV structure (Date, Hour, Val1, Val2, Val3)
-    # Note: Use read_csv with col_names = FALSE for speed
-    # We expect 5 columns typically.
-    dt <- tryCatch({
-      readr::read_csv(I(raw_data), col_names = FALSE, show_col_types = FALSE, progress = FALSE)
-    }, error = function(e) return(NULL))
-    
+    # Rows are: X1=date(YYMMDD), X2=hour(HHMM), X3..X5 = value variants.
+dt <- tryCatch(
+  readr::read_csv(I(raw_data), col_names = FALSE,
+                  col_types = readr::cols(.default = readr::col_character()),
+                  show_col_types = FALSE, progress = FALSE),
+  error = function(e) NULL
+)
     if (is.null(dt) || nrow(dt) == 0) next
     
-    # C. Clean and Transform
-    # ------------------------------------------------
-    # Columns: X1=Date, X2=Hour, X3=Val1, X4=Val2, X5=Val3 (Logic: Coalesce 3->4->5)
-    
-    # Select and Coalesce Value
-    # We prioritize X3 (Validated), then X4 (Prelim), then X5 (Non-validated)
-    # Note: read_csv might read empty fields as NA, which is what we want.
-    
+    # C. Coalesce the value columns: validated (X3) -> prelim (X4) -> raw (X5).
     val_cols <- dt %>% dplyr::select(dplyr::starts_with("X"))
-    if (ncol(val_cols) < 3) next # Need at least Date, Hour, 1 Value
+    if (ncol(val_cols) < 3) next   # need date, hour, >=1 value
     
-    # Extract date/hour
     d_col <- val_cols[[1]]
     h_col <- val_cols[[2]]
     
-    # Coalesce values: find first non-NA in remaining columns
+    # First non-NA across the value columns, row by row.
     values_mat <- as.matrix(val_cols[, 3:ncol(val_cols)])
-    
-    # Fast coalesce row-wise
     final_vals <- apply(values_mat, 1, function(row) {
       x <- na.omit(row)
       if (length(x) > 0) x[1] else NA
     })
     
     clean_df <- data.frame(
-      d_txt = as.character(d_col), 
-      h_txt = as.character(h_col), 
+      d_txt = as.character(d_col),
+      h_txt = as.character(h_col),
       value = as.numeric(final_vals),
       stringsAsFactors = FALSE
     )
-    
     clean_df <- clean_df[!is.na(clean_df$value), ]
     if (nrow(clean_df) == 0) next
     
-    # Parse Date: YYMMDD as per instructions (IV)
-    # Hour: HHMM
-    
-    # Pad strings just in case
+    # Pad to fixed widths (YYMMDD, HHMM), then parse with ymd_hm. ymd_hm
     clean_df$d_txt <- stringr::str_pad(clean_df$d_txt, 6, pad = "0")
     clean_df$h_txt <- stringr::str_pad(clean_df$h_txt, 4, pad = "0")
-    
-    # Parse Datetime
-    # Note: If MMDDYY is strict:
     clean_df$datetime_str <- paste0(clean_df$d_txt, " ", clean_df$h_txt)
     
-    # Usage of 'mdy_hm' for YYMMDD HHMM
-    clean_df$datetime <- lubridate::ymd_hm(clean_df$datetime_str, tz = tz, quiet = TRUE)
+    clean_df$datetime <- lubridate::ymd_hm(clean_df$datetime_str,
+                                           tz = tz, quiet = TRUE)
     
-    # Fallback check: If huge amount of NAs, maybe it was YYMMDD?
-    if (sum(is.na(clean_df$datetime)) > (0.5 * nrow(clean_df))) {
-      clean_df$datetime <- lubridate::ymd_hm(clean_df$datetime_str, tz = tz, quiet = TRUE)
-    }
-    
+    # Drop parse failures, then keep requested years.
     clean_df <- clean_df %>% dplyr::filter(!is.na(datetime))
     clean_df$year <- lubridate::year(clean_df$datetime)
-    
-    # Filter Years
     clean_df <- clean_df %>% dplyr::filter(year %in% years)
+    if (nrow(clean_df) == 0) next
     
-    if (nrow(clean_df) > 0) {
-      # Prepare for DB
-      db_payload <- data.frame(
-        datetime = clean_df$datetime,
-        station  = real_station_name,
-        year     = clean_df$year,
-        param    = param_code,
-        value    = clean_df$value
-      )
-      
-      duckdb::dbAppendTable(con, "staging_sinca", db_payload)
-      count_ingest <- count_ingest + nrow(db_payload)
-    }
+    # Stage with datetime serialized to naive ISO text (gold standard).
+    db_payload <- data.frame(
+      datetime = to_iso(clean_df$datetime),
+      station  = real_station_name,
+      year     = clean_df$year,
+      param    = param_code,
+      value    = clean_df$value,
+      stringsAsFactors = FALSE
+    )
+    
+    duckdb::dbAppendTable(con, "staging_sinca", db_payload)
+    count_ingest <- count_ingest + nrow(db_payload)
   }
   
-  if (verbose) message("💾 Total rows staged: ", format(count_ingest, big.mark=","))
-  if (count_ingest == 0) warning("No data was ingested. Check date formats or filenames.")
+  if (verbose) message("Total rows staged: ", format(count_ingest, big.mark=","))
+  if (count_ingest == 0) warning("No data ingested. Check date formats or filenames.")
   
-  # 5) Pivot and Export
-  # ------------------------------------------------
+  # 5) Pivot and export. STRPTIME converts the staged ISO text back to a naive TIMESTAMP. 
+  # Path is injected via gsub to avoid %-codes sprintf misread.
   dataset_path <- file.path(out_dir, paste0(out_name, "_dataset"))
   if (dir.exists(dataset_path)) unlink(dataset_path, recursive = TRUE)
   
-  # SQL to Pivot pollutants to columns and average hourly duplicates
   sql_pivot <- "
     COPY (
-      SELECT 
-        datetime,
+      SELECT
+        STRPTIME(datetime, '%Y-%m-%d %H:%M:%S') AS datetime,
         station,
         year,
         AVG(CASE WHEN param = 'pm10'        THEN value END) AS pm10,
@@ -1544,20 +1926,20 @@ santiago_process_stations_data_to_parquet <- function(
       FROM staging_sinca
       GROUP BY datetime, station, year
       ORDER BY station, datetime
-    ) TO '%s' (
-      FORMAT PARQUET, 
-      PARTITION_BY (year), 
-      COMPRESSION 'SNAPPY', 
+    ) TO '{{DATASET_PATH}}' (
+      FORMAT PARQUET,
+      PARTITION_BY (year),
+      COMPRESSION 'SNAPPY',
       OVERWRITE_OR_IGNORE TRUE
     );
   "
   
-  query <- sprintf(sql_pivot, dataset_path)
+  query <- gsub("{{DATASET_PATH}}", dataset_path, sql_pivot, fixed = TRUE)
   
-  if (verbose) message("🧱 Pivoting and writing Partitioned Parquet...")
+  if (verbose) message("Pivoting and writing Partitioned Parquet...")
   DBI::dbExecute(con, query)
   
-  if (verbose) message("✅ Done! Dataset at: ", dataset_path)
+  if (verbose) message("Done! Dataset at: ", dataset_path)
   
   return(arrow::open_dataset(dataset_path))
 }
