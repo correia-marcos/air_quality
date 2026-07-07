@@ -1,0 +1,8 @@
+# Personal, machine-local overrides — never shared
+settings.local.json
+
+# Subagent memory scratch (if used)
+agent-memory/
+
+# Hook local overrides
+hooks/*.local.json

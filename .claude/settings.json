@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Read(*)",
+      "Edit(*)",
+      "Write(*)",
+      "Glob(*)",
+      "Grep(*)",
+      "Bash(Rscript*)",
+      "Bash(R -e*)",
+      "Bash(R -q*)",
+      "Bash(quarto*)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git switch*)",
+      "Bash(git checkout*)",
+      "Bash(ls*)",
+      "Bash(cat*)",
+      "Bash(head*)",
+      "Bash(tail*)",
+      "Bash(find*)",
+      "Bash(tree*)",
+      "Bash(wc*)",
+      "WebSearch",
+      "WebFetch(domain:cran.r-project.org)",
+      "WebFetch(domain:rstudio.github.io)",
+      "WebFetch(domain:r-spatial.github.io)",
+      "WebFetch(domain:arrow.apache.org)",
+      "WebFetch(domain:duckdb.org)",
+      "WebFetch(domain:docs.anthropic.com)",
+      "WebFetch(domain:code.claude.com)"
+    ],
+    "ask": [
+      "Bash(git add*)",
+      "Bash(git commit*)",
+      "Bash(rm *)",
+      "Bash(rmdir *)",
+      "Bash(mv *)",
+      "Bash(git push*)",
+      "Bash(git reset*)",
+      "Bash(git rebase*)",
+      "Bash(docker *)",
+      "Bash(docker compose *)",
+      "Bash(chmod *)",
+      "Bash(chown *)"
+    ],
+    "deny": [
+      "Read(.env)",
+      "Read(.Renviron)",
+      "Read(.netrc)",
+      "Read(**/.env)",
+      "Edit(renv.lock)",
+      "Edit(data/raw/**)",
+      "Edit(data/_legacy/**)"
+    ]
+  },
+  "respectGitignore": true,
+  "outputStyle": "Explanatory",
+  "env": {
+    "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "80"
+  },
+  "enableAllProjectMcpServers": true,
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|Bash|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR}/.claude/hooks/guard.py\"",
+            "timeout": 5000
+          }
+        ]
+      }
+    ]
+  }
+}
