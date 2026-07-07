@@ -84,7 +84,7 @@ cdmx_distances <- compute_distance_matrices(
   stations_sf          = cdmx_stations_sf,
   station_id_col       = "station",
   geo_sf               = cdmx_metro_sf,
-  geo_id_col           = "CVEGEO",
+  geo_id_col           = "CVE_MUN",
   distance_metric      = "aeqd",
   representative_point = "point_on_surface",
   out_dir              = here::here(outdir_data, "cdmx_2020"),
