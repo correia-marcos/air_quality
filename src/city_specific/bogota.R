@@ -1908,7 +1908,7 @@ bogota_download_census_data <- function(
 # Function: ,bogota_read_one_xlsx
 # @Arg       : path        — string; full path to a single STATION_YEAR.xlsx
 # @Arg       : tz          — string; Olson timezone for datetime parsing 
-#                            (default "America/Bogota")
+#                            (default "UTC")
 # @Arg       : verbose     — logical; TRUE prints a brief parsing summary (default FALSE)
 # 
 # @Output    : tibble with columns:
@@ -1923,7 +1923,7 @@ bogota_download_census_data <- function(
 # @Written_on: 05/08/2025
 # @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
-.bogota_read_one_xlsx <- function(path, tz = "America/Bogota", verbose = FALSE) {
+.bogota_read_one_xlsx <- function(path, tz = "UTC", verbose = FALSE) {
   # 1) read raw (no names); treat "----" / empty as NA
   raw <- suppressMessages(readxl::read_excel(path, col_names = TRUE,
                                              na = c("----", "", "NA")))
@@ -2250,7 +2250,7 @@ bogota_filter_stations_in_metro <- function(
 }
 
 
-# --------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------
 # Function: bogota_process_stations_data_to_parquet
 # @Arg       : rmcab_folder   — character; folder with RMCAB .xlsx files.
 # @Arg       : sisaire_folder — string; folder with SISAIRE .csv files.
@@ -2263,25 +2263,27 @@ bogota_filter_stations_in_metro <- function(
 #                               Pass "UTC" (the default) to store raw hours without
 #                               any timezone shift — see @Details.
 # @Arg       : verbose        — logical; print progress messages.
-# 
+#
 # @Output    : Arrow Dataset connection to the written Parquet folder.
 # @Details   :
 #   SOURCE PRIORITY:
-#     RMCAB is the primary source. For any station × year × parameter
-#     combination covered by RMCAB, only RMCAB values are used. If RMCAB
-#     had no measurement for a specific hour, that hour remains NA — it is
-#     NOT filled in from SISAIRE. SISAIRE is only used when RMCAB never
-#     tracked a given station × year × parameter combination at all.
+#     RMCAB is primary. For any station x year x param it covers, only RMCAB
+#     values are used (NA hours stay NA, not filled from SISAIRE). SISAIRE is
+#     used only for station x year x param combinations RMCAB never tracked.
+#     Coverage is checked at param level so a station can take RMCAB PM10 and
+#     SISAIRE PM2.5 in the same year.
+#   SISAIRE SUB-HOURLY DATA:
+#     Some SISAIRE files report at 5-minute cadence (e.g. BOGOTA RURAL -
+#     MOCHUELO, 2017); others hourly. We floor SISAIRE timestamps to the hour
+#     so the Phase-D AVG() collapses them to one hourly mean. RMCAB is already
+#     hourly and untouched.
 #   DATETIME SAFETY:
-#     Datetimes enter DuckDB as plain VARCHAR strings (via to_iso()), which
-#     bypasses a known DuckDB R-driver bug where POSIXct tzone attributes
-#     trigger an implicit timezone shift during type coercion. STRPTIME()
-#     in the merge query converts them back to plain TIMESTAMP (not
-#     TIMESTAMPTZ), so no session-timezone conversion occurs. No ICU
-#     extension is required.
+#     Datetimes enter DuckDB as VARCHAR (via to_iso()) to avoid a DuckDB
+#     R-driver bug that shifts hours from POSIXct tzone attributes. STRPTIME()
+#     converts them back to plain TIMESTAMP, so no timezone conversion occurs.
 # @Written_on: 29/10/2025
 # @Written_by: Marcos Paulo
-# --------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------
 bogota_process_stations_data_to_parquet <- function(
     rmcab_folder,
     sisaire_folder,
@@ -2296,12 +2298,7 @@ bogota_process_stations_data_to_parquet <- function(
   # 0. Local helper
   # ---------------------------------------------------------------------------
   
-  # to_iso() converts a POSIXct vector to plain "YYYY-MM-DD HH:MM:SS"
-  # strings before they are written to DuckDB. This sidesteps a bug in
-  # the DuckDB R driver: when R passes a POSIXct column to a TIMESTAMP
-  # column, the driver reads the tzone attribute and silently shifts the
-  # hours. Sending plain text instead means DuckDB receives exactly what
-  # the clock said in the source file — no conversion happens at all.
+  # Serialize POSIXct to plain text before DuckDB (see DATETIME SAFETY).
   to_iso <- function(x) format(x, "%Y-%m-%d %H:%M:%S", tz = "UTC")
   
   # 1. Dependencies + input validation
@@ -2322,29 +2319,23 @@ bogota_process_stations_data_to_parquet <- function(
     )
   }
   
-  # Build the allowlist of canonical station names.
-  # We only keep pollution data for stations that appear in stations_sf
-  # (i.e. stations that passed the spatial buffer filter).
-  # The two shared helpers normalise names to the all-uppercase RMCAB
-  # canonical form so that "El Jazmín", "EL JAZMÍN", and "Jazmin" all
-  # resolve to the same key "JAZMIN".
+  # Allow-list of canonical station names (only stations that passed the
+  # spatial buffer filter). Helpers fold "El Jazmin"/"EL JAZMIN"/"Jazmin"
+  # to one key "JAZMIN".
   valid_stations_norm <- .bogota_apply_mappings(
     .bogota_standardize_name(unique(stations_sf$station_name))
   )
   
   # 2. DuckDB disk-backed connection
   # ---------------------------------------------------------------------------
-  # DuckDB is used instead of in-memory data.table operations because the
-  # staging + merge + pivot pipeline can exceed available RAM for long
-  # time series (2000–2024). DuckDB spills intermediate results to the
-  # temp file on disk when the memory limit is reached.
+  # Disk-backed so the staging + merge + pivot can spill to disk for long
+  # series (2000-2024) instead of exhausting RAM.
   if (verbose) message("Setting up DuckDB engine ...")
   
   dbdir <- tempfile("bogota_unified_", fileext = ".db")
   con   <- DBI::dbConnect(duckdb::duckdb(dbdir = dbdir))
   
-  # on.exit() guarantees the DB connection and temp file are cleaned up
-  # even if the function crashes partway through.
+  # Guarantee cleanup even on crash.
   on.exit({
     try(DBI::dbDisconnect(con, shutdown = TRUE), silent = TRUE)
     try(unlink(dbdir, force = TRUE), silent = TRUE)
@@ -2355,11 +2346,8 @@ bogota_process_stations_data_to_parquet <- function(
     "PRAGMA threads=", max(1L, parallel::detectCores() - 1L), ";"
   ))
   
-  # The staging tables store datetime as VARCHAR (plain text), NOT as a
-  # DuckDB TIMESTAMP. See to_iso() above for why this matters.
-  # The schema is in "long" (tidy) format: one row per
-  # (station, datetime, parameter, value), which makes the FULL OUTER
-  # JOIN in Phase D straightforward.
+  # Long-format staging, datetime as VARCHAR (see DATETIME SAFETY). One row
+  # per (station, datetime, param, value) for a clean FULL OUTER JOIN later.
   DBI::dbExecute(con,
                  "CREATE TABLE staging_rmcab (
        datetime VARCHAR,  -- 'YYYY-MM-DD HH:MM:SS', no timezone
@@ -2379,10 +2367,9 @@ bogota_process_stations_data_to_parquet <- function(
      );"
   )
   
-  # 3. Phase A: Read RMCAB Excel files → load into staging_rmcab
+  # 3. Phase A: Read RMCAB Excel files -> load into staging_rmcab
   # ---------------------------------------------------------------------------
-  # rmcab_map translates the column header names used in the RMCAB xlsx
-  # files to the standardised parameter codes used throughout this project.
+  # RMCAB header names -> project parameter codes.
   rmcab_map <- c(
     "pm2.5"         = "pm25",
     "pm10"          = "pm10",
@@ -2413,8 +2400,7 @@ bogota_process_stations_data_to_parquet <- function(
     
     for (f in xlsx_files) {
       
-      # .bogota_read_one_xlsx() parses the wide RMCAB format into a
-      # data.frame with columns: datetime, station, year, <pollutants>.
+      # Parse one wide RMCAB sheet -> datetime, station, year, <pollutants>.
       df <- tryCatch(
         .bogota_read_one_xlsx(f, tz = tz, verbose = FALSE),
         error = function(e) {
@@ -2424,17 +2410,16 @@ bogota_process_stations_data_to_parquet <- function(
       )
       if (is.null(df) || nrow(df) == 0) next
       
-      # Drop rows outside the requested year range
       df <- df[df$year %in% years, ]
       if (nrow(df) == 0) next
       
-      # Rename pollutant columns from RMCAB raw names to project codes
+      # Raw pollutant names -> project codes.
       for (raw in names(rmcab_map)) {
         if (raw %in% names(df))
           names(df)[names(df) == raw] <- rmcab_map[[raw]]
       }
       
-      # Reshape from wide (one column per pollutant) to long
+      # Wide -> long.
       df_long <- tidyr::pivot_longer(
         df,
         cols            = -c(datetime, station, year),
@@ -2444,14 +2429,13 @@ bogota_process_stations_data_to_parquet <- function(
       )
       if (nrow(df_long) == 0) next
       
-      # Normalize station names to uppercase and filter stations in our spatial allow list
+      # Normalize names and keep only allowlisted stations.
       df_long$station <- .bogota_apply_mappings(
         .bogota_standardize_name(df_long$station)
       )
       df_long <- df_long[df_long$station %in% valid_stations_norm, ]
       if (nrow(df_long) == 0) next
       
-      # Serialize datetime to text before sending to DuckDB (see to_iso())
       df_long$datetime <- to_iso(df_long$datetime)
       
       duckdb::dbAppendTable(con, "staging_rmcab", df_long)
@@ -2459,10 +2443,9 @@ bogota_process_stations_data_to_parquet <- function(
     }
   }
   
-  # 4. Phase B: Read SISAIRE CSV files → load into staging_sisaire
+  # 4. Phase B: Read SISAIRE CSV files -> load into staging_sisaire
   # ---------------------------------------------------------------------------
-  # sisaire_map translates the SISAIRE column header names to the same
-  # project-standard parameter codes used for RMCAB above.
+  # SISAIRE header names -> project parameter codes.
   sisaire_map <- c(
     "PM2.5"         = "pm25",
     "PM10"          = "pm10",
@@ -2489,16 +2472,14 @@ bogota_process_stations_data_to_parquet <- function(
     
     for (f in csv_files) {
       
-      # Each SISAIRE CSV holds one parameter. Identify which parameter
-      # this file contains by reading only the header row.
+      # Each file holds one parameter; read the header to find which.
       raw_header <- names(read.csv(f, nrows = 1))
       val_col    <- setdiff(
         raw_header, c("Estacion", "Fecha.inicial", "Fecha.final")
       )
       if (length(val_col) == 0) next
       
-      # Map the SISAIRE header name to the project code; fall back to
-      # lowercase of the raw header if the name is not in sisaire_map
+      # Header name -> project code; fall back to lowercased header.
       db_var <- sisaire_map[[ val_col[1] ]]
       if (is.null(db_var)) db_var <- tolower(val_col[1])
       
@@ -2513,19 +2494,22 @@ bogota_process_stations_data_to_parquet <- function(
         ) |>
         dplyr::select(station, raw_time, value)
       
-      # Normalise and filter, same as for RMCAB above
+      # Normalize names and keep only allowlisted stations.
       dt$station <- .bogota_apply_mappings(
         .bogota_standardize_name(dt$station)
       )
       dt <- dt[dt$station %in% valid_stations_norm, ]
       if (nrow(dt) == 0) next
       
-      # Parse "YYYY-MM-DD HH:MM" strings to POSIXct, then extract year
-      # and drop rows with unparseable timestamps or outside the year range
       dt$datetime <- lubridate::ymd_hm(
         dt$raw_time, tz = tz, quiet = TRUE
       )
       dt <- dt[!is.na(dt$datetime), ]
+      
+      # Floor to the hour so 5-minute files collapse to hourly via Phase-D
+      # AVG() (no-op on already-hourly :00 timestamps). See SISAIRE SUB-HOURLY.
+      dt$datetime <- lubridate::floor_date(dt$datetime, unit = "hour")
+      
       dt$year  <- lubridate::year(dt$datetime)
       dt$param <- db_var
       dt <- dt[dt$year %in% years, ]
@@ -2534,7 +2518,6 @@ bogota_process_stations_data_to_parquet <- function(
         dplyr::select(datetime, station, year, param, value)
       if (nrow(final_chk) == 0) next
       
-      # Serialise datetime to text before sending to DuckDB (see to_iso())
       final_chk$datetime <- to_iso(final_chk$datetime)
       
       duckdb::dbAppendTable(con, "staging_sisaire", final_chk)
@@ -2552,10 +2535,8 @@ bogota_process_stations_data_to_parquet <- function(
   
   # 5. Phase C: Discrepancy report
   # ---------------------------------------------------------------------------
-  # This report shows, for each station × parameter combination, how many
-  # hours both sources reported and by how much they disagreed. It is
-  # saved as a CSV and does not affect the data — it is purely for
-  # quality-control auditing.
+  # QA-only: per station x param, overlap count and source disagreement.
+  # overlap_count counts raw SISAIRE rows (sub-hourly not yet averaged).
   report_dir <- file.path(out_dir, "bogota_rmcab_sisaire_comparison")
   dir.create(report_dir, recursive = TRUE, showWarnings = FALSE)
   
@@ -2581,52 +2562,26 @@ bogota_process_stations_data_to_parquet <- function(
   if (verbose) message(
     "Discrepancy report: ",
     format(sum(diff_df$overlap_count), big.mark = ","),
-    " overlapping rows → ", diff_file
+    " overlapping rows -> ", diff_file
   )
   
   # 6. Phase D: Merge + pivot + write Parquet
   # ---------------------------------------------------------------------------
   
-  # --- Step D1: Build the RMCAB coverage table ---
-  # This records which (station, year, param) combinations RMCAB ever
-  # reported. It is the key to the new priority logic:
-  #
-  #   IF RMCAB has coverage for (station, year, param):
-  #     → use the RMCAB value for every hour, even if that value is NA.
-  #       SISAIRE is NOT used to fill in missing hours.
-  #   IF RMCAB has NO coverage for (station, year, param):
-  #     → use the SISAIRE value (RMCAB never monitored this combination).
-  #
-  # Why "param" level and not just "station × year"? Because a station
-  # may report PM10 to RMCAB but not PM2.5. In that case we still want
-  # SISAIRE PM2.5 for that station × year, while using only RMCAB PM10.
+  # D1: station x year x param combinations RMCAB ever reported (see
+  # SOURCE PRIORITY).
   DBI::dbExecute(con, "
     CREATE TABLE rmcab_coverage AS
     SELECT DISTINCT station, year, param
     FROM staging_rmcab;
   ")
   
-  # --- Step D2: Merge the two staging tables ---
-  # FULL OUTER JOIN: keeps every row from both sources.
-  # The LEFT JOIN to rmcab_coverage (aliased 'cov') tells us whether
-  # RMCAB ever tracked the station × year × param for each row.
-  #
-  # Value selection:
-  #   cov.station IS NOT NULL → RMCAB had coverage → use r.value as-is.
-  #       If r.value is NULL here it means RMCAB had no measurement for
-  #       this specific hour (the row came from SISAIRE side of the outer
-  #       join). We deliberately keep it NULL rather than substituting
-  #       the SISAIRE value.
-  #   cov.station IS NULL → RMCAB had no coverage → use s.value.
-  #
-  # The source_origin label records which rule applied for every row,
-  # which is useful for later auditing and replication checks.
+  # D2: merge sources. FULL OUTER JOIN keeps every row; cov tells whether RMCAB covered it.
+  # Value follow SOURCE PRIORITY. NULL RMCAB values under coverage are kept NULL 
+  # Floored SISAIRE sub-hourly rows share a datetime here and are averaged in D3.
   DBI::dbExecute(con, "
     CREATE TABLE staging_merged AS
     SELECT
-      -- Convert text back to TIMESTAMP. STRPTIME produces a plain
-      -- TIMESTAMP (not timezone-aware), so DuckDB writes it to Parquet
-      -- as a raw INT64 without any timezone shift.
       STRPTIME(
         COALESCE(r.datetime, s.datetime),
         '%Y-%m-%d %H:%M:%S'
@@ -2634,15 +2589,12 @@ bogota_process_stations_data_to_parquet <- function(
       COALESCE(r.station,  s.station)       AS station,
       COALESCE(r.year,     s.year)          AS year,
       COALESCE(r.param,    s.param)         AS param,
- 
-      -- Priority rule: RMCAB coverage present → RMCAB value (incl. NULLs)
-      --                RMCAB coverage absent  → SISAIRE value
+
       CASE
         WHEN cov.station IS NOT NULL THEN r.value
         ELSE                              s.value
       END                                   AS value,
- 
-      -- Audit label for each row
+
       CASE
         WHEN cov.station IS NOT NULL
          AND r.value IS NOT NULL THEN 'RMCAB'
@@ -2650,29 +2602,22 @@ bogota_process_stations_data_to_parquet <- function(
          AND r.value IS     NULL THEN 'RMCAB (hour NA — not filled)'
         ELSE                          'SISAIRE'
       END                                   AS source_origin
- 
+
     FROM staging_rmcab r
     FULL OUTER JOIN staging_sisaire s
       ON  r.station  = s.station
       AND r.datetime = s.datetime
       AND r.param    = s.param
- 
-    -- Join the coverage table to determine, for each row, whether RMCAB
-    -- tracked this station × year × param combination
+
     LEFT JOIN rmcab_coverage cov
       ON  COALESCE(r.station, s.station) = cov.station
       AND COALESCE(r.year,    s.year)    = cov.year
       AND COALESCE(r.param,   s.param)   = cov.param;
   ")
   
-  # --- Step D3: Pivot from long to wide and write partitioned Parquet ---
-  # The COPY statement reshapes the long-format merged table into the
-  # wide format used throughout the rest of the project: one row per
-  # (station, datetime), one column per pollutant.
-  # AVG() is used instead of MAX() because it returns NULL when all
-  # inputs are NULL, which is the correct behaviour here.
-  # PARTITION_BY (year) creates one sub-folder per year, which lets
-  # Arrow and DuckDB skip entire years when filtering downstream.
+  # D3: long -> wide, one row per (station, datetime), one column per pollutant. 
+  # AVG() returns NULL when all inputs are NULL and also yields the hourly mean of 
+  # floored SISAIRE readings. Partition by year for downstream pruning.
   dataset_path <- file.path(out_dir, paste0(out_name, "_dataset"))
   if (dir.exists(dataset_path)) unlink(dataset_path, recursive = TRUE)
   
@@ -2730,8 +2675,7 @@ bogota_process_stations_data_to_parquet <- function(
   
   if (verbose) message("Done. Dataset: ", dataset_path)
   
-  # Return an Arrow Dataset handle so the caller can query the result
-  # immediately without re-opening the folder manually
+  # Arrow handle so the caller can query immediately.
   arrow::open_dataset(dataset_path)
 }
 
