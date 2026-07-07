@@ -5,11 +5,13 @@
 #
 # @Description: This script processes cleaned Arrow datasets of ground station data,
 # pre-computed distance matrices, and census data. It applies IDW interpolation
-# within 3km and 5km buffers using DuckDB for out-of-core aggregation.
+# within 3km and 5km buffers using DuckDB for out-of-core aggregation. Education
+# quintiles are produced for all four cities; income deciles are produced only for
+# the two cities whose census carries income (CDMX and Sao Paulo).
 #
 # @Summary:
 #   I.   Import data: Define paths for Arrow datasets, matrices, and census files.
-#   II.  Process: Apply IDW interpolation for each city and exposure level.
+#   II.  Process: Apply IDW interpolation for each city, grouping, and buffer.
 #
 # @Date: April 2026
 # @Author: Marcos
@@ -22,16 +24,16 @@ source(here::here("src", "general_utilities", "config_utils_process_data.R"))
 # I: Import data
 # ============================================================================================
 # Define general input and output folders
-dir_cleaned   <- here::here("data", "processed", "outlier_detection")
+dir_cleaned   <- here::here("data", "processed", "monitoring_stations_outliers")
 dir_distances <- here::here("data", "processed", "distances_matrices")
 dir_census    <- here::here("data", "interim", "census")
 outdir_exp    <- here::here("data", "processed", "idw_estimates")
 
 # Define cleaned Arrow dataset paths
-arrow_bogota   <- here::here(dir_cleaned, "bogota_metro_clean")
-arrow_cdmx     <- here::here(dir_cleaned, "cdmx_metro_clean")
-arrow_santiago <- here::here(dir_cleaned, "santiago_metro_clean")
-arrow_sp       <- here::here(dir_cleaned, "sao_paulo_metro_clean")
+arrow_bogota   <- here::here(dir_cleaned, "bogota_metro_clean", "year=2023")
+arrow_cdmx     <- here::here(dir_cleaned, "cdmx_metro_clean", "year=2023")
+arrow_santiago <- here::here(dir_cleaned, "santiago_metro_clean", "year=2023")
+arrow_sp       <- here::here(dir_cleaned, "sao_paulo_metro_clean", "year=2023")
 
 # Define geo-to-station distance matrix paths
 dist_bogota   <- here::here(dir_distances, "bogota_2018",
@@ -83,81 +85,133 @@ dir.create(outdir_exp, recursive = TRUE, showWarnings = FALSE)
 
 # Define IDW specifications
 buffers_km     <- c(3, 5)
-distance_power <- 2
+distance_power <- 1
 
 # Run all cities for the baseline and robustness buffers
 for (buffer in buffers_km) {
-  # 1. Bogota
+  # 1. Bogota -- education quintiles
   res_bogota <- run_idw_city(
-    city_label     = "Bogota",
-    city_id        = "bogota_2018",
-    arrow_dir      = arrow_bogota,
-    geo_sta_pq     = dist_bogota,
-    geo_census     = geo_bogota,
-    micro_census   = micro_bogota,
-    geo_id_col     = "GEO_ID",
-    geo_pop_col    = "weight",
-    geo_edu_col    = "education_mean",
-    micro_id_col   = "GEO_ID",
-    micro_pop_col  = "fe",
-    micro_edu_col  = "escolaridad",
-    buffer_km      = buffer,
-    outdir_exp     = outdir_exp,
-    distance_power = distance_power)
-
-  # # 2. CDMX
-  # res_cdmx <- run_idw_city(
-  #   city_label     = "CDMX",
-  #   city_id        = "cdmx_2020",
-  #   arrow_dir      = arrow_cdmx,
-  #   geo_sta_pq     = dist_cdmx,
-  #   geo_census     = geo_cdmx,
-  #   micro_census   = micro_cdmx,
-  #   geo_id_col     = "CVE_MUN",
-  #   geo_pop_col    = "weight",
-  #   geo_edu_col    = "education_mean",
-  #   micro_id_col   = "CVE_MUN",
-  #   micro_pop_col  = "FACTOR",
-  #   micro_edu_col  = "escolaridad",
-  #   buffer_km      = buffer,
-  #   outdir_exp     = outdir_exp,
-  #   distance_power = distance_power)
-  # 
-  # # 3. Santiago
-  # res_santiago <- run_idw_city(
-  #   city_label     = "Santiago",
-  #   city_id        = "santiago_2024",
-  #   arrow_dir      = arrow_santiago,
-  #   geo_sta_pq     = dist_santiago,
-  #   geo_census     = geo_santiago,
-  #   micro_census   = micro_santiago,
-  #   geo_id_col     = "CUT",
-  #   geo_pop_col    = "weight",
-  #   geo_edu_col    = "education_mean",
-  #   micro_id_col   = "comuna",
-  #   micro_pop_col  = "fe",
-  #   micro_edu_col  = "educ_years",
-  #   buffer_km      = buffer,
-  #   outdir_exp     = outdir_exp,
-  #   distance_power = distance_power)
-  # 
-  # # 4. Sao Paulo
-  # res_sp <- run_idw_city(
-  #   city_label     = "Sao Paulo",
-  #   city_id        = "sao_paulo_2010",
-  #   arrow_dir      = arrow_sp,
-  #   geo_sta_pq     = dist_sp,
-  #   geo_census     = geo_sp,
-  #   micro_census   = micro_sp,
-  #   geo_id_col     = "code_weighting",
-  #   geo_pop_col    = "weight",
-  #   geo_edu_col    = "education_mean",
-  #   micro_id_col   = "code_weighting",
-  #   micro_pop_col  = "weight",
-  #   micro_edu_col  = "years_schooling",
-  #   buffer_km      = buffer,
-  #   outdir_exp     = outdir_exp,
-  #   distance_power = distance_power)
+    city_label      = "Bogota",
+    city_id         = "bogota_2018",
+    arrow_dir       = arrow_bogota,
+    geo_sta_pq      = dist_bogota,
+    geo_census      = geo_bogota,
+    micro_census    = micro_bogota,
+    geo_id_col      = "GEO_ID",
+    geo_pop_col     = "weight",
+    geo_group_var   = "education_mean",
+    micro_id_col    = "GEO_ID",
+    micro_pop_col   = "fe",
+    micro_group_var = "escolaridad",
+    n_groups        = 5L,
+    group_name      = "edu_quintile",
+    buffer_km       = buffer,
+    outdir_exp      = outdir_exp,
+    distance_power  = distance_power)
+  
+  # 2. CDMX -- education quintiles
+  res_cdmx <- run_idw_city(
+    city_label      = "CDMX",
+    city_id         = "cdmx_2020",
+    arrow_dir       = arrow_cdmx,
+    geo_sta_pq      = dist_cdmx,
+    geo_census      = geo_cdmx,
+    micro_census    = micro_cdmx,
+    geo_id_col      = "CVE_MUN",
+    geo_pop_col     = "weight",
+    geo_group_var   = "education_mean",
+    micro_id_col    = "CVE_MUN",
+    micro_pop_col   = "FACTOR",
+    micro_group_var = "escolaridad",
+    n_groups        = 5L,
+    group_name      = "edu_quintile",
+    buffer_km       = buffer,
+    outdir_exp      = outdir_exp,
+    distance_power  = distance_power)
+  
+  # 3. Santiago -- education quintiles
+  res_santiago <- run_idw_city(
+    city_label      = "Santiago",
+    city_id         = "santiago_2024",
+    arrow_dir       = arrow_santiago,
+    geo_sta_pq      = dist_santiago,
+    geo_census      = geo_santiago,
+    micro_census    = micro_santiago,
+    geo_id_col      = "CUT",
+    geo_pop_col     = "weight",
+    geo_group_var   = "education_mean",
+    micro_id_col    = "comuna",
+    micro_pop_col   = "fe",
+    micro_group_var = "educ_years",
+    n_groups        = 5L,
+    group_name      = "edu_quintile",
+    buffer_km       = buffer,
+    outdir_exp      = outdir_exp,
+    distance_power  = distance_power)
+  
+  # 4. Sao Paulo -- education quintiles
+  res_sp <- run_idw_city(
+    city_label      = "Sao Paulo",
+    city_id         = "sao_paulo_2010",
+    arrow_dir       = arrow_sp,
+    geo_sta_pq      = dist_sp,
+    geo_census      = geo_sp,
+    micro_census    = micro_sp,
+    geo_id_col      = "code_weighting",
+    geo_pop_col     = "weight",
+    geo_group_var   = "education_mean",
+    micro_id_col    = "code_weighting",
+    micro_pop_col   = "weight",
+    micro_group_var = "years_schooling",
+    n_groups        = 5L,
+    group_name      = "edu_quintile",
+    buffer_km       = buffer,
+    outdir_exp      = outdir_exp,
+    distance_power  = distance_power)
+  
+  # ----------------------------------------------------------------------------------------
+  # Income deciles: ONLY for the CDMX and SP, whose census carries income.
+  # 5. CDMX -- income deciles
+  res_cdmx_income <- run_idw_city(
+    city_label      = "CDMX",
+    city_id         = "cdmx_2020",
+    arrow_dir       = arrow_cdmx,
+    geo_sta_pq      = dist_cdmx,
+    geo_census      = geo_cdmx,
+    micro_census    = micro_cdmx,
+    geo_id_col      = "CVE_MUN",
+    geo_pop_col     = "weight",
+    geo_group_var   = "income",
+    micro_id_col    = "CVE_MUN",
+    micro_pop_col   = "FACTOR",
+    micro_group_var = "income",
+    n_groups        = 10L,
+    group_name      = "income_decile",
+    buffer_km       = buffer,
+    outdir_exp      = outdir_exp,
+    out_suffix      = "income",
+    distance_power  = distance_power)
+  
+  # 6. Sao Paulo -- income deciles
+  res_sp_income <- run_idw_city(
+    city_label      = "Sao Paulo",
+    city_id         = "sao_paulo_2010",
+    arrow_dir       = arrow_sp,
+    geo_sta_pq      = dist_sp,
+    geo_census      = geo_sp,
+    micro_census    = micro_sp,
+    geo_id_col      = "code_weighting",
+    geo_pop_col     = "weight",
+    geo_group_var   = "income",
+    micro_id_col    = "code_weighting",
+    micro_pop_col   = "weight",
+    micro_group_var = "income",
+    n_groups        = 10L,
+    group_name      = "income_decile",
+    buffer_km       = buffer,
+    outdir_exp      = outdir_exp,
+    out_suffix      = "income",
+    distance_power  = distance_power)
 }
 
 cat("Script from the IDB project executed successfully in the Docker container!\n")
