@@ -43,7 +43,7 @@ gpkg_stations_sp_2010       <- here::here(dir_geospatial, "sao_paulo",
 gpkg_bogota_2018_metro_area <- here::here(dir_geospatial, "bogota",
                                           "bogota_area_metro_census_tracts_2018.gpkg")
 gpkg_cdmx_metro_area        <- here::here(dir_geospatial, "cdmx",
-                                          "cdmx_area_metro.gpkg")
+                                          "cdmx_area_metro_municipalities_2024.gpkg")
 gpkg_santiago_2024_metro_area <- here::here(dir_geospatial, "santiago",
                                             "gran_santiago_area_2024.gpkg")
 gpkg_sp_2010_metro_area       <- here::here(dir_geospatial, "sao_paulo",

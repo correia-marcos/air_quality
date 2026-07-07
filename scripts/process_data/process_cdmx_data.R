@@ -36,7 +36,7 @@ outdir_stations   <- here::here(cdmx_cfg$dl_dir, "ground_stations_geolocation")
 
 # Define the file's specific location
 all_station_csv   <- here::here(outdir_stations, "all_station_location.csv")
-cdmx_metro        <- here::here(outdir_geospatial, "cdmx", "cdmx_area_metro.gpkg")
+cdmx_metro        <- here::here(outdir_geospatial, "cdmx", "cdmx_area_metro_2024.gpkg")
 
 # Open station location and other spatial data
 station_location <- read.csv(all_station_csv)
