@@ -28,13 +28,13 @@ dir.create(outdir_figs, recursive = TRUE, showWarnings = FALSE)
 
 specs <- list(
   list(label = "Bogotá",      dir = here::here(dir_exp, "bogota_2018"),
-       prefix = "bogota_2018_3km",    pop_col = "fe", mode = "individual") #,
-  #list(label = "Mexico City", dir = here::here(dir_exp, "cdmx"),
-  #     prefix = "cdmx_3km",           pop_col = "n",  mode = "geo"),
-  #list(label = "Santiago",    dir = here::here(dir_exp, "santiago_2024"),
-  #     prefix = "santiago_2024_3km",  pop_col = "n",  mode = "geo"),
-  #list(label = "São Paulo",   dir = here::here(dir_exp, "sao_paulo_2010"),
-  #     prefix = "sao_paulo_2010_3km", pop_col = "n",  mode = "geo")
+       prefix = "bogota_2018_3km",    pop_col = "fe", mode = "individual"),
+  list(label = "Mexico City", dir = here::here(dir_exp, "cdmx"),
+      prefix = "cdmx_3km",           pop_col = "n",  mode = "geo"),
+  list(label = "Santiago",    dir = here::here(dir_exp, "santiago_2024"),
+      prefix = "santiago_2024_3km",  pop_col = "n",  mode = "geo"),
+  list(label = "São Paulo",   dir = here::here(dir_exp, "sao_paulo_2010"),
+      prefix = "sao_paulo_2010_3km", pop_col = "n",  mode = "geo")
 )
 
 # ============================================================================================
