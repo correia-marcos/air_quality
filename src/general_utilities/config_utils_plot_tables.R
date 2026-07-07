@@ -3271,99 +3271,286 @@ write_exposure_summary_table_tex <- function(
 }
 
 
-# --------------------------------------------------------------------------------------------
-# Function: plot_exposure_ci
+# ------------------------------------------------------------------------------------
+# Function: plot_group_ci
 #
-# @Arg ci_dt        : data.table; output from compute_exposure_ci_regression().
-# @Arg out_path     : string; path to save figure.
-# @Arg title        : string; figure title.
-# @Arg y_label      : string; y-axis label.
-# @Arg group_label  : string; x-axis label.
-# @Arg percent_axis : logical; multiply y-axis by 100. Default TRUE.
+# @Arg ci_table         : data.table from compute_exposure_regressions(). Must contain
+#                         outcome, pollutant, group, estimate, ci_low, ci_high.
+# @Arg outcome          : string; outcome to plot, e.g. "hrs_d_it1".
+# @Arg pollutant        : string vector; pollutant(s) to plot. Use c("pm25", "pm10")
+#                         to place both pollutants in the same figure.
+# @Arg group_label      : string; x-axis label, e.g. "Education quintile".
+# @Arg city_label       : string; plot title.
+# @Arg y_label          : string or NULL; y-axis title. If NULL, a default is derived.
+# @Arg pollutant_colors : named character vector with pollutant colors.
+# @Arg color_line       : string or NULL; backward-compatible single-pollutant color.
 #
-# @Output : Invisibly returns out_path.
+# @Output : ggplot2 object. Error bars are the intervals already in ci_table.
 #
 # @Details:
-#   Creates a coefficient plot with 95 percent confidence intervals by group.
+#   Draws regression gaps relative to the base group with confidence intervals.
+#   The function now supports one or more pollutants in the same plot. This is
+#   useful for exceedance-hour outcomes, where PM2.5 and PM10 should be compared
+#   directly. By default, PM2.5 is dark red and PM10 is black.
 #
-# @Written_by: Marcos Paulo
-# --------------------------------------------------------------------------------------------
-plot_exposure_ci <- function(
-    ci_dt,
-    out_path,
-    title        = NULL,
-    y_label      = "Difference relative to reference group",
-    group_label  = "Group",
-    percent_axis = TRUE
-) {
+# @Written_on : June 2026
+# @Written_by : Marcos Paulo
+# @Updated_on : June 2026
+# ------------------------------------------------------------------------------------
+plot_group_ci <- function(ci_table,
+                          outcome,
+                          pollutant = c("pm25", "pm10"),
+                          group_label = "Group",
+                          city_label = "",
+                          y_label = NULL,
+                          pollutant_colors = c(pm25 = "darkred",
+                                               pm10 = "black"),
+                          color_line = NULL) {
   
-  # Dependencies.
-  if (!requireNamespace("ggplot2", quietly = TRUE)) {
-    stop("Package 'ggplot2' required.")
+  # 0. Dependencies and input check
+  # -----------------------------------------------------------------------
+  for (p in c("data.table", "ggplot2")) {
+    if (!requireNamespace(p, quietly = TRUE)) {
+      stop("Package '", p, "' required.")
+    }
   }
   
-  if (!requireNamespace("data.table", quietly = TRUE)) {
-    stop("Package 'data.table' required.")
+  req_cols <- c("outcome", "pollutant", "group", "estimate", "ci_low", "ci_high")
+  if (!all(req_cols %in% names(ci_table))) {
+    stop("ci_table must contain: ", paste(req_cols, collapse = ", "), ".")
   }
   
-  dt <- data.table::copy(data.table::as.data.table(ci_dt))
+  # 1. Subset to one outcome and one or more pollutants
+  # -----------------------------------------------------------------------
+  oc_ <- outcome
+  pol_ <- pollutant
   
-  req_cols <- c("group", "estimate", "ci_low", "ci_high", "pollutant")
-  miss_cols <- setdiff(req_cols, names(dt))
+  dt <- data.table::as.data.table(ci_table)[
+    outcome == oc_ & pollutant %in% pol_
+  ]
   
-  if (length(miss_cols) > 0L) {
-    stop("Missing columns: ", paste(miss_cols, collapse = ", "))
+  if (nrow(dt) == 0L) {
+    stop("No rows match outcome='", oc_, "' and the requested pollutant(s).")
   }
   
-  if (isTRUE(percent_axis)) {
-    dt[, `:=`(
-      estimate = 100 * estimate,
-      ci_low = 100 * ci_low,
-      ci_high = 100 * ci_high
-    )]
-    
-    y_label <- paste0(y_label, " (%)")
+  data.table::setorder(dt, pollutant, group)
+  
+  # Preserve the requested pollutant order where possible.
+  dt[, pollutant_label := factor(
+    pollutant,
+    levels = pol_,
+    labels = .format_pollutant_label(pol_)
+  )]
+  
+  # 2. Default y-axis label derived from the outcome name
+  # -----------------------------------------------------------------------
+  if (is.null(y_label)) {
+    if (grepl("^avg", outcome)) {
+      y_label <- "Normalized concentration gap"
+    } else if (grepl("^hrs_d", outcome)) {
+      y_label <- paste0(
+        "Normalized hours above ",
+        toupper(sub("hrs_d_", "", outcome))
+      )
+    } else {
+      y_label <- outcome
+    }
   }
   
-  dt[, group := factor(group, levels = sort(unique(group)))]
+  # 3. Keep backward compatibility with old single-color calls
+  # -----------------------------------------------------------------------
+  if (!is.null(color_line) && length(pol_) == 1L) {
+    pollutant_colors[pol_] <- color_line
+  }
   
-  p <- ggplot2::ggplot(
+  color_values <- pollutant_colors[intersect(pol_, names(pollutant_colors))]
+  names(color_values) <- .format_pollutant_label(names(color_values))
+  
+  show_legend <- length(unique(dt$pollutant)) > 1L
+  
+  # 4. Build the plot
+  # -----------------------------------------------------------------------
+  ggplot2::ggplot(
     dt,
     ggplot2::aes(
-      x = group,
+      x = factor(group),
       y = estimate,
-      ymin = ci_low,
-      ymax = ci_high,
-      group = pollutant,
-      linetype = pollutant,
-      shape = pollutant
+      color = pollutant_label,
+      group = pollutant_label
     )
   ) +
-    ggplot2::geom_hline(yintercept = 0, linetype = "dashed") +
-    ggplot2::geom_point(position = ggplot2::position_dodge(width = 0.35)) +
     ggplot2::geom_errorbar(
+      ggplot2::aes(ymin = ci_low, ymax = ci_high),
       width = 0.15,
-      position = ggplot2::position_dodge(width = 0.35)
+      linewidth = 0.6
     ) +
+    ggplot2::geom_line(linewidth = 0.9) +
+    ggplot2::geom_point(size = 2.3) +
+    ggplot2::scale_color_manual(values = color_values, drop = FALSE) +
     ggplot2::labs(
-      title = title,
       x = group_label,
       y = y_label,
-      linetype = "Pollutant",
-      shape = "Pollutant"
+      title = city_label,
+      color = "Pollutant"
     ) +
-    ggplot2::theme_minimal()
-  
-  dir.create(dirname(out_path), recursive = TRUE, showWarnings = FALSE)
-  
-  ggplot2::ggsave(
-    filename = out_path,
-    plot = p,
-    width = 7,
-    height = 5
-  )
-  
-  invisible(out_path)
+    ggplot2::theme_minimal(base_family = "Palatino", base_size = 13) +
+    ggplot2::theme(
+      panel.grid.minor = ggplot2::element_blank(),
+      legend.position = if (show_legend) "bottom" else "none",
+      plot.title = ggplot2::element_text(face = "bold")
+    )
 }
+
+
+# ------------------------------------------------------------------------------------
+# Function: plot_group_levels
+#
+# @Arg summary_table     : data.table from compute_exposure_summaries(). Must contain
+#                          outcome, pollutant, group, weighted_mean.
+# @Arg group_label       : string; x-axis label, e.g. "Education quintile".
+# @Arg city_label        : string; plot title.
+# @Arg year_label        : string; subtitle, e.g. "2023".
+# @Arg base_group        : integer; top group used to derive the dual-axis scale.
+# @Arg pollutant_colors  : named character vector with pollutant colors.
+#
+# @Output : ggplot2 object, or NULL if the mean concentration columns are absent.
+#
+# @Details:
+#   Draws population-weighted mean PM10 and PM2.5 by socioeconomic group on a
+#   dual-axis figure. The right-axis scale factor is the ratio of the two
+#   pollutants' base-group means, so no multiplier is hard-coded. By default,
+#   PM2.5 is dark red and PM10 is black.
+#
+# @Written_on : June 2026
+# @Written_by : Marcos Paulo
+# @Updated_on : June 2026
+# ------------------------------------------------------------------------------------
+plot_group_levels <- function(summary_table,
+                              group_label = "Group",
+                              city_label = "",
+                              year_label = "",
+                              base_group = NULL,
+                              pollutant_colors = c(pm25 = "darkred",
+                                                   pm10 = "black")) {
+  
+  # 0. Dependencies and input check
+  # -----------------------------------------------------------------------
+  for (p in c("data.table", "ggplot2")) {
+    if (!requireNamespace(p, quietly = TRUE)) {
+      stop("Package '", p, "' required.")
+    }
+  }
+  
+  req_cols <- c("outcome", "pollutant", "group", "weighted_mean")
+  if (!all(req_cols %in% names(summary_table))) {
+    stop("summary_table must contain: ", paste(req_cols, collapse = ", "), ".")
+  }
+  
+  # 1. Keep the annual-mean concentration rows
+  # -----------------------------------------------------------------------
+  dt <- data.table::as.data.table(summary_table)[outcome == "avg"]
+  
+  if (nrow(dt) == 0L) {
+    return(NULL)
+  }
+  
+  wide <- data.table::dcast(dt, group ~ pollutant, value.var = "weighted_mean")
+  data.table::setorder(wide, group)
+  
+  has_pm10 <- "pm10" %in% names(wide)
+  has_pm25 <- "pm25" %in% names(wide)
+  
+  # 2. Dual-axis layout when both pollutants are present
+  # -----------------------------------------------------------------------
+  if (has_pm10 && has_pm25) {
+    if (is.null(base_group)) {
+      base_group <- max(wide$group, na.rm = TRUE)
+    }
+    
+    base_pm10 <- wide[group == base_group, pm10]
+    base_pm25 <- wide[group == base_group, pm25]
+    
+    scale_f <- if (length(base_pm10) > 0L && length(base_pm25) > 0L &&
+                   !is.na(base_pm25) && base_pm25 > 0) {
+      base_pm10 / base_pm25
+    } else {
+      2
+    }
+    
+    ggplot2::ggplot(wide, ggplot2::aes(x = factor(group))) +
+      ggplot2::geom_line(
+        ggplot2::aes(y = pm10, color = "PM10", group = 1),
+        linewidth = 0.9
+      ) +
+      ggplot2::geom_point(
+        ggplot2::aes(y = pm10, color = "PM10"),
+        size = 2.2
+      ) +
+      ggplot2::geom_line(
+        ggplot2::aes(y = pm25 * scale_f, color = "PM2.5", group = 1),
+        linewidth = 0.9
+      ) +
+      ggplot2::geom_point(
+        ggplot2::aes(y = pm25 * scale_f, color = "PM2.5"),
+        size = 2.2
+      ) +
+      ggplot2::scale_color_manual(
+        values = c(
+          "PM10" = pollutant_colors[["pm10"]],
+          "PM2.5" = pollutant_colors[["pm25"]]
+        )
+      ) +
+      ggplot2::scale_y_continuous(
+        name = expression(PM[10] ~ "(\u00b5g/m\u00b3)"),
+        sec.axis = ggplot2::sec_axis(
+          ~ . / scale_f,
+          name = expression(PM[2.5] ~ "(\u00b5g/m\u00b3)")
+        )
+      ) +
+      ggplot2::labs(
+        x = group_label,
+        color = "Pollutant",
+        title = city_label,
+        subtitle = year_label
+      ) +
+      ggplot2::theme_minimal(base_family = "Palatino", base_size = 12) +
+      ggplot2::theme(
+        panel.grid.major = ggplot2::element_blank(),
+        panel.grid.minor = ggplot2::element_blank(),
+        legend.position = "bottom",
+        plot.title = ggplot2::element_text(size = 13, face = "bold")
+      )
+  } else {
+    # 3. Single-pollutant fallback when only one pollutant is present
+    # ---------------------------------------------------------------------
+    poll <- if (has_pm10) "pm10" else names(wide)[2]
+    color_poll <- pollutant_colors[[poll]]
+    
+    ggplot2::ggplot(
+      wide,
+      ggplot2::aes(x = factor(group), y = get(poll), group = 1)
+    ) +
+      ggplot2::geom_line(color = color_poll, linewidth = 0.9) +
+      ggplot2::geom_point(color = color_poll, size = 2.2) +
+      ggplot2::labs(
+        x = group_label,
+        y = paste0(toupper(poll), " (\u00b5g/m\u00b3)"),
+        title = city_label,
+        subtitle = year_label
+      ) +
+      ggplot2::theme_minimal(base_family = "Palatino", base_size = 12) +
+      ggplot2::theme(panel.grid = ggplot2::element_blank())
+  }
+}
+
+.format_pollutant_label <- function(pollutants) {
+  data.table::fcase(
+    pollutants == "pm25", "PM2.5",
+    pollutants == "pm10", "PM10",
+    default = toupper(pollutants)
+  )
+}
+
+
 # Print a success message for when running inside Docker Container
 cat("Config script parsed successfully!\n")
