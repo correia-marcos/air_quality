@@ -1,0 +1,5 @@
+city,city_latex,year,total_population,census_geographic_level,n_census_geographic_units,average_population_per_unit
+Bogota,Bogot\'a,2018,5693549,Census tract,50287,113.221090938016
+Mexico City,Mexico City,2020,13483304,Municipality,63,214020.698412698
+Gran Santiago,Gran Santiago,2024,4647727,Census tract,39,119172.487179487
+Sao Paulo,S\~ao Paulo,2010,12051075.150297,Weighting area,633,19038.0334127915
