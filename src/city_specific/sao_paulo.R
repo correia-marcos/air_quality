@@ -1174,14 +1174,17 @@ sp_filter_stations_in_metro <- function(
 # Function: sp_process_stations_data_to_parquet
 #
 # @Arg       : data_folder   — string; folder with .csv/.txt files.
-# @Arg       : stations_sf   — sf object; Spatial registry to keep. 
+# @Arg       : stations_sf   — sf object; Spatial registry to keep.
 # @Arg       : out_dir       — string; base output directory.
 # @Arg       : out_name      — string; name of dataset (default "sp_metro_air").
 # @Arg       : years         — int vector; years to filter.
-# @Arg       : tz            — string; Olson timezone.
+# @Arg       : tz            — string; Olson tz. Default "UTC". Datetimes are stored
+#                              as the source wall clock with no tz shift (see
+#                              DATETIME CONVENTION); a civil zone is not needed.
 # @Arg       : verbose       — logical; print progress messages?
 #
-# @Output    : Arrow Dataset connection.
+# @Output    : Arrow Dataset connection. One row per (station, datetime) per year,
+#              wide (one column per pollutant); datetime is a naive hourly TIMESTAMP.
 #
 # @Purpose   : Ingests raw files from QUALAR/CETESB (São Paulo).
 #              1. Surgical header extraction for Name and Code.
@@ -1189,6 +1192,13 @@ sp_filter_stations_in_metro <- function(
 #              3. Safely pivots data, handling Brazilian commas and types.
 #              4. Handles flexible dates and the "24:00" hour format.
 #              5. Pivots and saves to Partitioned Parquet via DuckDB.
+#
+# DATETIME CONVENTION (gold standard, shared with Bogota and CDMX):
+#   The source timestamp is the station's local wall clock. We build it as a
+#   naive string, stage it as VARCHAR, and STRPTIME it back to a plain (naive)
+#   TIMESTAMP. This avoids the DuckDB R-driver bug that shifts hours from POSIXct
+#   tzone attributes and avoids DST gaps/folds from civil time zones. The stored
+#   clock equals the source clock for any tz argument.
 #
 # @Written_on: 19/12/2025
 # --------------------------------------------------------------------------------------------
@@ -1198,7 +1208,7 @@ sp_process_stations_data_to_parquet <- function(
     out_dir,
     out_name    = "sp_metro_air",
     years       = sao_paulo_cfg$years,
-    tz          = "America/Sao_Paulo",
+    tz          = "UTC",
     verbose     = TRUE
 ) {
   
@@ -1232,8 +1242,11 @@ sp_process_stations_data_to_parquet <- function(
     return(NA_character_)
   }
   
+  # --- HELPER: Serialize POSIXct to naive ISO text (gold standard) ---
+  to_iso <- function(x) format(x, "%Y-%m-%d %H:%M:%S", tz = "UTC")
+  
   # 1) Check Dependencies
-  req_pkgs <- c("duckdb", "DBI", "arrow", "dplyr", "readr", 
+  req_pkgs <- c("duckdb", "DBI", "arrow", "dplyr", "readr",
                 "stringi", "lubridate", "tidyr")
   for(p in req_pkgs) {
     if (!requireNamespace(p, quietly = TRUE)) {
@@ -1251,7 +1264,7 @@ sp_process_stations_data_to_parquet <- function(
   station_lookup <- setNames(valid_stations, normalize_key(valid_stations))
   
   # 3) Setup DuckDB
-  if (verbose) message("⬜️ Starting Unified Engine (DuckDB)...")
+  if (verbose) message("Starting Unified Engine (DuckDB)...")
   
   dbdir <- tempfile("sp_air_", fileext = ".db")
   con   <- DBI::dbConnect(duckdb::duckdb(dbdir = dbdir))
@@ -1260,15 +1273,16 @@ sp_process_stations_data_to_parquet <- function(
     unlink(dbdir, force = TRUE)
   }, add = TRUE)
   
-  DBI::dbExecute(con, "PRAGMA memory_limit='8GB';") 
+  DBI::dbExecute(con, "PRAGMA memory_limit='8GB';")
   
-  # Staging Table 
+  # Staging table: datetime is VARCHAR here (see DATETIME CONVENTION);
+  # converted to a naive TIMESTAMP at the pivot step.
   DBI::dbExecute(con, "CREATE TABLE staging_cetesb (
-       datetime TIMESTAMP, 
-       station VARCHAR, 
+       datetime VARCHAR,
+       station VARCHAR,
        station_code VARCHAR,
-       year INTEGER, 
-       param VARCHAR, 
+       year INTEGER,
+       param VARCHAR,
        value DOUBLE
     );")
   
@@ -1279,7 +1293,7 @@ sp_process_stations_data_to_parquet <- function(
   
   if (length(raw_files) == 0) stop("No data files found in data_folder.")
   if (verbose) {
-    message(sprintf("📂 Found %d files. Processing...", length(raw_files)))
+    message(sprintf("Found %d files. Processing...", length(raw_files)))
   }
   
   count_ingest <- 0
@@ -1291,19 +1305,19 @@ sp_process_stations_data_to_parquet <- function(
     delim <- ifelse(any(grepl(";", lines[1:15])), ";", "\t")
     
     # Extract Code and Name (Using dots as wildcards)
-    code_line <- grep("C.digo da esta..o", lines, ignore.case = TRUE, 
+    code_line <- grep("C.digo da esta..o", lines, ignore.case = TRUE,
                       value = TRUE)
-    name_line <- grep("Nome da esta..o", lines, ignore.case = TRUE, 
+    name_line <- grep("Nome da esta..o", lines, ignore.case = TRUE,
                       value = TRUE)
     
     if (length(code_line) == 0 || length(name_line) == 0) next
     
     # Surgical extraction to avoid greedy regex traps
-    file_station_code <- sub(".*esta..o[^0-9a-zA-Z]*", "", code_line[1], 
+    file_station_code <- sub(".*esta..o[^0-9a-zA-Z]*", "", code_line[1],
                              ignore.case = TRUE)
     file_station_code <- trimws(gsub("[:;\t]", " ", file_station_code))
     
-    file_station_name <- sub(".*esta..o[^0-9a-zA-Z]*", "", name_line[1], 
+    file_station_name <- sub(".*esta..o[^0-9a-zA-Z]*", "", name_line[1],
                              ignore.case = TRUE)
     file_station_name <- trimws(gsub("[:;\t]", " ", file_station_name))
     
@@ -1321,11 +1335,11 @@ sp_process_stations_data_to_parquet <- function(
     real_station_name <- station_lookup[[best_match]]
     
     # Locate data blocks (Handle spacing variations)
-    data_start_idx <- grep("^Data\\s*(;|\\t)\\s*Hora", lines, 
+    data_start_idx <- grep("^Data\\s*(;|\\t)\\s*Hora", lines,
                            ignore.case = TRUE)
     if (length(data_start_idx) == 0) next
     
-    # Extract Parameter Names 
+    # Extract Parameter Names
     param_line <- lines[data_start_idx[1] + 1]
     param_raw_names <- strsplit(param_line, delim)[[1]]
     
@@ -1338,17 +1352,17 @@ sp_process_stations_data_to_parquet <- function(
       }
     }
     
-    if (length(param_map) == 0) next 
+    if (length(param_map) == 0) next
     
     # Read data starting FROM the param line to force correct column counts
     dt <- suppressWarnings(suppressMessages(
-      readr::read_delim(f, delim = delim, skip = data_start_idx[1], 
+      readr::read_delim(f, delim = delim, skip = data_start_idx[1],
                         col_names = FALSE, na = c("", "NA", "---", "NR"),
                         locale = readr::locale(encoding = "latin1"),
                         show_col_types = FALSE, progress = FALSE)
     ))
     
-    if (nrow(dt) <= 1) next 
+    if (nrow(dt) <= 1) next
     
     dt <- dt[-1, ] # Remove the parameter string row we used for sizing
     names(dt) <- paste0("V", seq_len(ncol(dt)))
@@ -1357,7 +1371,7 @@ sp_process_stations_data_to_parquet <- function(
     keep_cols <- c("V1", "V2", paste0("V", names(param_map)))
     keep_cols <- intersect(keep_cols, names(dt))
     
-    if(length(keep_cols) <= 2) next 
+    if(length(keep_cols) <= 2) next
     
     dt <- dt |> dplyr::select(dplyr::all_of(keep_cols))
     
@@ -1373,6 +1387,7 @@ sp_process_stations_data_to_parquet <- function(
       dplyr::mutate(
         col_idx = sub("V", "", col_idx),
         param = unname(param_map[col_idx]),
+        # Brazilian comma decimals -> dot.
         value = suppressWarnings(as.numeric(gsub(",", ".", value)))
       ) |>
       dplyr::select(Data = V1, Hora = V2, param, value) |>
@@ -1380,42 +1395,34 @@ sp_process_stations_data_to_parquet <- function(
     
     if (nrow(dt_long) == 0) next
     
-    # Handle CETESB Dates & 24:00 Hour format
+    # Build the wall-clock datetime (naive UTC). The hour is taken as an integer from 
+    # the "HH" prefix; CETESB's "24:00" means the midnight that starts the next day
     dt_long <- dt_long |>
       dplyr::mutate(
-        is_24 = (Hora == hms("24:00:00")),
-        Hora_clean = hour(Hora),
-        datetime_str = paste(Data, Hora_clean),
-        # Flexible parser for multiple Brazilian date variants (FIXED)
-        datetime = lubridate::parse_date_time(
-          datetime_str, 
-          orders = c("dmy_H"),
-          tz = tz, quiet = TRUE
-        ),
-        datetime = ifelse(
-          is_24, datetime + lubridate::days(1), datetime
-        )
-      ) |>
-      dplyr::mutate(
-        datetime = as.POSIXct(datetime, origin = "1970-01-01", tz = tz),
-        year = lubridate::year(datetime)
+        hour_int = suppressWarnings(as.integer(sub(":.*", "", Hora))),
+        date0    = as.POSIXct(Data, format = "%d/%m/%Y", tz = "UTC"),
+        # hour 24 -> +1 day, hour 0; else same day, that hour.
+        datetime = date0 +
+          (dplyr::if_else(hour_int >= 24L, 1L, 0L) * 86400) +
+          (dplyr::if_else(hour_int >= 24L, 0L, hour_int) * 3600),
+        year = as.integer(format(datetime, "%Y", tz = "UTC"))
       ) |>
       dplyr::filter(!is.na(datetime) & year %in% years)
     
     if (nrow(dt_long) > 0) {
       db_payload <- data.frame(
-        datetime     = dt_long$datetime,
+        datetime     = to_iso(dt_long$datetime),  # naive ISO text
         station      = real_station_name,
         station_code = as.character(file_station_code),
         year         = dt_long$year,
         param        = dt_long$param,
-        value        = as.numeric(dt_long$value)
+        value        = as.numeric(dt_long$value),
+        stringsAsFactors = FALSE
       )
       
       duckdb::dbAppendTable(con, "staging_cetesb", db_payload)
       count_ingest <- count_ingest + nrow(db_payload)
       
-      # Optional trace to show progress
       if (verbose && count_ingest == nrow(db_payload)) {
         message("  [Trace] First file successfully loaded: ", basename(f))
       }
@@ -1423,7 +1430,7 @@ sp_process_stations_data_to_parquet <- function(
   }
   
   if (verbose) {
-    message("💾 Total rows staged: ", format(count_ingest, big.mark=","))
+    message("Total rows staged: ", format(count_ingest, big.mark=","))
   }
   if (count_ingest == 0) {
     stop("No data was ingested. Check date formats or filenames.")
@@ -1431,13 +1438,14 @@ sp_process_stations_data_to_parquet <- function(
   
   # 5) Pivot and Export
   # ----------------------------------------------------------------------------
+  # STRPTIME converts the staged ISO text back to a naive TIMESTAMP.
   dataset_path <- file.path(out_dir, paste0(out_name, "_dataset"))
   if (dir.exists(dataset_path)) unlink(dataset_path, recursive = TRUE)
   
   sql_pivot <- "
     COPY (
-      SELECT 
-        datetime,
+      SELECT
+        STRPTIME(datetime, '%Y-%m-%d %H:%M:%S') AS datetime,
         station,
         station_code,
         year,
@@ -1453,7 +1461,7 @@ sp_process_stations_data_to_parquet <- function(
         AVG(CASE WHEN param = 'rh' THEN value END) AS rh,
         AVG(CASE WHEN param = 'wind_speed' THEN value END) AS wind_speed,
         AVG(CASE WHEN param = 'wind_dir' THEN value END) AS wind_dir,
-        AVG(CASE WHEN param = 'wind_dir_global' THEN value END) 
+        AVG(CASE WHEN param = 'wind_dir_global' THEN value END)
           AS wind_dir_global,
         AVG(CASE WHEN param = 'pressure' THEN value END) AS pressure,
         AVG(CASE WHEN param = 'solar_rad' THEN value END) AS solar_rad,
@@ -1461,20 +1469,22 @@ sp_process_stations_data_to_parquet <- function(
       FROM staging_cetesb
       GROUP BY datetime, station, station_code, year
       ORDER BY station, datetime
-    ) TO '%s' (
-      FORMAT PARQUET, 
-      PARTITION_BY (year), 
-      COMPRESSION 'SNAPPY', 
+    ) TO '{{DATASET_PATH}}' (
+      FORMAT PARQUET,
+      PARTITION_BY (year),
+      COMPRESSION 'SNAPPY',
       OVERWRITE_OR_IGNORE TRUE
     );
   "
   
-  query <- sprintf(sql_pivot, dataset_path)
+  # Inject the path with a literal token (not sprintf): the SQL contains
+  # %-codes from STRPTIME that sprintf would misread as format directives.
+  query <- gsub("{{DATASET_PATH}}", dataset_path, sql_pivot, fixed = TRUE)
   
-  if (verbose) message("🧱 Pivoting and writing Partitioned Parquet...")
+  if (verbose) message("Pivoting and writing Partitioned Parquet...")
   DBI::dbExecute(con, query)
   
-  if (verbose) message("✅ Done! Dataset at: ", dataset_path)
+  if (verbose) message("Done! Dataset at: ", dataset_path)
   
   return(arrow::open_dataset(dataset_path))
 }
@@ -1489,11 +1499,11 @@ sp_process_stations_data_to_parquet <- function(
 # @Arg quiet     : logical; suppress messages. Default FALSE.
 #
 # @Output : list(individual, collapsed); processed census data.
-#
 # @Purpose:
 #   Connects to the 2010 Census through censobr, filters weighting areas,
 #   harmonizes education and demographic variables, and collapses adults
-#   aged 25+ using expansion weights.
+#   aged 25+ using expansion weights. Income (V6525) is harmonized and
+#   winsorized so the IDW estimator can build income deciles downstream.
 #
 # @Written_on : 19/02/2026
 # @Written_by : Marcos Paulo
@@ -1528,6 +1538,23 @@ sp_process_census_2010 <- function(
     message("Target weighting areas: ", length(filter_codes))
   }
   
+  # Winsorize income: cap at 1st/99th percentiles among positive values,
+  # keep zeros intact. Mirrors the legacy decile-construction cleaning.
+  .winsorize_income <- function(x) {
+    pos <- x[!is.na(x) & x > 0]
+    
+    # Nothing to cap if there are no positive incomes.
+    if (length(pos) == 0L) {
+      return(x)
+    }
+    
+    lo <- stats::quantile(pos, 0.01, na.rm = TRUE)
+    hi <- stats::quantile(x,   0.99, na.rm = TRUE)
+    
+    # Apply caps only to positive incomes; zeros and NA pass through.
+    ifelse(!is.na(x) & x > 0, pmin(pmax(x, lo), hi), x)
+  }
+  
   # Connect to censobr
   if (!quiet) {
     message("Connecting to 2010 Census data through censobr.")
@@ -1537,7 +1564,7 @@ sp_process_census_2010 <- function(
     year = 2010,
     columns = c(
       "V0011", "V0010", "V1004", "V0601", "V0606",
-      "V0633", "V0634", "V0648", "V6036", "V6400"
+      "V0633", "V0634", "V0648", "V6036", "V6400", "V6525"
     ),
     showProgress = !quiet
   )
@@ -1555,6 +1582,9 @@ sp_process_census_2010 <- function(
       weight = as.numeric(V0010),
       age    = as.numeric(V6036),
       adult  = dplyr::if_else(age >= 25, 1, 0),
+      
+      # Monthly total individual income; numeric for winsorization.
+      income = as.numeric(V6525),
       
       women = dplyr::if_else(V0601 == "2", 1, 0),
       
@@ -1621,6 +1651,10 @@ sp_process_census_2010 <- function(
     dplyr::collect() |>
     dplyr::rename(code_weighting = V0011)
   
+  # Winsorize income on the individual file before saving and collapsing.
+  indiv_df <- indiv_df |>
+    dplyr::mutate(income = .winsorize_income(income))
+  
   # Collapse adults to weighting-area level
   if (!quiet) {
     message("Collapsing to weighting areas using adults 25+.")
@@ -1636,6 +1670,11 @@ sp_process_census_2010 <- function(
       education_mean = sum(years_schooling * weight, na.rm = TRUE) / weight,
       years_schooling = education_mean,
       avg_escolaridad = education_mean,
+      
+      # Population-weighted mean income among adults with reported income.
+      income_mean = sum(income * weight, na.rm = TRUE) /
+        sum(weight * (!is.na(income)), na.rm = TRUE),
+      income = income_mean,
       
       count_no_ed   = sum(no_education * weight, na.rm = TRUE),
       count_hs_inc  = sum(hs_incomplete * weight, na.rm = TRUE),
