@@ -41,7 +41,7 @@ print(cdmx_cfg$which_states)
 # ============================================================================================
 # II: Download data
 # ============================================================================================
-# Apply function to download shapefiles for Bogotá metro area
+# Apply function to download geo ref data for CDMX metro area
 metro_area <- cdmx_download_metro_area(
   base_url          = cdmx_cfg$base_url_shp,
   keep_municipality = cdmx_cfg$cities_in_metro,
@@ -50,7 +50,19 @@ metro_area <- cdmx_download_metro_area(
   overwrite_gpkg    = TRUE,
   quiet             = FALSE,
   out_file          = here::here(cdmx_cfg$out_dir, "geospatial_data", "cdmx",
-                                 "cdmx_area_metro.gpkg"))
+                                 "cdmx_area_metro_municipalities_2024.gpkg"))
+
+# Apply function to download geo ref data for CDMX metro area
+metro_area_tracts <- cdmx_download_metro_area(
+  base_url          = cdmx_cfg$base_url_shp,
+  keep_municipality = cdmx_cfg$cities_in_metro,
+  download_dir      = here::here(cdmx_cfg$dl_dir,"metro_area"),
+  level             = "ageb",
+  overwrite_zip     = FALSE,
+  overwrite_gpkg    = TRUE,
+  quiet             = FALSE,
+  out_file          = here::here(cdmx_cfg$out_dir, "geospatial_data", "cdmx",
+                                 "cdmx_area_metro_2024.gpkg"))
 
 # Apply function to save a LaTeX table of the states that we must download stations data
 table_states_to_download <- table_state_metro_distances(

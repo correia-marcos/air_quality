@@ -1732,35 +1732,41 @@ inegi_census_2020_ampliado_links <- function() {
 
 # --------------------------------------------------------------------------------------------
 # Function: cdmx_download_metro_area
-# @Arg       : base_url          — ficha URL (with ?upc=...) OR a direct .zip URL
-# @Arg       : keep_municipality — vector of CVEGEO municipality keys to keep
-# @Arg       : download_dir      — where to save the ZIP
-# @Arg       : out_file          — where to write the cropped GeoPackage
-# @Arg       : overwrite_zip     — logical; re-download if ZIP exists
-# @Arg       : overwrite_gpkg    — logical; overwrite output GeoPackage if exists
-# @Arg       : quiet             — logical; suppress progress
-# @Output    : Writes a GeoPackage with CDMX metro municipalities; returns the sf (invisibly).
-# @Purpose   : Download INEGI MGI 2024, read municipal layer, filter by CVEGEO, save.
+# @Arg       : base_url          - ficha URL (with ?upc=...) OR direct .zip URL
+# @Arg       : level             - "municipality" (default) or "ageb"
+# @Arg       : keep_municipality - vector of municipality CVEGEO keys to keep
+# @Arg       : download_dir      - where to save the ZIP
+# @Arg       : out_file          - where to write the cropped GeoPackage
+# @Arg       : overwrite_zip     - logical; re-download if ZIP exists
+# @Arg       : overwrite_gpkg    - logical; overwrite output GeoPackage if any
+# @Arg       : quiet             - logical; suppress progress
+# @Output    : Writes a GeoPackage with CDMX metro units; returns the sf.
+# @Purpose   : Download INEGI MGI 2024, read the requested layer (municipal or
+#              AGEB), filter by municipality CVEGEO (ENT+MUN), and save it.
 # @Written_on: 02/09/2025
 # @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 cdmx_download_metro_area <- function(
     base_url          = cdmx_cfg$base_url_shp,
+    level             = c("municipality", "ageb"),
     keep_municipality = cdmx_cfg$cities_in_metro,
-    download_dir      = here::here("data", "downloads", "Administrative", "Mexico"),
-    out_file          = here::here("data", "raw", "admin", "Mexico", "cdmx_metro.gpkg"),
+    download_dir      = here::here("data", "downloads", "Administrative",
+                                   "Mexico"),
+    out_file          = here::here("data", "raw", "admin", "Mexico",
+                                   "cdmx_metro.gpkg"),
     overwrite_zip     = FALSE,
     overwrite_gpkg    = TRUE,
     quiet             = FALSE
 ) {
-  # 0) Locale: make filename handling as UTF-8-friendly as possible
+  # 0) Resolve level and locale (UTF-8-friendly filename handling)
+  level <- match.arg(level)
   Sys.setlocale("LC_CTYPE", "en_US.UTF-8")
   
   # 1) Guarantee folders exist
   dir.create(download_dir, recursive = TRUE, showWarnings = FALSE)
   dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
   
-  # 2) Normalize the target CVEGEO keys (digits only, character) and make all them 5 chr
+  # 2) Normalize target municipality CVEGEO keys (digits only, 5 chars)
   keep_chr <- sprintf("%05d", keep_municipality)
   keep_chr <- gsub("[^0-9]", "", as.character(keep_chr))
   
@@ -1779,12 +1785,12 @@ cdmx_download_metro_area <- function(
     isTRUE(sc >= 200 && sc < 400)
   }
   
-  # 4) Resolve ficha page → direct integrated ZIP URL (or accept direct .zip)
+  # 4) Resolve ficha page -> direct integrated ZIP URL (or accept direct .zip)
   get_zip_url <- function(u) {
     if (grepl("\\.zip$", u, ignore.case = TRUE)) return(u)
     
     base_host <- "https://www.inegi.org.mx"
-    if (!quiet) message("🔎 Scraping ficha page for integrated ZIP…")
+    if (!quiet) message("Scraping ficha page for integrated ZIP...")
     
     upc <- {
       m <- regexpr("upc=([0-9]+)", u, perl = TRUE)
@@ -1822,7 +1828,7 @@ cdmx_download_metro_area <- function(
   
   # 5) Download integrated ZIP (robust with retry)
   if (!file.exists(zip_path) || isTRUE(overwrite_zip)) {
-    if (!quiet) message("⬇️  Downloading: ", zip_url)
+    if (!quiet) message("Downloading: ", zip_url)
     ua <- httr::user_agent(
       sprintf("R (%s) / IDB-AirMonitoring",
               paste(R.version$platform, R.version$version.string))
@@ -1831,14 +1837,15 @@ cdmx_download_metro_area <- function(
       "GET", zip_url, ua,
       httr::write_disk(zip_path, overwrite = TRUE),
       httr::progress(type = if (quiet) "none" else "down"),
-      times = 5, terminate_on = c(200L), quiet = quiet, httr::timeout(60*30)
+      times = 5, terminate_on = c(200L), quiet = quiet,
+      httr::timeout(60 * 30)
     )
     if (httr::status_code(req) != 200L) {
       stop("HTTP ", httr::status_code(req), " downloading: ", zip_url)
     }
-    if (!quiet) message("✅ Saved: ", zip_path)
+    if (!quiet) message("Saved: ", zip_path)
   } else if (!quiet) {
-    message("↪︎ ZIP already present (skip): ", zip_path)
+    message("ZIP already present (skip): ", zip_path)
   }
   
   # 6) Prepare extraction directory
@@ -1862,21 +1869,27 @@ cdmx_download_metro_area <- function(
     stop("Could not list ZIP entries (encoding issue?).")
   }
   
-  # 8) Select only municipal shapefile parts under 'conjunto_de_datos'
-  mun_pat  <- "(?i)(^|/)conjunto_de_datos/[^/]*/?0?0?mun\\."
-  mun_pat  <- paste0(mun_pat, "(shp|dbf|shx|prj|cpg)$")
-  sel <- grep(mun_pat, list_names, perl = TRUE, useBytes = TRUE)
+  # 8) Select the shapefile parts for the requested layer
+  #    level = "municipality" -> '..mun.*'   level = "ageb" -> '..a.*'
+  layer_tok <- if (level == "ageb") "a" else "mun"
+  exts_pat  <- "(shp|dbf|shx|prj|cpg)$"
+  layer_pat <- paste0(
+    "(?i)(^|/)conjunto_de_datos/[^/]*/?0?0?", layer_tok, "\\.", exts_pat
+  )
+  sel <- grep(layer_pat, list_names, perl = TRUE, useBytes = TRUE)
   if (!length(sel)) {
-    mun_pat2 <- "(?i)(^|/)conjunto_de_datos/0?0?mun\\."
-    mun_pat2 <- paste0(mun_pat2, "(shp|dbf|shx|prj|cpg)$")
-    sel <- grep(mun_pat2, list_names, perl = TRUE, useBytes = TRUE)
+    layer_pat2 <- paste0(
+      "(?i)(^|/)conjunto_de_datos/0?0?", layer_tok, "\\.", exts_pat
+    )
+    sel <- grep(layer_pat2, list_names, perl = TRUE, useBytes = TRUE)
   }
   if (!length(sel)) {
-    stop("No municipal files (*mun.{shp,dbf,shx,prj,cpg}) found in ZIP.")
+    stop("No '", layer_tok, "' files (*", layer_tok,
+         ".{shp,dbf,shx,prj,cpg}) found in ZIP.")
   }
   need_files <- list_names[sel]
   
-  # 9) Extract only municipal files (fallback to system 'unzip' if needed)
+  # 9) Extract only the selected files (fallback to system 'unzip' if needed)
   ext_try <- try(
     utils::unzip(zipfile = zip_path, exdir = exdir,
                  files = need_files, overwrite = TRUE),
@@ -1887,49 +1900,79 @@ cdmx_download_metro_area <- function(
     z2 <- try(system2("unzip", args, stdout = TRUE, stderr = TRUE),
               silent = TRUE)
     if (inherits(z2, "try-error")) {
-      stop("Failed to extract municipal shapefile from ZIP (encoding).")
+      stop("Failed to extract '", layer_tok, "' shapefile (encoding).")
     }
   }
   
   # 10) Locate the .shp path and read as sf
-  shp_rel  <- need_files[grepl("(?i)\\.shp$", need_files, useBytes = TRUE)]
-  if (!length(shp_rel)) stop("SHP part of municipal layer not found.")
+  shp_rel <- need_files[grepl("(?i)\\.shp$", need_files, useBytes = TRUE)]
+  if (!length(shp_rel)) {
+    stop("SHP part of the '", layer_tok, "' layer not found.")
+  }
   shp_path <- file.path(exdir, shp_rel[1])
   
   g <- suppressMessages(
     sf::st_read(shp_path, quiet = TRUE, stringsAsFactors = FALSE)
   )
-  if (!"CVEGEO" %in% names(g)) {
-    stop("Expected column 'CVEGEO' not found in the municipal layer.")
-  }
   
-  # 11) Filter by CVEGEO
-  g <- dplyr::mutate(
-    g, CVEGEO = gsub("[^0-9]", "", as.character(.data$CVEGEO))
-  )
-  g_sel <- dplyr::filter(g, .data$CVEGEO %in% keep_chr)
-  if (nrow(g_sel) == 0L) {
-    stop("Filter produced 0 rows. Check your keep_municipality CVEGEO values.")
-  }
-  
-  # 12) Rename the columns
-  g_sel <- g_sel |> 
-    mutate(MUN     = CVE_MUN,
-           CVE_MUN = CVEGEO) |> 
-    select(CVE_MUN, CVE_ENT, MUN, NOMGEO, geometry)
-  
-  # 13) Write GeoPackage
-  if (file.exists(out_file) && !overwrite_gpkg) {
-    if (!quiet) message("↪︎ Output exists and overwrite_gpkg=FALSE: ", out_file)
+  # 11) Filter by municipality (ENT+MUN) and standardize output columns
+  if (level == "municipality") {
+    if (!"CVEGEO" %in% names(g)) {
+      stop("Expected column 'CVEGEO' not found in the municipal layer.")
+    }
+    g <- dplyr::mutate(
+      g, CVEGEO = gsub("[^0-9]", "", as.character(.data$CVEGEO))
+    )
+    g_sel <- dplyr::filter(g, .data$CVEGEO %in% keep_chr)
+    if (nrow(g_sel) == 0L) {
+      stop("Filter produced 0 rows. Check your keep_municipality values.")
+    }
+    g_sel <- g_sel |>
+      dplyr::mutate(MUN = CVE_MUN, CVE_MUN = CVEGEO) |>
+      dplyr::select(CVE_MUN, CVE_ENT, MUN, NOMGEO, geometry)
   } else {
-    if (!quiet) message("💾 Writing GeoPackage → ", out_file)
-    if (file.exists(out_file) && overwrite_gpkg) unlink(out_file, force = TRUE)
+    req_cols <- c("CVEGEO", "CVE_ENT", "CVE_MUN")
+    miss <- setdiff(req_cols, names(g))
+    if (length(miss)) {
+      stop("Missing columns in AGEB layer: ",
+           paste(miss, collapse = ", "), ".")
+    }
+    # Municipality key = ENT (2 chr) + MUN (3 chr); matched against keep_chr.
+    # This is the first 5 digits of CVEGEO, NOT CVE_LOC (see notes).
+    g <- dplyr::mutate(
+      g,
+      muni_key = paste0(
+        sprintf("%02d", as.integer(gsub("[^0-9]", "", .data$CVE_ENT))),
+        sprintf("%03d", as.integer(gsub("[^0-9]", "", .data$CVE_MUN)))
+      )
+    )
+    g_sel <- dplyr::filter(g, .data$muni_key %in% keep_chr)
+    if (nrow(g_sel) == 0L) {
+      stop("Filter produced 0 rows. Check your keep_municipality values.")
+    }
+    g_sel <- g_sel |>
+      dplyr::mutate(MUN     = gsub("[^0-9]", "", as.character(CVE_MUN)),
+                    CVE_MUN = muni_key) |>
+      dplyr::select(CVEGEO, CVE_MUN, CVE_ENT, MUN, CVE_LOC,
+                    CVE_AGEB, AMBITO, geometry)
+  }
+  
+  # 12) Write GeoPackage
+  if (file.exists(out_file) && !overwrite_gpkg) {
+    if (!quiet) {
+      message("Output exists and overwrite_gpkg=FALSE: ", out_file)
+    }
+  } else {
+    if (!quiet) message("Writing GeoPackage -> ", out_file)
+    if (file.exists(out_file) && overwrite_gpkg) {
+      unlink(out_file, force = TRUE)
+    }
     suppressMessages(sf::st_write(g_sel, out_file, quiet = TRUE))
   }
   
-  # 14) Friendly summary
+  # 13) Friendly summary
   if (!quiet) {
-    message("✅ Done. Selected ", nrow(g_sel), " municipalities.")
+    message("Done. Selected ", nrow(g_sel), " features (", level, ").")
   }
   
   invisible(g_sel)
