@@ -69,3 +69,11 @@ Thumbs.db
 tests/_cache/
 tests/_out/
 .positai
+
+
+# ---------------------------------------------------------------------------
+# Manuscript draft — kept local, never committed (synced from Overleaf)
+# ---------------------------------------------------------------------------
+doc/paper/*
+!doc/paper/README.md
+
