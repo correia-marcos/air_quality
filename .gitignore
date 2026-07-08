@@ -72,8 +72,13 @@ tests/_out/
 
 
 # ---------------------------------------------------------------------------
-# Manuscript draft — kept local, never committed (synced from Overleaf)
+# Manuscript draft — kept local, never committed
 # ---------------------------------------------------------------------------
 doc/paper/*
 !doc/paper/README.md
 
+
+# ---------------------------------------------------------------------------
+# Claude Code — Local, individual settings
+# ---------------------------------------------------------------------------
+/.claude/settings.local.json
