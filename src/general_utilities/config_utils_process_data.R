@@ -733,10 +733,10 @@ compute_distance_matrices <- function(
       return(suppressWarnings(sf::st_point_on_surface(poly)))
     }
     
-    # Legacy behavior: plain mathematical centroid, no internal fallback.
+    # Legacy behavior: plain st_centroid() over all parts, no internal fallback.
     if (method == "math_centroid_legacy") {
       return(suppressWarnings(
-        sf::st_centroid(poly, of_largest_polygon = TRUE)
+        sf::st_centroid(poly, of_largest_polygon = FALSE)
       ))
     }
     
@@ -956,6 +956,14 @@ compute_distance_matrices <- function(
     
     # Extract geographic unit IDs after geometry preparation.
     geo_ids <- as.character(geo_points[[geo_id_col]])
+
+    # Validity repair can split a unit into extra rows; stop before double-counting.
+    if (anyDuplicated(geo_ids) > 0) {
+      dup_ids <- unique(geo_ids[duplicated(geo_ids)])
+      stop("Duplicated geo ids after geometry preparation: ",
+           paste(dup_ids, collapse = ", "))
+    }
+
     n_geo   <- length(geo_ids)
     
     # Calculate distances from representative points to stations. Both paths
