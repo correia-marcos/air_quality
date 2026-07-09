@@ -75,6 +75,7 @@ tests/_out/
 # Manuscript draft — kept local, never committed
 # ---------------------------------------------------------------------------
 doc/paper/*
+doc/audits/*
 !doc/paper/README.md
 
 
