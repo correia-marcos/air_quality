@@ -67,7 +67,15 @@ build_compare_cfg <- function(city_id) {
     value_cols       = c("pm10", "pm25", "ozone", "co", "no2"),
     gs_tol           = c(pm10 = 0, pm25 = 0, ozone = 0, co = 0, no2 = 0),
     census_tol       = 0.001,
-    idw_tol_km       = 0.5,
+    # Two tolerances, because the two matrices differ for different reasons.
+    # Stations: legacy geosphere::distHaversine uses the *equatorial* radius
+    # (6378137 m), which near the equator overstates north-south pairs by ~0.5%
+    # (~150 m over 30 km). That is expected metric noise, so allow 0.25 km.
+    # Geo units: the legacy-vs-new gap is dominated by the centroid ->
+    # point_on_surface shift (routinely 100-500 m), which is exactly what the
+    # Step 0-4 ladder must detect — so keep this well under that scale.
+    station_tol_km   = 0.25,
+    geo_tol_km       = 0.05,
     outlier_params   = list(
       use_legacy_input    = TRUE,  
       pct_flag            = 0.99,
@@ -101,12 +109,16 @@ build_compare_cfg <- function(city_id) {
       legacy_census_collapsed = here::here("data", "_legacy", "census",
                                            "collapse_bogota_metro.csv"),
       census_join_key         = "GEO_ID",
+      # generate_distances_matrices.R writes <city>/<out_name>_*.parquet, so the
+      # new-pipeline matrices live one directory down with the "matrix" prefix.
       new_station_dist        = here::here("data", "processed", "distances_matrices",
-                                           "bogota_2018_station_distances.parquet"),
+                                           "bogota_2018",
+                                           "matrix_station_distances.parquet"),
       legacy_station_dist     = here::here("data", "_legacy", "distances", "bogota",
                                            "stations_distance_bogota_v2.csv"),
       new_geo_dist            = here::here("data", "processed", "distances_matrices",
-                                           "bogota_2018_geo_station_distances.parquet"),
+                                           "bogota_2018",
+                                           "matrix_geo_station_distances.parquet"),
       legacy_geo_dist         = here::here("data", "_legacy", "distances", "bogota",
                                            "dt_distances.rds"),
       new_clean_dir           = here::here("data", "processed", "outlier_detection",
@@ -2011,7 +2023,8 @@ aggregate_idw_exposure_legacy <- function(
 # compare_idw
 # @Arg      : cfg              — city cfg list. Must contain a $compare sublist with:
 #                                new_station_dist, legacy_station_dist, and optionally
-#                                new_geo_dist, legacy_geo_dist, and idw_tol_km.
+#                                new_geo_dist, legacy_geo_dist, station_tol_km,
+#                                and geo_tol_km.
 # @Arg      : out_root         — root output folder; {out_root}/{cfg$id}/ is created.
 # @Arg      : station_audit    — data.frame; output from compare_ground_stations().
 #                                Used to restrict the new pipeline's distance matrix to 
@@ -2020,9 +2033,10 @@ aggregate_idw_exposure_legacy <- function(
 #
 # @Output   : named list (invisible) with:
 #   $station_dist_summary — tibble; per-station-pair comparison statistics
-#   $station_dist_diffs   — tibble; station pairs where distances differ > tol_km
-#   $geo_dist_summary     — tibble or NULL; per-geo-unit comparison statistics
-#   $geo_dist_diffs       — tibble or NULL; geo-unit-station pairs differing > tol_km
+#   $station_dist_diffs   — tibble; station pairs differing > station_tol_km
+#   $geo_dist_summary     — tibble or NULL; per-geo-unit comparison statistics,
+#                           reported for all pairs and for pairs within 5 km
+#   $geo_dist_diffs       — tibble or NULL; geo-station pairs differing > geo_tol_km
 #   $method_note          — character; explains the methodological differences
 #   $out_dir              — path to the output directory
 #   Parquet files written to {out_root}/{cfg$id}/distance_comparison/.
@@ -2030,12 +2044,24 @@ aggregate_idw_exposure_legacy <- function(
 # @Purpose  : Compare distance matrices between the new pipeline and Dropbox legacy.
 # @Details  :
 #   METHODOLOGICAL DIFFERENCES
-#   The new pipeline uses an Azimuthal Equidistant (AEQD) projection centred on
-#   the station cloud centroid for Euclidean distance computation. The legacy
-#   pipeline uses the Haversine great-circle formula via geosphere::distm().
-#   For metro-area scales (~50-200 km), these methods agree within ~0.1-0.5 km.
-#   Differences beyond this threshold indicate either different station
-#   coordinates or a processing error.
+#   The new pipeline projects to an Azimuthal Equidistant (AEQD) projection whose
+#   origin is the midpoint of the COMBINED bounding box of stations and geographic
+#   units (not the station centroid), then measures planar distance. AEQD is exact
+#   only radially from that origin; its off-centre scale factor is 1 + (rho/R)^2/6,
+#   about 1e-5 at rho = 50 km — roughly 3 cm on a 3 km distance. So the projection
+#   itself is NOT a meaningful source of disagreement at metro scale.
+#
+#   The real gaps are metric- and method-specific, which is why the two matrices
+#   carry separate tolerances:
+#     - Stations: legacy geosphere::distHaversine assumes a sphere of radius
+#       6378137 m (the EQUATORIAL radius). Near the equator the meridional radius
+#       of curvature is ~6335 km, so north-south pairs can differ from the
+#       ellipsoidal value by ~0.5% — ~150 m over 30 km. Expected, not an error.
+#       Hence station_tol_km = 0.25.
+#     - Geo units: dominated by the representative-point change (legacy centroid
+#       vs new st_point_on_surface), routinely 100-500 m. That is the quantity the
+#       Step 0-4 ladder exists to measure, so geo_tol_km = 0.05 keeps it visible
+#       rather than absorbing it into a "match".
 #
 #   STATION MATCHING
 #   The new pipeline normalises station names (uppercase, no accents). The legacy
@@ -2043,10 +2069,11 @@ aggregate_idw_exposure_legacy <- function(
 #   after normalising both sides to uppercase ASCII.
 #
 #   GEO-UNIT DISTANCES
-#   The new pipeline computes centroid-to-station distances using the AEQD
-#   projection on census tract (manzana/sector) centroids. The legacy computes
-#   centroid-to-station distances using sf::st_distance() on EPSG:4674
-#   (SIRGAS 2000), which uses the s2 spherical engine. Both should agree closely.
+#   The new pipeline measures from st_point_on_surface() representative points.
+#   The legacy measures from st_centroid() via sf::st_distance() on EPSG:4674
+#   (SIRGAS 2000), using the s2 spherical engine. The summary reports match rates
+#   twice: over all pairs, and over pairs within 5 km — only the latter can change
+#   which units fall inside the 3 km buffer.
 #
 # @Written_on: 10/04/2026
 # @Written_by: Marcos Paulo
@@ -2078,7 +2105,11 @@ compare_idw <- function(
   legacy_station_dist <- cmp$legacy_station_dist
   new_geo_dist        <- cmp$new_geo_dist
   legacy_geo_dist     <- cmp$legacy_geo_dist
-  tol_km              <- if (!is.null(cmp$idw_tol_km)) cmp$idw_tol_km else 0.5
+  station_tol_km      <- if (!is.null(cmp$station_tol_km)) cmp$station_tol_km else 0.25
+  geo_tol_km          <- if (!is.null(cmp$geo_tol_km))     cmp$geo_tol_km     else 0.05
+  # Geo pairs beyond this distance can never decide 3 km buffer eligibility, so
+  # they are reported separately from the pairs that actually matter.
+  near_km             <- 5
   
   if (!file.exists(new_station_dist))
     stop("[", cfg$id, "] New station dist file not found: ", new_station_dist)
@@ -2097,7 +2128,17 @@ compare_idw <- function(
       x <- stringi::stri_trans_general(x, "Latin-ASCII")
     gsub('["\']', "", x)
   }
-  
+
+  # Legacy geo distances are always km, but 5_stats.R stored them differently per
+  # city: Santiago saved before its own as.numeric() call, so that file keeps the
+  # units label ("42.88 [km]") as character or factor; the other three saved after
+  # and are plain numeric. as.numeric() on a factor returns level codes — small,
+  # plausible, and wrong — so strip the label before converting.
+  .parse_km <- function(x) {
+    if (inherits(x, "units") || is.numeric(x)) return(as.numeric(x))
+    as.numeric(gsub("[^0-9.eE+-]", "", as.character(x)))
+  }
+
   # 3) Load new pipeline station distances
   # The new pipeline stores distances in "long" format (station_from, station_to, dist)
   new_sta <- arrow::read_parquet(new_station_dist) |>
@@ -2158,7 +2199,7 @@ compare_idw <- function(
     dplyr::mutate(
       diff_km    = distance_km_new - distance_km_legacy,
       abs_diff   = abs(diff_km),
-      within_tol = abs_diff <= tol_km | 
+      within_tol = abs_diff <= station_tol_km |
         (is.na(distance_km_new) & is.na(distance_km_legacy))
     )
   
@@ -2180,9 +2221,9 @@ compare_idw <- function(
     dplyr::arrange(dplyr::desc(abs_diff))
   
   if (!quiet) {
-    message(sprintf("  Station distances: %d pairs match (%.1f%%), %d differ > %.1f km",
+    message(sprintf("  Station distances: %d pairs match (%.1f%%), %d differ > %.2f km",
                     sta_summary$n_match, 100 * sta_summary$share_match,
-                    sta_summary$n_diff, tol_km))
+                    sta_summary$n_diff, station_tol_km))
     message(sprintf("  Mean abs diff: %.3f km | Max: %.3f km",
                     sta_summary$mean_abs_diff, sta_summary$max_abs_diff))
   }
@@ -2213,9 +2254,15 @@ compare_idw <- function(
       dplyr::transmute(
         geo_id             = as.character(.data[[geo_id_col]]),
         station_id         = .norm(.data[[sta_id_col]]),
-        distance_km_legacy = as.numeric(.data[[dist_col]])
+        distance_km_legacy = .parse_km(.data[[dist_col]])
       )
-    
+
+    # A fully unparseable column would otherwise sail through as 0% match.
+    if (all(is.na(leg_geo_clean$distance_km_legacy))) {
+      stop("[", cfg$id, "] Legacy geo distances in '", dist_col,
+           "' parsed to all NA. Check the column format in ", legacy_geo_dist)
+    }
+
     new_geo_filtered <- new_geo |> dplyr::filter(station_id %in% legacy_names)
     
     geo_joined <- dplyr::inner_join(
@@ -2224,33 +2271,56 @@ compare_idw <- function(
       dplyr::mutate(
         diff_km    = distance_km_new - distance_km_legacy,
         abs_diff   = abs(diff_km),
-        within_tol = abs_diff <= tol_km
+        within_tol = abs_diff <= geo_tol_km,
+        # Only pairs this close can flip 3 km buffer eligibility.
+        is_near    = distance_km_new <= near_km | distance_km_legacy <= near_km
       )
-    
+
     geo_summary <- geo_joined |>
       dplyr::summarise(
-        n_pairs       = dplyr::n(),
-        n_match       = sum(within_tol, na.rm = TRUE),
-        mean_abs_diff = mean(abs_diff, na.rm = TRUE),
-        max_abs_diff  = max(abs_diff, na.rm = TRUE),
-        share_match   = n_match / n_pairs
+        n_pairs         = dplyr::n(),
+        n_match         = sum(within_tol, na.rm = TRUE),
+        mean_abs_diff   = mean(abs_diff, na.rm = TRUE),
+        max_abs_diff    = max(abs_diff, na.rm = TRUE),
+        share_match     = n_match / n_pairs,
+        # Same statistics restricted to the pairs that decide eligibility. A
+        # 40 km pair off by 200 m changes nothing; a 3 km pair off by 200 m can
+        # move a geographic unit in or out of the buffer.
+        n_pairs_near    = sum(is_near, na.rm = TRUE),
+        n_match_near    = sum(within_tol & is_near, na.rm = TRUE),
+        mean_abs_diff_near = mean(abs_diff[is_near], na.rm = TRUE),
+        max_abs_diff_near  = max(abs_diff[is_near], na.rm = TRUE),
+        share_match_near   = n_match_near / n_pairs_near,
+        # Carried so the report can label the near-pair row without hardcoding.
+        near_km            = near_km
       )
-    
+
     geo_diffs <- geo_joined |>
       dplyr::filter(!within_tol) |>
       dplyr::arrange(dplyr::desc(abs_diff))
-    
+
     if (!quiet) {
-      message(sprintf("  Geo distances: %d pairs, %.1f%% match within %.1f km",
-                      geo_summary$n_pairs, 100 * geo_summary$share_match, tol_km))
+      message(sprintf("  Geo distances: %d pairs, %.1f%% match within %.2f km",
+                      geo_summary$n_pairs, 100 * geo_summary$share_match, geo_tol_km))
+      message(sprintf("  Geo (<= %d km): %d pairs, %.1f%% match | max diff %.3f km",
+                      near_km, geo_summary$n_pairs_near,
+                      100 * geo_summary$share_match_near,
+                      geo_summary$max_abs_diff_near))
     }
   }
   
   # 8) Method note
   method_note <- paste0(
-    "The new pipeline uses AEQD (Azimuthal Equidistant) projection for ",
-    "Euclidean distance. The legacy uses Haversine great-circle distance ",
-    "(geosphere::distm). At metro scales these agree within ~0.1-0.5 km."
+    "The new pipeline measures planar distance in an AEQD (Azimuthal ",
+    "Equidistant) projection; the legacy uses great-circle distance ",
+    "(geosphere::distm for stations, sf/s2 for geographic units). The ",
+    "projection contributes almost nothing at metro scale (~3 cm on a 3 km ",
+    "distance). Station-pair differences are driven by geosphere's equatorial ",
+    "Earth radius (~150 m over 30 km near the equator); geo-unit differences ",
+    "are driven by the representative point (legacy st_centroid vs new ",
+    "st_point_on_surface), routinely 100-500 m. Tolerances are therefore split: ",
+    sprintf("%.2f km for stations, %.2f km for geographic units.",
+            station_tol_km, geo_tol_km)
   )
   
   # 9) Persist
@@ -2558,8 +2628,19 @@ build_bogota_progression_specs <- function(cfg, buffer_km = 5L) {
   step4_arrow_dir   <- if (dir.exists(step4_arrow_clean)) step4_arrow_clean
   else if (dir.exists(step4_arrow_raw)) step4_arrow_raw
   else NULL
-  step4_geo_dist    <- file.path(dist_root, "bogota_2018_geo_station_distances.parquet")
-  if (!file.exists(step4_geo_dist)) step4_geo_dist <- NULL
+  # Same nested layout generate_distances_matrices.R writes: <city>/matrix_*.parquet.
+  step4_geo_dist_path <- file.path(dist_root, "bogota_2018",
+                                   "matrix_geo_station_distances.parquet")
+  has_step4_geo_dist  <- file.exists(step4_geo_dist_path)
+  step4_geo_dist      <- if (has_step4_geo_dist) step4_geo_dist_path else NULL
+
+  # Step 4 still runs without this file, but its day-level metrics silently
+  # disappear. Say so out loud rather than dropping them unannounced.
+  if (!has_step4_geo_dist) {
+    warning("[progression] Step 4 day-level metrics disabled — missing ",
+            step4_geo_dist_path, " (run generate_distances_matrices.R).",
+            call. = FALSE)
+  }
   
   # Steps 1-3 reuse the legacy Arrow panel (legacy raw CSV passed through the
   # new outlier-detection-on-legacy-input toggle produces a mock clean dir on

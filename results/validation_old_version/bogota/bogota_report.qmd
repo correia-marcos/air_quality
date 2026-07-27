@@ -1378,7 +1378,17 @@ if (is.null(idw_sta_sum)) {
 
 ```{r idw_geo, echo=FALSE, results='asis'}
 if (!is.null(idw_geo_sum)) {
-  idw_geo_sum |>
+  # Reported twice: over all pairs, and over pairs close enough that a distance
+  # error could actually move a unit in or out of the buffer.
+  tibble::tibble(
+    scope         = c("All pairs",
+                      sprintf("Within %g km", idw_geo_sum$near_km)),
+    n_pairs       = c(idw_geo_sum$n_pairs,       idw_geo_sum$n_pairs_near),
+    n_match       = c(idw_geo_sum$n_match,       idw_geo_sum$n_match_near),
+    mean_abs_diff = c(idw_geo_sum$mean_abs_diff, idw_geo_sum$mean_abs_diff_near),
+    max_abs_diff  = c(idw_geo_sum$max_abs_diff,  idw_geo_sum$max_abs_diff_near),
+    share_match   = c(idw_geo_sum$share_match,   idw_geo_sum$share_match_near)
+  ) |>
     mutate(
       share_match   = scales::percent(share_match, 0.01),
       mean_abs_diff = round(mean_abs_diff, 3),
@@ -1386,9 +1396,9 @@ if (!is.null(idw_geo_sum)) {
     ) |>
     kable(
       format = "html",
-      col.names = c("Pairs", "Match", "Mean abs diff (km)",
+      col.names = c("Scope", "Pairs", "Match", "Mean abs diff (km)",
                      "Max abs diff (km)", "Match rate"),
-      align = "rrrrr",
+      align = "lrrrrr",
       format.args = list(big.mark = ",")
     ) |>
     kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
