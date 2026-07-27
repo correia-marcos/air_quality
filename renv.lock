@@ -828,6 +828,54 @@
       "Maintainer": "Jennifer Bryan <jenny@stat.ubc.ca>",
       "Repository": "CRAN"
     },
+    "censo2017": {
+      "Package": "censo2017",
+      "Version": "0.6.1",
+      "Source": "GitHub",
+      "Title": "Base de Datos de Facil Acceso del Censo 2017 de Chile (2017 Chilean Census Easy Access Database)",
+      "Authors@R": "c( person(given = \"Mauricio\", family = \"Vargas\", role = c(\"aut\", \"cre\"), email = \"mavargas11@uc.cl\", comment = c(ORCID = \"0000-0003-1017-7574\")), person(given = \"Juan\", family = \"Correa\", role = c(\"ctb\")), person(given = \"Maria Paula\", family = \"Caldas\", role = c(\"rev\"), comment = \"rOpenSci\"), person(given = \"Frans\", family = \"van Dunné\", role = c(\"rev\"), comment = \"rOpenSci\"), person(given = \"Melina\", family = \"Vidoni\", role = c(\"rev\"), comment = \"rOpenSci\"), person(given = \"Constanza\", family = \"Manriquez\", role = c(\"rev\"), comment = \"revision independiente de las vinietas\"), person(family = \"Instituto Nacional de Estadisticas (INE)\", role = c(\"dtc\") ) )",
+      "Description": "Provee un acceso conveniente a mas de 17 millones de registros de la base de datos del Censo 2017. Los datos fueron importados desde el DVD oficial del INE usando el Convertidor REDATAM creado por Pablo De Grande. Esta paquete esta documentado intencionalmente en castellano asciificado para que funcione sin problema en diferentes plataformas. (Provides convenient access to more than 17 million records from the Chilean Census 2017 database. The datasets were imported from the official DVD provided by the Chilean National Bureau of Statistics by using the REDATAM converter created by Pablo De Grande and in addition it includes the maps accompanying these datasets.)",
+      "URL": "https://docs.ropensci.org/censo2017/",
+      "BugReports": "https://github.com/ropensci/censo2017/issues/",
+      "License": "CC0",
+      "Language": "es",
+      "Encoding": "UTF-8",
+      "LazyData": "true",
+      "Roxygen": "list(markdown = TRUE)",
+      "RoxygenNote": "7.1.1",
+      "Imports": [
+        "DBI",
+        "duckdb",
+        "httr",
+        "tibble",
+        "purrr",
+        "cli",
+        "crayon",
+        "rstudioapi",
+        "tools"
+      ],
+      "Suggests": [
+        "testthat",
+        "covr",
+        "knitr",
+        "dplyr",
+        "dbplyr",
+        "ggplot2",
+        "chilemapas"
+      ],
+      "Depends": [
+        "R (>= 4.0)"
+      ],
+      "RemoteType": "github",
+      "RemoteHost": "api.github.com",
+      "RemoteRepo": "censo2017",
+      "RemoteUsername": "ropensci",
+      "RemoteRef": "HEAD",
+      "RemoteSha": "b9f632579ca41bf365f6e978a72dc503a16c1d84",
+      "NeedsCompilation": "no",
+      "Author": "Mauricio Vargas [aut, cre] (ORCID: <https://orcid.org/0000-0003-1017-7574>), Juan Correa [ctb], Maria Paula Caldas [rev] (rOpenSci), Frans van Dunné [rev] (rOpenSci), Melina Vidoni [rev] (rOpenSci), Constanza Manriquez [rev] (revision independiente de las vinietas), Instituto Nacional de Estadisticas (INE) [dtc]",
+      "Maintainer": "Mauricio Vargas <mavargas11@uc.cl>"
+    },
     "censobr": {
       "Package": "censobr",
       "Version": "0.5.0",
@@ -1489,7 +1537,7 @@
     },
     "duckdb": {
       "Package": "duckdb",
-      "Version": "1.5.4.2",
+      "Version": "1.5.5",
       "Source": "Repository",
       "Title": "DBI Package for the DuckDB Database Management System",
       "Authors@R": "c( person(\"Hannes\", \"Mühleisen\", , \"hannes@cwi.nl\", role = \"aut\", comment = c(ORCID = \"0000-0001-8552-0029\")), person(\"Mark\", \"Raasveldt\", , \"mark.raasveldt@cwi.nl\", role = \"aut\", comment = c(ORCID = \"0000-0001-5005-6844\")), person(\"Kirill\", \"Müller\", , \"kirill@cynkra.com\", role = \"cre\", comment = c(ORCID = \"0000-0002-1416-3412\")), person(\"Stichting DuckDB Foundation\", role = \"cph\"), person(\"Apache Software Foundation\", role = \"cph\"), person(\"PostgreSQL Global Development Group\", role = \"cph\"), person(\"The Regents of the University of California\", role = \"cph\"), person(\"Cameron Desrochers\", role = \"cph\"), person(\"Victor Zverovich\", role = \"cph\"), person(\"RAD Game Tools\", role = \"cph\"), person(\"Valve Software\", role = \"cph\"), person(\"Rich Geldreich\", role = \"cph\"), person(\"Tenacious Software LLC\", role = \"cph\"), person(\"The RE2 Authors\", role = \"cph\"), person(\"Google Inc.\", role = \"cph\"), person(\"Facebook Inc.\", role = \"cph\"), person(\"Steven G. Johnson\", role = \"cph\"), person(\"Jiahao Chen\", role = \"cph\"), person(\"Tony Kelman\", role = \"cph\"), person(\"Jonas Fonseca\", role = \"cph\"), person(\"Lukas Fittl\", role = \"cph\"), person(\"Salvatore Sanfilippo\", role = \"cph\"), person(\"Art.sy, Inc.\", role = \"cph\"), person(\"Oran Agra\", role = \"cph\"), person(\"Redis Labs, Inc.\", role = \"cph\"), person(\"Melissa O'Neill\", role = \"cph\"), person(\"PCG Project contributors\", role = \"cph\") )",
