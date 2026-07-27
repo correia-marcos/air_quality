@@ -59,6 +59,9 @@ invisible(lapply(pkgs, function(p) {
 # no repo tweaking, no renv::install() here
 rm(pkgs, ensure_installed)
 
+# Pin the geometry engine.
+suppressMessages(sf::sf_use_s2(TRUE))
+
 # ############################################################################################
 # Functions
 # ############################################################################################
@@ -606,12 +609,21 @@ compute_correlations_for_cities <- function(city_dfs,
 #
 #   Distance metrics:
 #     - "geosphere" : great-circle Haversine via geosphere::distm. Legacy-matching
-#                     metric for the station-to-station matrix.
+#                     metric for the station-to-station matrix. Note distm defaults
+#                     to the EQUATORIAL radius (6378137 m); near the equator that
+#                     overstates north-south pairs by ~0.5% (~150 m over 30 km).
 #     - "haversine" : spherical (S2) great-circle via sf::st_distance on WGS84.
-#                     Legacy-matching metric for the geo-to-station matrix.
+#                     Legacy-matching metric for the geo-to-station matrix. This
+#                     is the only metric sensitive to sf_use_s2(), which the stage
+#                     config pins to TRUE; with s2 off, sf would return ellipsoidal
+#                     geodesics instead and stop matching legacy.
 #     - "aeqd"      : planar distance in an Azimuthal Equidistant projection centered
-#                     on the data extent. Most accurate for metro-scale work; this is
-#                     the intended/updated metric.
+#                     on the midpoint of the combined station + geo bounding box.
+#                     This is the intended/updated metric. AEQD is exact only along
+#                     rays from its origin; for two off-centre points the scale factor
+#                     is 1 + (rho/R)^2/6, about 1e-5 at rho = 50 km — roughly 3 cm on
+#                     a 3 km distance. Safe at metro extent for that reason, and only
+#                     for that reason: do not reuse it at national extent.
 #
 # @Written_on : 01/02/2026
 # @Written_by : Marcos Paulo
