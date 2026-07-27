@@ -1,7 +1,8 @@
 ################################################################################
 # STAGE 1: Base - System Dependencies
 ################################################################################
-FROM rocker/rstudio:4.5.3 AS base
+# Must match the "R.Version" recorded in renv.lock
+FROM rocker/rstudio:4.6.1 AS base
 
 ENV DEBIAN_FRONTEND=noninteractive TZ=UTC
 
