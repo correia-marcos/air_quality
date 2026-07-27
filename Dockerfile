@@ -10,6 +10,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential git curl ca-certificates pkg-config cmake \
     # Java for rJava/XLConnect
     default-jdk \
+    # Files watchers and asynchronous operations
+    libuv1-dev \ 
     # Geospatial Stack
     gdal-bin libgdal-dev libproj-dev proj-bin proj-data \
     libgeos-dev libudunits2-dev libsqlite3-dev \
