@@ -53,6 +53,8 @@ santiago_cfg <- list(
 # @Arg keep_municipality : character vector; municipalities to keep.
 # @Arg download_dir      : string; local path to save the raw ZIP file.
 # @Arg out_file          : string; local path to save the processed GeoPackage.
+# @Arg dissolve_by       : string or NULL; id column whose repeated values are
+#                          merged into one polygon. Default NULL (no merging).
 # @Arg overwrite_zip     : logical; re-download ZIP if it exists. Default FALSE.
 # @Arg overwrite_gpkg    : logical; overwrite output GeoPackage. Default TRUE.
 # @Arg container         : logical; TRUE if running with Docker Selenium.
@@ -66,6 +68,14 @@ santiago_cfg <- list(
 #   layer can contain MULTISURFACE/CURVEPOLYGON geometries that may fail in
 #   st_make_valid() and downstream distance calculations.
 #
+#   When `dissolve_by` is supplied, rows sharing that id are unioned into a
+#   single polygon. INE splits some comunas into several "entidades" — Lampa
+#   (CUT 13302) arrives as CHICAUMA - VALLE GRANDE plus ESTACIÓN COLINA — so the
+#   layer carries more rows than the census, which is one row per comuna. Left
+#   unmerged, the comuna gets two representative points and appears twice in the
+#   geo-to-station distance matrix. Attributes that disagree across the merged
+#   rows are set to NA, because no single value describes the merged unit.
+#
 # @Written_on : 25/10/2025
 # @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------------
@@ -77,6 +87,7 @@ santiago_download_metro_area <- function(
     download_dir      = here::here("data", "downloads", "Administrative", "Chile"),
     out_file          = here::here("data", "raw", "admin", "Chile",
                                    "santiago_metro.gpkg"),
+    dissolve_by       = NULL,
     overwrite_zip     = FALSE,
     overwrite_gpkg    = TRUE,
     container         = TRUE,
@@ -145,7 +156,6 @@ santiago_download_metro_area <- function(
         delete_dsn = TRUE,
         quiet = TRUE
       )
-      
       sf::gdal_utils(
         util = "vectortranslate",
         source = tmp_in,
@@ -156,7 +166,6 @@ santiago_download_metro_area <- function(
           "-nln", "geo"
         )
       )
-      
       x <- sf::st_read(tmp_out, layer = "geo", quiet = TRUE)
     }
     
@@ -168,10 +177,56 @@ santiago_download_metro_area <- function(
     
     # Use MULTIPOLYGON for stable downstream processing.
     x <- suppressWarnings(sf::st_cast(x, "MULTIPOLYGON", warn = FALSE))
-    
+
     return(x)
   }
-  
+  # Merge rows that share an id into one polygon, so the geometry unit matches the census unit. 
+  .dissolve_by_id <- function(x, id_col) {
+
+    if (!id_col %in% names(x)) {
+      stop("Column '", id_col, "' not found; cannot dissolve.")
+    }
+
+    ids     <- as.character(x[[id_col]])
+    dup_ids <- unique(ids[duplicated(ids)])
+
+    if (length(dup_ids) == 0L) {
+      return(x)
+    }
+
+    if (!quiet) {
+      message("[santiago_area] Dissolving ", length(dup_ids), " repeated ",
+              id_col, " value(s): ", paste(dup_ids, collapse = ", "))
+    }
+
+    attr_names <- setdiff(names(x), attr(x, "sf_column"))
+
+    # Rebuild one row per id, keeping the layer's original id order.
+    parts <- lapply(unique(ids), function(id) {
+
+      rows <- x[ids == id, ]
+
+      if (nrow(rows) == 1L) {
+        return(rows)
+      }
+
+      # Union the parts into a single geometry for this id.
+      merged <- rows[1, ]
+      sf::st_geometry(merged) <- sf::st_union(sf::st_geometry(rows))
+
+      # Drop attributes that differ across the merged rows: issue otherwise
+      for (nm in attr_names) {
+        if (length(unique(rows[[nm]])) > 1L) merged[[nm]][1] <- NA
+      }
+
+      merged
+    })
+
+    out <- do.call(rbind, parts)
+
+    suppressWarnings(sf::st_cast(out, "MULTIPOLYGON", warn = FALSE))
+  }
+
   # 3. Download ZIP with Selenium, if needed
   # -----------------------------------------------------------------------
   if (!file.exists(zip_target_path) || isTRUE(overwrite_zip)) {
@@ -532,7 +587,19 @@ santiago_download_metro_area <- function(
   }
   
   sf_out <- .regularize_polygon_geometry(sf_out)
-  
+
+  # 6b. Merge rows sharing an id (runs after repair so the union gets valid input)
+  # -----------------------------------------------------------------------
+  if (!is.null(dissolve_by)) {
+    n_before <- nrow(sf_out)
+    sf_out   <- .dissolve_by_id(sf_out, dissolve_by)
+
+    if (!quiet) {
+      message("[santiago_area] Rows: ", n_before, " -> ", nrow(sf_out),
+              " (one per ", dissolve_by, ").")
+    }
+  }
+
   # 7. Save output GeoPackage
   # -----------------------------------------------------------------------
   if (file.exists(out_file) && !overwrite_gpkg) {
