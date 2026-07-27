@@ -27,7 +27,7 @@ services:
       context: .
       target: final
       args:
-        PPM_DATE: "2025-09-01"
+        PPM_DATE: "2026-03-01"
     depends_on:
       selenium:
         condition: service_healthy
