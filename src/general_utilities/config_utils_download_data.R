@@ -13,6 +13,7 @@
 # List of required packages
 pkgs <- c(
   "arrow",
+  "censo2017",
   "curl",
   "dplyr",
   "fs",
