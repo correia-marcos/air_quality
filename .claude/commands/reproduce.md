@@ -10,7 +10,7 @@ step in one or two sentences, and pause where a human must act.
 Walk through, checking state as you go:
 
 1. **Prerequisites** — Docker installed? (`docker --version`). If they'd rather run natively:
-   R 4.5.3 + the system libs listed in the `Dockerfile` `base` stage.
+   R 4.6.1 + the system libs listed in the `Dockerfile` `base` stage.
 2. **Credentials** — copy `.env.example` to `.env`. Explain that Earthdata / Stadia keys are only
    needed to *re-download* raw data; the provided processed data runs without them.
 3. **Launch** — `docker compose up`, then open RStudio at `http://localhost:8787`

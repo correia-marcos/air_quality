@@ -17,7 +17,8 @@ on three pinned layers — don't weaken any of them without saying so explicitly
 
 ## The three layers
 
-1. **Docker** pins system libraries (GDAL, GEOS, PROJ, Java, R itself via `rocker/rstudio:4.5.3`).
+1. **Docker** pins system libraries (GDAL, GEOS, PROJ, Java, R itself via `rocker/rstudio:4.6.1`).
+   This tag must stay in sync with the `R.Version` field at the top of `renv.lock`.
 2. **renv** pins every R package (`renv.lock`). It is an **input of record** — never hand-edit it.
    To change packages: `renv::install(...)` / update `DESCRIPTION`, then `renv::snapshot()`.
 3. **`here::here()`** pins paths so scripts run identically inside Docker, in RStudio, or from a
