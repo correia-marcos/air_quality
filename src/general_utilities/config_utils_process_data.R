@@ -1029,10 +1029,21 @@ compute_distance_matrices <- function(
 # @Arg n_sd                : numeric; tolerance half-width in SD units. Default 2.
 # @Arg on_missing_temporal : string; "finish" or "continue". Default "continue".
 # @Arg on_missing_neighbor : string; "finish" or "second". Default "second".
+# @Arg neighbor_eligibility: string; "with_data" or "all". Default "with_data".
 # @Arg overwrite           : logical; skip if output exists. Default TRUE.
 # @Arg quiet               : logical; suppress messages. Default FALSE.
 #
 # @Details:
+#   `neighbor_eligibility` decides which stations may serve as the neighbor:
+#     "with_data" = the paper's rule: only stations with at least one non-missing
+#                   reading for this pollutant in this year are candidates.
+#     "all"       = the legacy rule: the static distance matrix alone decides, so
+#                   a station that never reported can still be picked as nearest.
+#                   Its readings are then all NA, the spatial check is infeasible,
+#                   and every flagged hour at that station is dropped unchecked.
+#   Use "all" together with on_missing_temporal = "finish" and
+#   on_missing_neighbor = "finish" to reproduce the legacy procedure exactly.
+#
 #   Creates `{pollutant}_outlier_reason` columns:
 #     0 = Valid or not flagged
 #     1 = Flagged, no temporal benchmark, no feasible spatial rescue
@@ -1059,6 +1070,7 @@ detect_pollution_outliers <- function(
     n_sd                = 2,
     on_missing_temporal = "continue",
     on_missing_neighbor = "second",
+    neighbor_eligibility = "with_data",
     overwrite           = TRUE,
     quiet               = FALSE
 ) {
@@ -1083,6 +1095,11 @@ detect_pollution_outliers <- function(
   on_missing_neighbor <- match.arg(
     on_missing_neighbor,
     c("finish", "second")
+  )
+
+  neighbor_eligibility <- match.arg(
+    neighbor_eligibility,
+    c("with_data", "all")
   )
   
   # Normalize station IDs in the same way as the distance-matrix code.
@@ -1155,7 +1172,7 @@ detect_pollution_outliers <- function(
   # 4. Inner helper: flag one pollutant at a time
   # -----------------------------------------------------------------------
   .flag_pollutant <- function(dt, pol, dist_dt, pct_flag, n_sd,
-                              miss_temp, miss_neigh) {
+                              miss_temp, miss_neigh, neigh_elig) {
     
     # Skip pollutant if it is absent in this city/year dataset.
     if (!pol %in% names(dt)) {
@@ -1187,17 +1204,20 @@ detect_pollution_outliers <- function(
       return(invisible(NULL))
     }
     
-    # -- (1) Dynamic nearest neighbors ----------------------------------
-    # Eligible neighbors must have at least one non-missing observation
-    # for the pollutant in the current year-level working data.
-    has_data <- dt[!is.na(get(pol)), unique(station)]
-    
-    # Restrict distance table to stations available for this pollutant.
-    near_dt <- dist_dt[
-      distance_km > 0 &
-        station_from %in% has_data &
-        station_to %in% has_data
-    ]
+    # -- (1) Nearest neighbors -------------------------------------------
+    # "with_data": a neighbor must have at least one non-missing observation for this 
+    # pollutant in the current year-level data
+    if (neigh_elig == "with_data") {
+      has_data <- dt[!is.na(get(pol)), unique(station)]
+
+      near_dt <- dist_dt[
+        distance_km > 0 &
+          station_from %in% has_data &
+          station_to %in% has_data
+      ]
+    } else {
+      near_dt <- dist_dt[distance_km > 0]
+    }
     
     # Rank possible neighbors by distance within origin station.
     data.table::setorder(near_dt, station_from, distance_km)
@@ -1277,8 +1297,9 @@ detect_pollution_outliers <- function(
     dt[, .t_diff_b := get(pol) - .t_bench]
     
     # -- (4) Flag station-month right-tail observations ------------------
-    # Only values above this threshold can become outliers.
-    dt[, .t_ym := format(datetime, "%Y-%m")]
+    # Only values above this threshold can become outliers tz = "UTC" is required: 
+    # the Parquet stores timestamps with no time zone, so format() could shift timezone.
+    dt[, .t_ym := format(datetime, "%Y-%m", tz = "UTC")]
     
     dt[, .t_p99 := as.numeric(
       stats::quantile(.SD[[1]], probs = pct_flag, na.rm = TRUE)
@@ -1508,8 +1529,11 @@ detect_pollution_outliers <- function(
     # This avoids losing lag/lead information at year boundaries.
     prev_cutoff <- yr_start - 3600
     next_cutoff <- yr_end   + 3600
-    prev_yr     <- as.integer(format(prev_cutoff, "%Y"))
-    next_yr     <- as.integer(format(next_cutoff, "%Y"))
+
+    # Read the year in UTC for the same reason as .t_ym above: the hive partitions were 
+    # written from UTC, so a session-zone read here would look in the wrong partition
+    prev_yr     <- as.integer(format(prev_cutoff, "%Y", tz = "UTC"))
+    next_yr     <- as.integer(format(next_cutoff, "%Y", tz = "UTC"))
     
     bnd_prev <- arrow_ds |>
       dplyr::filter(year == prev_yr, datetime == prev_cutoff) |>
@@ -1557,7 +1581,8 @@ detect_pollution_outliers <- function(
     # Ensure shift() uses the correct station-hour order.
     data.table::setorder(dt_bal, station, datetime)
     
-    # Mark rows belonging to the target year before adding boundary rows.
+    # Mark the target-year rows so the boundary rows can be dropped after
+    # the flagging step, once they have served as lag/lead donors.
     in_yr <- dt_bal$datetime >= yr_start & dt_bal$datetime <= yr_end
     
     # Apply the outlier procedure pollutant by pollutant.
@@ -1569,7 +1594,8 @@ detect_pollution_outliers <- function(
         pct_flag   = pct_flag,
         n_sd       = n_sd,
         miss_temp  = on_missing_temporal,
-        miss_neigh = on_missing_neighbor
+        miss_neigh = on_missing_neighbor,
+        neigh_elig = neighbor_eligibility
       )
     }
     

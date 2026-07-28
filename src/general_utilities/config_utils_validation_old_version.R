@@ -2447,6 +2447,7 @@ compare_outlier_procedure <- function(
       n_sd                = out_p$n_sd %||% 2,
       on_missing_temporal = out_p$on_missing_temporal %||% "finish",
       on_missing_neighbor = out_p$on_missing_neighbor %||% "finish",
+      neighbor_eligibility = out_p$neighbor_eligibility %||% "all",
       quiet               = quiet
     )
     
