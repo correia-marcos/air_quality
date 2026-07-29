@@ -1617,6 +1617,61 @@ detect_pollution_outliers <- function(
 
 
 # --------------------------------------------------------------------------------------------
+# Function: assign_socio_group
+#
+# @Arg dt      : data.table; modified in place. Must contain a `geo_id` column.
+# @Arg var     : string; continuous variable that defines the ranking.
+# @Arg wcol    : string; population or expansion-weight column.
+# @Arg n       : integer; number of equal-population groups.
+# @Arg out_col : string; name of the group column to create.
+#
+# @Output : the same data.table, invisibly, with `out_col` added.
+#
+# @Details:
+#   Assigns 1..n by cumulative weight share of `var`. Group 1 holds the lowest
+#   values and the last group takes the residual share, which reproduces the old
+#   hardcoded quintile cut when n = 5. Used at two levels: on individuals inside
+#   aggregate_idw_exposure(), and on geographic units inside run_idw_city(). It
+#   lives here rather than inside either one so that the two levels cannot drift
+#   apart — they define the same socioeconomic groups and must cut them the same
+#   way.
+#
+# @Written_on : July 2026
+# @Written_by : Marcos Paulo
+# --------------------------------------------------------------------------------------------
+assign_socio_group <- function(dt, var, wcol, n, out_col) {
+
+  # Ascending sort so that group 1 corresponds to the lowest values.
+  # The sort must be fully specified. Years of schooling is coarse, so a
+  # group edge falls inside a large tie group; who lands in group k versus
+  # k+1 would otherwise depend on how the census file happened to be
+  # ordered. Value, then geographic unit, then original row order.
+  dt[, .row_id := .I]
+  data.table::setorderv(dt, c(var, "geo_id", ".row_id"))
+
+  # Cumulative and total weight over rows with valid value and weight.
+  dt[
+    !is.na(get(var)) & !is.na(get(wcol)),
+    `:=`(.cum_w = cumsum(get(wcol)), .tot_w = sum(get(wcol)))
+  ]
+
+  # Interior cut points k/n for k = 1..(n-1); left.open matches "<= edge".
+  edges <- seq_len(n - 1L) / n
+
+  dt[
+    !is.na(.cum_w),
+    (out_col) := pmin(
+      findInterval(.cum_w / .tot_w, edges, left.open = TRUE) + 1L,
+      n
+    )
+  ]
+
+  dt[, c(".cum_w", ".tot_w", ".row_id") := NULL]
+  invisible(dt)
+}
+
+
+# --------------------------------------------------------------------------------------------
 # Function: aggregate_idw_exposure
 #
 # @Arg arrow_dir           : string; path to partitioned Arrow/Parquet hourly data.
@@ -1828,40 +1883,6 @@ aggregate_idw_exposure <- function(
     }
     
     as.character(x)
-  }
-  
-  # Assign 1..n_groups by cumulative expansion-weight share of group_var.
-  # Group 1 is the lowest value; the last group catches the residual share.
-  # This reproduces the previous hardcoded quintile cut when n_groups = 5.
-  .assign_socio_group <- function(dt, var, wcol, n, out_col) {
-
-    # Ascending sort so that group 1 corresponds to the lowest values.
-    # The sort must be fully specified. Years of schooling is coarse, so a
-    # group edge falls inside a large tie group; who lands in group k versus
-    # k+1 would otherwise depend on how the census file happened to be
-    # ordered. Value, then geographic unit, then original row order.
-    dt[, .row_id := .I]
-    data.table::setorderv(dt, c(var, "geo_id", ".row_id"))
-    
-    # Cumulative and total weight over rows with valid value and weight.
-    dt[
-      !is.na(get(var)) & !is.na(get(wcol)),
-      `:=`(.cum_w = cumsum(get(wcol)), .tot_w = sum(get(wcol)))
-    ]
-    
-    # Interior cut points k/n for k = 1..(n-1); left.open matches "<= edge".
-    edges <- seq_len(n - 1L) / n
-    
-    dt[
-      !is.na(.cum_w),
-      (out_col) := pmin(
-        findInterval(.cum_w / .tot_w, edges, left.open = TRUE) + 1L,
-        n
-      )
-    ]
-    
-    dt[, c(".cum_w", ".tot_w", ".row_id") := NULL]
-    invisible(dt)
   }
   
   # Query helper: fail by default to avoid incomplete output files.
@@ -2279,7 +2300,7 @@ aggregate_idw_exposure <- function(
   if (quintile_level == "geo") {
     
     # Assign groups from the geo-level group_var using population shares.
-    .assign_socio_group(census_dt, group_var, pop_col, n_groups, group_name)
+    assign_socio_group(census_dt, group_var, pop_col, n_groups, group_name)
 
     # Repair spelling differences between the spatial and census ID conventions
     # before judging the match. Every repair is verified against the census.
@@ -2322,7 +2343,7 @@ aggregate_idw_exposure <- function(
     }
     
     # Assign groups from the individual group_var using expansion weights.
-    .assign_socio_group(census_dt, group_var, pop_col, n_groups, group_name)
+    assign_socio_group(census_dt, group_var, pop_col, n_groups, group_name)
     
     # Save datasets independently to avoid a huge year-individual matrix.
     arrow::write_parquet(all_years, out_path)
@@ -2461,31 +2482,9 @@ run_idw_city <- function(
   data.table::setnames(geo_dt, geo_id_col, "geo_id")
   geo_dt[, geo_id := as.character(geo_id)]
   
-  # Sort geographic units by group_var and assign population-weighted groups.
-  # geo_id breaks ties deterministically.
-  data.table::setorderv(geo_dt, c(geo_group_var, "geo_id"))
-  
-  geo_dt[
-    !is.na(get(geo_group_var)) & !is.na(get(geo_pop_col)),
-    `:=`(
-      cum_pop = cumsum(get(geo_pop_col)),
-      tot_pop = sum(get(geo_pop_col))
-    )
-  ]
-  
-  # Interior cut points k/n_groups; left.open matches the "<= edge" rule.
-  edges <- seq_len(n_groups - 1L) / n_groups
-  
-  geo_dt[
-    !is.na(cum_pop),
-    (group_name) := pmin(
-      findInterval(cum_pop / tot_pop, edges, left.open = TRUE) + 1L,
-      n_groups
-    )
-  ]
-  
-  geo_dt[, c("cum_pop", "tot_pop") := NULL]
-  
+  # Assign population-weighted groups to geographic units.
+  assign_socio_group(geo_dt, geo_group_var, geo_pop_col, n_groups, group_name)
+
   # Repair spelling differences between the spatial and census ID conventions
   # before judging the match. Every repair is verified against the census.
   exposure_dt[, geo_id := reconcile_geo_ids(
