@@ -3171,5 +3171,197 @@ compare_results_progression <- function(
 }
 
 
+# ----------------------------------------------------------------------------------------
+# Function: compute_exposure_regressions_legacy
+#
+# @Arg exposure_dt   : data.table; geo-level IDW exposure (one row per geo unit-year).
+# @Arg individual_dt : data.table; individual census microdata with group and weight.
+# @Arg geo_id_col    : string; geographic identifier column. Default "geo_id".
+# @Arg pop_col       : string; expansion-weight column (Santiago: a column of 1s).
+# @Arg group_col     : string; socioeconomic group column. Default "edu_quintile".
+# @Arg group_values  : integer vector; valid groups, e.g. 1:5.
+# @Arg base_group    : integer; omitted reference group. Default max(group_values).
+# @Arg outcomes      : character vector; exposure columns to regress, one model each.
+# @Arg year_filter   : integer; exposure year to keep. Default 2023.
+# @Arg conf_level    : numeric; confidence level. Default 0.95.
+# @Arg listwise      : logical; drop cells missing ANY outcome before weighting.
+#                      TRUE reproduces legacy Santiago; FALSE the other three cities.
+# @Arg quiet         : logical; suppress messages. Default FALSE.
+#
+# @Output : data.table with the same columns as compute_exposure_regressions(), so the
+#           two can be stacked and differenced directly.
+#
+# @Details:
+#   STEP-0 LEGACY REPLICATION ONLY — reproduces the coauthor's exposure regression so
+#   the Quarto reports can difference it against compute_exposure_regressions() on
+#   identical inputs. It differs from the current estimator in exactly three ways, all
+#   deliberate:
+#     1. Standard errors are homoskedastic (plain confint() on lm), not clustered by
+#        geographic unit. This is the change the paper's inference appendix describes.
+#     2. The within-group weight denominator is summed over ALL geo-by-group cells,
+#        including those whose exposure is NaN for the outcome being fit. Because the
+#        model is saturated the coefficients are unaffected, but the standard errors
+#        are: a per-group rescale of the weights does not cancel in the variance.
+#     3. Individuals whose geographic unit never receives an exposure value are kept
+#        through the collapse (legacy used a left join), so they enter the denominator
+#        in (2) even though lm() later drops them.
+#   The adult 25+ restriction is NOT applied here: legacy applied it for three cities
+#   and silently omitted it for Sao Paulo. Pass individual_dt already filtered (or not)
+#   to reproduce whichever variant you are auditing.
+#   Do not use for paper results; use compute_exposure_regressions() instead.
+#
+# @Written_on : July 2026
+# @Written_by : Marcos Paulo
+# ----------------------------------------------------------------------------------------
+compute_exposure_regressions_legacy <- function(
+    exposure_dt,
+    individual_dt,
+    geo_id_col   = "geo_id",
+    pop_col      = "fe",
+    group_col    = "edu_quintile",
+    group_values = 1:5,
+    base_group   = max(group_values),
+    outcomes,
+    year_filter  = 2023L,
+    conf_level   = 0.95,
+    listwise     = FALSE,
+    quiet        = FALSE
+) {
+
+  if (!requireNamespace("data.table", quietly = TRUE)) {
+    stop("Package 'data.table' is required.")
+  }
+
+  # 1. Left join exposure onto individuals, exactly as the legacy script did.
+  # -----------------------------------------------------------------------
+  # The direction matters: individuals in geographic units that never received an
+  # exposure value stay in the table with NA outcomes, and they keep counting
+  # toward the group population totals computed in step 4.
+  exp_dt <- data.table::copy(data.table::as.data.table(exposure_dt))
+  exp_dt <- exp_dt[year == year_filter]
+  exp_dt[, (geo_id_col) := as.character(get(geo_id_col))]
+
+  # Only three columns of the microdata matter here; dropping the rest keeps the
+  # individual-level join small enough to inspect (Bogota is 5.7M rows).
+  ind_cols <- c(geo_id_col, group_col, pop_col)
+  ind <- data.table::as.data.table(individual_dt)[, ..ind_cols]
+  ind[, (geo_id_col) := as.character(get(geo_id_col))]
+  ind <- ind[get(group_col) %in% group_values &
+               !is.na(get(pop_col)) & get(pop_col) > 0]
+
+  keep <- c(geo_id_col, outcomes)
+  merged <- merge(ind, exp_dt[, ..keep], by = geo_id_col, all.x = TRUE)
+
+  # 2. Reference mean of the base group, at the individual level, per outcome.
+  # -----------------------------------------------------------------------
+  # Legacy took this over every individual in the top quintile with a non-missing
+  # value for that outcome, weighting by the expansion factor.
+  base_rows <- merged[get(group_col) == base_group]
+
+  base_means <- vapply(outcomes, function(col) {
+    stats::weighted.mean(base_rows[[col]], base_rows[[pop_col]], na.rm = TRUE)
+  }, numeric(1))
+
+  # 3. Normalize each outcome so the reference group averages one.
+  # -----------------------------------------------------------------------
+  norm_cols <- paste0("norm_", outcomes)
+
+  for (i in seq_along(outcomes)) {
+    merged[, (norm_cols[i]) := get(outcomes[i]) / base_means[i]]
+  }
+
+  # 4. Collapse to geo-by-group cells and build the legacy weights.
+  # -----------------------------------------------------------------------
+  # An all-NA cell collapses to NaN here, which is what keeps it in the table but
+  # out of the model. geo_population is the cell head count regardless.
+  cells <- merged[
+    ,
+    c(list(geo_population = sum(get(pop_col), na.rm = TRUE)),
+      lapply(.SD, function(x) stats::weighted.mean(x, get(pop_col), na.rm = TRUE))),
+    by = c(geo_id_col, group_col),
+    .SDcols = norm_cols
+  ]
+
+  # Legacy Santiago dropped any cell missing ANY outcome, so all four of its
+  # regressions share one sample; the other three cities dropped per outcome.
+  if (isTRUE(listwise)) {
+    complete <- Reduce(`&`, lapply(norm_cols, function(c) !is.na(cells[[c]])))
+    cells <- cells[complete]
+  }
+
+  # The denominator spans every cell, including the NaN ones lm() will drop.
+  cells[, total_population_q := sum(geo_population, na.rm = TRUE), by = group_col]
+  cells[, weight2 := geo_population / total_population_q]
+
+  # 5. One weighted regression per outcome, with homoskedastic intervals.
+  # -----------------------------------------------------------------------
+  res <- data.table::rbindlist(lapply(seq_along(outcomes), function(i) {
+
+    model_dt <- cells[!is.na(get(norm_cols[i])) & weight2 > 0]
+
+    if (nrow(model_dt) < length(group_values)) {
+      return(NULL)
+    }
+
+    # Name the outcome plainly so the fitted object reads like the legacy one.
+    model_dt[, y := get(norm_cols[i])]
+    model_dt[, g := factor(get(group_col),
+                           levels = c(base_group,
+                                      setdiff(group_values, base_group)))]
+
+    fit <- stats::lm(y ~ g, data = model_dt, weights = weight2)
+    ci  <- stats::confint(fit, level = conf_level)
+    cf  <- stats::coef(summary(fit))
+
+    # Split "hrs_d_pm10_it1" into outcome "hrs_d_it1" and pollutant "pm10".
+    pollutant <- if (grepl("pm25", outcomes[i], fixed = TRUE)) "pm25" else "pm10"
+    outcome   <- sub("_$", "", sub("^_", "",
+                                   sub(paste0("_", pollutant, "_?"), "_",
+                                       outcomes[i])))
+
+    # Rows are assembled in the schema of compute_exposure_regressions() so the
+    # legacy and current estimates can be stacked without renaming anything.
+    make_row <- function(grp, est, se, lo, hi) {
+      data.table::data.table(
+        outcome = outcome, pollutant = pollutant, group = grp,
+        estimate = est, std_error = se, ci_low = lo, ci_high = hi,
+        n_units = nrow(model_dt),
+        n_clusters = data.table::uniqueN(model_dt[[geo_id_col]]),
+        base_group = base_group, group_col = group_col,
+        regression_unit = "geo_group", se_type = "legacy_classic",
+        normalized = TRUE
+      )
+    }
+
+    out <- make_row(base_group, 0, 0, 0, 0)
+
+    for (grp in setdiff(group_values, base_group)) {
+      term <- paste0("g", grp)
+
+      if (!term %in% rownames(cf)) {
+        next
+      }
+
+      out <- data.table::rbindlist(
+        list(out, make_row(grp, cf[term, "Estimate"], cf[term, "Std. Error"],
+                           ci[term, 1], ci[term, 2])),
+        fill = TRUE
+      )
+    }
+
+    out
+  }), fill = TRUE)
+
+  data.table::setorder(res, outcome, pollutant, group)
+
+  if (!quiet) {
+    message("[ci-legacy] ", length(outcomes), " outcome(s) fit | listwise = ",
+            listwise, " | homoskedastic intervals.")
+  }
+
+  return(res[])
+}
+
+
 # Print a success message for when running inside Docker Container
 cat("Config script parsed successfully!\n")
