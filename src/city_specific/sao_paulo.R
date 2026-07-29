@@ -18,15 +18,14 @@
 
 # Parameters (single source)
 sao_paulo_cfg <- list(
-  id               = "santiago",
+  id               = "Sao_Paulo",
   tz               = "America/Sao_Paulo",
   base_url_shp     = "https://www.ibge.gov.br/geociencias/downloads-geociencias.html",
   base_url_qualar  = "https://qualar.cetesb.sp.gov.br/",
   years            = 2000L:2023L,
   dl_dir           = here::here("data", "downloads", "sao_paulo"),
   out_dir          = here::here("data", "raw"),
-  which_states     = c("Libertador General Bernardo O'Higgimns", "Metropolitana de Santiago",
-                       "Valparaíso"), 
+  which_states     = c("São_Paulo"), 
   cities_in_metro  = c(3503901, 3505708, 3506607, 3509007, 3509205, 3510609, 3513009, 3513801,
                        3515004, 3515103, 3515707, 3516309, 3516408, 3518305, 3518800, 3522208,
                        3522505, 3523107, 3525003, 3526209, 3528502, 3529401, 3530607, 3534401,
@@ -1193,7 +1192,15 @@ sp_filter_stations_in_metro <- function(
 #              4. Handles flexible dates and the "24:00" hour format.
 #              5. Pivots and saves to Partitioned Parquet via DuckDB.
 #
-# DATETIME CONVENTION (gold standard, shared with Bogota and CDMX):
+# STATION IDENTITY:
+#   Stations are keyed on name, because the geometry registry carries names and no
+#   codes. Names are matched exactly against the registry: CETESB writes the same
+#   name in the file header, and a looser match silently files two stations under
+#   one name. `station_code` is kept as a descriptive audit column. If CETESB ever 
+#   renames a station, note that every raw header holds both the code and the name, so a
+#   name-code crosswalk can be rebuilt from the downloaded files.
+#
+# DATETIME CONVENTION (gold standard, shared with Bogota, CDMX and Santiago):
 #   The source timestamp is the station's local wall clock. We build it as a
 #   naive string, stage it as VARCHAR, and STRPTIME it back to a plain (naive)
 #   TIMESTAMP. This avoids the DuckDB R-driver bug that shifts hours from POSIXct
@@ -1321,18 +1328,12 @@ sp_process_stations_data_to_parquet <- function(
                              ignore.case = TRUE)
     file_station_name <- trimws(gsub("[:;\t]", " ", file_station_name))
     
-    # Match Station to our spatial registry
+    # Match Station to our spatial registry.
     f_key <- normalize_key(file_station_name)
-    match_idx <- which(sapply(names(station_lookup), function(k) {
-      grepl(k, f_key) || grepl(f_key, k)
-    }))
-    
-    if (length(match_idx) == 0) next # Not inside the buffer, skip
-    
-    best_match <- names(station_lookup)[
-      match_idx[which.max(nchar(names(station_lookup)[match_idx]))]
-    ]
-    real_station_name <- station_lookup[[best_match]]
+
+    if (!f_key %in% names(station_lookup)) next # Not a metro-area station
+
+    real_station_name <- station_lookup[[f_key]]
     
     # Locate data blocks (Handle spacing variations)
     data_start_idx <- grep("^Data\\s*(;|\\t)\\s*Hora", lines,
@@ -1435,7 +1436,30 @@ sp_process_stations_data_to_parquet <- function(
   if (count_ingest == 0) {
     stop("No data was ingested. Check date formats or filenames.")
   }
-  
+
+  # Exact matching makes station name and CETESB code 1:1. 
+  # If that ever breaks, the pivot below silently emits two rows per station-hour
+  # instead of one, which crashes the outlier procedure.
+  n_multi <- DBI::dbGetQuery(con, "
+    SELECT COUNT(*) AS n FROM (
+      SELECT station FROM staging_cetesb
+      GROUP BY station HAVING COUNT(DISTINCT station_code) > 1)")$n
+
+  if (n_multi > 0) {
+    stop(n_multi, " station name(s) carry more than one CETESB code.")
+  }
+
+  # Name registry stations that produced no rows: a silent absence is exactly
+  # what hid Guarulhos and Santos having no data at all.
+  staged <- DBI::dbGetQuery(
+    con, "SELECT DISTINCT station FROM staging_cetesb")$station
+
+  if (verbose) {
+    message(length(staged), "/", length(valid_stations),
+            " registry stations ingested; missing: ",
+            paste(setdiff(valid_stations, staged), collapse = ", "))
+  }
+
   # 5) Pivot and Export
   # ----------------------------------------------------------------------------
   # STRPTIME converts the staged ISO text back to a naive TIMESTAMP.
