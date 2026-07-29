@@ -1962,7 +1962,11 @@ aggregate_idw_exposure <- function(
     con,
     paste0("SET temp_directory = ", .dq_path(duckdb_temp_dir), ";")
   )
-  
+
+  # Install and load the ICU extension
+  dbExecute(con, "INSTALL icu;")
+  dbExecute(con, "LOAD icu;")
+
   # 4. Load and normalize distance matrix
   # -----------------------------------------------------------------------
   if (!quiet) {
