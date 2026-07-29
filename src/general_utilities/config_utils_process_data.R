@@ -28,6 +28,7 @@ pkgs <- c(
   "rio",
   "rnaturalearth",
   "rnaturalearthdata",
+  "sandwich",
   "sf",
   "stringi",
   "terra",
@@ -2341,14 +2342,33 @@ aggregate_idw_exposure <- function(
     
     # Filter to adult individuals only.
     census_dt <- census_dt[get(indiv_adult_col) == 1]
-    
+
     if (nrow(census_dt) == 0L) {
       stop("No adult rows after filtering.")
     }
-    
+
     # Assign groups from the individual group_var using expansion weights.
     assign_socio_group(census_dt, group_var, pop_col, n_groups, group_name)
-    
+
+    # Repair spelling differences between the spatial and census ID conventions,
+    # exactly as the "geo" branch above does.
+    all_years[, geo_id := reconcile_geo_ids(
+      geo_id, census_dt$geo_id, label = paste0("[", out_name, "]"), quiet = quiet
+    )]
+
+    # Report how many exposure units find a census row. Unmatched units keep
+    # their exposure but have no population, so they drop out downstream.
+    n_unmatched <- length(setdiff(all_years$geo_id, census_dt$geo_id))
+
+    if (!quiet) {
+      message(
+        "[", out_name, "] Census match: ",
+        data.table::uniqueN(all_years$geo_id) - n_unmatched, " of ",
+        data.table::uniqueN(all_years$geo_id),
+        " exposure geo unit(s) matched (", n_unmatched, " unmatched)."
+      )
+    }
+
     # Save datasets independently to avoid a huge year-individual matrix.
     arrow::write_parquet(all_years, out_path)
     arrow::write_parquet(census_dt, indiv_path)
@@ -4437,7 +4457,8 @@ compute_exposure_summaries <- function(exposure_dt,
     group_col     = group_col,
     pop_col       = pop_col,
     group_values  = group_values,
-    year_filter   = year_filter
+    year_filter   = year_filter,
+    quiet         = quiet
   )
   
   # 2. Pick outcome columns that match the pattern and the pollutants
@@ -4516,18 +4537,23 @@ compute_exposure_summaries <- function(exposure_dt,
 # @Arg quiet         : logical; suppress progress messages. Default FALSE.
 #
 # @Output : data.table with one row per outcome, pollutant, and group, giving the
-#           gap relative to base_group with confidence interval.
+#           gap relative to base_group with confidence interval. Carries n_units
+#           (cells in the fit) and n_clusters (distinct geographic units).
 #
 # @Details:
 #   Estimates exposure gaps versus base_group. The main paper estimator is
 #   regression_unit = "geo_group": collapse merged data to geo-unit-by-group cells,
 #   then weight each cell by its population share within group. "individual" runs
 #   one row per individual; "geo" runs one row per geo unit (no group merge).
-#   classic SEs use the t-distribution and reproduce the legacy confint(); 
-#   cluster_geo clusters by geographic unit and uses the normal critical value.
+#   classic SEs use the t-distribution and reproduce the legacy confint();
+#   cluster_geo clusters by geographic unit and uses a t(G-1) critical value.
+#   With G <= number of coefficients the clustered variance is not identified,
+#   so SEs and intervals come back NA with a warning rather than as small numbers.
+#   To reproduce the coauthor's original specification, use
+#   compute_exposure_regressions_legacy() in config_utils_validation_old_version.R.
 #
 # @Written_by : Marcos Paulo
-# @Updated_on : June 2026
+# @Updated_on : July 2026
 # --------------------------------------------------------------------------------------------
 compute_exposure_regressions <- function(exposure_dt,
                                          individual_dt   = NULL,
@@ -4579,7 +4605,8 @@ compute_exposure_regressions <- function(exposure_dt,
     pop_col          = pop_col,
     group_values     = group_values,
     year_filter      = year_filter,
-    merge_individual = regression_unit != "geo"
+    merge_individual = regression_unit != "geo",
+    quiet            = quiet
   )
   
   # 2. Pick outcome columns and fit one model per outcome
@@ -4632,23 +4659,24 @@ compute_exposure_regressions <- function(exposure_dt,
 # Returns a filtered data.table ready for collapsing or fitting.
 .exposure_merge_geo_group <- function(exposure_dt, individual_dt, geo_id_col,
                                       group_col, pop_col, group_values,
-                                      year_filter = NULL, merge_individual = TRUE) {
-  
+                                      year_filter = NULL, merge_individual = TRUE,
+                                      quiet = FALSE) {
+
   # Copy so the caller's in-memory tables are never modified.
   dt <- data.table::copy(data.table::as.data.table(exposure_dt))
-  
+
   # Optional single-year filter.
   if (!is.null(year_filter)) {
     dt <- dt[year == year_filter]
   }
-  
+
   dt[, (geo_id_col) := as.character(get(geo_id_col))]
-  
+
   # Attach group population unless this is the geo-only unit.
   if (isTRUE(merge_individual)) {
     ind <- data.table::copy(data.table::as.data.table(individual_dt))
     ind[, (geo_id_col) := as.character(get(geo_id_col))]
-    
+
     # Keep valid groups with positive weight only.
     ind <- ind[
       get(group_col) %in% group_values &
@@ -4656,15 +4684,27 @@ compute_exposure_regressions <- function(exposure_dt,
       .SD,
       .SDcols = c(geo_id_col, group_col, pop_col)
     ]
-    
+
     # Drop any pre-existing group column in exposure before the merge.
     if (group_col %in% names(dt)) {
       dt[, (group_col) := NULL]
     }
-    
+
+    # This is an inner join: an exposure unit with no census row leaves the
+    # sample here. Report the match rate so a silent ID mismatch (zero padding,
+    # width) shows up as a number rather than as quietly smaller regressions.
+    exp_ids   <- unique(dt[[geo_id_col]])
+    n_matched <- length(intersect(exp_ids, unique(ind[[geo_id_col]])))
+
+    if (!quiet) {
+      message("[merge] Census match: ", n_matched, " of ", length(exp_ids),
+              " exposure geo unit(s) (", length(exp_ids) - n_matched,
+              " unmatched).")
+    }
+
     dt <- merge(dt, ind, by = geo_id_col, allow.cartesian = TRUE)
   }
-  
+
   # Final filter to valid groups with positive weight.
   dt <- dt[
     get(group_col) %in% group_values &
@@ -4688,8 +4728,12 @@ compute_exposure_regressions <- function(exposure_dt,
 
 # Split an outcome column name into its outcome label and pollutant.
 .exposure_parse_outcome <- function(col, pollutants) {
-  hit <- which(vapply(pollutants, function(p) grepl(p, col, fixed = TRUE),
-                      logical(1)))[1L]
+  hits <- which(vapply(pollutants, function(p) grepl(p, col, fixed = TRUE),
+                       logical(1)))
+
+  # Longest match wins, so a pollutant whose name prefixes another (e.g. "pm2"
+  # inside "pm25") cannot claim the column first.
+  hit <- hits[which.max(nchar(pollutants[hits]))]
   pollutant <- pollutants[hit]
   
   # Remove the pollutant token and tidy leftover underscores.
@@ -4718,19 +4762,45 @@ compute_exposure_regressions <- function(exposure_dt,
 
 # Build the coefficient table from a fitted lm with the requested SE type.
 .exposure_coef_table <- function(fit, model_dt, se_type, conf_level) {
-  
+
   # classic: model-based vcov with the t critical value (reproduces confint()).
   if (se_type == "classic") {
     vcov_mat <- stats::vcov(fit)
     crit <- stats::qt(1 - (1 - conf_level) / 2, stats::df.residual(fit))
   }
-  
-  # cluster_geo: cluster-robust vcov by geo unit with the normal critical value.
+
+  # cluster_geo: cluster-robust vcov by geo unit. The cluster sandwich is built
+  # from G cluster-level score sums, so its rank is at most G - 1. with fewer
+  # clusters than coefficients the standard errors are badly downward biased,
+  # and sandwich only warns 
   if (se_type == "cluster_geo") {
+    n_clusters <- data.table::uniqueN(model_dt$.cluster_geo)
+    n_coef     <- length(stats::coef(fit))
+
+    if (n_clusters <= n_coef) {
+      # When G < 2, fewer clusters than coefficients: Refuse to report in this case.
+      warning("Only ", n_clusters, " geographic cluster(s) for ", n_coef,
+              " coefficients; clustered standard errors are not identified. ",
+              "Returning NA standard errors and intervals.", call. = FALSE)
+
+      estimate <- stats::coef(fit)
+
+      return(data.table::data.table(
+        term      = names(estimate),
+        estimate  = unname(estimate),
+        std_error = NA_real_,
+        ci_low    = NA_real_,
+        ci_high   = NA_real_
+      ))
+    }
+
     vcov_mat <- sandwich::vcovCL(fit, cluster = model_dt$.cluster_geo, type = "HC1")
-    crit <- stats::qnorm(1 - (1 - conf_level) / 2)
+
+    # t(G - 1), not the normal quantile: with a moderate number of clusters the
+    # normal critical value understates every interval (G = 12 => 1.96 vs 2.20).
+    crit <- stats::qt(1 - (1 - conf_level) / 2, n_clusters - 1L)
   }
-  
+
   estimate  <- stats::coef(fit)
   std_error <- sqrt(diag(vcov_mat))
   
@@ -4770,39 +4840,45 @@ compute_exposure_regressions <- function(exposure_dt,
     d0[, y_model := get(outcome_col)]
   }
   
-  # Build the modeling table for the requested regression unit.
+  # Build the modeling table for the requested regression unit. Both branches
+  # produce the same four columns: y, w, .cluster_geo, and the group column.
   if (regression_unit == "geo_group") {
-    
+
     # Collapse to geo-by-group cells, then weight by population share in group.
+    # The share denominator is taken over the cells that actually enter this
+    # outcome's regression, so the weights sum to one within each group.
     model_dt <- d0[
-      !is.na(y_model),
+      ,
       .(geo_population = sum(get(pop_col), na.rm = TRUE),
         y = stats::weighted.mean(y_model, get(pop_col), na.rm = TRUE)),
       by = c(geo_id_col, group_col)
     ]
-    
+
     model_dt <- model_dt[!is.na(y) & !is.na(geo_population) & geo_population > 0]
     model_dt[, total_population_g := sum(geo_population), by = group_col]
     model_dt[, w := geo_population / total_population_g]
-    model_dt <- model_dt[!is.na(w) & w > 0]
-    
+    model_dt <- model_dt[w > 0]
+
+    model_dt[, .cluster_geo := get(geo_id_col)]
+
   } else {
-    
-    # individual/geo: one row per observation, weighted by population.
+
+    # individual/geo: one row per observation, weighted by population. The
+    # cluster key is carried here because geo_id_col itself is not kept.
     model_dt <- d0[
-      !is.na(y_model),
+      ,
       .(y = y_model, w = get(pop_col),
         .cluster_geo = get(geo_id_col), group_value = get(group_col))
     ]
     data.table::setnames(model_dt, "group_value", group_col)
+    model_dt <- model_dt[!is.na(w) & w > 0]
   }
-  
+
   if (nrow(model_dt) < length(group_values)) {
     return(NULL)
   }
-  
-  # Cluster key and the group factor with base_group as the reference level.
-  model_dt[, .cluster_geo := get(geo_id_col)]
+
+  # Group factor with base_group as the reference (omitted) level.
   model_dt[, g := factor(get(group_col),
                          levels = c(base_group,
                                     setdiff(group_values, base_group)))]
@@ -4811,12 +4887,17 @@ compute_exposure_regressions <- function(exposure_dt,
   coef_dt <- .exposure_coef_table(fit, model_dt, se_type, conf_level)
   meta    <- .exposure_parse_outcome(outcome_col, pollutants)
   
+  # Cluster count travels with every row: it is what makes a degenerate
+  # clustered fit visible in the output.
+  n_clusters <- data.table::uniqueN(model_dt$.cluster_geo)
+
   # One assembled row builder reused for the base and comparison groups.
   make_row <- function(grp, est, se, lo, hi) {
     data.table::data.table(
       outcome = meta$outcome, pollutant = meta$pollutant, group = grp,
       estimate = est, std_error = se, ci_low = lo, ci_high = hi,
-      n_units = nrow(model_dt), base_group = base_group, group_col = group_col,
+      n_units = nrow(model_dt), n_clusters = n_clusters,
+      base_group = base_group, group_col = group_col,
       regression_unit = regression_unit, se_type = se_type, normalized = normalized
     )
   }
