@@ -871,12 +871,7 @@ compute_distance_matrices <- function(
   if (dist_metric == "aeqd") {
     
     # Center AEQD on the full extent being measured: stations plus geo units
-    # when geo_sf is supplied. Stations can sit outside the metro area (e.g.
-    # inside a 20 km buffer) and geo units can extend past the station hull,
-    # so we want the origin to sit in the middle of everything. We use the
-    # midpoint of the COMBINED BOUNDING BOX rather than a polygon union: the
-    # bbox already captures the farthest points in every direction and is far
-    # cheaper than unioning thousands of census polygons.
+    # when geo_sf is supplied.
     sta_bbox <- sf::st_bbox(stations_wgs)
     
     if (!is.null(geo_sf)) {
@@ -1839,9 +1834,14 @@ aggregate_idw_exposure <- function(
   # Group 1 is the lowest value; the last group catches the residual share.
   # This reproduces the previous hardcoded quintile cut when n_groups = 5.
   .assign_socio_group <- function(dt, var, wcol, n, out_col) {
-    
+
     # Ascending sort so that group 1 corresponds to the lowest values.
-    data.table::setorderv(dt, var)
+    # The sort must be fully specified. Years of schooling is coarse, so a
+    # group edge falls inside a large tie group; who lands in group k versus
+    # k+1 would otherwise depend on how the census file happened to be
+    # ordered. Value, then geographic unit, then original row order.
+    dt[, .row_id := .I]
+    data.table::setorderv(dt, c(var, "geo_id", ".row_id"))
     
     # Cumulative and total weight over rows with valid value and weight.
     dt[
@@ -1860,7 +1860,7 @@ aggregate_idw_exposure <- function(
       )
     ]
     
-    dt[, c(".cum_w", ".tot_w") := NULL]
+    dt[, c(".cum_w", ".tot_w", ".row_id") := NULL]
     invisible(dt)
   }
   
@@ -2280,7 +2280,27 @@ aggregate_idw_exposure <- function(
     
     # Assign groups from the geo-level group_var using population shares.
     .assign_socio_group(census_dt, group_var, pop_col, n_groups, group_name)
-    
+
+    # Repair spelling differences between the spatial and census ID conventions
+    # before judging the match. Every repair is verified against the census.
+    all_years[, geo_id := reconcile_geo_ids(
+      geo_id, census_dt$geo_id, label = paste0("[", out_name, "]"), quiet = quiet
+    )]
+
+    # Report how many exposure units find a census row. Unmatched units keep
+    # their exposure but carry a missing group, so a silent join here would
+    # quietly shrink the estimation sample.
+    n_unmatched <- length(setdiff(all_years$geo_id, census_dt$geo_id))
+
+    if (!quiet) {
+      message(
+        "[", out_name, "] Census match: ",
+        data.table::uniqueN(all_years$geo_id) - n_unmatched, " of ",
+        data.table::uniqueN(all_years$geo_id),
+        " exposure geo unit(s) matched (", n_unmatched, " unmatched)."
+      )
+    }
+
     result <- merge(all_years, census_dt, by = "geo_id", all.x = TRUE)
     arrow::write_parquet(result, out_path)
     
@@ -2442,7 +2462,8 @@ run_idw_city <- function(
   geo_dt[, geo_id := as.character(geo_id)]
   
   # Sort geographic units by group_var and assign population-weighted groups.
-  data.table::setorderv(geo_dt, geo_group_var)
+  # geo_id breaks ties deterministically.
+  data.table::setorderv(geo_dt, c(geo_group_var, "geo_id"))
   
   geo_dt[
     !is.na(get(geo_group_var)) & !is.na(get(geo_pop_col)),
@@ -2465,7 +2486,19 @@ run_idw_city <- function(
   
   geo_dt[, c("cum_pop", "tot_pop") := NULL]
   
-  # Merge exposure with collapsed census.
+  # Repair spelling differences between the spatial and census ID conventions
+  # before judging the match. Every repair is verified against the census.
+  exposure_dt[, geo_id := reconcile_geo_ids(
+    geo_id, geo_dt$geo_id, label = city_label
+  )]
+
+  # Merge exposure with collapsed census. Report the match rate.
+  n_exp   <- data.table::uniqueN(exposure_dt$geo_id)
+  n_miss  <- length(setdiff(exposure_dt$geo_id, geo_dt$geo_id))
+
+  message(city_label, " census match: ", n_exp - n_miss, " of ", n_exp,
+          " exposure geo unit(s) matched (", n_miss, " unmatched).")
+
   geo_result <- merge(exposure_dt, geo_dt, by = "geo_id", all.x = TRUE)
   
   geo_path <- file.path(
@@ -2681,6 +2714,106 @@ canonical_geo_id <- function(x, width = NULL, state = NULL) {
   }
   
   return(x)
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: reconcile_geo_ids
+#
+# @Arg geo_ids    : character; geographic IDs from the spatial/exposure side.
+# @Arg census_ids : character; geographic IDs from the census side.
+# @Arg label      : string; used in the diagnostic message.
+# @Arg quiet      : logical; suppress the message. Default FALSE.
+#
+# @Output : character vector the same length as geo_ids, with repairable IDs rewritten.
+# @Details:
+#   Spatial and census layers spell the same geographic code in different ways. Two
+#   defects occur in this project and they are opposites, so neither rule can be
+#   applied blindly:
+#     - left-pad  : a fixed-width numeric code lost its leading zero when read as a
+#                   number. CDMX alcaldias are "09002" spatially and 9002 in the census.
+#     - right-pad : a hierarchical code was stored at its natural depth on one side and
+#                   zero-filled to full width on the other. Bogota rural sectors are
+#                   "11001300706" spatially and "1100130070600000000000" in the census.
+#   Rather than guess which applies, every candidate is checked against the census IDs
+#   and accepted only if it lands on one. A geo ID whose two candidates both match is
+#   ambiguous and is left alone. This makes the census the arbiter of every repair, so
+#   the function can never invent a match that the census does not already contain.
+#
+# @Written_on : 02/03/2026
+# @Written_by : Marcos Paulo
+# --------------------------------------------------------------------------------------------
+reconcile_geo_ids <- function(geo_ids, census_ids, label = "", quiet = FALSE) {
+
+  geo_ids    <- as.character(geo_ids)
+  census_ids <- unique(as.character(census_ids))
+
+  # Only IDs that fail to match need repairing at all.
+  todo <- unique(geo_ids[!geo_ids %chin% census_ids])
+
+  if (length(todo) == 0L) {
+    return(geo_ids)
+  }
+
+  # Candidate widths are the widths the census actually uses.
+  widths <- sort(unique(nchar(census_ids)))
+  fixed  <- character(0)
+  repl   <- character(0)
+  n_left <- 0L
+  n_right <- 0L
+
+  for (id in todo) {
+    hits <- character(0)
+    rule <- character(0)
+
+    # The census may spell the code wider than the spatial layer does.
+    for (w in widths[widths > nchar(id)]) {
+      pad <- strrep("0", w - nchar(id))
+
+      # Leading-zero loss versus hierarchical zero-fill.
+      cand_l <- paste0(pad, id)
+      cand_r <- paste0(id, pad)
+
+      if (cand_l %chin% census_ids) { hits <- c(hits, cand_l); rule <- c(rule, "left") }
+      if (cand_r %chin% census_ids) { hits <- c(hits, cand_r); rule <- c(rule, "right") }
+    }
+
+    # Or narrower, when the census read the code as a number and dropped its
+    # leading zero. This is the CDMX alcaldia case: "09002" against 9002.
+    cand_s <- sub("^0+", "", id)
+
+    if (nzchar(cand_s) && cand_s != id && cand_s %chin% census_ids) {
+      hits <- c(hits, cand_s)
+      rule <- c(rule, "strip")
+    }
+
+    # Accept only an unambiguous single match.
+    if (length(unique(hits)) == 1L) {
+      fixed <- c(fixed, id)
+      repl  <- c(repl, hits[[1]])
+
+      if (rule[[1]] == "right") n_right <- n_right + 1L else n_left <- n_left + 1L
+    }
+  }
+
+  if (length(fixed) == 0L) {
+    return(geo_ids)
+  }
+
+  # Rewrite only the verified IDs; everything else is untouched.
+  out <- geo_ids
+  idx <- match(geo_ids, fixed)
+  out[!is.na(idx)] <- repl[idx[!is.na(idx)]]
+
+  if (!quiet) {
+    message(
+      label, " geo ID reconciliation: repaired ", length(fixed), " of ",
+      length(todo), " unmatched ID(s) (", n_left, " leading-zero, ",
+      n_right, " hierarchical zero-fill)."
+    )
+  }
+
+  out
 }
 
 
