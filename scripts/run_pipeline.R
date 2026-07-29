@@ -70,7 +70,15 @@ source(here::here("scripts", "process_data", "detect_outliers.R"))
 source(here::here("scripts", "process_data", "estimate_idw_exposure.R"))
 
 # ============================================================================================
-# Step 5: Additional Processing (Placeholders)
+# Step 5: Exposure Regressions
+# ============================================================================================
+# Turns the geo-level exposure of Step 4 into quintile/decile gaps relative to the
+# top group, with clustered confidence intervals. Produces the inputs of Figures 7-8.
+
+source(here::here("scripts", "process_data", "compute_exposure_regressions.R"))
+
+# ============================================================================================
+# Step 6: Additional Processing (Placeholders)
 # ============================================================================================
 # Add remaining data merging, MERRA-2 comparisons, and panel generation here.
 
@@ -79,10 +87,12 @@ source(here::here("scripts", "process_data", "estimate_idw_exposure.R"))
 # ...
 
 # ============================================================================================
-# Step 6: Tables & Images (Placeholders)
+# Step 7: Tables & Images
 # ============================================================================================
-# Generate final publication artefacts. 
+# Generate final publication artefacts.
 # Ensure these scripts only read from data/processed/ or data/interim/.
+
+source(here::here("scripts", "tables_images", "generate_exposure_plots.R"))
 
 # source(here::here("scripts", "tables_images", "figure_pollution_average_by_hours.R"))
 # ...
