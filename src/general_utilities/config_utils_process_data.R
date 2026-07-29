@@ -2752,7 +2752,7 @@ reconcile_geo_ids <- function(geo_ids, census_ids, label = "", quiet = FALSE) {
   census_ids <- unique(as.character(census_ids))
 
   # Only IDs that fail to match need repairing at all.
-  todo <- unique(geo_ids[!geo_ids %chin% census_ids])
+  todo <- unique(geo_ids[!geo_ids %in% census_ids])
 
   if (length(todo) == 0L) {
     return(geo_ids)
@@ -2777,15 +2777,15 @@ reconcile_geo_ids <- function(geo_ids, census_ids, label = "", quiet = FALSE) {
       cand_l <- paste0(pad, id)
       cand_r <- paste0(id, pad)
 
-      if (cand_l %chin% census_ids) { hits <- c(hits, cand_l); rule <- c(rule, "left") }
-      if (cand_r %chin% census_ids) { hits <- c(hits, cand_r); rule <- c(rule, "right") }
+      if (cand_l %in% census_ids) { hits <- c(hits, cand_l); rule <- c(rule, "left") }
+      if (cand_r %in% census_ids) { hits <- c(hits, cand_r); rule <- c(rule, "right") }
     }
 
     # Or narrower, when the census read the code as a number and dropped its
     # leading zero. This is the CDMX alcaldia case: "09002" against 9002.
     cand_s <- sub("^0+", "", id)
 
-    if (nzchar(cand_s) && cand_s != id && cand_s %chin% census_ids) {
+    if (nzchar(cand_s) && cand_s != id && cand_s %in% census_ids) {
       hits <- c(hits, cand_s)
       rule <- c(rule, "strip")
     }
