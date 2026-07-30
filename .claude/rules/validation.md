@@ -36,6 +36,13 @@ steps additive and labelled exactly:
 When a step doesn't apply to a city, say so explicitly in the report rather than skipping silently.
 The point is to attribute every change in a result to a specific input, so isolate one layer per step.
 
+**A step is not always an improvement.** Santiago is the standing example: its main specification
+uses the **2017** census at *zona censal* (~1,719 units), because the 2024 microdata identifies
+residence only down to the *comuna* (39). So Santiago's Step 3 ("updated census microdata") trades
+spatial resolution for recency instead of strictly improving on Step 2, and the 2024 run is
+reported as a robustness check. Say so in the report — don't let a reader assume the progression is
+monotone. See `doc/audits/santiago_geography_opus_5.md`.
+
 ## Conventions
 
 - One entry-point script per city (`compare_<city>.R`) that runs each comparison in pipeline
