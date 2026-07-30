@@ -1754,42 +1754,64 @@ santiago_filter_stations_in_metro <- function(
 # --------------------------------------------------------------------------------------------
 # Function: santiago_build_zonas_2017
 #
-# @Arg       : zip_path    — string; chile_census_2017_geo_location.zip from INE.
-# @Arg       : metro_area  — sf object; metro-area layer used to pick the communes.
-# @Arg       : match_col   — string; commune-code column in metro_area (default "CUT").
-# @Arg       : out_file    — string; GeoPackage to write.
-# @Arg       : work_dir    — string; folder for the unzipped shapefile.
-# @Arg       : quiet       — logical; suppress messages.
+# @Arg       : zip_path       — string; downloaded chile_census_2017_geo_location.zip.
+# @Arg       : metro_gpkg     — string; downloaded Gran Santiago GeoPackage, used
+#                               only to read which communes belong to the area.
+# @Arg       : match_col      — string; commune-code column in metro_gpkg.
+# @Arg       : out_file       — string; GeoPackage to write.
+# @Arg       : work_dir       — string; folder for the unzipped shapefile.
+# @Arg       : overwrite_gpkg — logical; overwrite output GeoPackage. Default TRUE.
+# @Arg       : quiet          — logical; suppress messages.
 #
 # @Output    : sf object of zona censal polygons, one row per `zona_id`.
 #
 # @Purpose   : Builds the 2017 zona censal map that pairs with the 2017 census
-#              microdata. The INE file ships as ~151,500 national manzana (block)
+#              microdata. The INE archive ships ~151,500 national manzana (block)
 #              polygons; this keeps the Gran Santiago communes and dissolves the
 #              blocks up to their zona.
 #
 # @Details   : MANZENT is CUT(5) + distrito(2) + area(1) + zona(3) + manzana(3),
 #              so substr(MANZENT, 1, 11) is exactly the `geocodigo` that
-#              santiago_process_census_2017() returns as `zona_id`. Both sides
-#              are cut from the same code, which is what makes the census-to-map
-#              join exact rather than a name-matching exercise.
+#              santiago_process_census_2017() returns as `zona_id`. Both sides are
+#              cut from the same code, so the census-to-map join is exact.
+#              The archive covers urban blocks only, so rural zonas of the
+#              peri-urban communes have no polygon here; they carry no station
+#              within any buffer and drop out of the exposure step anyway.
 #
 # @Written_on: July 2026
 # @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 santiago_build_zonas_2017 <- function(
-    zip_path   = here::here("data", "downloads", "santiago", "census", "2017",
-                            "chile_census_2017_geo_location.zip"),
-    metro_area,
-    match_col  = "CUT",
-    out_file   = here::here("data", "raw", "geospatial_data", "santiago",
-                            "gran_santiago_zonas_2017.gpkg"),
-    work_dir   = here::here("data", "interim", "census", "santiago_2017",
-                            "geo_location"),
-    quiet      = FALSE
+    zip_path       = here::here("data", "downloads", "santiago", "census", "2017",
+                                "chile_census_2017_geo_location.zip"),
+    metro_gpkg     = here::here("data", "raw", "geospatial_data", "santiago",
+                                "gran_santiago_area_2024.gpkg"),
+    match_col      = "CUT",
+    out_file       = here::here("data", "raw", "geospatial_data", "santiago",
+                                "gran_santiago_zonas_2017.gpkg"),
+    work_dir       = here::here("data", "interim", "census", "santiago_2017",
+                                "geo_location"),
+    overwrite_gpkg = TRUE,
+    quiet          = FALSE
 ) {
 
-  # Unpack the shapefile once; the archive holds a single national layer.
+  # Both inputs come from earlier download steps in this script.
+  if (!file.exists(zip_path)) {
+    stop("Census 2017 geo archive not found: ", zip_path,
+         "\nRun santiago_download_census_data(type = 'geo_location', year = 2017).")
+  }
+
+  if (!file.exists(metro_gpkg)) {
+    stop("Metro-area GeoPackage not found: ", metro_gpkg,
+         "\nRun santiago_download_metro_area(type = 'gran_santiago').")
+  }
+
+  if (file.exists(out_file) && !isTRUE(overwrite_gpkg)) {
+    if (!quiet) message("[santiago_zonas] Output exists and overwrite = FALSE.")
+    return(sf::st_read(out_file, quiet = TRUE))
+  }
+
+  # Unpack once; the archive holds a single national layer.
   dir.create(work_dir, recursive = TRUE, showWarnings = FALSE)
   shp <- file.path(work_dir, "Microdatos_Manzana.shp")
 
@@ -1798,9 +1820,9 @@ santiago_build_zonas_2017 <- function(
     utils::unzip(zip_path, exdir = work_dir)
   }
 
-  # Commune codes come from the metro-area layer, so the 2017 map covers exactly
-  # the same communes as the rest of the Santiago pipeline.
-  keep_cuts <- as.character(unique(metro_area[[match_col]]))
+  # Communes come from the downloaded metro area, so both vintages cover the same
+  # area even though the geography is 2017 and the metro definition is 2024.
+  keep_cuts <- as.character(unique(sf::st_read(metro_gpkg, quiet = TRUE)[[match_col]]))
 
   if (!quiet) message("[santiago_zonas] Reading national manzana layer.")
 
@@ -1812,16 +1834,10 @@ santiago_build_zonas_2017 <- function(
     stop("No manzanas matched the metro-area communes.")
   }
 
-  # The first 11 characters of MANZENT are the zona code the census reports.
+  # First 11 characters of MANZENT are the zona code the census reports.
   manzanas$zona_id <- substr(as.character(manzanas$MANZENT), 1L, 11L)
 
-  if (!quiet) {
-    message("[santiago_zonas] ", nrow(manzanas), " manzanas in ",
-            length(unique(manzanas$CUT)), " commune(s).")
-  }
-
-  # Dissolve blocks into their zona. Geometries are made valid first because the
-  # INE blocks contain self-intersections that would otherwise break the union.
+  # Repair validity first: the INE blocks contain self-intersections.
   manzanas <- sf::st_make_valid(manzanas)
 
   zonas <- manzanas[, "zona_id"] %>%
@@ -1829,12 +1845,11 @@ santiago_build_zonas_2017 <- function(
     dplyr::summarise(.groups = "drop")
 
   zonas <- sf::st_make_valid(zonas)
-
-  # Carry the commune code so the layer can be inspected without re-parsing.
   zonas$CUT <- substr(zonas$zona_id, 1L, 5L)
 
   if (!quiet) {
-    message("[santiago_zonas] Dissolved to ", nrow(zonas), " zonas censales.")
+    message("[santiago_zonas] ", nrow(manzanas), " manzanas -> ", nrow(zonas),
+            " zonas censales in ", length(unique(zonas$CUT)), " commune(s).")
   }
 
   dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
@@ -2132,12 +2147,9 @@ dt <- tryCatch(
 #
 # @Details   : `geocodigo` is CUT(5) + distrito(2) + area(1) + zona(3), e.g.
 #              "13101211002". It is the finest geography the 2017 microdata
-#              identifies, giving ~1,719 zonas in Gran Santiago against 39
-#              communes, and it matches substr(MANZENT, 1, 11) in the 2017
-#              manzana shapefile, so the census and the map join exactly.
-#              An earlier version filtered on `p10comuna`, which is a migration
-#              question rather than residence; it returned 165,867 people for
-#              Gran Santiago instead of several million.
+#              identifies (~1,719 zonas in Gran Santiago against 39 communes)
+#              and equals substr(MANZENT, 1, 11) in the 2017 manzana shapefile,
+#              so the census and the map join exactly.
 #
 # @Written_by: Marcos Paulo
 # @Updated_on: July 2026
@@ -2177,9 +2189,8 @@ santiago_process_census_2017 <- function(
   
   con <- censo2017::censo_conectar()
 
-  # Resolve place of residence. The person table carries no residence geography:
-  # only p10/p11/p12comuna, which are migration questions. Residence lives in
-  # `zonas`, reached through the household and dwelling keys.
+  # Residence geography is not in `personas` (p10/p11/p12comuna are migration
+  # questions); it lives in `zonas`, via the household and dwelling keys.
   personas_db <- dplyr::tbl(con, "personas") %>%
     dplyr::select(
       hogar_ref_id, escolaridad, p14, p15, p17, p08, p09, p07, p16

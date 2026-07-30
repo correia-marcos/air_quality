@@ -132,5 +132,17 @@ census_2024 <- santiago_download_census_data(
   year = 2024,
   download_folder = here::here(santiago_cfg$dl_dir, "census"))
 
+# Apply function to build the 2017 zona censal map from the archive downloaded above
+zonas_2017 <- santiago_build_zonas_2017(
+  zip_path       = here::here(santiago_cfg$dl_dir, "census", "2017",
+                              "chile_census_2017_geo_location.zip"),
+  metro_gpkg     = here::here(santiago_cfg$out_dir, "geospatial_data",
+                              "santiago", "gran_santiago_area_2024.gpkg"),
+  match_col      = "CUT",
+  out_file       = here::here(santiago_cfg$out_dir, "geospatial_data",
+                              "santiago", "gran_santiago_zonas_2017.gpkg"),
+  overwrite_gpkg = TRUE,
+  quiet          = FALSE)
+
 # Print a success message for when running inside Docker Container
 cat("Script from the IDB projected executed successfully in the Docker container!\n")
