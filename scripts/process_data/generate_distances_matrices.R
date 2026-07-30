@@ -46,6 +46,9 @@ gpkg_cdmx_metro_area        <- here::here(dir_geospatial, "cdmx",
                                           "cdmx_area_metro_municipalities_2024.gpkg")
 gpkg_santiago_2024_metro_area <- here::here(dir_geospatial, "santiago",
                                             "gran_santiago_area_2024.gpkg")
+# Zona censal layer: Santiago's main geography (~1,719 units against 39 communes)
+gpkg_santiago_2017_zonas      <- here::here(dir_geospatial, "santiago",
+                                            "gran_santiago_zonas_2017.gpkg")
 gpkg_sp_2010_metro_area       <- here::here(dir_geospatial, "sao_paulo",
                                             "sao_paulo_metro_2010_weighting_areas.gpkg")
 
@@ -59,6 +62,7 @@ sp_stations_2010_sf       <- sf::st_read(gpkg_stations_sp_2010)
 bogota_metro_2018_sf   <- sf::st_read(gpkg_bogota_2018_metro_area)
 cdmx_metro_sf          <- sf::st_read(gpkg_cdmx_metro_area)
 santiago_metro_2024_sf <- sf::st_read(gpkg_santiago_2024_metro_area)
+santiago_zonas_2017_sf <- sf::st_read(gpkg_santiago_2017_zonas)
 sp_metro_2010_sf       <- sf::st_read(gpkg_sp_2010_metro_area)
 
 # ============================================================================================
@@ -91,7 +95,19 @@ cdmx_distances <- compute_distance_matrices(
   out_name             = "matrix"
 )
 
-# Calculate distance matrices for Santiago
+# Calculate distance matrices for Santiago -- main specification, zona censal
+santiago_zona_distances <- compute_distance_matrices(
+  stations_sf          = santiago_stations_2024_sf,
+  station_id_col       = "station_name",
+  geo_sf               = santiago_zonas_2017_sf,
+  geo_id_col           = "zona_id",
+  distance_metric      = "aeqd",
+  representative_point = "point_on_surface",
+  out_dir              = here::here(outdir_data, "santiago_2017"),
+  out_name             = "matrix"
+)
+
+# Calculate distance matrices for Santiago -- robustness, commune level (2024)
 santiago_distances <- compute_distance_matrices(
   stations_sf          = santiago_stations_2024_sf,
   station_id_col       = "station_name",
