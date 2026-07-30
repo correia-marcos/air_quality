@@ -65,8 +65,8 @@ exp_bogota   <- here::here(dir_idw, "bogota_2018",
                            "bogota_2018_3km_idw_exposure.parquet")
 exp_cdmx     <- here::here(dir_idw, "cdmx_2020",
                            "cdmx_2020_3km_idw_exposure.parquet")
-exp_santiago <- here::here(dir_idw, "santiago_2024",
-                           "santiago_2024_3km_idw_exposure.parquet")
+exp_santiago <- here::here(dir_idw, "santiago_2017",
+                           "santiago_2017_3km_idw_exposure.parquet")
 exp_sp       <- here::here(dir_idw, "sao_paulo_2010",
                            "sao_paulo_2010_3km_idw_exposure.parquet")
 
@@ -74,8 +74,8 @@ ind_bogota   <- here::here(dir_idw, "bogota_2018",
                            "bogota_2018_3km_indiv_groups.parquet")
 ind_cdmx     <- here::here(dir_idw, "cdmx_2020",
                            "cdmx_2020_3km_indiv_groups.parquet")
-ind_santiago <- here::here(dir_idw, "santiago_2024",
-                           "santiago_2024_3km_indiv_groups.parquet")
+ind_santiago <- here::here(dir_idw, "santiago_2017",
+                           "santiago_2017_3km_indiv_groups.parquet")
 ind_sp       <- here::here(dir_idw, "sao_paulo_2010",
                            "sao_paulo_2010_3km_indiv_groups.parquet")
 
@@ -90,6 +90,12 @@ ind_cdmx_inc <- here::here(dir_idw, "cdmx_2020",
 ind_sp_inc   <- here::here(dir_idw, "sao_paulo_2010",
                            "sao_paulo_2010_3km_income_indiv_groups.parquet")
 
+# Santiago robustness: commune level, 2024 census (main run is zonas 2017)
+exp_santiago_com <- here::here(dir_idw, "santiago_2024",
+                               "santiago_2024_3km_idw_exposure.parquet")
+ind_santiago_com <- here::here(dir_idw, "santiago_2024",
+                               "santiago_2024_3km_indiv_groups.parquet")
+
 # Read every city's exposure data eagerly (not lazily) for RStudio inspection
 exposure_bogota   <- data.table::as.data.table(arrow::read_parquet(exp_bogota))
 exposure_cdmx     <- data.table::as.data.table(arrow::read_parquet(exp_cdmx))
@@ -100,6 +106,11 @@ exposure_sp       <- data.table::as.data.table(arrow::read_parquet(exp_sp))
 individual_bogota   <- data.table::as.data.table(arrow::read_parquet(ind_bogota))
 individual_cdmx     <- data.table::as.data.table(arrow::read_parquet(ind_cdmx))
 individual_santiago <- data.table::as.data.table(arrow::read_parquet(ind_santiago))
+
+exposure_santiago_com   <- data.table::as.data.table(
+  arrow::read_parquet(exp_santiago_com))
+individual_santiago_com <- data.table::as.data.table(
+  arrow::read_parquet(ind_santiago_com))
 individual_sp       <- data.table::as.data.table(arrow::read_parquet(ind_sp))
 
 # Read income decile inputs eagerly for CDMX and Sao Paulo
@@ -189,6 +200,33 @@ summary_santiago <- compute_exposure_summaries(
 ci_santiago <- compute_exposure_regressions(
   exposure_dt   = exposure_santiago,
   individual_dt = individual_santiago,
+  pop_col       = pop_santiago,
+  group_col     = group_col,
+  group_values  = group_values,
+  base_group    = base_group,
+  pollutants    = pollutants,
+  outcome_pattern = ci_outcomes,
+  year_filter   = analysis_year,
+  conf_level    = conf_level,
+  normalized    = normalized_gaps,
+  regression_unit = reg_unit,
+  se_type       = se_type)
+
+# 3b. Santiago -- commune level, 2024 census (robustness)
+# --------------------------------------------------------------------------------------------
+summary_santiago_com <- compute_exposure_summaries(
+  exposure_dt   = exposure_santiago_com,
+  individual_dt = individual_santiago_com,
+  pop_col       = pop_santiago,
+  group_col     = group_col,
+  group_values  = group_values,
+  pollutants    = pollutants,
+  outcome_pattern = summary_outcomes,
+  year_filter   = analysis_year)
+
+ci_santiago_com <- compute_exposure_regressions(
+  exposure_dt   = exposure_santiago_com,
+  individual_dt = individual_santiago_com,
   pop_col       = pop_santiago,
   group_col     = group_col,
   group_values  = group_values,
@@ -294,14 +332,18 @@ label_city <- function(dt, city, city_id) {
 ci_all <- data.table::rbindlist(list(
   label_city(ci_bogota,   "Bogota",    "bogota_2018"),
   label_city(ci_cdmx,     "CDMX",      "cdmx_2020"),
-  label_city(ci_santiago, "Santiago",  "santiago_2024"),
-  label_city(ci_sp,       "Sao Paulo", "sao_paulo_2010")), fill = TRUE)
+  label_city(ci_santiago, "Santiago",  "santiago_2017"),
+  label_city(ci_sp,       "Sao Paulo", "sao_paulo_2010"),
+  label_city(ci_santiago_com, "Santiago (comuna, 2024)", "santiago_2024")),
+  fill = TRUE)
 
 summary_all <- data.table::rbindlist(list(
   label_city(summary_bogota,   "Bogota",    "bogota_2018"),
   label_city(summary_cdmx,     "CDMX",      "cdmx_2020"),
-  label_city(summary_santiago, "Santiago",  "santiago_2024"),
-  label_city(summary_sp,       "Sao Paulo", "sao_paulo_2010")), fill = TRUE)
+  label_city(summary_santiago, "Santiago",  "santiago_2017"),
+  label_city(summary_sp,       "Sao Paulo", "sao_paulo_2010"),
+  label_city(summary_santiago_com, "Santiago (comuna, 2024)", "santiago_2024")),
+  fill = TRUE)
 
 # Put the shared metadata columns first for readability
 first_cols <- c("city", "city_id", "year", "buffer_km",
