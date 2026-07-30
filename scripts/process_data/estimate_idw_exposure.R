@@ -40,6 +40,8 @@ dist_bogota   <- here::here(dir_distances, "bogota_2018",
                             "matrix_geo_station_distances.parquet")
 dist_cdmx     <- here::here(dir_distances, "cdmx_2020",
                             "matrix_geo_station_distances.parquet")
+dist_santiago_zona <- here::here(dir_distances, "santiago_2017",
+                                 "matrix_geo_station_distances.parquet")
 dist_santiago <- here::here(dir_distances, "santiago_2024",
                             "matrix_geo_station_distances.parquet")
 dist_sp       <- here::here(dir_distances, "sao_paulo_2010",
@@ -50,6 +52,8 @@ micro_bogota_csv   <- here::here(dir_census, "bogota_2018",
                                  "census_2018_metro_individual.csv")
 micro_cdmx_csv     <- here::here(dir_census, "cdmx_extended_2020",
                                  "census_metro_individual_2020.csv")
+micro_santiago_zona_csv <- here::here(dir_census, "santiago_2017",
+                                      "census_individual_2017.csv")
 micro_santiago_csv <- here::here(dir_census, "santiago_2024",
                                  "census_santiago_individual_2024.csv")
 micro_sp_csv       <- here::here(dir_census, "sao_paulo_2010",
@@ -60,6 +64,8 @@ geo_bogota_csv   <- here::here(dir_census, "bogota_2018",
                                "census_2018_metro_collapsed.csv")
 geo_cdmx_csv     <- here::here(dir_census, "cdmx_extended_2020",
                                "collapse_metro_area_2020.csv")
+geo_santiago_zona_csv <- here::here(dir_census, "santiago_2017",
+                                    "census_collapsed_2017.csv")
 geo_santiago_csv <- here::here(dir_census, "santiago_2024",
                                "census_santiago_collapsed_2024.csv")
 geo_sp_csv       <- here::here(dir_census, "sao_paulo_2010",
@@ -68,12 +74,17 @@ geo_sp_csv       <- here::here(dir_census, "sao_paulo_2010",
 # Read census microdata
 micro_bogota   <- data.table::fread(micro_bogota_csv)
 micro_cdmx     <- data.table::fread(micro_cdmx_csv)
+# zona_id must stay text: as a number it would no longer match the map
+micro_santiago_zona <- data.table::fread(micro_santiago_zona_csv,
+                                         colClasses = c(zona_id = "character"))
 micro_santiago <- data.table::fread(micro_santiago_csv)
 micro_sp       <- data.table::fread(micro_sp_csv)
 
 # Read collapsed census data
 geo_bogota   <- data.table::fread(geo_bogota_csv)
 geo_cdmx     <- data.table::fread(geo_cdmx_csv)
+geo_santiago_zona <- data.table::fread(geo_santiago_zona_csv,
+                                       colClasses = c(zona_id = "character"))
 geo_santiago <- data.table::fread(geo_santiago_csv)
 geo_sp       <- data.table::fread(geo_sp_csv)
 
@@ -129,9 +140,29 @@ for (buffer in buffers_km) {
     outdir_exp      = outdir_exp,
     distance_power  = distance_power)
   
-  # 3. Santiago -- education quintiles
+  # 3. Santiago -- education quintiles, zonas censales 2017 (main specification)
+  res_santiago_zona <- run_idw_city(
+    city_label      = "Santiago (zona 2017)",
+    city_id         = "santiago_2017",
+    arrow_dir       = arrow_santiago,
+    geo_sta_pq      = dist_santiago_zona,
+    geo_census      = geo_santiago_zona,
+    micro_census    = micro_santiago_zona,
+    geo_id_col      = "zona_id",
+    geo_pop_col     = "weight",
+    geo_group_var   = "education_mean",
+    micro_id_col    = "zona_id",
+    micro_pop_col   = "fe",
+    micro_group_var = "educ_years",
+    n_groups        = 5L,
+    group_name      = "edu_quintile",
+    buffer_km       = buffer,
+    outdir_exp      = outdir_exp,
+    distance_power  = distance_power)
+
+  # 3b. Santiago -- education quintiles, commune level (2024 robustness)
   res_santiago <- run_idw_city(
-    city_label      = "Santiago",
+    city_label      = "Santiago (comuna 2024)",
     city_id         = "santiago_2024",
     arrow_dir       = arrow_santiago,
     geo_sta_pq      = dist_santiago,
