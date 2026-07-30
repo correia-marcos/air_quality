@@ -67,9 +67,11 @@ summary_income <- if (file.exists(summary_inc_pq)) {
 
 # City display labels and file-safe names (city matches the regression artifact)
 city_labels <- c(Bogota = "Bogot\u00e1", CDMX = "Mexico City",
-                 Santiago = "Santiago", `Sao Paulo` = "S\u00e3o Paulo")
+                 Santiago = "Santiago", `Sao Paulo` = "S\u00e3o Paulo",
+                 `Santiago (comuna, 2024)` = "Santiago (commune, 2024 census)")
 city_files  <- c(Bogota = "bogota", CDMX = "mexico_city",
-                 Santiago = "santiago", `Sao Paulo` = "sao_paulo")
+                 Santiago = "santiago", `Sao Paulo` = "sao_paulo",
+                 `Santiago (comuna, 2024)` = "santiago_comuna_2024")
 
 # Create output folders
 dir.create(outdir_ci, recursive = TRUE, showWarnings = FALSE)
