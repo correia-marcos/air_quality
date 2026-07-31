@@ -66,6 +66,9 @@ invisible(lapply(pkgs, function(p) {
 # no repo tweaking, no renv::install() here
 rm(pkgs, ensure_installed)
 
+# Shared projection helpers (aeqd_crs, utm_epsg, aeqd_for).
+source(here::here("src", "general_utilities", "geo_utils.R"))
+
 # Set a global theme with Palatino as the base font
 font_add("Palatino", regular = here::here("fonts", "texgyrepagella-regular.otf"))
 showtext_auto()
@@ -161,19 +164,10 @@ table_state_metro_distances <- function(
   }
   
   # ---- 2) make geometries valid and project to local UTM ---------------------
-  # local UTM from metro bbox center
-  utm_for <- function(sfobj) {
-    bb  <- sf::st_bbox(sf::st_transform(sfobj, 4326))
-    lon <- as.numeric((bb["xmin"] + bb["xmax"]) / 2)
-    lat <- as.numeric((bb["ymin"] + bb["ymax"]) / 2)
-    zone <- floor((lon + 180) / 6) + 1
-    if (lat >= 0) 32600 + zone else 32700 + zone
-  }
-  
   states_ok <- sf::st_make_valid(national_states_sf)
   metro_ok  <- sf::st_make_valid(metro_area_sf)
-  
-  crs_utm   <- utm_for(metro_ok)
+
+  crs_utm   <- utm_epsg(metro_ok)
   states_utm <- sf::st_transform(states_ok, crs_utm)
   metro_utm  <- sf::st_transform(metro_ok,  crs_utm)
   
@@ -353,15 +347,7 @@ plot_metro_area_national_context <- function(
   metro84  <- sf::st_transform(metro_area_sf, 4326)
   
   # pick a UTM CRS based on bbox midpoint (no centroid needed)
-  utm_for <- function(sfobj) {
-    bb  <- sf::st_bbox(sf::st_transform(sfobj, 4326))
-    lon <- as.numeric((bb["xmin"] + bb["xmax"]) / 2)
-    lat <- as.numeric((bb["ymin"] + bb["ymax"]) / 2)
-    zone <- floor((lon + 180) / 6) + 1
-    if (lat >= 0) 32600 + zone else 32700 + zone
-  }
-
-  crs_area <- utm_for(metro84)
+  crs_area <- utm_epsg(metro84)
   metro_u  <- sf::st_make_valid(sf::st_union(metro84))
   metro_u  <- sf::st_transform(metro_u, crs_area)
   area_km2 <- as.numeric(sf::st_area(metro_u)) / 1e6
@@ -658,15 +644,7 @@ plot_metro_area_interactive <- function(
   # ---- 3) Compute 20-km buffers for stations outside the metro polygon -------
   # We need metric units to buffer distances accurately. Choose a local UTM zone
   # from the *bbox center* (no st_point_on_surface on lon/lat → avoids warnings).
-  utm_for <- function(sfobj_wgs84) {
-    bb  <- sf::st_bbox(sfobj_wgs84)     # xmin, ymin, xmax, ymax (lon/lat)
-    lon <- (bb["xmin"] + bb["xmax"]) / 2
-    lat <- (bb["ymin"] + bb["ymax"]) / 2
-    zone <- floor((lon + 180) / 6) + 1
-    if (is.na(zone)) zone <- 14         # safe default near central MX
-    if (lat >= 0) 32600 + zone else 32700 + zone
-  }
-  epsg_loc   <- utm_for(metro_84)
+  epsg_loc   <- utm_epsg(metro_84)
   metro_m    <- sf::st_transform(metro_84, epsg_loc)
   stations_m <- sf::st_transform(stations_84, epsg_loc)
   

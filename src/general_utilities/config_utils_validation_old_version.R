@@ -44,6 +44,9 @@ invisible(lapply(pkgs, function(p) {
 # no repo tweaking, no renv::install() here
 rm(pkgs, ensure_installed)
 
+# Shared projection helpers (aeqd_crs, utm_epsg, aeqd_for).
+source(here::here("src", "general_utilities", "geo_utils.R"))
+
 # ============================================================================================
 # Validation helpers and functions
 # ============================================================================================
@@ -1465,12 +1468,8 @@ compare_metro_area <- function(
   
   # 5) Compute area statistics in metric CRS
   # To calculate area accurately, we must project coordinates from degrees to meters.
-  # This formula finds the correct local UTM zone based on the map's center.
-  bb <- sf::st_bbox(new_metro_sf)
-  lon_center <- (bb["xmin"] + bb["xmax"]) / 2
-  lat_center <- (bb["ymin"] + bb["ymax"]) / 2
-  utm_zone <- floor((lon_center + 180) / 6) + 1
-  epsg_utm <- if (lat_center >= 0) 32600 + utm_zone else 32700 + utm_zone
+  # utm_epsg() picks the local UTM zone from the map's center.
+  epsg_utm <- utm_epsg(new_metro_sf)
   
   # Apply the metric projection to polygons
   new_metro_m    <- sf::st_transform(new_metro_sf, epsg_utm)

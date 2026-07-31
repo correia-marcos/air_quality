@@ -63,6 +63,9 @@ rm(pkgs, ensure_installed)
 # Pin the geometry engine.
 suppressMessages(sf::sf_use_s2(TRUE))
 
+# Shared projection helpers. s2 is what makes them necessary, so they load right after it.
+source(here::here("src", "general_utilities", "geo_utils.R"))
+
 # ############################################################################################
 # Functions
 # ############################################################################################
@@ -671,14 +674,6 @@ compute_distance_matrices <- function(
     gsub('"', "", x)
   }
   
-  # Build an AEQD proj4 string centered on a WGS84 lon/lat.
-  .aeqd_proj <- function(lon0, lat0) {
-    sprintf(
-      "+proj=aeqd +lat_0=%f +lon_0=%f +units=m +datum=WGS84 +no_defs",
-      lat0, lon0
-    )
-  }
-  
   # Linearize curved geometries and prepare polygon layer.
   .prepare_geo_geometry <- function(x) {
     
@@ -723,18 +718,22 @@ compute_distance_matrices <- function(
       x <- sf::st_read(tmp_out, layer = "geo", quiet = TRUE)
     }
     
-    # Repair validity after curved geometries are converted.
+    # Repair validity after curved geometries are converted. Repair is planar, so it
+    # runs on a UTM grid: on lon/lat sf routes it to s2, whose rebuild snaps vertices
+    # to a ~1.1 cm cell and turns the sub-centimetre edges some providers ship into
+    # degenerate (duplicate) vertices, which then abort the next union.
+    x <- sf::st_transform(x, crs = utm_epsg(x))
     x <- sf::st_make_valid(x)
-    
+
     # Extract polygonal components if validation creates collections.
     x <- suppressWarnings(sf::st_collection_extract(x, "POLYGON"))
-    
+
     # Promote to MULTIPOLYGON for stable downstream processing.
     x <- suppressWarnings(sf::st_cast(x, "MULTIPOLYGON", warn = FALSE))
-    
+
     # Work in WGS84 after regularization.
     x <- sf::st_transform(x, crs = 4326)
-    
+
     return(x)
   }
   
@@ -892,7 +891,7 @@ compute_distance_matrices <- function(
     lon0 <- as.numeric((xmin + xmax) / 2)
     lat0 <- as.numeric((ymin + ymax) / 2)
     
-    proj_aeqd <- .aeqd_proj(lon0 = lon0, lat0 = lat0)
+    proj_aeqd <- aeqd_crs(lon0 = lon0, lat0 = lat0)
     stations_eval <- sf::st_transform(stations_wgs, crs = proj_aeqd)
     
   } else {
@@ -3138,13 +3137,6 @@ compute_station_socio_context <- function(
     paste0(strrep("0", need), x)
   }
   
-  .aeqd_proj <- function(lon0, lat0) {
-    sprintf(
-      "+proj=aeqd +lat_0=%f +lon_0=%f +units=m +datum=WGS84 +no_defs",
-      lat0, lon0
-    )
-  }
-  
   .weighted_mean <- function(x, w) {
     ok <- !is.na(x) & !is.na(w) & w > 0
     
@@ -3213,7 +3205,10 @@ compute_station_socio_context <- function(
   # 3. Prepare spatial and census data
   # -----------------------------------------------------------------------
   stations_wgs <- sf::st_transform(stations_sf, crs = 4326)
-  geo_wgs <- sf::st_transform(sf::st_make_valid(geo_sf), crs = 4326)
+
+  # Repair on a UTM grid before moving to lon/lat
+  geo_utm <- sf::st_make_valid(sf::st_transform(geo_sf, crs = utm_epsg(geo_sf)))
+  geo_wgs <- sf::st_transform(geo_utm, crs = 4326)
   
   stations_wgs$station_id <- .normalize_station(stations_wgs[[station_id_col]])
   geo_wgs[[geo_id_col]] <- .safe_chr(geo_wgs[[geo_id_col]])
@@ -3377,7 +3372,7 @@ compute_station_socio_context <- function(
   # Use a local metric projection centered on the stations.
   cen <- sf::st_coordinates(sf::st_centroid(sf::st_union(stations_wgs)))
   
-  proj_m <- .aeqd_proj(
+  proj_m <- aeqd_crs(
     lon0 = cen[1, "X"],
     lat0 = cen[1, "Y"]
   )
