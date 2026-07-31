@@ -39,10 +39,14 @@ santiago_stations_csv   <- here::here(outdir_metadata,
                                       "SINCA_metadata_stations_20260113_1616.csv")
 santiago_metro_gpkg     <- here::here(outdir_geospatial, "santiago",
                                       "gran_santiago_area_2024.gpkg")
+# Census zones of the metro area: the geography of the 2017 census sample
+santiago_zonas_gpkg     <- here::here(outdir_geospatial, "santiago",
+                                      "gran_santiago_zonas_2017.gpkg")
 
 # Open station location and other spatial data
 station_location <- read.csv(santiago_stations_csv)
 metro_area       <- sf::st_read(santiago_metro_gpkg)
+metro_zonas_2017 <- sf::st_read(santiago_zonas_gpkg)
 
 # ============================================================================================
 # II: Process  data
@@ -68,8 +72,8 @@ santiago_stations_data <- santiago_process_stations_data_to_parquet(
 # Apply function to process the census data of 2017 - through a package
 process_harmonize_census_2017 <- santiago_process_census_2017(
   out_dir    = here::here("data", "interim", "census", "santiago_2017"),
-  sf_data    = metro_area,
-  match_col  = "CUT",
+  sf_data    = metro_zonas_2017,
+  match_col  = "zona_id",
   quiet      = FALSE)
 
 # Apply function to unpack the census data of 2024 (unzip, filter, read and process)
