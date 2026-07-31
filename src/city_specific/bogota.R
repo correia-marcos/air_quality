@@ -66,8 +66,13 @@ bogota_cfg <- list(
 # 
 # @Output    : Writes a GeoPackage; returns sf object invisibly.
 # @Purpose   : Download admin boundaries and crop to Bogota metro.
-#              "mpio_localidad" replaces Bogota with a clipped 
+#              "mpio_localidad" replaces Bogota with a clipped
 #              version of the official Localities GPKG.
+# @Details   : The layer keeps whatever CRS DANE shipped, so data/raw/ stays faithful
+#              to the source: MGN 2005 is EPSG:4326, MGN 2018 is EPSG:4686. Both are
+#              ITRF-aligned (sub-metre apart) and every consumer reprojects, so the
+#              split is harmless. The 2005 tracts carry 3 ring self-intersections,
+#              repaired at the point of use.
 # @Written_on: 20/08/2025
 # @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
@@ -2209,18 +2214,13 @@ bogota_filter_stations_in_metro <- function(
     "Applying spatial filter (radius: ", radius_km, " km)..."
   )
   
-  metro_valid <- sf::st_make_valid(metro_area)
-  if (dissolve) metro_valid <- sf::st_union(metro_valid)
-  
-  metro_wgs <- sf::st_transform(metro_valid, 4326)
-  cen       <- sf::st_coordinates(sf::st_centroid(metro_wgs))
-  
-  aeqd_proj <- sprintf(
-    "+proj=aeqd +lat_0=%f +lon_0=%f +units=m +datum=WGS84 +no_defs",
-    cen[2], cen[1]
-  )
-  
-  metro_m    <- sf::st_transform(metro_valid, aeqd_proj)
+  # Repair and dissolve on the metre grid: both are planar operations, and on lon/lat
+  # sf routes them through s2, which snaps vertices to a ~1.1 cm cell.
+  aeqd_proj <- aeqd_for(metro_area)
+
+  metro_m <- sf::st_make_valid(sf::st_transform(metro_area, aeqd_proj))
+  if (dissolve) metro_m <- sf::st_union(metro_m)
+
   stations_m <- sf::st_transform(stations_sf, aeqd_proj)
   
   within_idx <- sf::st_is_within_distance(

@@ -392,6 +392,11 @@ map_qualar_metadata <- function(base_url, search_url, login, password, container
 #              - Filters for the metro area of São Paulo.
 #              - Fixes encoding (LATIN1) and saves as .gpkg.
 #
+# @Details   : The layer keeps IBGE's own CRS, EPSG:4674 (SIRGAS 2000), so data/raw/
+#              stays faithful to the source. The 2010 tracts carry 25 ring
+#              self-intersections and 29 duplicate vertices, repaired at the point
+#              of use — see sp_filter_stations_in_metro().
+#
 # @Written_by: Marcos Paulo
 # @Updated_on: 05/12/2025
 # --------------------------------------------------------------------------------------------
@@ -1130,18 +1135,13 @@ sp_filter_stations_in_metro <- function(
   
   # PART III: Spatial Filter (AEQD Projection for accurate distance)
   # ---------------------------------------------------------------------------
-  metro_valid <- sf::st_make_valid(metro_area)
-  if (dissolve) metro_valid <- sf::st_union(metro_valid)
-  
-  metro_wgs <- sf::st_transform(metro_valid, 4326)
-  cen       <- sf::st_coordinates(sf::st_centroid(metro_wgs))
-  
-  aeqd_proj <- sprintf(
-    "+proj=aeqd +lat_0=%f +lon_0=%f +units=m +datum=WGS84 +no_defs",
-    cen[2], cen[1]
-  )
-  
-  metro_m    <- sf::st_transform(metro_valid, aeqd_proj)
+  # Repair and dissolve on the metre grid: both are planar operations, and on lon/lat
+  # sf routes them through s2, w/ 1cm error margin.
+  aeqd_proj <- aeqd_for(metro_area)
+
+  metro_m <- sf::st_make_valid(sf::st_transform(metro_area, aeqd_proj))
+  if (dissolve) metro_m <- sf::st_union(metro_m)
+
   stations_m <- sf::st_transform(stations_sf, aeqd_proj)
   radius_m   <- radius_km * 1000
   

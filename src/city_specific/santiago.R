@@ -77,6 +77,10 @@ santiago_cfg <- list(
 #   geo-to-station distance matrix. Attributes that disagree across the merged
 #   rows are set to NA, because no single value describes the merged unit.
 #
+#   The layer keeps INE's own CRS, EPSG:4674 (SIRGAS 2000), so data/raw/ stays
+#   faithful to the source. The 2017 zonas arrive in EPSG:4326 instead; both are
+#   ITRF-aligned and every consumer reprojects, so the split is harmless.
+#
 # @Written_on : 25/10/2025
 # @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------------
@@ -1670,28 +1674,22 @@ santiago_filter_stations_in_metro <- function(
     )
   }
   
-  # Fix geometries and cast the metropolitan area safely.
-  metro_valid <- metro_area |>
+  # Build the local metric grid from the bounding box, which reads no vertices.
+  aeqd_proj <- aeqd_for(metro_area)
+
+  # Repair and dissolve on that grid, not in lon/lat, that would run through s2. Its 
+  # rebuild snaps vertices to a ~1.1cm cell (2017 zonas has 4,154 edges shorter than that)
+  metro_m <- metro_area |>
+    sf::st_transform(crs = aeqd_proj) |>
     sf::st_cast("MULTIPOLYGON") |>
     sf::st_make_valid()
-  
+
   # Optionally dissolve all metro polygons into one boundary.
   if (isTRUE(dissolve)) {
-    metro_valid <- sf::st_union(metro_valid)
+    metro_m <- sf::st_union(metro_m)
   }
-  
-  # Build an AEQD projection centered on the metro area.
-  metro_wgs <- sf::st_transform(metro_valid, crs = 4326)
-  cen <- sf::st_coordinates(sf::st_centroid(metro_wgs))
-  
-  aeqd_proj <- sprintf(
-    "+proj=aeqd +lat_0=%f +lon_0=%f +units=m +datum=WGS84 +no_defs",
-    cen[1, "Y"],
-    cen[1, "X"]
-  )
-  
-  # Transform station points and metro boundary to the local metric CRS.
-  metro_m <- sf::st_transform(metro_valid, crs = aeqd_proj)
+
+  # Transform station points to the same local metric CRS.
   stations_m <- sf::st_transform(stations_sf, crs = aeqd_proj)
   
   # Guard against invalid transformed points.
@@ -1776,6 +1774,14 @@ santiago_filter_stations_in_metro <- function(
 #              outside the conurbation and are not part of the metropolitan area.
 #              The 2017 delimitation covers 813.9 km2 against 821.6 km2 for the 2024
 #              one, so the two vintages agree to under one per cent.
+#
+#              The layer is written in EPSG:4326, the CRS the ArcGIS service returns
+#              (`outSR=4326`), so data/raw/ stays faithful to the source. Every
+#              polygon is GEOS-valid, but 976 of the 1,655 zones carry edges shorter
+#              than 1 cm (4,154 in total, the shortest 3.2 mm). That is below s2's
+#              rebuild grid, so any st_make_valid()/st_union() run on this layer in
+#              lon/lat collapses them into duplicate vertices and aborts. Consumers
+#              must repair it on a projected CRS: see santiago_filter_stations_in_metro().
 #
 # @Written_on: July 2026
 # @Written_by: Marcos Paulo

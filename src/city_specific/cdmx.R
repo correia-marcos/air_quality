@@ -1743,6 +1743,12 @@ inegi_census_2020_ampliado_links <- function() {
 # @Output    : Writes a GeoPackage with CDMX metro units; returns the sf.
 # @Purpose   : Download INEGI MGI 2024, read the requested layer (municipal or
 #              AGEB), filter by municipality CVEGEO (ENT+MUN), and save it.
+# @Details   : The layer keeps INEGI's own CRS, EPSG:6372 (Mexico ITRF2008 / LCC) —
+#              the only projected metro layer in the project, so data/raw/ stays
+#              faithful to the source. Nothing downstream may reuse it as a metric
+#              CRS: its scale factor is 0.99712 at 19.4N, which would stretch a
+#              20 km ring to 20 058 m. The AGEB layer carries 1 ring
+#              self-intersection, repaired at the point of use.
 # @Written_on: 02/09/2025
 # @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
@@ -4637,30 +4643,18 @@ cdmx_filter_stations_in_metro <- function(
     remove = FALSE
   )
   
-  # 2) prepare metro polygon: valid geometry; optionally dissolve -------------
-  metro_sf <- sf::st_make_valid(metro_area)
-  if (dissolve) metro_sf <- sf::st_union(metro_sf)
-  
-  # 3) pick a working CRS in meters for accurate distance ---------------------
-  #    If metro_area already uses a projected CRS (units in m), reuse it.
-  #    Else build a local Azimuthal Equidistant centered on metro centroid.
-  need_proj <- isTRUE(sf::st_is_longlat(sf::st_crs(metro_sf)))
-  if (need_proj) {
-    # 3a) compute centroid lon/lat for a local AEQD projection
-    metro_wgs <- sf::st_transform(metro_sf, 4326)
-    cen       <- sf::st_coordinates(sf::st_centroid(metro_wgs))
-    aeqd_str  <- sprintf(
-      "+proj=aeqd +lat_0=%f +lon_0=%f +units=m +datum=WGS84 +no_defs",
-      cen[2], cen[1]
-    )
-    target_crs <- sf::st_crs(aeqd_str)
-  } else {
-    target_crs <- sf::st_crs(metro_sf)
-  }
-  
-  # 4) transform both layers to target_crs (meters) ---------------------------
-  metro_m <- if (need_proj) sf::st_transform(metro_sf, target_crs) else metro_sf
-  st_m    <- sf::st_transform(st_sf, target_crs)
+  # 2) pick a working CRS in meters, centred on the metro area ----------------
+  #    CDMX default projected CRS has scale factor error: EPSG:6372 is 0.99712 at 19.4N
+  #    Thus the buffer of 20 km turns into 20.058 km
+  proj_m <- aeqd_for(metro_area)
+
+  # 3) prepare metro polygon on that grid: valid geometry; optionally dissolve -
+  #    Repair is planar, so it runs projected rather than through s2.
+  metro_m <- sf::st_make_valid(sf::st_transform(metro_area, proj_m))
+  if (dissolve) metro_m <- sf::st_union(metro_m)
+
+  # 4) put the stations on the same grid --------------------------------------
+  st_m <- sf::st_transform(st_sf, proj_m)
   
   # 5) compute keep mask: inside OR within radius_km (meters) -----------------
   radius_m <- radius_km * 1000
