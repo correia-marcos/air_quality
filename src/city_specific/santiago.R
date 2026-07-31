@@ -46,7 +46,7 @@ santiago_cfg <- list(
 # ============================================================================================
 
 # --------------------------------------------------------------------------------------------
-# Function: santiago_download_metro_area
+# Function: santiago_download_metro_area_2024
 #
 # @Arg type              : string; "metro_santiago" or "gran_santiago".
 # @Arg level             : string; "mpio" or "manzana".
@@ -80,7 +80,7 @@ santiago_cfg <- list(
 # @Written_on : 25/10/2025
 # @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------------
-santiago_download_metro_area <- function(
+santiago_download_metro_area_2024 <- function(
     type              = c("metro_santiago", "gran_santiago"),
     level             = c("mpio", "manzana"),
     base_url          = santiago_cfg$base_url_shp,

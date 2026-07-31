@@ -41,7 +41,7 @@ print(santiago_cfg$out_dir)
 # I: Download data
 # ============================================================================================
 # Apply function to download shapefiles for Gran Santiago area
-gran_santiago <- santiago_download_metro_area(
+gran_santiago <- santiago_download_metro_area_2024(
   type              = "gran_santiago",
   level             = "mpio",
   base_url          = santiago_cfg$base_url_shp,
@@ -55,7 +55,7 @@ gran_santiago <- santiago_download_metro_area(
   overwrite_gpkg    = TRUE,
   quiet             = FALSE
 )
-gran_santiago_census_tracks <- santiago_download_metro_area(
+gran_santiago_census_tracks <- santiago_download_metro_area_2024(
   type              = "gran_santiago",
   level             = "manzana",
   base_url          = santiago_cfg$base_url_shp,
@@ -80,7 +80,7 @@ zonas_2017 <- santiago_download_metro_area_2017(
   quiet          = FALSE)
 
 # Apply function to download shapefiles for Santiago metro area
-santiago_metro <- santiago_download_metro_area(
+santiago_metro <- santiago_download_metro_area_2024(
   type              = "metro_santiago",
   level             = "mpio",
   base_url          = santiago_cfg$base_url_shp,
@@ -94,7 +94,7 @@ santiago_metro <- santiago_download_metro_area(
   overwrite_gpkg    = TRUE,
   quiet             = FALSE
 )
-santiago_metro_census_tracts <- santiago_download_metro_area(
+santiago_metro_census_tracts <- santiago_download_metro_area_2024(
   type              = "metro_santiago",
   level             = "manzana",
   base_url          = santiago_cfg$base_url_shp,
