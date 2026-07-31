@@ -78,7 +78,7 @@ process_harmonize_census_2017 <- santiago_process_census_2017(
 # Apply function to unpack the census data of 2024 (unzip, filter, read and process)
 process_harmonize_census_2024 <- santiago_process_census_2024(
   census_dir = here::here(santiago_cfg$dl_dir, "census", "2024"),
-  sf_data    = metro_area,
+  sf_data    = metro_area_2024,
   match_col  = "CUT",
   out_dir    = here::here("data", "interim", "census", "santiago_2024")
 )
