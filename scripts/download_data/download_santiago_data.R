@@ -50,7 +50,7 @@ zonas_2017 <- santiago_download_metro_area_2017(
   overwrite_gpkg = TRUE,
   quiet          = FALSE)
 
-# Apply function to download shapefiles for Gran Santiago area
+# Gran Santiago 2024 at comuna level: robustness check against the 2017 main sample.
 gran_santiago <- santiago_download_metro_area_2024(
   type              = "gran_santiago",
   level             = "mpio",
@@ -65,21 +65,8 @@ gran_santiago <- santiago_download_metro_area_2024(
   overwrite_gpkg    = TRUE,
   quiet             = FALSE
 )
-gran_santiago_census_tracks <- santiago_download_metro_area_2024(
-  type              = "gran_santiago",
-  level             = "manzana",
-  base_url          = santiago_cfg$base_url_shp,
-  keep_municipality = santiago_cfg$cities_in_metro,
-  download_dir      = here::here(santiago_cfg$dl_dir, "metro_area"),
-  out_file          = here::here(santiago_cfg$out_dir, "geospatial_data",
-                                 "santiago", "gran_santiago_area_2024_census_tracts.gpkg"),
-  overwrite_zip     = FALSE,
-  container         = TRUE,
-  overwrite_gpkg    = TRUE,
-  quiet             = FALSE
-)
 
-# Apply function to download shapefiles for Santiago metro area
+# Possible other metro definition (sensitivity on the area definition itself)
 santiago_metro <- santiago_download_metro_area_2024(
   type              = "metro_santiago",
   level             = "mpio",
@@ -89,19 +76,6 @@ santiago_metro <- santiago_download_metro_area_2024(
   out_file          = here::here(santiago_cfg$out_dir, "geospatial_data",
                                  "santiago", "santiago_metro_area_2024.gpkg"),
   dissolve_by       = "CUT",
-  overwrite_zip     = FALSE,
-  container         = TRUE,
-  overwrite_gpkg    = TRUE,
-  quiet             = FALSE
-)
-santiago_metro_census_tracts <- santiago_download_metro_area_2024(
-  type              = "metro_santiago",
-  level             = "manzana",
-  base_url          = santiago_cfg$base_url_shp,
-  keep_municipality = santiago_cfg$cities_in_metro,
-  download_dir      = here::here(santiago_cfg$dl_dir, "metro_area"),
-  out_file          = here::here(santiago_cfg$out_dir, "geospatial_data",
-                                 "santiago", "santiago_metro_area_2024_census_tracts.gpkg"),
   overwrite_zip     = FALSE,
   container         = TRUE,
   overwrite_gpkg    = TRUE,
