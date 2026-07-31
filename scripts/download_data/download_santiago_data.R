@@ -40,6 +40,16 @@ print(santiago_cfg$out_dir)
 # ============================================================================================
 # I: Download data
 # ============================================================================================
+# Apply function to download the 2017 metro area at census-zone level (main sample)
+zonas_2017 <- santiago_download_metro_area_2017(
+  base_url       = santiago_cfg$base_url_dpa_17,
+  conurbacion    = "GRAN SANTIAGO",
+  region_prefix  = "13",
+  out_file       = here::here(santiago_cfg$out_dir, "geospatial_data",
+                              "santiago", "gran_santiago_zonas_2017.gpkg"),
+  overwrite_gpkg = TRUE,
+  quiet          = FALSE)
+
 # Apply function to download shapefiles for Gran Santiago area
 gran_santiago <- santiago_download_metro_area_2024(
   type              = "gran_santiago",
@@ -68,16 +78,6 @@ gran_santiago_census_tracks <- santiago_download_metro_area_2024(
   overwrite_gpkg    = TRUE,
   quiet             = FALSE
 )
-
-# Apply function to download the 2017 metro area at census-zone level (main sample)
-zonas_2017 <- santiago_download_metro_area_2017(
-  base_url       = santiago_cfg$base_url_dpa_17,
-  conurbacion    = "GRAN SANTIAGO",
-  region_prefix  = "13",
-  out_file       = here::here(santiago_cfg$out_dir, "geospatial_data",
-                              "santiago", "gran_santiago_zonas_2017.gpkg"),
-  overwrite_gpkg = TRUE,
-  quiet          = FALSE)
 
 # Apply function to download shapefiles for Santiago metro area
 santiago_metro <- santiago_download_metro_area_2024(
@@ -111,7 +111,7 @@ santiago_metro_census_tracts <- santiago_download_metro_area_2024(
 # Apply function to save a LaTeX table of the states that we must download stations data
 table_states_to_download <- table_state_metro_distances(
   national_states_sf = chile,
-  metro_area_sf = santiago_metro,
+  metro_area_sf = zonas_2017,
   save_latex_table = TRUE,
   caption = "Administrative states and distance to metropolitan area (in Km)",
   out_file = here::here("results", "tables", "states_to_get_stations", "santiago.tex"),

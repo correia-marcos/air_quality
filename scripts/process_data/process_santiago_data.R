@@ -37,16 +37,15 @@ outdir_metadata   <- here::here(santiago_cfg$dl_dir, "stations_metadata")
 # Define the file's specific location
 santiago_stations_csv   <- here::here(outdir_metadata,
                                       "SINCA_metadata_stations_20260113_1616.csv")
-santiago_metro_gpkg     <- here::here(outdir_geospatial, "santiago",
-                                      "gran_santiago_area_2024.gpkg")
-# Census zones of the metro area: the geography of the 2017 census sample
 santiago_zonas_gpkg     <- here::here(outdir_geospatial, "santiago",
                                       "gran_santiago_zonas_2017.gpkg")
+santiago_metro_gpkg     <- here::here(outdir_geospatial, "santiago",
+                                      "gran_santiago_area_2024.gpkg")
 
 # Open station location and other spatial data
 station_location <- read.csv(santiago_stations_csv)
-metro_area       <- sf::st_read(santiago_metro_gpkg)
-metro_zonas_2017 <- sf::st_read(santiago_zonas_gpkg)
+metro_area_2017  <- sf::st_read(santiago_zonas_gpkg)
+metro_area_2024  <- sf::st_read(santiago_metro_gpkg)
 
 # ============================================================================================
 # II: Process  data
@@ -55,9 +54,9 @@ metro_zonas_2017 <- sf::st_read(santiago_zonas_gpkg)
 stations_kept <- santiago_filter_stations_in_metro(
   stations_df   = station_location,
   radius_km     = 20,
-  metro_area    = metro_area,
+  metro_area    = metro_area_2017,
   out_file      = here::here(outdir_geospatial, "santiago",
-                             "gran_santiago_stations_buffer_metro_2024.gpkg"))
+                             "gran_santiago_stations_buffer_metro_2017.gpkg"))
 
 # Apply function to merge all downloaded file of Bogota metro area into DUCKDB database
 santiago_stations_data <- santiago_process_stations_data_to_parquet(
