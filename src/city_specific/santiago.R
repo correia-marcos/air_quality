@@ -1837,12 +1837,15 @@ santiago_download_metro_area_2017 <- function(
          " features; the query was truncated.")
   }
 
-  # 3. Keep the zones inside the conurbation. A representative point is always
-  # inside its own polygon, so slivers on the boundary do not decide membership.
-  metro   <- sf::st_transform(metro, sf::st_crs(zonas))
-  inside  <- sf::st_within(sf::st_point_on_surface(sf::st_geometry(zonas)),
-                           sf::st_union(metro), sparse = FALSE)[, 1]
-  zonas   <- zonas[inside, ]
+  # 3. Keep the zones inside the conurbation. GEOS predicates are planar.
+  zonas_utm <- sf::st_transform(zonas, 32719)
+  metro_utm <- sf::st_union(sf::st_transform(metro, 32719))
+
+  # A representative point is always inside its own polygon, so slivers on the
+  # boundary do not decide membership. Subset the lon/lat layer by the same index.
+  inside <- sf::st_within(sf::st_point_on_surface(sf::st_geometry(zonas_utm)),
+                          metro_utm, sparse = FALSE)[, 1]
+  zonas  <- zonas[inside, ]
 
   # 4. Build the census join key: CUT(5) + distrito(2) + area(1) + zona(3).
   zonas$zona_id <- sprintf("%05d%02d1%03d", as.integer(zonas$CUT),
