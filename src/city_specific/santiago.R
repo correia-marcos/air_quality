@@ -20,6 +20,7 @@ santiago_cfg <- list(
   id               = "santiago",
   tz               = "America/Santiago",
   base_url_shp     = "https://censo2024.ine.gob.cl/resultados/",
+  base_url_dpa_17  = "https://services5.arcgis.com/hUyD8u3TeZLKPe4T/arcgis/rest/services",
   base_url_sinca   = "https://sinca.mma.gob.cl/index.php/redes",
   base_url_census  = "https://www.ine.gob.cl/docs/default-source",
   base_new_census  = "https://storage.googleapis.com/bktdescargascenso2024/",
@@ -1752,104 +1753,111 @@ santiago_filter_stations_in_metro <- function(
 
 
 # --------------------------------------------------------------------------------------------
-# Function: santiago_build_zonas_2017
+# Function: santiago_download_metro_area_2017
 #
-# @Arg       : zip_path       — string; downloaded chile_census_2017_geo_location.zip.
-# @Arg       : metro_gpkg     — string; downloaded Gran Santiago GeoPackage, used
-#                               only to read which communes belong to the area.
-# @Arg       : match_col      — string; commune-code column in metro_gpkg.
+# @Arg       : base_url       — string; INE 2017 DPA ArcGIS services root.
+# @Arg       : conurbacion    — string; conurbation name delimiting the metro area.
+# @Arg       : region_prefix  — string; CUT prefix of the region holding it.
 # @Arg       : out_file       — string; GeoPackage to write.
-# @Arg       : work_dir       — string; folder for the unzipped shapefile.
 # @Arg       : overwrite_gpkg — logical; overwrite output GeoPackage. Default TRUE.
-# @Arg       : quiet          — logical; suppress messages.
+# @Arg       : quiet          — logical; suppress messages. Default FALSE.
 #
 # @Output    : sf object of zona censal polygons, one row per `zona_id`.
 #
-# @Purpose   : Builds the 2017 zona censal map that pairs with the 2017 census
-#              microdata. The INE archive ships ~151,500 national manzana (block)
-#              polygons; this keeps the Gran Santiago communes and dissolves the
-#              blocks up to their zona.
+# @Purpose   : Downloads the 2017 metropolitan area of Santiago at census-zone level,
+#              which is the geography the 2017 census microdata identifies. Two REST
+#              calls: the conurbation polygon that delimits the area, and the census
+#              zones of the region, keeping the zones that fall inside it.
 #
-# @Details   : MANZENT is CUT(5) + distrito(2) + area(1) + zona(3) + manzana(3),
-#              so substr(MANZENT, 1, 11) is exactly the `geocodigo` that
-#              santiago_process_census_2017() returns as `zona_id`. Both sides are
-#              cut from the same code, so the census-to-map join is exact.
-#              The archive covers urban blocks only, so rural zonas of the
-#              peri-urban communes have no polygon here; they carry no station
-#              within any buffer and drop out of the exposure step anyway.
+# @Details   : `zona_id` is CUT(5) + distrito(2) + area(1) + zona(3), the same
+#              11-character code the census reports as `geocodigo`, so this layer and
+#              santiago_process_census_2017() join exactly. The area digit is 1
+#              because Zona_Censal holds urban zones only; rural residents live
+#              outside the conurbation and are not part of the metropolitan area.
+#              The 2017 delimitation covers 813.9 km2 against 821.6 km2 for the 2024
+#              one, so the two vintages agree to under one per cent.
 #
 # @Written_on: July 2026
 # @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
-santiago_build_zonas_2017 <- function(
-    zip_path       = here::here("data", "downloads", "santiago", "census", "2017",
-                                "chile_census_2017_geo_location.zip"),
-    metro_gpkg     = here::here("data", "raw", "geospatial_data", "santiago",
-                                "gran_santiago_area_2024.gpkg"),
-    match_col      = "CUT",
+santiago_download_metro_area_2017 <- function(
+    base_url       = santiago_cfg$base_url_dpa_17,
+    conurbacion    = "GRAN SANTIAGO",
+    region_prefix  = "13",
     out_file       = here::here("data", "raw", "geospatial_data", "santiago",
                                 "gran_santiago_zonas_2017.gpkg"),
-    work_dir       = here::here("data", "interim", "census", "santiago_2017",
-                                "geo_location"),
     overwrite_gpkg = TRUE,
     quiet          = FALSE
 ) {
 
-  # Both inputs come from earlier download steps in this script.
-  if (!file.exists(zip_path)) {
-    stop("Census 2017 geo archive not found: ", zip_path,
-         "\nRun santiago_download_census_data(type = 'geo_location', year = 2017).")
-  }
-
-  if (!file.exists(metro_gpkg)) {
-    stop("Metro-area GeoPackage not found: ", metro_gpkg,
-         "\nRun santiago_download_metro_area(type = 'gran_santiago').")
-  }
-
   if (file.exists(out_file) && !isTRUE(overwrite_gpkg)) {
-    if (!quiet) message("[santiago_zonas] Output exists and overwrite = FALSE.")
+    if (!quiet) message("[santiago_2017_area] Output exists and overwrite = FALSE.")
     return(sf::st_read(out_file, quiet = TRUE))
   }
 
-  # Unpack once; the archive holds a single national layer.
-  dir.create(work_dir, recursive = TRUE, showWarnings = FALSE)
-  shp <- file.path(work_dir, "Microdatos_Manzana.shp")
-
-  if (!file.exists(shp)) {
-    if (!quiet) message("[santiago_zonas] Extracting ", basename(zip_path))
-    utils::unzip(zip_path, exdir = work_dir)
+  # Build an ArcGIS query URL. sf reads GeoJSON straight from the endpoint.
+  .query <- function(service, where, fields, geom = "true") {
+    paste0(base_url, "/", service, "/FeatureServer/0/query",
+           "?where=", utils::URLencode(where, reserved = TRUE),
+           "&outFields=", utils::URLencode(fields, reserved = TRUE),
+           "&returnGeometry=", geom, "&outSR=4326&f=geojson")
   }
 
-  # Communes come from the downloaded metro area, so both vintages cover the same
-  # area even though the geography is 2017 and the metro definition is 2024.
-  keep_cuts <- as.character(unique(sf::st_read(metro_gpkg, quiet = TRUE)[[match_col]]))
+  # 1. Conurbation polygon that delimits the metropolitan area.
+  if (!quiet) message("[santiago_2017_area] Downloading conurbation: ", conurbacion)
 
-  if (!quiet) message("[santiago_zonas] Reading national manzana layer.")
+  metro <- sf::st_read(
+    .query("Conurbaciones_2017", sprintf("CONURB='%s'", conurbacion), "*"),
+    quiet = TRUE
+  )
 
-  manzanas <- sf::st_read(shp, quiet = TRUE)
-  manzanas$CUT <- as.character(manzanas$CUT)
-  manzanas <- manzanas[manzanas$CUT %in% keep_cuts, ]
-
-  if (nrow(manzanas) == 0L) {
-    stop("No manzanas matched the metro-area communes.")
+  if (nrow(metro) == 0L) {
+    stop("Conurbation '", conurbacion, "' not found in Conurbaciones_2017.")
   }
 
-  # First 11 characters of MANZENT are the zona code the census reports.
-  manzanas$zona_id <- substr(as.character(manzanas$MANZENT), 1L, 11L)
+  # 2. Census zones of the region. One call returns them all, but the service caps
+  # responses at 2000 records, so compare against the count the server reports.
+  where_zonas <- sprintf("CUT LIKE '%s%%'", region_prefix)
 
-  # Repair validity first: the INE blocks contain self-intersections.
-  manzanas <- sf::st_make_valid(manzanas)
+  n_expected <- as.integer(jsonlite::fromJSON(paste0(
+    base_url, "/Zona_Censal/FeatureServer/0/query",
+    "?where=", utils::URLencode(where_zonas, reserved = TRUE),
+    "&returnCountOnly=true&f=json"
+  ))$count)
 
-  zonas <- manzanas[, "zona_id"] %>%
-    dplyr::group_by(zona_id) %>%
-    dplyr::summarise(.groups = "drop")
+  if (!quiet) message("[santiago_2017_area] Downloading ", n_expected, " census zones.")
 
-  zonas <- sf::st_make_valid(zonas)
-  zonas$CUT <- substr(zonas$zona_id, 1L, 5L)
+  zonas <- sf::st_read(
+    .query("Zona_Censal", where_zonas, "CUT,COD_DISTRI,COD_ZONA,d_COMUNA"),
+    quiet = TRUE
+  )
+
+  if (nrow(zonas) != n_expected) {
+    stop("Zona_Censal returned ", nrow(zonas), " of ", n_expected,
+         " features; the query was truncated.")
+  }
+
+  # 3. Keep the zones inside the conurbation. A representative point is always
+  # inside its own polygon, so slivers on the boundary do not decide membership.
+  metro   <- sf::st_transform(metro, sf::st_crs(zonas))
+  inside  <- sf::st_within(sf::st_point_on_surface(sf::st_geometry(zonas)),
+                           sf::st_union(metro), sparse = FALSE)[, 1]
+  zonas   <- zonas[inside, ]
+
+  # 4. Build the census join key: CUT(5) + distrito(2) + area(1) + zona(3).
+  zonas$zona_id <- sprintf("%05d%02d1%03d", as.integer(zonas$CUT),
+                           as.integer(zonas$COD_DISTRI),
+                           as.integer(zonas$COD_ZONA))
+
+  zonas <- zonas[, c("zona_id", "CUT", "d_COMUNA")]
+
+  if (anyDuplicated(zonas$zona_id) > 0L) {
+    stop("Duplicated zona_id in the downloaded layer.")
+  }
 
   if (!quiet) {
-    message("[santiago_zonas] ", nrow(manzanas), " manzanas -> ", nrow(zonas),
-            " zonas censales in ", length(unique(zonas$CUT)), " commune(s).")
+    message("[santiago_2017_area] ", nrow(zonas), " zone(s) in ",
+            data.table::uniqueN(zonas$CUT), " commune(s).")
   }
 
   dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
@@ -1860,7 +1868,7 @@ santiago_build_zonas_2017 <- function(
 
   sf::st_write(zonas, out_file, quiet = TRUE, append = FALSE)
 
-  if (!quiet) message("[santiago_zonas] Saved GeoPackage: ", out_file)
+  if (!quiet) message("[santiago_2017_area] Saved GeoPackage: ", out_file)
 
   return(zonas)
 }
@@ -2130,15 +2138,16 @@ dt <- tryCatch(
 # --------------------------------------------------------------------------------------------
 # Function: santiago_process_census_2017
 #
-# @Arg       : sf_data    — sf object; Spatial dataframe containing communes of interest.
-# @Arg       : match_col  — string; Column in sf_data with commune codes (default "CUT").
+# @Arg       : sf_data    — sf object; metro-area census zones, from
+#                           santiago_download_metro_area_2017().
+# @Arg       : match_col  — string; zone-id column in sf_data (default "zona_id").
 # @Arg       : out_dir    — string; Directory to save processed CSVs.
 # @Arg       : quiet      — logical; Suppress progress messages?
 #
 # @Output    : list(individual, collapsed); Returns tibbles of the data.
 #
 # @Purpose   : Harmonizes 2017 Census data using a spatial filter.
-#              1. Extracts commune codes from the provided sf object.
+#              1. Takes the census zones of the metro area from the sf object.
 #              2. Connects to local 'censo2017' DuckDB and resolves each person's
 #                 place of RESIDENCE by joining personas -> hogares -> viviendas
 #                 -> zonas, which yields the 11-character `geocodigo`.
@@ -2146,36 +2155,37 @@ dt <- tryCatch(
 #              4. Collapses data to the zona censal level.
 #
 # @Details   : `geocodigo` is CUT(5) + distrito(2) + area(1) + zona(3), e.g.
-#              "13101211002". It is the finest geography the 2017 microdata
-#              identifies (~1,719 zonas in Gran Santiago against 39 communes)
-#              and equals substr(MANZENT, 1, 11) in the 2017 manzana shapefile,
-#              so the census and the map join exactly.
+#              "13101211002", and equals `zona_id` in the metro-area layer, so the
+#              sample is exactly the population of the mapped zones and every zone
+#              in the output has a polygon. Filtering by commune instead would add
+#              everyone living in a commune the urban area merely clips, including
+#              the whole Andean territory of San Jose de Maipo.
 #
 # @Written_by: Marcos Paulo
 # @Updated_on: July 2026
 # --------------------------------------------------------------------------------------------
 santiago_process_census_2017 <- function(
     sf_data,
-    match_col = "CUT",
+    match_col = "zona_id",
     out_dir   = here::here("data", "processed", "santiago", "census"),
     quiet     = FALSE
 ) {
-  
+
   if (!requireNamespace("censo2017", quietly = TRUE)) {
     stop("Package 'censo2017' required.")
   }
-  
+
   # Validate spatial inputs
   if (!inherits(sf_data, "sf")) stop("'sf_data' must be an sf spatial object.")
   if (!match_col %in% names(sf_data)) stop("Column missing in sf_data.")
-  
+
   if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE)
-  
-  # Convert to integer as censo2017 uses integer keys for p10comuna
-  filter_codes <- as.integer(unique(sf_data[[match_col]]))
-  
+
+  # The metro area is delimited below at commune level.
+  keep_zonas <- unique(as.character(sf_data[[match_col]]))
+
   if (!quiet) {
-    message(sprintf("[santiago_2017] Filtering for %d communes.", length(filter_codes)))
+    message(sprintf("[santiago_2017] Filtering for %d census zones.", length(keep_zonas)))
     message("[santiago_2017] Connecting to local Census 2017 database...")
   }
   
@@ -2211,11 +2221,11 @@ santiago_process_census_2017 <- function(
 
   if (!quiet) message("[santiago_2017] Applying harmonization rules...")
 
-  # The first five characters of geocodigo are the commune code (CUT)
+  # Keep the zones of the metro area; the first five characters are the commune.
   processed_db <- personas_db %>%
     dplyr::inner_join(geo_db, by = "hogar_ref_id") %>%
+    dplyr::filter(zona_id %in% keep_zonas) %>%
     dplyr::mutate(comuna = as.integer(substr(zona_id, 1L, 5L))) %>%
-    dplyr::filter(comuna %in% filter_codes) %>%
     dplyr::mutate(
       
       # Education harmonization: Specific rules must precede general mappings
@@ -2292,9 +2302,11 @@ santiago_process_census_2017 <- function(
       .groups             = "drop"
     )
 
+  # Zones with adults must not exceed the mapped ones; any shortfall is zones the
+  # census has no adults for, which is worth seeing rather than assuming.
   if (!quiet) {
     message("[santiago_2017] ", nrow(individual_df), " people | ",
-            nrow(collapsed_df), " zonas censales.")
+            nrow(collapsed_df), " of ", length(keep_zonas), " zonas censales.")
   }
 
   if (!quiet) message("[santiago_2017] Saving outputs to: ", out_dir)
