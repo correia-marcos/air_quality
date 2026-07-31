@@ -34,8 +34,8 @@ gpkg_stations_bogota_2018 <- here::here(dir_geospatial, "bogota",
                                         "bogota_2018_stations_buffer_metro.gpkg")
 gpkg_stations_cdmx        <- here::here(dir_geospatial, "cdmx",
                                         "cdmx_stations_buffer_metro.gpkg")
-gpkg_stations_santiago_2024 <- here::here(dir_geospatial, "santiago",
-                                          "gran_santiago_stations_buffer_metro_2024.gpkg")
+gpkg_stations_santiago_2017 <- here::here(dir_geospatial, "santiago",
+                                          "gran_santiago_stations_buffer_metro_2017.gpkg")
 gpkg_stations_sp_2010       <- here::here(dir_geospatial, "sao_paulo",
                                           "sao_paulo_stations_buffer_metro_2010.gpkg")
 
@@ -46,7 +46,7 @@ gpkg_cdmx_metro_area        <- here::here(dir_geospatial, "cdmx",
                                           "cdmx_area_metro_municipalities_2024.gpkg")
 gpkg_santiago_2024_metro_area <- here::here(dir_geospatial, "santiago",
                                             "gran_santiago_area_2024.gpkg")
-# Zona censal layer: Santiago's main geography (~1,719 units against 39 communes)
+# Zona censal layer: Santiago's main geography (1,655 zones against 38 communes)
 gpkg_santiago_2017_zonas      <- here::here(dir_geospatial, "santiago",
                                             "gran_santiago_zonas_2017.gpkg")
 gpkg_sp_2010_metro_area       <- here::here(dir_geospatial, "sao_paulo",
@@ -55,7 +55,7 @@ gpkg_sp_2010_metro_area       <- here::here(dir_geospatial, "sao_paulo",
 # Read the necessary files for stations
 bogota_stations_2018_sf   <- sf::st_read(gpkg_stations_bogota_2018)
 cdmx_stations_sf          <- sf::st_read(gpkg_stations_cdmx)
-santiago_stations_2024_sf <- sf::st_read(gpkg_stations_santiago_2024)
+santiago_stations_2017_sf <- sf::st_read(gpkg_stations_santiago_2017)
 sp_stations_2010_sf       <- sf::st_read(gpkg_stations_sp_2010)
 
 # Read the necessary files for metro boundaries
@@ -97,7 +97,7 @@ cdmx_distances <- compute_distance_matrices(
 
 # Calculate distance matrices for Santiago -- main specification, zona censal
 santiago_zona_distances <- compute_distance_matrices(
-  stations_sf          = santiago_stations_2024_sf,
+  stations_sf          = santiago_stations_2017_sf,
   station_id_col       = "station_name",
   geo_sf               = santiago_zonas_2017_sf,
   geo_id_col           = "zona_id",
@@ -109,7 +109,7 @@ santiago_zona_distances <- compute_distance_matrices(
 
 # Calculate distance matrices for Santiago -- robustness, commune level (2024)
 santiago_distances <- compute_distance_matrices(
-  stations_sf          = santiago_stations_2024_sf,
+  stations_sf          = santiago_stations_2017_sf,
   station_id_col       = "station_name",
   geo_sf               = santiago_metro_2024_sf,
   geo_id_col           = "CUT",

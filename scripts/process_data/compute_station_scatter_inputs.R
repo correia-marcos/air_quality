@@ -40,7 +40,7 @@ gpkg_stations_bogota   <- here::here(dir_geospatial, "bogota",
 gpkg_stations_cdmx     <- here::here(dir_geospatial, "cdmx",
                                      "cdmx_stations_buffer_metro.gpkg")
 gpkg_stations_santiago <- here::here(dir_geospatial, "santiago",
-                                     "gran_santiago_stations_buffer_metro_2024.gpkg")
+                                     "gran_santiago_stations_buffer_metro_2017.gpkg")
 gpkg_stations_sp       <- here::here(dir_geospatial, "sao_paulo",
                                      "sao_paulo_stations_buffer_metro_2010.gpkg")
 
