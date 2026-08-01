@@ -40,7 +40,7 @@ dist_bogota   <- here::here(outdir_distances, "bogota_2018",
                             "matrix_station_distances.parquet")
 dist_cdmx     <- here::here(outdir_distances, "cdmx_2020",
                             "matrix_station_distances.parquet")
-dist_santiago <- here::here(outdir_distances, "santiago_2024",
+dist_santiago <- here::here(outdir_distances, "santiago_2017",
                             "matrix_station_distances.parquet")
 dist_sp       <- here::here(outdir_distances, "sao_paulo_2010",
                             "matrix_station_distances.parquet")

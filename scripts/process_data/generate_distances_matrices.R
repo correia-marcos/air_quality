@@ -30,25 +30,24 @@ dir_census     <- here::here("data", "interim", "census")
 outdir_data    <- here::here("data", "processed", "distances_matrices")
 
 # File path for station spatial location
-gpkg_stations_bogota_2018 <- here::here(dir_geospatial, "bogota",
-                                        "bogota_2018_stations_buffer_metro.gpkg")
-gpkg_stations_cdmx        <- here::here(dir_geospatial, "cdmx",
-                                        "cdmx_stations_buffer_metro.gpkg")
+gpkg_stations_bogota_2018   <- here::here(dir_geospatial, "bogota",
+                                          "bogota_2018_stations_buffer_metro.gpkg")
+gpkg_stations_cdmx          <- here::here(dir_geospatial, "cdmx",
+                                          "cdmx_stations_buffer_metro.gpkg")
 gpkg_stations_santiago_2017 <- here::here(dir_geospatial, "santiago",
                                           "gran_santiago_stations_buffer_metro_2017.gpkg")
 gpkg_stations_sp_2010       <- here::here(dir_geospatial, "sao_paulo",
                                           "sao_paulo_stations_buffer_metro_2010.gpkg")
 
 # File path for metro area spatial boundaries
-gpkg_bogota_2018_metro_area <- here::here(dir_geospatial, "bogota",
-                                          "bogota_area_metro_census_tracts_2018.gpkg")
-gpkg_cdmx_metro_area        <- here::here(dir_geospatial, "cdmx",
-                                          "cdmx_area_metro_municipalities_2024.gpkg")
-gpkg_santiago_2024_metro_area <- here::here(dir_geospatial, "santiago",
-                                            "gran_santiago_area_2024.gpkg")
-# Zona censal layer: Santiago's main geography (1,655 zones against 38 communes)
+gpkg_bogota_2018_metro_area   <- here::here(dir_geospatial, "bogota",
+                                            "bogota_area_metro_census_tracts_2018.gpkg")
+gpkg_cdmx_metro_area          <- here::here(dir_geospatial, "cdmx",
+                                            "cdmx_area_metro_municipalities_2024.gpkg")
 gpkg_santiago_2017_zonas      <- here::here(dir_geospatial, "santiago",
                                             "gran_santiago_zonas_2017.gpkg")
+gpkg_santiago_2024_metro_area <- here::here(dir_geospatial, "santiago",
+                                            "gran_santiago_area_2024.gpkg")
 gpkg_sp_2010_metro_area       <- here::here(dir_geospatial, "sao_paulo",
                                             "sao_paulo_metro_2010_weighting_areas.gpkg")
 
@@ -61,8 +60,8 @@ sp_stations_2010_sf       <- sf::st_read(gpkg_stations_sp_2010)
 # Read the necessary files for metro boundaries
 bogota_metro_2018_sf   <- sf::st_read(gpkg_bogota_2018_metro_area)
 cdmx_metro_sf          <- sf::st_read(gpkg_cdmx_metro_area)
-santiago_metro_2024_sf <- sf::st_read(gpkg_santiago_2024_metro_area)
 santiago_zonas_2017_sf <- sf::st_read(gpkg_santiago_2017_zonas)
+santiago_metro_2024_sf <- sf::st_read(gpkg_santiago_2024_metro_area)
 sp_metro_2010_sf       <- sf::st_read(gpkg_sp_2010_metro_area)
 
 # ============================================================================================
