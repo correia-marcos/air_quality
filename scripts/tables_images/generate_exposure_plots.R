@@ -89,9 +89,11 @@ save_pdf <- function(plot_obj, path) {
                   width = 6, height = 4.5, dpi = 300, bg = "white")
 }
 
-# Helper: x-axis label for a grouping (education quintile vs income decile).
-group_axis_label <- function(group_type) {
-  if (identical(group_type, "decile")) "Income decile" else "Education quintile"
+# Helper: x-axis label for a grouping. Keys are both socioeconomic variable and the
+# grouping, CDMX income runs on quintiles and SP income on deciles.
+group_axis_label <- function(socio_var, group_type) {
+  var_label <- if (identical(socio_var, "income")) "Income" else "Education"
+  paste(var_label, group_type)
 }
 
 # Loop over the two groupings: education always, income only if present.
@@ -112,7 +114,7 @@ for (set in ci_sets) {
   ci_dt  <- set$ci
   combos <- unique(ci_dt[
     !is.na(city) & !is.na(outcome),
-    .(city, outcome, group_type)
+    .(city, outcome, group_type, socioeconomic_var)
   ])
   
   for (j in seq_len(nrow(combos))) {
@@ -132,7 +134,8 @@ for (set in ci_sets) {
       ci_table    = ci_dt[city == city_j],
       outcome     = out_j,
       pollutant   = poll_j,
-      group_label = group_axis_label(combos$group_type[j]),
+      group_label = group_axis_label(combos$socioeconomic_var[j],
+                                     combos$group_type[j]),
       city_label  = city_labels[[city_j]]
     )
     
@@ -156,7 +159,8 @@ for (set in ci_sets) {
     
     p_lvl <- plot_group_levels(
       summary_table = sub,
-      group_label   = group_axis_label(sub$group_type[1]),
+      group_label   = group_axis_label(sub$socioeconomic_var[1],
+                                       sub$group_type[1]),
       city_label    = city_labels[[city_j]],
       year_label    = as.character(sub$year[1])
     )
