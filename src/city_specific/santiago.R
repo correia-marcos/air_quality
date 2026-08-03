@@ -2150,10 +2150,12 @@ dt <- tryCatch(
 # @Arg       : sf_data    — sf object; metro-area census zones, from
 #                           santiago_download_metro_area_2017().
 # @Arg       : match_col  — string; zone-id column in sf_data (default "zona_id").
-# @Arg       : out_dir    — string; Directory to save processed CSVs.
+# @Arg       : out_dir    — string; Directory for the two output Parquet files.
 # @Arg       : quiet      — logical; Suppress progress messages?
 #
-# @Output    : list(individual, collapsed); Returns tibbles of the data.
+# @Output    : list(individual, collapsed); Returns tibbles of the data. Also writes
+#              census_individual_2017.parquet and census_collapsed_2017.parquet.
+#              Parquet keeps zona_id character; a CSV roundtrip would not.
 #
 # @Purpose   : Harmonizes 2017 Census data using a spatial filter.
 #              1. Takes the census zones of the metro area from the sf object.
@@ -2321,8 +2323,11 @@ santiago_process_census_2017 <- function(
   if (!quiet) message("[santiago_2017] Saving outputs to: ", out_dir)
   
   # Write final analytical files
-  readr::write_csv(individual_df, file.path(out_dir, "census_individual_2017.csv"))
-  readr::write_csv(collapsed_df, file.path(out_dir, "census_collapsed_2017.csv"))
+  # Parquet: zona_id is an 11-digit code that must stay character. A CSV saves badly.
+  arrow::write_parquet(individual_df,
+                       file.path(out_dir, "census_individual_2017.parquet"))
+  arrow::write_parquet(collapsed_df,
+                       file.path(out_dir, "census_collapsed_2017.parquet"))
   
   censo2017::censo_desconectar()
   return(list(individual = individual_df, collapsed = collapsed_df))
