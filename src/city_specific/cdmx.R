@@ -37,8 +37,12 @@ cdmx_cfg <- list(
   base_url_census  = "https://www.inegi.org.mx/programas/ccpv/2020/#microdatos",
   url_loc_stations_others =
     "https://sinaica.inecc.gob.mx/index.php",
-  url_loc_stations_cdmx   = 
-    "https://www.aire.cdmx.gob.mx/default.php?opc=%27aKBhnmI=%27&opcion=Zg=="
+  url_loc_stations_cdmx   =
+    "https://www.aire.cdmx.gob.mx/default.php?opc=%27aKBhnmI=%27&opcion=Zg==",
+  station_gpkg_nme_map = c( # mismatch between name in gpkg and hourly data 
+    "Mguel Hidalgo"             = "Miguel Hidalgo",
+    "San Juan Aragón"           = "San Juan de Aragón",
+    "Investigaciones Nucleares" = "Instituto Nacional de Investigaciones Nucleares")
   )
 
 # ============================================================================================
