@@ -3270,6 +3270,9 @@ write_exposure_summary_table_tex <- function(
 #   The function now supports one or more pollutants in the same plot. This is
 #   useful for exceedance-hour outcomes, where PM2.5 and PM10 should be compared
 #   directly. By default, PM2.5 is dark red and PM10 is black.
+#   When ci_table carries n_clusters and n_coef, the caption reports both: a G = 6
+#   interval is otherwise drawn exactly like a G = 37,000 one. No threshold is applied,
+#   because none is defensible -- the caption informs, it does not adjudicate.
 #
 # @Written_on : June 2026
 # @Written_by : Marcos Paulo
@@ -3284,7 +3287,7 @@ plot_group_ci <- function(ci_table,
                           pollutant_colors = c(pm25 = "darkred",
                                                pm10 = "black"),
                           color_line = NULL) {
-  
+
   # 0. Dependencies and input check
   # -----------------------------------------------------------------------
   for (p in c("data.table", "ggplot2")) {
@@ -3343,9 +3346,27 @@ plot_group_ci <- function(ci_table,
   
   color_values <- pollutant_colors[intersect(pol_, names(pollutant_colors))]
   names(color_values) <- .format_pollutant_label(names(color_values))
-  
+
   show_legend <- length(unique(dt$pollutant)) > 1L
-  
+
+  # 3b. Report the cluster count the intervals rest on
+  # -----------------------------------------------------------------------
+  # No threshold used: no defensible cutoff for "too few clusters" universally accepted. 
+  # Caption shows G and the coefficient count and lets reader judge. Not required to run.
+  cap <- NULL
+
+  if (all(c("n_clusters", "n_coef") %in% names(dt))) {
+    g_dt <- dt[, .(g = max(n_clusters), k = max(n_coef)), by = pollutant_label]
+
+    # trim = TRUE, otherwise format() pads the vector to a common width and the
+    # smaller count reaches the caption as "G =  6".
+    cap <- paste0("Clusters (coefficients): ",
+                  paste(sprintf("%s G = %s (k = %d)", g_dt$pollutant_label,
+                                format(g_dt$g, big.mark = ",", trim = TRUE),
+                                g_dt$k),
+                        collapse = "; "), ".")
+  }
+
   # 4. Build the plot
   # -----------------------------------------------------------------------
   ggplot2::ggplot(
@@ -3369,13 +3390,16 @@ plot_group_ci <- function(ci_table,
       x = group_label,
       y = y_label,
       title = city_label,
-      color = "Pollutant"
+      color = "Pollutant",
+      caption = cap
     ) +
     ggplot2::theme_minimal(base_family = "Palatino", base_size = 13) +
     ggplot2::theme(
       panel.grid.minor = ggplot2::element_blank(),
       legend.position = if (show_legend) "bottom" else "none",
-      plot.title = ggplot2::element_text(face = "bold")
+      plot.title = ggplot2::element_text(face = "bold"),
+      plot.caption = ggplot2::element_text(size = 8, colour = "grey35",
+                                           hjust = 0)
     )
 }
 
