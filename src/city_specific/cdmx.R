@@ -39,7 +39,9 @@ cdmx_cfg <- list(
     "https://sinaica.inecc.gob.mx/index.php",
   url_loc_stations_cdmx   =
     "https://www.aire.cdmx.gob.mx/default.php?opc=%27aKBhnmI=%27&opcion=Zg==",
-  station_gpkg_nme_map = c( # mismatch between name in gpkg and hourly data 
+  # Catalog spelling -> hourly-data spelling. Netzahualcoyotl and Nezahualcoyotl are
+  # two real stations 2.8 km apart, not a typo, so they are deliberately absent here.
+  station_nme_map = c(
     "Mguel Hidalgo"             = "Miguel Hidalgo",
     "San Juan Aragón"           = "San Juan de Aragón",
     "Investigaciones Nucleares" = "Instituto Nacional de Investigaciones Nucleares")
