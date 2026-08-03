@@ -42,6 +42,11 @@ cdmx_metro        <- here::here(outdir_geospatial, "cdmx", "cdmx_area_metro_2024
 station_location <- read.csv(all_station_csv)
 metro_area       <- sf::st_read(cdmx_metro)
 
+# Three catalog spellings never match the hourly data, so those stations lose their
+# coordinates downstream. Repair them before the station geopackage is written.
+hit <- match(station_location$station, names(cdmx_cfg$station_nme_map))
+station_location$station[!is.na(hit)] <- cdmx_cfg$station_nme_map[hit[!is.na(hit)]]
+
 # ============================================================================================
 # II: Process  data
 # ============================================================================================

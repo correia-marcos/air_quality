@@ -68,7 +68,7 @@ santiago_stations_data <- santiago_process_stations_data_to_parquet(
   years       = santiago_cfg$years
 )
 
-# Apply function to process the census data of 2017 - through a package
+# Apply function to process the census data of 2017 - through a package.
 process_harmonize_census_2017 <- santiago_process_census_2017(
   out_dir    = here::here("data", "interim", "census", "santiago_2017"),
   sf_data    = metro_area_2017,

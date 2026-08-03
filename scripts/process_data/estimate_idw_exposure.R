@@ -53,8 +53,8 @@ micro_bogota_csv       <- here::here(dir_census, "bogota_2018",
                                      "census_2018_metro_individual.csv")
 micro_cdmx_csv         <- here::here(dir_census, "cdmx_extended_2020",
                                      "census_metro_individual_2020.csv")
-micro_santiago_csv     <- here::here(dir_census, "santiago_2017",
-                                          "census_individual_2017.csv")
+micro_santiago_pq      <- here::here(dir_census, "santiago_2017",
+                                     "census_individual_2017.parquet")
 micro_santiago_rob_csv <- here::here(dir_census, "santiago_2024",
                                      "census_santiago_individual_2024.csv")
 micro_sp_csv           <- here::here(dir_census, "sao_paulo_2010",
@@ -65,8 +65,8 @@ geo_bogota_csv       <- here::here(dir_census, "bogota_2018",
                                    "census_2018_metro_collapsed.csv")
 geo_cdmx_csv         <- here::here(dir_census, "cdmx_extended_2020",
                                    "collapse_metro_area_2020.csv")
-geo_santiago_csv     <- here::here(dir_census, "santiago_2017",
-                                        "census_collapsed_2017.csv")
+geo_santiago_pq      <- here::here(dir_census, "santiago_2017",
+                                   "census_collapsed_2017.parquet")
 geo_santiago_rob_csv <- here::here(dir_census, "santiago_2024",
                                    "census_santiago_collapsed_2024.csv")
 geo_sp_csv           <- here::here(dir_census, "sao_paulo_2010",
@@ -75,14 +75,14 @@ geo_sp_csv           <- here::here(dir_census, "sao_paulo_2010",
 # Read census microdata
 mi_bogota       <- data.table::fread(micro_bogota_csv)
 mi_cdmx         <- data.table::fread(micro_cdmx_csv)
-mi_santiago     <- data.table::fread(micro_santiago_csv, colClasses = c(zona_id = "character"))
+mi_santiago     <- data.table::as.data.table(arrow::read_parquet(micro_santiago_pq))
 mi_santiago_rob <- data.table::fread(micro_santiago_rob_csv)
 mi_sp           <- data.table::fread(micro_sp_csv)
 
 # Read collapsed census data
 geo_bogota       <- data.table::fread(geo_bogota_csv)
 geo_cdmx         <- data.table::fread(geo_cdmx_csv)
-geo_santiago     <- data.table::fread(geo_santiago_csv, colClasses = c(zona_id = "character"))
+geo_santiago     <- data.table::as.data.table(arrow::read_parquet(geo_santiago_pq))
 geo_santiago_rob <- data.table::fread(geo_santiago_rob_csv)
 geo_sp           <- data.table::fread(geo_sp_csv)
 
@@ -199,10 +199,8 @@ for (buffer in buffers_km) {
     distance_power  = distance_power)
   
   # ----------------------------------------------------------------------------------------
-  # Income groups: ONLY for the CDMX and SP, whose census carries income. CDMX uses
-  # quintiles, not deciles: it runs on 63 municipalities and only ~10 keep a station
-  # inside the buffer, so 10 deciles ask for 10 coefficients from 10 clusters and the
-  # clustered variance is unidentified. Sao Paulo has 633 areas and keeps deciles.
+  # Income: ONLY CDMX and SP, whose census carries it. CDMX gets quintiles, not deciles,
+  # because its ~10 surviving municipalities cannot identify 10 coefficients.
   # 5. CDMX -- income quintiles
   res_cdmx_income <- run_idw_city(
     city_label      = "CDMX",
