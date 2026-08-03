@@ -6,8 +6,9 @@
 # @Description: This script processes cleaned Arrow datasets of ground station data,
 # pre-computed distance matrices, and census data. It applies IDW interpolation
 # within 3km and 5km buffers using DuckDB for out-of-core aggregation. Education
-# quintiles are produced for all four cities; income deciles are produced only for
-# the two cities whose census carries income (CDMX and Sao Paulo).
+# quintiles are produced for all four cities. Income groups are produced only for the
+# two cities whose census carries income: deciles for Sao Paulo, but quintiles for
+# CDMX, whose 63 municipalities leave too few clusters to identify 10 coefficients.
 #
 # @Summary:
 #   I.   Import data: Define paths for Arrow datasets, matrices, and census files.
@@ -198,8 +199,11 @@ for (buffer in buffers_km) {
     distance_power  = distance_power)
   
   # ----------------------------------------------------------------------------------------
-  # Income deciles: ONLY for the CDMX and SP, whose census carries income.
-  # 5. CDMX -- income deciles
+  # Income groups: ONLY for the CDMX and SP, whose census carries income. CDMX uses
+  # quintiles, not deciles: it runs on 63 municipalities and only ~10 keep a station
+  # inside the buffer, so 10 deciles ask for 10 coefficients from 10 clusters and the
+  # clustered variance is unidentified. Sao Paulo has 633 areas and keeps deciles.
+  # 5. CDMX -- income quintiles
   res_cdmx_income <- run_idw_city(
     city_label      = "CDMX",
     city_id         = "cdmx_2020",
@@ -213,13 +217,13 @@ for (buffer in buffers_km) {
     micro_id_col    = "CVE_MUN",
     micro_pop_col   = "FACTOR",
     micro_group_var = "income",
-    n_groups        = 10L,
-    group_name      = "income_decile",
+    n_groups        = 5L,
+    group_name      = "income_quintile",
     buffer_km       = buffer,
     outdir_exp      = outdir_exp,
     out_suffix      = "income",
     distance_power  = distance_power)
-  
+
   # 6. Sao Paulo -- income deciles
   res_sp_income <- run_idw_city(
     city_label      = "Sao Paulo",

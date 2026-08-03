@@ -20,6 +20,10 @@
 # Get all libraries and functions
 source(here::here("src", "general_utilities", "config_utils_process_data.R"))
 
+# CDMX module, for the station-name repairs applied to its catalog below
+source(here::here("src", "city_specific", "registry.R"))
+source(here::here("src", "city_specific", "cdmx.R"))
+
 # ============================================================================================
 # I: Import data
 # ============================================================================================
@@ -56,6 +60,13 @@ bogota_stations_2018_sf   <- sf::st_read(gpkg_stations_bogota_2018)
 cdmx_stations_sf          <- sf::st_read(gpkg_stations_cdmx)
 santiago_stations_2017_sf <- sf::st_read(gpkg_stations_santiago_2017)
 sp_stations_2010_sf       <- sf::st_read(gpkg_stations_sp_2010)
+
+# Repair the three CDMX station names that never match the hourly data. Done here, in
+# memory, because data/raw/ is read-only; doing it before either matrix is built means
+# both the station-to-station and the geo-to-station file carry the hourly spelling.
+hit <- match(cdmx_stations_sf$station, names(cdmx_cfg$station_gpkg_nme_map))
+cdmx_stations_sf$station[!is.na(hit)] <-
+  cdmx_cfg$station_gpkg_nme_map[hit[!is.na(hit)]]
 
 # Read the necessary files for metro boundaries
 bogota_metro_2018_sf   <- sf::st_read(gpkg_bogota_2018_metro_area)
