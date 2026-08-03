@@ -1986,7 +1986,11 @@ aggregate_idw_exposure <- function(
   # Normalize join keys before registering the table in DuckDB.
   dist_dt[, geo_id := .safe_chr(geo_id)]
   dist_dt[, station_id := .normalize_station(station_id)]
-  
+
+  # Capture station_id, unique value for all stations, before the buffer filter below. 
+  # The name-mismatch check in VI needs this or distant stations might have issues.
+  matrix_stations <- unique(dist_dt$station_id)
+
   # Diagnose zero-distance pairs before dropping them from IDW denominators.
   n_zero_dist <- dist_dt[!is.na(distance_km) & distance_km == 0, .N]
   
@@ -2117,7 +2121,49 @@ aggregate_idw_exposure <- function(
   if (!quiet) {
     message("[", out_name, "] Processing ", length(years), " year(s).")
   }
-  
+
+  # 6b. Station name-join check
+  # -----------------------------------------------------------------------
+  # A station absent in the distance matrix is dropped from every geo_unit, even if
+  # it hourly data is not zero. Thus, we count the readings of stations, so the warning
+  # separates real data loss from stations that simply never reported.
+  check_polls <- intersect(pollutants, DBI::dbListFields(con, "pollution"))
+
+  cnt_frag <- paste(sprintf(
+    "SUM(CASE WHEN p.%s IS NOT NULL THEN 1 ELSE 0 END) AS n_%s",
+    check_polls, check_polls
+  ), collapse = ",\n       ")
+
+  sta_counts <- data.table::as.data.table(DBI::dbGetQuery(con, paste0(
+    "SELECT x.station_id,\n       ", cnt_frag, "\n",
+    "FROM pollution p\n",
+    "INNER JOIN station_xwalk x ON CAST(p.station AS VARCHAR) = x.station_raw\n",
+    "WHERE p.year IN (", paste(years, collapse = ", "), ")\n",
+    "GROUP BY x.station_id;"
+  )))
+
+  # Only unmatched stations carrying readings represent lost data; warn on those.
+  sta_counts[, n_obs := rowSums(.SD), .SDcols = paste0("n_", check_polls)]
+  orphan_poll <- sta_counts[!station_id %in% matrix_stations & n_obs > 0]
+
+  if (nrow(orphan_poll) > 0L) {
+    warning(
+      "[", out_name, "] ", nrow(orphan_poll), " station(s) with readings are missing ",
+      "from the distance matrix, so their data is dropped: ",
+      paste(sprintf("%s (%d obs)", orphan_poll$station_id, orphan_poll$n_obs),
+            collapse = "; "),
+      call. = FALSE
+    )
+  }
+
+  # The reverse direction is expected: many catalogued stations never report a pollutant.
+  orphan_dist <- setdiff(matrix_stations, sta_counts$station_id)
+
+  if (length(orphan_dist) > 0L && !quiet) {
+    message("[", out_name, "] ", length(orphan_dist),
+            " matrix station(s) have no rows in the hourly data (expected).")
+  }
+
   # 7. Year x pollutant loop
   # -----------------------------------------------------------------------
   yearly_list <- vector("list", length(years))
@@ -4513,6 +4559,113 @@ compute_exposure_summaries <- function(exposure_dt,
 
 
 # --------------------------------------------------------------------------------------------
+# Function: compute_exposure_coverage
+#
+# @Arg exposure_dt    : data.table; geo-level IDW exposure (one row per geo unit-year).
+# @Arg individual_dt  : data.table; geo-by-group population/expansion weights.
+# @Arg geo_station_pq : string; path to the matrix_geo_station_distances.parquet used
+#                       to build this city's exposure.
+# @Arg geo_id_col     : string; geographic identifier column. Default "geo_id".
+# @Arg pop_col        : string; population or expansion-weight column. Default "n".
+# @Arg group_col      : string; socioeconomic group column. Default "edu_quintile".
+# @Arg group_values   : integer vector; valid groups, e.g. 1:5.
+# @Arg pollutants     : character vector; pollutants to report.
+# @Arg buffer_km      : numeric; buffer used to build the exposure. Default 3.
+# @Arg year_filter     : integer or NULL; if set, keeps only this exposure year.
+#
+# @Output : data.table with one row per pollutant, tracing how many geographic units
+#           survive each stage between the full metro area and the estimation sample.
+#
+# @Details:
+#   Records the attrition that determines the cluster count. A metro geo unit is lost
+#   when no station falls inside buffer_km of its representative point, then when no
+#   in-buffer station reports the pollutant, then when it has no census row. For CDMX
+#   the chain runs 63 -> 18 -> 11 -> 10 (PM10) / 6 (PM2.5), which is why its clustered
+#   intervals are fragile. n_geo_estimation is computed through the same merge helper
+#   the regressions use, so it must equal the n_clusters they report.
+#
+# @Written_by : Marcos Paulo
+# @Updated_on : August 2026
+# --------------------------------------------------------------------------------------------
+compute_exposure_coverage <- function(exposure_dt,
+                                      individual_dt,
+                                      geo_station_pq,
+                                      geo_id_col   = "geo_id",
+                                      pop_col      = "n",
+                                      group_col    = "edu_quintile",
+                                      group_values = 1:5,
+                                      pollutants   = c("pm10", "pm25"),
+                                      buffer_km    = 3,
+                                      year_filter  = NULL) {
+
+  # 1. Metro-wide reach: the distance matrix holds every geo unit and station pair
+  # -----------------------------------------------------------------------
+  dist_dt <- data.table::as.data.table(arrow::read_parquet(geo_station_pq))
+  dist_dt[, geo_id := as.character(geo_id)]
+
+  # Same filter the IDW applies: positive distances inside the buffer.
+  in_buffer <- dist_dt[!is.na(distance_km) & distance_km > 0 &
+                         distance_km <= buffer_km]
+
+  # 2. Exposure stage: geo units that came back with any interpolated hour
+  # -----------------------------------------------------------------------
+  exp_dt <- data.table::copy(data.table::as.data.table(exposure_dt))
+
+  if (!is.null(year_filter)) {
+    exp_dt <- exp_dt[year == year_filter]
+  }
+
+  exp_dt[, (geo_id_col) := as.character(get(geo_id_col))]
+
+  # 3. Estimation stage: run the regressions' own merge so the counts cannot drift
+  # -----------------------------------------------------------------------
+  merged <- .exposure_merge_geo_group(
+    exposure_dt   = exp_dt,
+    individual_dt = individual_dt,
+    geo_id_col    = geo_id_col,
+    group_col     = group_col,
+    pop_col       = pop_col,
+    group_values  = group_values,
+    year_filter   = NULL,
+    quiet         = TRUE
+  )
+
+  # Total metro population, taken from the census side before any exposure filter.
+  ind_dt   <- data.table::as.data.table(individual_dt)
+  pop_all  <- sum(ind_dt[[pop_col]], na.rm = TRUE)
+
+  # 4. One row per pollutant, since coverage differs by what each station measures
+  # -----------------------------------------------------------------------
+  res <- data.table::rbindlist(lapply(pollutants, function(poll) {
+    avg_col <- paste0("avg_", poll)
+
+    # Geo units holding a value for this pollutant, before and after the census merge.
+    geo_poll <- exp_dt[!is.na(get(avg_col)), unique(get(geo_id_col))]
+    est_rows <- merged[!is.na(get(avg_col))]
+    pop_est  <- est_rows[, sum(get(pop_col), na.rm = TRUE)]
+
+    # buffer_km is deliberately not returned: the caller stamps it alongside the other
+    # run labels, and two columns of the same name would silently overwrite each other.
+    data.table::data.table(
+      pollutant           = poll,
+      n_geo_metro         = data.table::uniqueN(dist_dt$geo_id),
+      n_station_metro     = data.table::uniqueN(dist_dt$station_id),
+      n_geo_in_buffer     = data.table::uniqueN(in_buffer$geo_id),
+      n_station_in_buffer = data.table::uniqueN(in_buffer$station_id),
+      n_geo_exposure      = data.table::uniqueN(exp_dt[[geo_id_col]]),
+      n_geo_pollutant     = length(geo_poll),
+      n_geo_estimation    = data.table::uniqueN(est_rows[[geo_id_col]]),
+      pop_metro           = pop_all,
+      pop_estimation      = pop_est,
+      share_pop_estimation = pop_est / pop_all
+    )
+  }), fill = TRUE)
+
+  return(res[])
+}
+
+
+# --------------------------------------------------------------------------------------------
 # Function: compute_exposure_regressions
 #
 # @Arg exposure_dt   : data.table; geo-level IDW exposure (one row per geo unit-year).
@@ -4533,7 +4686,8 @@ compute_exposure_summaries <- function(exposure_dt,
 #
 # @Output : data.table with one row per outcome, pollutant, and group, giving the
 #           gap relative to base_group with confidence interval. Carries n_units
-#           (cells in the fit) and n_clusters (distinct geographic units).
+#           (cells in the fit), n_clusters (distinct geographic units) and n_coef
+#           (coefficients the cluster sandwich has to support).
 #
 # @Details:
 #   Estimates exposure gaps versus base_group. The main paper estimator is
@@ -4635,12 +4789,21 @@ compute_exposure_regressions <- function(exposure_dt,
   }
   
   data.table::setorder(res, outcome, pollutant, group)
-  
+
+  # Report G unconditionally rather than against a threshold. There is no defensible
+  # cutoff for "too few clusters" -- it depends on cluster-size heterogeneity and the
+  # design, not on G alone -- so the function states the count, the coefficients it
+  # supports and the t degrees of freedom, and leaves the judgement to the reader.
+  g_by_poll <- res[, .(g = max(n_clusters), k = max(n_coef)), by = pollutant]
+
   if (!quiet) {
     message("[ci] ", length(out_cols), " outcome(s) fit | unit = '",
-            regression_unit, "' | se = '", se_type, "'.")
+            regression_unit, "' | se = '", se_type, "' | clusters: ",
+            paste(sprintf("%s G=%d (k=%d, df=%d)", g_by_poll$pollutant,
+                          g_by_poll$g, g_by_poll$k, g_by_poll$g - 1L),
+                  collapse = ", "), ".")
   }
-  
+
   return(res[])
 }
 
@@ -4883,15 +5046,18 @@ compute_exposure_regressions <- function(exposure_dt,
   meta    <- .exposure_parse_outcome(outcome_col, pollutants)
   
   # Cluster count travels with every row: it is what makes a degenerate
-  # clustered fit visible in the output.
+  # clustered fit visible in the output. n_coef travels with it because the
+  # sandwich has rank at most G - 1, so the two numbers only mean something
+  # side by side -- G = 6 is comfortable for 2 coefficients and hopeless for 5.
   n_clusters <- data.table::uniqueN(model_dt$.cluster_geo)
+  n_coef     <- length(stats::coef(fit))
 
   # One assembled row builder reused for the base and comparison groups.
   make_row <- function(grp, est, se, lo, hi) {
     data.table::data.table(
       outcome = meta$outcome, pollutant = meta$pollutant, group = grp,
       estimate = est, std_error = se, ci_low = lo, ci_high = hi,
-      n_units = nrow(model_dt), n_clusters = n_clusters,
+      n_units = nrow(model_dt), n_clusters = n_clusters, n_coef = n_coef,
       base_group = base_group, group_col = group_col,
       regression_unit = regression_unit, se_type = se_type, normalized = normalized
     )
