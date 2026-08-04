@@ -27,7 +27,11 @@ relevant.
 > as a guarantee the file was loaded.
 
 - `r-style.md` (`**/*.R`, `.qmd`) — line length, the header block, `here::here()`, package loading,
-  the anti-bloat rules.
+  the anti-bloat rules, and the comment rule. That last one is the canonical copy: rationale lives
+  once in `@Description` / `@Details`, and a comment inside a function body is at most two lines
+  saying what happens *to the data* there. `CLAUDE.md`, `/new-process-script`, `/review-r` and
+  `r-reproducibility-reviewer` point here rather than restating it, because five copies of a rule
+  drift.
 - `reproducibility.md` (Dockerfile, compose, `renv.lock`, `.Rprofile`, `DESCRIPTION`, `.env*`) — the
   three pinned layers (Docker/renv/paths) and the invariants to preserve when editing infra.
 - `validation.md` (`scripts/validation_old_version/**`, the validation util, reports) — the legacy

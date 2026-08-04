@@ -14,3 +14,7 @@ Put the draft here in whichever way suits you:
   Overleaf and drop it here.
 
 See `doc/PROCEDURE_AUDIT_WORKFLOW.md` for the full workflow.
+
+For which of this draft's figures and tables the default pipeline can and cannot produce, see
+[`doc/REMAINING_WORK.md`](../REMAINING_WORK.md). It is written against the `.tex` in this
+folder, so refresh the draft before trusting its counts.

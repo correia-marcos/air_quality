@@ -122,3 +122,6 @@ Each city renders one self-contained Quarto report under
   `/reproduce`, `/review-r`.
 - `.claude/agents/` — `r-reproducibility-reviewer`, `legacy-validation-auditor`.
 - `doc/CLAUDE_CODE_SETUP.md` — what every piece of this setup is and why it exists.
+- `doc/REMAINING_WORK.md` — which of the paper's figures and tables the default pipeline
+  cannot yet produce, and why. Read this before assuming a missing figure is a bug.
+- `doc/deletion_candidates.md` — functions with no caller, kept pending Marcos's decision.
