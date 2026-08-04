@@ -49,7 +49,7 @@ build_bogota_progression_specs <- function(cfg, buffer_km = 5L) {
   # For Step 4 day-level metrics we re-query the same inputs
   # aggregate_exposure_all_cities.R used: the cleaned Arrow panel and the
   # new-pipeline 2018 geo-station distance parquet.
-  step4_arrow_clean <- here::here("data", "processed", "outlier_detection",
+  step4_arrow_clean <- here::here("data", "processed", "monitoring_stations_outliers",
                                   "bogota_metro_clean")
   step4_arrow_raw   <- here::here("data", "raw", "monitoring_stations",
                                   "bogota_metro_dataset")

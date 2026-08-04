@@ -8,10 +8,12 @@
 # doc/TARGETS_MIGRATION_PLAN.md.
 #
 # Usage:
-#   make                 # build the analysis: process -> distances -> outliers -> exposure -> figures + tables
+#   make                 # build the analysis: process -> distances -> outliers -> exposure
+#                        #                      -> descriptives -> figures + tables
 #   make process         # run a single stage (and anything it depends on)
 #   make DOCKER=1        # run every recipe inside the compose "analysis" service
 #   make download        # large, credential-gated raw pulls (never part of `make all`)
+#   make merra2          # satellite track: panels, station comparison, aerosol figures
 #   make validate        # legacy comparison track
 #   make clean           # remove stage stamps (does NOT delete data or results)
 #   make help
@@ -33,7 +35,8 @@ STAMP := data/.make
 SRC := $(shell find src -name '*.R')
 
 # ---- Phony convenience targets -------------------------------------------------------------
-.PHONY: all download process distances outliers exposure figures tables validate clean help
+.PHONY: all download process merra2 distances outliers exposure descriptives \
+        figures tables validate clean help
 
 all: figures tables
 
@@ -74,15 +77,30 @@ $(STAMP)/exposure.stamp: scripts/process_data/estimate_idw_exposure.R \
 	$(RUN) scripts/process_data/compute_exposure_regressions.R
 	touch $@
 
-# 5. Publication artefacts. Read only from data/processed; regenerate on demand (phony).
-#    Add each figure/table script here as you finish it.
+# 5. Descriptive statistics: station counts, missing shares, WHO exceedances, census
+#    summary. Needs the cleaned panels, the distance matrices and the processed census.
+descriptives: $(STAMP)/descriptives.stamp
+$(STAMP)/descriptives.stamp: scripts/process_data/compute_descriptive_tables.R \
+                             $(STAMP)/distances.stamp $(STAMP)/outliers.stamp
+	$(RUN) scripts/process_data/compute_descriptive_tables.R
+	touch $@
+
+# 6. Publication artefacts. Read only from data/processed; regenerate on demand (phony).
 figures: exposure
 	$(RUN) scripts/tables_images/generate_exposure_plots.R
-	$(RUN) scripts/tables_images/figure_hours_above_target_by_quintile.R
+	$(RUN) scripts/tables_images/figure_exposure_by_quintile.R
+	$(RUN) scripts/tables_images/plot_station_monitoring_figures.R
 
-tables: exposure
-	$(RUN) scripts/tables_images/table_who_exceedances.R
-	$(RUN) scripts/tables_images/table_stations_by_pollutant.R
+tables: exposure descriptives
+	$(RUN) scripts/tables_images/render_paper_tables.R
+
+# MERRA-2 satellite track: independent of the station pipeline above, so it is not a
+# prerequisite of `all`. generate_panel_air_quality.R is the slow .nc4 step.
+merra2:
+	$(RUN) scripts/process_data/generate_panel_air_quality.R
+	$(RUN) scripts/process_data/process_merra2_panels.R
+	$(RUN) scripts/tables_images/figure_merra2_vs_stations.R
+	$(RUN) scripts/tables_images/figure_aerosol_composition.R
 
 # ---- Optional / manual ---------------------------------------------------------------------
 # Large, credential-gated raw pulls. Deliberately NOT a prerequisite of `all`.
@@ -102,6 +120,7 @@ clean:
 	rm -rf $(STAMP)
 
 help:
-	@echo "Targets: all process distances outliers exposure figures tables download validate clean"
+	@echo "Targets: all process distances outliers exposure descriptives figures tables"
+	@echo "         merra2 download validate clean"
 	@echo "Add DOCKER=1 to run each step inside the compose \"analysis\" service."
 

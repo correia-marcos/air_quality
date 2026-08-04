@@ -23,7 +23,7 @@ source(here::here("src", "general_utilities", "config_utils_process_data.R"))
 # I: Import data
 # ============================================================================================
 # Define general input and output folders
-dir_pollution  <- here::here("data", "processed", "outlier_detection")
+dir_pollution  <- here::here("data", "processed", "monitoring_stations_outliers")
 outdir_imputed <- here::here("data", "processed", "imputed_ols")
 
 # Define the input Arrow datasets paths

@@ -4,9 +4,8 @@
 # @Goal: Functions for LaTeX tables.
 #
 # @Description: Renders the paper's tables to .tex. These read tables the process stage
-# already computed;
-#   no statistics are calculated here.
-#   Sourced by config_utils_plot_tables.R; never sourced directly by a script.
+# already computed; no statistics are calculated here. Sourced by
+# config_utils_plot_tables.R; never sourced directly by a script.
 #
 # @Summary:
 #   1. table_state_metro_distances
@@ -15,6 +14,9 @@
 #   4. table_missing_by_dimension
 #   5. write_exposure_summary_table_tex
 #   6. plot_missing_heatmap
+#   7. write_station_count_latex
+#   8. latex_missing_by_quintile
+#   9. latex_census_summary
 #
 # @Date: August 2026
 # @Author: Marcos Paulo
@@ -710,4 +712,66 @@ latex_missing_by_quintile <- function(dt, digits = 3L) {
   
   lines <- c(lines, "\\bottomrule", "\\end{tabular}")
   paste(lines, collapse = "\n")
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: latex_census_summary
+#
+# @Arg dt : data.table from compute_city_census_summary(), stacked across cities. Needs
+#           city_latex, year, total_population, census_geographic_level,
+#           n_census_geographic_units and average_population_per_unit.
+#
+# @Output : character vector; the LaTeX tabular lines, ready for writeLines().
+#
+# @Details:
+#   The body is deliberately a plain tabular with no table float or caption, so the paper
+#   can wrap it and the row order is whatever the caller stacked. Counts go through
+#   format_int_latex() for thousands separators and the level label through
+#   latex_escape(), because accented level names would otherwise break the build.
+#
+# @Written_by : Marcos Paulo
+# @Updated_on : August 2026
+# --------------------------------------------------------------------------------------------
+latex_census_summary <- function(dt) {
+  tbl <- data.table::copy(data.table::as.data.table(dt))
+
+  tbl[, total_population_fmt := format_int_latex(total_population)]
+  tbl[, n_units_fmt          := format_int_latex(n_census_geographic_units)]
+  tbl[, avg_pop_fmt          := format_int_latex(average_population_per_unit)]
+  tbl[, census_level_latex   := latex_escape(census_geographic_level)]
+
+  rows <- vapply(seq_len(nrow(tbl)), function(i) {
+    paste0(
+      "    ", tbl$city_latex[i], " & ", tbl$year[i], " & ",
+      tbl$total_population_fmt[i], " & ", tbl$census_level_latex[i], " & ",
+      tbl$n_units_fmt[i], " & ", tbl$avg_pop_fmt[i], " \\\\"
+    )
+  }, character(1))
+
+  c(
+    "\\begin{tabular}{lccccc}",
+    "    \\toprule",
+    "    \\toprule",
+    paste0(
+      "    \\multicolumn{1}{c}{\\textbf{City}} & ",
+      "\\multicolumn{1}{c}{\\textbf{Year}} & ",
+      "\\multicolumn{1}{c}{\\textbf{Total}} & ",
+      "\\multicolumn{1}{c}{\\textbf{Census}} & ",
+      "\\multicolumn{1}{c}{\\textbf{Number of census}} & ",
+      "\\multicolumn{1}{c}{\\textbf{Average population per}} \\\\"
+    ),
+    paste0(
+      "    & & ",
+      "\\multicolumn{1}{c}{\\textbf{population}} & ",
+      "\\multicolumn{1}{c}{\\textbf{geographic level}} & ",
+      "\\multicolumn{1}{c}{\\textbf{geographic units}} & ",
+      "\\multicolumn{1}{c}{\\textbf{census geographic unit}} \\\\"
+    ),
+    "    \\midrule",
+    rows,
+    "    \\bottomrule",
+    "    \\bottomrule",
+    "\\end{tabular}"
+  )
 }

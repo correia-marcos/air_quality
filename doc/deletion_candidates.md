@@ -57,6 +57,37 @@ functions with explicit arguments rather than moved verbatim, so there is nothin
 every census input is Parquet as of Step 5) · `normalize_station_id` → deleted (5th
 byte-identical copy of `normalize_station()`).
 
+## Orphaned by the Step 6 merges
+
+The 7 merges left these with no caller. All still exist in `src/`; none was deleted.
+
+| Function | In | Why it has no caller now | What breaks |
+|---|---|---|---|
+| `summarize_stations_by_pollutant` | `process/diagnostics.R` | **Already had no caller before Step 6** — found while resolving the duplicate `stations_by_pollutant_2023.tex` producer. It builds the long city × year × pollutant coverage summary. | Nothing today. It is the only producer of the input `table_stations_by_pollutant()` expects, so the two live or die together. |
+| `table_stations_by_pollutant` | `plot/latex_tables.R` | Its only caller was `table_stations_by_pollutant.R`, which read a Parquet whose schema never matched: the producer writes wide `(city, pm10, pm25)`, this needs long `(city, year, pollutant, n_stations)`. It would have stopped with "missing required columns". | Nothing. `render_paper_tables.R` uses `write_station_count_latex()`, which matches the data that is actually produced. |
+
+Deleting both is one edit each. Keeping them only makes sense if you want the city × year
+version of the station table back, which would also need `summarize_stations_by_pollutant()`
+wired into `compute_descriptive_tables.R`.
+
+## Dead code removed during the Step 6 merges
+
+Computed and never used in the scripts they came from, so they were dropped rather than
+carried into the merged files. Each is a two-line restore if you want it back:
+
+- `legacy_mexico_plot` (`figure_cities_data_collection.R`) — a `plot_metro_area_national_context()`
+  call labelled "Mexico City (old version)" over `data/raw/cities_shapefiles(old)/`. Never
+  saved. It is an old-vs-new metro comparison, which belongs to the validation track if
+  anywhere.
+- `bogota_episodes` / `santiago_episodes` / `ciudad_mexico_episodes` / `sao_paulo_episodes`
+  (`figure_cities_interim_target_exposure.R`) — four `compute_time_spans_above_target()`
+  calls, commented in the source as "just for visual check". Never plotted or saved.
+- Two bare `plot_time_spans_it1` / `plot_time_spans_it2` statements in the same file, which
+  printed to whatever device happened to be open.
+- `santiago_raw_series` (`..._thermal_inversion.R`) — computed, then the "raw" `ggsave` passed
+  `santiago_plot_series` instead. See the defect note below; the merged script now saves the
+  raw series it computes.
+
 ## Unused non-function items
 
 Not functions, listed here so they are not forgotten:

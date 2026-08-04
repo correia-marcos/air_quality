@@ -47,9 +47,16 @@ This project follows a "Source vs. Execution" pattern. `src/` contains logic/fun
 ├── Dockerfile                 # Image definition
 ├── .env.example               # Template for credentials (COPY TO .env)
 ├── renv.lock                  # Exact R package versions
-├── src/                       # Source Code (Functions)
-│   ├── city_specific/         # Cleaning logic per city
-│   └── general_utilities/     # Plotting and config helpers
+├── src/                       # Source Code (Functions only; no side effects)
+│   ├── city_specific/         # Cleaning logic per city + registry.R
+│   └── general_utilities/
+│       ├── base_utils.R       # Shared helpers, no packages, no side effects
+│       ├── setup_packages.R   # ensure_installed() / attach_packages()
+│       ├── theme_paper.R      # set_paper_theme()
+│       ├── config_utils_*.R   # One thin loader per stage: packages + source() its parts
+│       ├── process/           # raw -> interim -> processed logic
+│       ├── plot/              # figure and LaTeX-table builders
+│       └── validation/        # legacy-comparison helpers
 ├── scripts/                   # Execution Pipelines
 │   ├── download_data/         # Pull raw data from APIs
 │   ├── process_data/          # Clean & Transform (Raw -> Interim -> Processed)
@@ -103,7 +110,7 @@ Some data (e.g. MERRA-2) require free Earthdata credentials:
 
 4. **Exclude** your netrc file from Git (add `_netrc` / `.netrc` to `.gitignore`).
 
-With credentials in place, simply run our [download script](src/download_data/run_download_merra2.R)—either in R or via Docker—to pull all MERRA-2 `.nc4` files automatically.
+With credentials in place, simply run our [download script](scripts/download_data/download_merra2_data.R)—either in R or via Docker—to pull all MERRA-2 `.nc4` files automatically.
 
 > **Tip:** You can always download manually from NASA’s [Data Portal](https://disc.gsfc.nasa.gov/datasets?project=MERRA-2), but scripting saves time and guarantees reproducibility.
 
@@ -193,13 +200,14 @@ With credentials in place, simply run our [download script](src/download_data/ru
   ./entrypoint.sh run scripts/process_data/detect_outliers.R
   ```
 
-- **Generate all analyses and outputs:**
+- **Generate all analyses and outputs** (order matters, so use the controller rather than a
+  glob):
 
   ```bash
-  ./entrypoint.sh run \
-    scripts/process_data/*.R \
-    scripts/tables_images/*.R
+  ./entrypoint.sh run scripts/run_pipeline.R
   ```
+
+  Or, for skip-unchanged rebuilds, `make all` (see `Makefile` for the stage targets).
 
 - **Launch an interactive container shell** (advanced troubleshooting):
 
@@ -229,20 +237,41 @@ We also provide a visualization of scripts dependencies as following:
 
 ```mermaid
 flowchart TD
-  DL["scripts/download_data/download_merra2_data.R"]
-  GP["scripts/process_data/generate_panel_air_quality.R"]
-  CU["scripts/process_data/convert_unit_calculate_pm_merra.R"]
-  CS["scripts/process_data/compare_pm25_merra2_stations.R"]
-  CM["scripts/process_data/compare_monthly_country_pm25_nasa.R"]
+  DL["download_data/download_merra2_data.R"]
+  GP["process_data/generate_panel_air_quality.R"]
+  MP["process_data/process_merra2_panels.R"]
+  PC["process_data/process_&lt;city&gt;_data.R"]
+  GD["process_data/generate_distances_matrices.R"]
+  DO["process_data/detect_outliers.R"]
+  IDW["process_data/estimate_idw_exposure.R"]
+  REG["process_data/compute_exposure_regressions.R"]
+  DESC["process_data/compute_descriptive_tables.R"]
 
-  DL --> GP --> CU
-  DL --> GP --> CS
-  DL --> CM
+  DL --> GP --> MP
+  PC --> GD --> IDW --> REG
+  PC --> DO --> IDW
+  GD --> DESC
+  DO --> DESC
 ```
 
 ### 2. Generating Images
 
-To be created.
+```mermaid
+flowchart TD
+  MP["process_data/process_merra2_panels.R"]
+  REG["process_data/compute_exposure_regressions.R"]
+  DESC["process_data/compute_descriptive_tables.R"]
+  IDW["process_data/estimate_idw_exposure.R"]
+
+  MP --> FM["tables_images/figure_merra2_vs_stations.R"]
+  MP --> FA["tables_images/figure_aerosol_composition.R"]
+  REG --> GE["tables_images/generate_exposure_plots.R"]
+  IDW --> FQ["tables_images/figure_exposure_by_quintile.R"]
+  DESC --> RT["tables_images/render_paper_tables.R"]
+```
+
+`figure_study_area_maps.R` and `figure_stations_on_metro_area.R` read only `data/raw/`
+geospatial files, so they have no processing prerequisite.
 
 ---
 

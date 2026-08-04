@@ -9,14 +9,16 @@
 # 
 # @Summary:
 #   0.   Download all raw data (Ground Stations, Census, MERRA-2)
-#   I.   Process and format city-specific data
-#   II.  Generate distance matrices
-#   III. Detect and flag outliers
-#   IV.  Estimate exposure (IDW)
-#   V.   [Placeholders for remaining processing]
-#   VI.  [Placeholders for Tables and Figures]
-# 
-# @Date: April 2026
+#   1.   Process and format city-specific data
+#   2.   Generate distance matrices
+#   3.   Detect and flag outliers
+#   4.   Estimate exposure (IDW)
+#   5.   Exposure regressions
+#   6.   Descriptive tables
+#   7.   MERRA-2 satellite track
+#   8.   Tables and figures
+#
+# @Date: August 2026
 # @Author: Marcos Paulo
 # ============================================================================================
 
@@ -78,21 +80,32 @@ source(here::here("scripts", "process_data", "estimate_idw_exposure.R"))
 source(here::here("scripts", "process_data", "compute_exposure_regressions.R"))
 
 # ============================================================================================
-# Step 6: Additional Processing (Placeholders)
+# Step 6: Descriptive Tables
 # ============================================================================================
-# Add remaining data merging, MERRA-2 comparisons, and panel generation here.
+# Station counts, missing-data shares, WHO exceedances and the census summary. Needs the
+# cleaned panels from Step 3, the distance matrices from Step 2 and the processed census.
+
+source(here::here("scripts", "process_data", "compute_descriptive_tables.R"))
+source(here::here("scripts", "process_data", "compute_station_scatter_inputs.R"))
+
+# ============================================================================================
+# Step 7: MERRA-2 Satellite Track
+# ============================================================================================
+# Independent of the station pipeline above. generate_panel_air_quality.R reads the raw
+# .nc4 granules and takes hours, so it stays commented out unless the panels are missing.
 
 # source(here::here("scripts", "process_data", "generate_panel_air_quality.R"))
-# source(here::here("scripts", "process_data", "compare_pm25_merra2_stations.R"))
-# ...
+source(here::here("scripts", "process_data", "process_merra2_panels.R"))
 
 # ============================================================================================
-# Step 7: Tables & Images
+# Step 8: Tables & Images
 # ============================================================================================
-# Generate final publication artefacts.
-# Ensure these scripts only read from data/processed/ or data/interim/.
+# Final publication artefacts. These read only from data/processed/ or data/interim/.
 
+source(here::here("scripts", "tables_images", "render_paper_tables.R"))
 source(here::here("scripts", "tables_images", "generate_exposure_plots.R"))
-
-# source(here::here("scripts", "tables_images", "figure_pollution_average_by_hours.R"))
-# ...
+source(here::here("scripts", "tables_images", "figure_exposure_by_quintile.R"))
+source(here::here("scripts", "tables_images", "plot_station_monitoring_figures.R"))
+source(here::here("scripts", "tables_images", "figure_merra2_vs_stations.R"))
+source(here::here("scripts", "tables_images", "figure_aerosol_composition.R"))
+source(here::here("scripts", "tables_images", "figure_study_area_maps.R"))

@@ -23,7 +23,7 @@ source(here::here("src", "general_utilities", "config_utils_process_data.R"))
 # I: Import data
 # ============================================================================================
 # Define general input and output folders
-dir_cleaned    <- here::here("data", "processed", "outlier_detection")
+dir_cleaned    <- here::here("data", "processed", "monitoring_stations_outliers")
 dir_geospatial <- here::here("data", "raw", "geospatial_data")
 dir_census     <- here::here("data", "interim", "census")
 outdir_station <- here::here("data", "processed", "station_socio_exposure")

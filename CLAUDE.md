@@ -34,19 +34,31 @@ that. Concretely:
 
 ## Repository layout
 
-```
+```text
 src/                 Functions (logic). Sourced, never run directly.
   city_specific/      One module per city + registry.R (dispatch by city id)
-  general_utilities/  config_utils_*.R: load packages + shared helpers per stage
+  general_utilities/
+    base_utils.R        The one copy of each shared helper. No packages, no side effects.
+    setup_packages.R    ensure_installed() / attach_packages()
+    theme_paper.R       set_paper_theme() — the only place graphics state is set
+    config_utils_*.R    One thin loader per stage: pkgs vector + source() of its parts
+    process/            merra2, distances, outliers, idw_exposure, geo_ids,
+                        station_socio, imputation, diagnostics, exposure_regressions
+    plot/               maps, timeseries_hourly, exposure_figures, latex_tables,
+                        station_monitoring
+    validation/         prepare_panels, compare_inputs, compare_results, progression
 scripts/             Execution. Each script sources the src/ it needs, then runs.
   download_data/      Pull raw inputs (APIs, Selenium, Earthdata)
   process_data/       raw -> interim -> processed
   tables_images/      processed -> results/figures, results/tables
   validation_old_version/  Legacy comparison + Quarto reports
-  run_pipeline.R      Master orchestrator (source in order, top to bottom)
+  run_pipeline.R      Master orchestrator, and the only record of run order
 data/                raw/ interim/ processed/ downloads/ _legacy/   (all git-ignored)
 results/             figures/ tables/ validation_old_version/
 ```
+
+Scripts are named for what they produce, never numbered: the run order lives in
+`run_pipeline.R` and the dependencies in the `Makefile`, so a rename cannot desynchronise it.
 
 `src/` holds functions; `scripts/` executes them. Never put runnable side-effects in `src/`.
 
