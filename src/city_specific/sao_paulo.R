@@ -1220,12 +1220,6 @@ sp_process_stations_data_to_parquet <- function(
 ) {
   
   # --- HELPER: Normalize Strings for Matching ---
-  normalize_key <- function(x) {
-    x <- toupper(x)
-    x <- stringi::stri_trans_general(x, id = "Latin-ASCII")
-    x <- gsub("[^A-Z0-9]", "", x)
-    return(x)
-  }
   
   # --- HELPER: Pollutant Mapper (São Paulo Specific) ---
   get_sp_param_code <- function(raw_str) {
@@ -1250,7 +1244,6 @@ sp_process_stations_data_to_parquet <- function(
   }
   
   # --- HELPER: Serialize POSIXct to naive ISO text (gold standard) ---
-  to_iso <- function(x) format(x, "%Y-%m-%d %H:%M:%S", tz = "UTC")
   
   # 1) Check Dependencies
   req_pkgs <- c("duckdb", "DBI", "arrow", "dplyr", "readr",

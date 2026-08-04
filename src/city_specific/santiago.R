@@ -1925,7 +1925,9 @@ santiago_process_stations_data_to_parquet <- function(
 ) {
   
   # --- HELPER: Normalize strings for matching (accents, punct, case) ---
-  normalize_key <- function(x) {
+  # Santiago's own key: SINCA prefixes filenames with the region, so that has to come off
+  # before the station name is isolated. base_utils::normalize_key() does everything else.
+  santiago_normalize_key <- function(x) {
     x <- toupper(x)
     x <- stringi::stri_trans_general(x, id = "Latin-ASCII")
     # Drop the region prefix so the station name can be isolated.
@@ -1954,7 +1956,6 @@ santiago_process_stations_data_to_parquet <- function(
   }
   
   # --- HELPER: Serialize POSIXct to naive ISO text (gold standard) ---
-  to_iso <- function(x) format(x, "%Y-%m-%d %H:%M:%S", tz = "UTC")
   
   # 1) Dependencies
   req_pkgs <- c("duckdb", "DBI", "arrow", "dplyr", "readr", "stringi", "lubridate")
@@ -1969,7 +1970,7 @@ santiago_process_stations_data_to_parquet <- function(
   
   # Lookup map: normalized key -> real station name.
   valid_stations <- unique(stations_sf$station_name)
-  station_lookup <- setNames(valid_stations, normalize_key(valid_stations))
+  station_lookup <- setNames(valid_stations, santiago_normalize_key(valid_stations))
   
   # 3) Setup DuckDB
   if (verbose) message("Starting Unified Engine (DuckDB)...")
@@ -2006,7 +2007,7 @@ santiago_process_stations_data_to_parquet <- function(
     fname <- basename(f)
     
     # A. Station and pollutant from filename.
-    f_key <- normalize_key(fname)
+    f_key <- santiago_normalize_key(fname)
     param_code <- get_pollutant_code(fname)
     if (is.na(param_code)) next
     

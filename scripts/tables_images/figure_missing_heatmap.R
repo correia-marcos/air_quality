@@ -21,6 +21,9 @@
 source(here::here("src", "general_utilities", "config_utils_plot_tables.R"))
 source(here::here("src", "general_utilities", "config_utils_process_data.R"))
 
+# Register Tex Gyre Pagella and set the paper ggplot theme for this script.
+set_paper_theme()
+
 # ============================================================================================
 # I: Import data
 # ============================================================================================

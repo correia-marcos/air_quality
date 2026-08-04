@@ -23,36 +23,17 @@ pkgs <- c(
   "sf"
 )
 
-# Strict check: fail fast if something isn't in the project library
-ensure_installed <- function(pkgs) {
-  miss <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
-  if (length(miss)) {
-    message(
-      "Missing packages: ", paste(miss, collapse = ", "),
-      ". Run renv::restore() (or install locally with renv::install() then renv::snapshot())."
-    )
-    renv::install(miss)}
-}
+# Shared setup mechanism and leaf helpers (one copy for the whole project).
+source(here::here("src", "general_utilities", "setup_packages.R"))
+source(here::here("src", "general_utilities", "base_utils.R"))
 
 ensure_installed(pkgs)
-
-# Attach (quiet)
-invisible(lapply(pkgs, function(p) {
-  suppressPackageStartupMessages(library(p, character.only = TRUE))
-}))
-
-# no repo tweaking, no renv::install() here
-rm(pkgs, ensure_installed)
-
-# Shared projection helpers (aeqd_crs, utm_epsg, aeqd_for).
-source(here::here("src", "general_utilities", "geo_utils.R"))
+attach_packages(pkgs)
+rm(pkgs)
 
 # ============================================================================================
 # Validation helpers and functions
 # ============================================================================================
-# Null-coalesce helper used inside compare_ground_stations
-`%||%` <- function(a, b) if (!is.null(a)) a else b
-
 # -----------------------------------------------------------------------------------
 # Function: build_compare_cfg
 # @Goal   : Generate the validation config sublist dynamically based on city_id.
@@ -315,25 +296,6 @@ build_time_parts <- function(df, tz = "America/Bogota",
   df$month <- as.integer(lubridate::month(dt))
   df$day   <- as.integer(lubridate::day(dt))
   df$hour  <- as.integer(lubridate::hour(dt))
-  df
-}
-
-
-# ---------------------------------------------------------------------------
-# harmonize_station_names — recode + drop stations in a data frame
-# ---------------------------------------------------------------------------
-harmonize_station_names <- function(
-    df,
-    rename_map    = c(),
-    drop_stations = character()
-) {
-  stopifnot("station" %in% names(df))
-  if (length(rename_map))
-    df$station <- dplyr::recode(
-      df$station, !!!rename_map, .default = df$station
-    )
-  if (length(drop_stations))
-    df <- dplyr::filter(df, !.data$station %in% drop_stations)
   df
 }
 
@@ -1288,18 +1250,17 @@ compare_ground_stations <- function(
   dir.create(cmp_dir, recursive = TRUE, showWarnings = FALSE)
   
   # Helper: write one Parquet with zstd compression (good ratio + fast reads)
-  .wpq <- function(df, name)
     arrow::write_parquet(
       dplyr::as_tibble(df),
       file.path(cmp_dir, paste0(name, ".parquet")),
       compression = "zstd"
     )
   
-  .wpq(res$diff_summary, "diff_summary")
-  .wpq(res$diffs_long,   "diffs_long")
-  .wpq(res$only_old,     "only_legacy")
-  .wpq(res$only_new,     "only_new")
-  .wpq(station_audit,    "station_audit")
+  write_pq(res$diff_summary, cmp_dir, "diff_summary")
+  write_pq(res$diffs_long, cmp_dir,   "diffs_long")
+  write_pq(res$only_old, cmp_dir,     "only_legacy")
+  write_pq(res$only_new, cmp_dir,     "only_new")
+  write_pq(station_audit, cmp_dir,    "station_audit")
   
   if (!quiet)
     message("[", cfg$id, "] Saved to: ", cmp_dir)
@@ -1821,15 +1782,12 @@ compare_census <- function(
   }
   
   # 6) Persist artefacts as Parquet
-  .wpq <- function(df, name) arrow::write_parquet(
-    dplyr::as_tibble(df), file.path(out_dir, paste0(name, ".parquet")), 
-    compression = "zstd"
-  )
-  
-  .wpq(collapsed_summary, "collapsed_summary")
-  .wpq(collapsed_diffs,   "collapsed_diffs")
-  .wpq(geo_coverage,      "geo_coverage")
-  if (!is.null(individual_summary)) .wpq(individual_summary, "individual_summary")
+  write_pq(collapsed_summary, out_dir, "collapsed_summary")
+  write_pq(collapsed_diffs, out_dir,   "collapsed_diffs")
+  write_pq(geo_coverage, out_dir,      "geo_coverage")
+  if (!is.null(individual_summary)) {
+    write_pq(individual_summary, out_dir, "individual_summary")
+  }
   
   if (!quiet) message("[", cfg$id, "] Census comparison saved to: ", out_dir)
   
@@ -2323,15 +2281,12 @@ compare_idw <- function(
   )
   
   # 9) Persist
-  .wpq <- function(df, name) arrow::write_parquet(
-    dplyr::as_tibble(df), file.path(out_dir, paste0(name, ".parquet")), 
-    compression = "zstd"
-  )
-  
-  .wpq(sta_summary, "station_dist_summary")
-  if (nrow(sta_diffs) > 0) .wpq(sta_diffs, "station_dist_diffs")
-  if (!is.null(geo_summary)) .wpq(geo_summary, "geo_dist_summary")
-  if (!is.null(geo_diffs) && nrow(geo_diffs) > 0) .wpq(geo_diffs, "geo_dist_diffs")
+  write_pq(sta_summary, out_dir, "station_dist_summary")
+  if (nrow(sta_diffs) > 0) write_pq(sta_diffs, out_dir, "station_dist_diffs")
+  if (!is.null(geo_summary)) write_pq(geo_summary, out_dir, "geo_dist_summary")
+  if (!is.null(geo_diffs) && nrow(geo_diffs) > 0) {
+    write_pq(geo_diffs, out_dir, "geo_dist_diffs")
+  }
   
   if (!quiet) message("[", cfg$id, "] Distance comparison saved to: ", out_dir)
   
@@ -2572,12 +2527,10 @@ compare_outlier_procedure <- function(
   }
   
   # 5) Persist
-  .wpq <- function(df, name) arrow::write_parquet(
-    dplyr::as_tibble(df), file.path(out_dir, paste0(name, ".parquet")), compression = "zstd"
-  )
-  
-  .wpq(step_summary, "step_summary")
-  if (!is.null(comparison) && nrow(comparison) > 0) .wpq(comparison, "outlier_comparison")
+  write_pq(step_summary, out_dir, "step_summary")
+  if (!is.null(comparison) && nrow(comparison) > 0) {
+    write_pq(comparison, out_dir, "outlier_comparison")
+  }
   
   if (!quiet) message("[", cfg$id, "] Outlier comparison saved to: ", out_dir)
   

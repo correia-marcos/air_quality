@@ -2299,7 +2299,6 @@ bogota_process_stations_data_to_parquet <- function(
   # ---------------------------------------------------------------------------
   
   # Serialize POSIXct to plain text before DuckDB (see DATETIME SAFETY).
-  to_iso <- function(x) format(x, "%Y-%m-%d %H:%M:%S", tz = "UTC")
   
   # 1. Dependencies + input validation
   # ---------------------------------------------------------------------------

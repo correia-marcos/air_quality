@@ -38,26 +38,13 @@ pkgs <- c(
   "zip"
   )
 
-# Strict check: fail fast if something isn't in the project library
-ensure_installed <- function(pkgs) {
-  miss <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
-  if (length(miss)) {
-    message(
-      "Missing packages: ", paste(miss, collapse = ", "),
-      ". Run renv::restore() (or install locally with renv::install() then renv::snapshot())."
-    )
-  renv::install(miss)}
-}
+# Shared setup mechanism and leaf helpers (one copy for the whole project).
+source(here::here("src", "general_utilities", "setup_packages.R"))
+source(here::here("src", "general_utilities", "base_utils.R"))
 
 ensure_installed(pkgs)
-
-# Attach (quiet)
-invisible(lapply(pkgs, function(p) {
-  suppressPackageStartupMessages(library(p, character.only = TRUE))
-}))
-
-# no repo tweaking, no renv::install() here
-rm(pkgs, ensure_installed)
+attach_packages(pkgs)
+rm(pkgs)
 
 # ============================================================================================
 # Helpers functions: waiting, setting inputs, downloads, sanitation

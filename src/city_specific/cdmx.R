@@ -2630,7 +2630,6 @@ cdmx_download_sinaica_data <- function(
     settle_before_csv_click_sec = 2,
     subdir        = "Ground_stations/Mexico/SINAICA"
 ) {
-  `%||%` <- function(a, b) if (!is.null(a)) a else b
   
   # -- local: safer Buscar/CSV discovery (avoids throwing when missing) ---------------------
   robust_find_btns <- function(session) {
@@ -3167,7 +3166,6 @@ cdmx_download_remaining_raw_sinaica <- function(
     settle_after_station_sec = 0.5,
     settle_after_param_sec   = 0.5
 ) {
-  `%||%` <- function(a, b) if (!is.null(a)) a else b
   
   # -- Standard SMCA → slug mapping (keep in sync with validated pipeline) ------------------
   smca_slug_map <- c(
@@ -3798,7 +3796,6 @@ cdmx_download_census_data <- function(
   if (isTRUE(verbose)) message("Engine: memory (RAM intensive).")
   
   # --- [Helpers] --------------------------------------------------------------
-  `%||%` <- function(a, b) if (!is.null(a)) a else b
   .tnb <- function(x) trimws(gsub("\u00A0", " ", x, fixed = TRUE))
   
   .guess_from_file <- function(base) {
@@ -4186,13 +4183,11 @@ cdmx_download_census_data <- function(
   ))
   
   # --- [Helpers] --------------------------------------------------------------
-  `%||%` <- function(a, b) if (!is.null(a)) a else b
   .tnb <- function(x) trimws(gsub("\u00A0", " ", x, fixed = TRUE))
   .dq  <- function(id) sprintf('"%s"', gsub('"', '""', id))
   .ds  <- function(s)  sprintf("'%s'", gsub("'", "''", s))
   
   # Serialize POSIXct to naive text, same idea as the Bogota reader.
-  .to_iso <- function(x) format(x, "%Y-%m-%d %H:%M:%S", tz = "UTC")
   
   # XLSX filename parser (strict entity+station matching).
   .parse_xlsx_meta <- function(path) {
@@ -4374,7 +4369,7 @@ cdmx_download_census_data <- function(
     # CSV path. This avoids the dbWriteTable(POSIXct -> TIMESTAMP) driver path
     # that can shift hours (the bug DATETIME CONVENTION exists to prevent).
     out <- data.frame(
-      datetime     = .to_iso(df$datetime_utc),
+      datetime     = to_iso(df$datetime_utc),
       station      = df$st_name,
       station_code = df$st_code,
       year         = df$year_int,

@@ -39,32 +39,17 @@ pkgs <- c(
   "XLConnect",
   "XML")
 
-# Strict check: fail fast if something isn't in the project library
-ensure_installed <- function(pkgs) {
-  miss <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
-  if (length(miss)) {
-    message(
-      "Missing packages: ", paste(miss, collapse = ", "),
-      ". Run renv::restore() (or install locally with renv::install() then renv::snapshot())."
-    )
-    renv::install(miss)}
-}
+# Shared setup mechanism and leaf helpers (one copy for the whole project).
+source(here::here("src", "general_utilities", "setup_packages.R"))
+source(here::here("src", "general_utilities", "base_utils.R"))
 
 ensure_installed(pkgs)
-
-# Attach (quiet)
-invisible(lapply(pkgs, function(p) {
-  suppressPackageStartupMessages(library(p, character.only = TRUE))
-}))
-
-# no repo tweaking, no renv::install() here
-rm(pkgs, ensure_installed)
+attach_packages(pkgs)
+rm(pkgs)
 
 # Pin the geometry engine.
 suppressMessages(sf::sf_use_s2(TRUE))
 
-# Shared projection helpers. s2 is what makes them necessary, so they load right after it.
-source(here::here("src", "general_utilities", "geo_utils.R"))
 
 # ############################################################################################
 # Functions
@@ -1099,11 +1084,6 @@ detect_pollution_outliers <- function(
   
   # Normalize station IDs in the same way as the distance-matrix code.
   # This avoids failed joins due to accents, quotes, case, or whitespace.
-  .normalize_station <- function(x) {
-    x <- toupper(trimws(as.character(x)))
-    x <- stringi::stri_trans_general(x, id = "Latin-ASCII")
-    gsub('"', "", x)
-  }
   
   # 1. Output path + early exit
   # -----------------------------------------------------------------------
@@ -1146,8 +1126,8 @@ detect_pollution_outliers <- function(
   }
   
   # Harmonize station names in the distance table.
-  dist_dt[, station_from := .normalize_station(station_from)]
-  dist_dt[, station_to   := .normalize_station(station_to)]
+  dist_dt[, station_from := normalize_station(station_from)]
+  dist_dt[, station_to   := normalize_station(station_to)]
   
   if (!quiet) {
     message("Distance table loaded.")
@@ -1514,7 +1494,7 @@ detect_pollution_outliers <- function(
     }
     
     # Normalize station identifiers before balancing and joining.
-    dt_yr[, station := .normalize_station(station)]
+    dt_yr[, station := normalize_station(station)]
     
     all_sta  <- unique(dt_yr$station)
     yr_start <- min(dt_yr$datetime)
@@ -1536,7 +1516,7 @@ detect_pollution_outliers <- function(
       data.table::as.data.table()
     
     if (nrow(bnd_prev) > 0L) {
-      bnd_prev[, station := .normalize_station(station)]
+      bnd_prev[, station := normalize_station(station)]
       bnd_prev <- bnd_prev[station %in% all_sta]
     }
     
@@ -1546,7 +1526,7 @@ detect_pollution_outliers <- function(
       data.table::as.data.table()
     
     if (nrow(bnd_next) > 0L) {
-      bnd_next[, station := .normalize_station(station)]
+      bnd_next[, station := normalize_station(station)]
       bnd_next <- bnd_next[station %in% all_sta]
     }
     
@@ -1849,41 +1829,8 @@ aggregate_idw_exposure <- function(
   }
   
   # Normalize station identifiers consistently with the distance step.
-  .normalize_station <- function(x) {
-    x <- toupper(trimws(as.character(x)))
-    x <- stringi::stri_trans_general(x, id = "Latin-ASCII")
-    gsub('"', "", x)
-  }
   
   # Convert geographic IDs to strings without corrupting integer64 IDs.
-  .safe_chr <- function(x) {
-    if (inherits(x, "integer64")) {
-      return(as.character(x))
-    }
-    
-    if (is.character(x)) {
-      return(trimws(x))
-    }
-    
-    if (is.integer(x)) {
-      return(as.character(x))
-    }
-    
-    if (is.numeric(x)) {
-      is_bad_large <- !is.na(x) & abs(x) > 2^53
-      
-      if (any(is_bad_large)) {
-        warning(
-          "Large numeric geo IDs may have lost precision before conversion. ",
-          "Prefer reading them as character or integer64."
-        )
-      }
-      
-      return(ifelse(is.na(x), NA_character_, sprintf("%.0f", x)))
-    }
-    
-    as.character(x)
-  }
   
   # Query helper: fail by default to avoid incomplete output files.
   .run_query <- function(con, query, context) {
@@ -1984,8 +1931,8 @@ aggregate_idw_exposure <- function(
   }
   
   # Normalize join keys before registering the table in DuckDB.
-  dist_dt[, geo_id := .safe_chr(geo_id)]
-  dist_dt[, station_id := .normalize_station(station_id)]
+  dist_dt[, geo_id := safe_chr(geo_id)]
+  dist_dt[, station_id := normalize_station(station_id)]
 
   # Capture station_id, unique value for all stations, before the buffer filter below. 
   # The name-mismatch check in VI needs this or distant stations might have issues.
@@ -2064,7 +2011,7 @@ aggregate_idw_exposure <- function(
   }
   
   # Normalize raw pollution station names in R, not inside DuckDB SQL.
-  station_xwalk[, station_id := .normalize_station(station_raw)]
+  station_xwalk[, station_id := normalize_station(station_raw)]
   
   # Remove missing or empty station identifiers.
   station_xwalk <- station_xwalk[
@@ -2345,7 +2292,7 @@ aggregate_idw_exposure <- function(
   # -----------------------------------------------------------------------
   census_dt <- data.table::copy(data.table::as.data.table(census_col))
   data.table::setnames(census_dt, geo_id_col, "geo_id")
-  census_dt[, geo_id := .safe_chr(geo_id)]
+  census_dt[, geo_id := safe_chr(geo_id)]
   
   if (quintile_level == "geo") {
     
@@ -2938,11 +2885,6 @@ compute_station_pollution_summary <- function(
   }
   
   # Normalize station identifiers consistently across the pipeline.
-  .normalize_station <- function(x) {
-    x <- toupper(trimws(as.character(x)))
-    x <- stringi::stri_trans_general(x, id = "Latin-ASCII")
-    gsub('"', "", x)
-  }
   
   # 2. Open Arrow dataset and collect the requested year
   # -----------------------------------------------------------------------
@@ -2980,7 +2922,7 @@ compute_station_pollution_summary <- function(
   }
   
   data.table::setnames(dt, station_col, "station_raw")
-  dt[, station_id := .normalize_station(station_raw)]
+  dt[, station_id := normalize_station(station_raw)]
   
   # 3. Compute station-level outcomes for each pollutant
   # -----------------------------------------------------------------------
@@ -3158,23 +3100,7 @@ compute_station_socio_context <- function(
   
   # 2. Helpers
   # -----------------------------------------------------------------------
-  .normalize_station <- function(x) {
-    x <- toupper(trimws(as.character(x)))
-    x <- stringi::stri_trans_general(x, id = "Latin-ASCII")
-    gsub('"', "", x)
-  }
   
-  .safe_chr <- function(x) {
-    if (inherits(x, "integer64")) {
-      return(trimws(as.character(x)))
-    }
-    
-    if (is.numeric(x)) {
-      return(ifelse(is.na(x), NA_character_, sprintf("%.0f", x)))
-    }
-    
-    trimws(as.character(x))
-  }
   
   # Left-pad a character vector with zeros to a fixed width (base-R only).
   .pad_left0 <- function(x, width) {
@@ -3195,8 +3121,8 @@ compute_station_socio_context <- function(
   
   .repair_suffix_ids <- function(geo_ids, census_ids) {
     
-    geo_chr <- .safe_chr(geo_ids)
-    census_chr <- .safe_chr(census_ids)
+    geo_chr <- safe_chr(geo_ids)
+    census_chr <- safe_chr(census_ids)
     
     out <- data.table::data.table(
       geo_id_original = geo_chr,
@@ -3256,11 +3182,11 @@ compute_station_socio_context <- function(
   geo_utm <- sf::st_make_valid(sf::st_transform(geo_sf, crs = utm_epsg(geo_sf)))
   geo_wgs <- sf::st_transform(geo_utm, crs = 4326)
   
-  stations_wgs$station_id <- .normalize_station(stations_wgs[[station_id_col]])
-  geo_wgs[[geo_id_col]] <- .safe_chr(geo_wgs[[geo_id_col]])
+  stations_wgs$station_id <- normalize_station(stations_wgs[[station_id_col]])
+  geo_wgs[[geo_id_col]] <- safe_chr(geo_wgs[[geo_id_col]])
   
   census_dt <- data.table::copy(data.table::as.data.table(census_col))
-  census_dt[, (geo_id_col) := .safe_chr(get(geo_id_col))]
+  census_dt[, (geo_id_col) := safe_chr(get(geo_id_col))]
   
   # Keep only variables needed for this step.
   census_keep <- unique(c(geo_id_col, pop_col, socio_vars))

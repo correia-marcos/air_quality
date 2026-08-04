@@ -39,40 +39,17 @@ pkgs <- c(
   "viridis",
   "zoo")
 
-# Strict check: fail fast if something isn't in the project library
-ensure_installed <- function(pkgs) {
-  miss <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
-  if (length(miss)) {
-    message(
-      "Missing packages: ", paste(miss, collapse = ", "),
-      ". Run renv::restore() (or install locally with renv::install() then renv::snapshot())."
-    )
-    if ("rnaturalearthhires" %in% miss) {
-      options(repos = c(CRAN = "https://ropensci.r-universe.dev"))
-      renv::install("rnaturalearthhires")
-    }
-    miss <- miss[!miss %in% "rnaturalearthhires"]
-    options(repos=c(CRAN="https://cran.rstudio.com/"))
-    renv::install(miss)}
-}
+# Shared setup mechanism, leaf helpers and the paper theme (one copy project-wide).
+source(here::here("src", "general_utilities", "setup_packages.R"))
+source(here::here("src", "general_utilities", "base_utils.R"))
+source(here::here("src", "general_utilities", "theme_paper.R"))
 
 ensure_installed(pkgs)
+attach_packages(pkgs)
+rm(pkgs)
 
-# Attach (quiet)
-invisible(lapply(pkgs, function(p) {
-  suppressPackageStartupMessages(library(p, character.only = TRUE))
-}))
-
-# no repo tweaking, no renv::install() here
-rm(pkgs, ensure_installed)
-
-# Shared projection helpers (aeqd_crs, utm_epsg, aeqd_for).
-source(here::here("src", "general_utilities", "geo_utils.R"))
-
-# Set a global theme with Palatino as the base font
-font_add("Palatino", regular = here::here("fonts", "texgyrepagella-regular.otf"))
-showtext_auto()
-theme_set(theme_minimal(base_family = "Palatino", base_size = 14))
+# The theme is NOT set here: figure scripts call set_paper_theme() themselves, so a script
+# that draws nothing does not silently inherit a global font and theme.
 
 # ############################################################################################
 # Helper - Functions
@@ -198,20 +175,6 @@ table_state_metro_distances <- function(
     if (is.null(out_file))
       stop("Provide `out_file` when `save_latex_table = TRUE`.")
     
-    # (a) helper: escape LaTeX special chars in text cells
-    latex_escape <- function(x) {
-      x <- gsub("\\\\", "\\\\textbackslash{}", x)   # backslash
-      x <- gsub("&",  "\\\\&",  x, fixed = TRUE)
-      x <- gsub("%",  "\\\\%",  x, fixed = TRUE)
-      x <- gsub("\\$", "\\\\$",  x)
-      x <- gsub("#",  "\\\\#",  x)
-      x <- gsub("_",  "\\\\_",  x)
-      x <- gsub("\\{", "\\\\{",  x)
-      x <- gsub("\\}", "\\\\}",  x)
-      x <- gsub("~",  "\\\\textasciitilde{}",  x, fixed = TRUE)
-      x <- gsub("\\^", "\\\\textasciicircum{}", x)
-      x
-    }
     
     # (b) caption (auto if missing)
     if (is.null(caption)) {
@@ -1974,12 +1937,6 @@ plot_inequality_pollution <- function(
   }
   
   # 0. Helper function: Normalize strings for joining
-  normalize_key <- function(x) {
-    x <- toupper(x)
-    x <- stringi::stri_trans_general(x, id = "Latin-ASCII")
-    x <- gsub("[^A-Z0-9]", "", x)
-    return(x)
-  }
   
   # 1. Query Arrow for Active Stations
   # ---------------------------------------------------------------------------
