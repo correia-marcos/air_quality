@@ -63,8 +63,9 @@ results/             figures/ tables/ validation_old_version/
 
 - **R only.** Stack: renv, Docker, DuckDB, Arrow, data.table, dplyr, sf/terra (geospatial).
 - **Line length ≤ 90 characters.**
-- **Comment roughly every ~4 lines** where it aids understanding — say *why*, and what happens
-  *to the data*, not what the syntax does.
+- **Comments: rationale lives in `@Description` / `@Details`, once.** Comments inside a function
+  body are ≤ 2 lines and say what happens *to the data* here, or point back to that block. Full
+  rule (with the header/doc-block exemption) in `.claude/rules/r-style.md`.
 - Every script starts with the standard header block (`@Goal / @Description / @Summary /
   @Date / @Author`). Match the existing style exactly — see any file in `scripts/process_data/`.
 - Paths are **always** `here::here(...)`. Never hard-code absolute paths or `setwd()`.

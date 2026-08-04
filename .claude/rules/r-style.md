@@ -14,8 +14,13 @@ the code top-to-bottom and understand what happens **to the data**.
 ## Hard rules
 
 - **Line length ≤ 90 characters.** Break long calls onto aligned argument lines.
-- **Comment roughly every ~4 lines** where it helps. Comments say *why* and *what happens to
-  the data*, never restate the syntax. Keep them short.
+- **Comments: one home for rationale.** *Why* a function does what it does belongs in its
+  `@Description` / `@Details` block — written once, updated in place. Comments **inside** a
+  function body are at most **2 lines** and say only what happens *to the data* here, or point
+  back: `# see @Details: cluster identification`. Never restate in the body what the block
+  above already says. If a change needs more explanation, extend `@Details` — do not grow a
+  paragraph mid-function. *Exempt:* the file header block and the `# ---` doc block above a
+  `src/` function; those are the designated home and are long by design.
 - **Paths are always `here::here(...)`.** No absolute paths, no `setwd()`, no `~`.
 - **No scattered `library()` calls.** Packages load through the stage's
   `src/general_utilities/config_utils_*.R`. If a script needs a new package, add it there and

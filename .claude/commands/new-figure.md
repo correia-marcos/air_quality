@@ -13,6 +13,8 @@ Constraints for this stage (see `.claude/rules/data-and-paths.md`):
   (LaTeX via `kableExtra`, or CSV). Match existing naming: `<city>_<year>_<what>`.
 - Fonts: the project ships Tex Gyre Pagella in `fonts/` and uses `showtext`. Reuse the existing
   plotting helpers in `src/general_utilities/config_utils_plot_tables.R` rather than restyling.
+- Style per `.claude/rules/r-style.md`: line length ≤ 90, and rationale in `@Description` /
+  `@Details` rather than in long in-body comment blocks.
 
 Steps:
 1. Ask me which processed dataset feeds it and what the artefact should show, if not obvious.

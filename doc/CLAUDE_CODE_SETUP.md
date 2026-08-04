@@ -16,9 +16,15 @@ brief, the behavior guidelines (think before coding, surface trade-offs, no vibe
 succinct), and the reader-first principle. Detailed rules are pushed out to `.claude/rules/` so
 the memory file stays short.
 
-### `.claude/rules/*.md` (path-scoped, lazy-loaded)
-Each rule has a `paths:` frontmatter and loads **only when Claude touches a matching file** — so
-context stays lean and relevant.
+### `.claude/rules/*.md` (path-scoped)
+Each rule carries a `paths:` frontmatter naming the files it governs, so context stays lean and
+relevant.
+
+> **How they actually load.** Nothing *in this repo* parses that frontmatter — there is no hook or
+> `@import` doing it. Conditional loading is either native to the Claude Code build in use, or it
+> does not happen and the rules reach Claude because `CLAUDE.md` points at them and the agents and
+> commands below read them explicitly. Either way, treat `paths:` as documentation of scope, not
+> as a guarantee the file was loaded.
 
 - `r-style.md` (`**/*.R`, `.qmd`) — line length, the header block, `here::here()`, package loading,
   the anti-bloat rules.
@@ -83,9 +89,9 @@ instead of guessing.
 | Piece | Role | Loads when |
 |---|---|---|
 | `CLAUDE.md` | Project memory, conventions, behavior rules | Every session |
-| `.claude/rules/*` | Detailed, path-scoped guidance | You touch matching files |
+| `.claude/rules/*` | Detailed, path-scoped guidance | Scope declared in `paths:`; see the caveat above |
 | `.claude/commands/*` | Repeatable workflows (`/new-process-script`, ...) | You invoke them |
 | `.claude/agents/*` | Read-only specialist reviewers | You delegate to them |
 | `.claude/settings.json` | Permissions (allow/ask/deny) + hook wiring | Every session |
-| `.claude/hooks/guard.py` | Protects raw/legacy data, renv.lock, secrets | Before each tool use |
+| `.claude/hooks/guard.py` | Protects raw/legacy data, renv.lock, secrets; nudges on `src/` vs `scripts/` structure | Before each tool use |
 | `.mcp.json` | context7 + deepwiki for live R docs | On demand |

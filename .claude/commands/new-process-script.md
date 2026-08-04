@@ -21,7 +21,8 @@ Then generate the file:
    plus `registry.R` and the city module if city-specific.
 3. Numbered sections (`# I:`, `# II:`, ...) with `# ===` dividers.
 4. All paths via `here::here(...)`. Write output as Parquet to the correct data layer.
-5. Respect line length ≤ 90 and comment ~every 4 lines.
+5. Respect `.claude/rules/r-style.md`: line length ≤ 90, and rationale in `@Description` /
+   `@Details` rather than in long in-body comment blocks.
 
 Do **not** add it to `run_pipeline.R` yet — show me the script first, tell me where in the
 pipeline order it belongs, and let me confirm before wiring it in.

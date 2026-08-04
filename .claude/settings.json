@@ -70,7 +70,7 @@
           {
             "type": "command",
             "command": "python3 \"${CLAUDE_PROJECT_DIR}/.claude/hooks/guard.py\"",
-            "timeout": 5000
+            "timeout": 5
           }
         ]
       }

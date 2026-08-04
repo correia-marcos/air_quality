@@ -10,8 +10,9 @@ is a read-and-report pass — propose fixes, don't apply them until I approve.
 
 Check, and cite line numbers:
 
-- **Style:** line length ≤ 90; header block present and correctly formatted; comments ~every 4
-  lines saying *why* / what happens to the data; numbered `# ===` sections.
+- **Style:** line length ≤ 90; header block present and correctly formatted; numbered `# ===`
+  sections. **Comments** per `.claude/rules/r-style.md` — flag any in-body comment block over
+  2 lines, and any rationale duplicated between the body and `@Description` / `@Details`.
 - **Paths:** every path via `here::here()`; no absolute paths, no `setwd()`.
 - **Packages:** loaded via the stage `config_utils_*.R`, not stray `library()`; anything new is in
   `DESCRIPTION` + `renv.lock`.
