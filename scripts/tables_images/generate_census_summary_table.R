@@ -37,28 +37,28 @@ outdir_tab <- here::here("results", "tables", "census_summary")
 dir.create(outdir_tab, recursive = TRUE, showWarnings = FALSE)
 
 # Define collapsed census paths. These are the same files used by IDW exposure.
-geo_bogota_csv <- here::here(
+geo_bogota_pq <- here::here(
   dir_census,
   "bogota_2018",
-  "census_2018_metro_collapsed.csv"
+  "census_2018_metro_collapsed.parquet"
 )
 
-geo_cdmx_csv <- here::here(
+geo_cdmx_pq <- here::here(
   dir_census,
   "cdmx_extended_2020",
-  "collapse_metro_area_2020.csv"
+  "collapse_metro_area_2020.parquet"
 )
 
-geo_santiago_csv <- here::here(
+geo_santiago_pq <- here::here(
   dir_census,
   "santiago_2024",
-  "census_santiago_collapsed_2024.csv"
+  "census_santiago_collapsed_2024.parquet"
 )
 
-geo_sp_csv <- here::here(
+geo_sp_pq <- here::here(
   dir_census,
   "sao_paulo_2010",
-  "census_sp_collapsed_2010.csv"
+  "census_sp_collapsed_2010.parquet"
 )
 
 # City-level metadata. Keep one row per city to make assumptions visible.
@@ -73,10 +73,10 @@ city_specs <- data.table::data.table(
     "Weighting area"
   ),
   census_path = c(
-    geo_bogota_csv,
-    geo_cdmx_csv,
-    geo_santiago_csv,
-    geo_sp_csv
+    geo_bogota_pq,
+    geo_cdmx_pq,
+    geo_santiago_pq,
+    geo_sp_pq
   ),
   geo_id_col = c("GEO_ID", "CVE_MUN", "CUT", "code_weighting"),
   pop_col = c("weight", "weight", "weight", "weight")

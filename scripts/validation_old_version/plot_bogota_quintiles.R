@@ -38,14 +38,14 @@ gpkg_bogota_2005_metro_area    <- here::here(dir_geospatial, "bogota",
                                              "bogota_area_metro_2005.gpkg")
 gpkg_stations_bogota_2005      <- here::here(dir_geospatial, "bogota",
                                              "bogota_2005_stations_buffer_metro.gpkg")
-csv_bogota_extended_2005       <- here::here(dir_census, "bogota_extended_2005",
-                                             "collapse_metro_area_extended.csv")
+pq_bogota_extended_2005        <- here::here(dir_census, "bogota_extended_2005",
+                                             "collapse_metro_area_extended.parquet")
 arrow_bogota_dir               <- here::here(dir_pollution, "bogota_metro_dataset")
 
 # Read the necessary files
 bogota_metro_2005_sf         <- sf::st_read(gpkg_bogota_2005_metro_area)
 bogota_stations_2005_sf      <- sf::st_read(gpkg_stations_bogota_2005)
-bogota_census_extend_2005    <- readr::read_csv(csv_bogota_extended_2005, col_types = "c")
+bogota_census_extend_2005    <- arrow::read_parquet(pq_bogota_extended_2005)
 legacy_stations_sf           <- sf::st_read(legacy_stations, options = "ENCODING=LATIN1")
 
 # ============================================================================================

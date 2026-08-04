@@ -4830,7 +4830,12 @@ mexico_filter_census <- function(
 # @Arg out_dir       : string; output folder for processed data.
 # @Arg quiet         : logical; suppress progress messages. Default FALSE.
 #
-# @Output : list(individual, collapsed); processed census data.
+# @Output : list(individual, collapsed); processed census data. Also writes
+#           census_metro_individual_2020.parquet and collapse_metro_area_2020.parquet.
+#           Parquet stores the column types instead of leaving them to a CSV reader's
+#           guess. CVE_MUN is deliberately numeric here, matching cfg$cities_in_metro;
+#           the gpkg side is the padded "09002" string, so joins against spatial data
+#           pad the census side with canonical_geo_id(width = 5) at the join.
 #
 # @Purpose:
 #   Replicates the Stata schooling logic, harmonizes demographic and labor
@@ -5097,16 +5102,14 @@ mexico_harmonize_census_data <- function(
     message("Saving processed Mexico census files.")
   }
   
-  vroom::vroom_write(
+  arrow::write_parquet(
     all_census,
-    file.path(out_dir, "census_metro_individual_2020.csv"),
-    delim = ","
+    file.path(out_dir, "census_metro_individual_2020.parquet")
   )
-  
-  vroom::vroom_write(
+
+  arrow::write_parquet(
     collapse_data,
-    file.path(out_dir, "collapse_metro_area_2020.csv"),
-    delim = ","
+    file.path(out_dir, "collapse_metro_area_2020.parquet")
   )
   
   return(list(individual = all_census, collapsed = collapse_data))

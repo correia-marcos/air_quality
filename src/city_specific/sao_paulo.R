@@ -1512,10 +1512,14 @@ sp_process_stations_data_to_parquet <- function(
 #
 # @Arg sf_data   : sf object; spatial weighting areas.
 # @Arg match_col : string; column with weighting area codes.
-# @Arg out_dir   : string; output folder for processed CSVs.
+# @Arg out_dir   : string; output folder for the two processed Parquet files.
 # @Arg quiet     : logical; suppress messages. Default FALSE.
 #
-# @Output : list(individual, collapsed); processed census data.
+# @Output : list(individual, collapsed); processed census data. Also writes
+#           census_sp_individual_2010.parquet and census_sp_collapsed_2010.parquet.
+#           Parquet stores whatever type censobr returned for code_weighting instead
+#           of leaving it to a CSV reader's guess, which is what turned the 13-digit
+#           code into a double that as.character() renders in scientific notation.
 # @Purpose:
 #   Connects to the 2010 Census through censobr, filters weighting areas,
 #   harmonizes education and demographic variables, and collapses adults
@@ -1736,14 +1740,14 @@ sp_process_census_2010 <- function(
     message("Saving processed Sao Paulo census files.")
   }
   
-  readr::write_csv(
+  arrow::write_parquet(
     indiv_df,
-    file.path(out_dir, "census_sp_individual_2010.csv")
+    file.path(out_dir, "census_sp_individual_2010.parquet")
   )
-  
-  readr::write_csv(
+
+  arrow::write_parquet(
     collapse_df,
-    file.path(out_dir, "census_sp_collapsed_2010.csv")
+    file.path(out_dir, "census_sp_collapsed_2010.parquet")
   )
   
   return(list(individual = indiv_df, collapsed = collapse_df))

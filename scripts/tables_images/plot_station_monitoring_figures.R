@@ -79,17 +79,17 @@ station_sp_pq <- here::here(
 )
 
 # Define collapsed census paths.
-census_bogota_csv <- here::here(
-  dir_census, "bogota_2018", "census_2018_metro_collapsed.csv"
+census_bogota_pq <- here::here(
+  dir_census, "bogota_2018", "census_2018_metro_collapsed.parquet"
 )
-census_cdmx_csv <- here::here(
-  dir_census, "cdmx_extended_2020", "collapse_metro_area_2020.csv"
+census_cdmx_pq <- here::here(
+  dir_census, "cdmx_extended_2020", "collapse_metro_area_2020.parquet"
 )
-census_santiago_csv <- here::here(
-  dir_census, "santiago_2024", "census_santiago_collapsed_2024.csv"
+census_santiago_pq <- here::here(
+  dir_census, "santiago_2024", "census_santiago_collapsed_2024.parquet"
 )
-census_sp_csv <- here::here(
-  dir_census, "sao_paulo_2010", "census_sp_collapsed_2010.csv"
+census_sp_pq <- here::here(
+  dir_census, "sao_paulo_2010", "census_sp_collapsed_2010.parquet"
 )
 
 
@@ -104,10 +104,10 @@ station_santiago <- safe_read_parquet(station_santiago_pq)
 station_sp <- safe_read_parquet(station_sp_pq)
 
 # Read collapsed census data.
-census_bogota <- safe_read_csv(census_bogota_csv)
-census_cdmx <- safe_read_csv(census_cdmx_csv)
-census_santiago <- safe_read_csv(census_santiago_csv)
-census_sp <- safe_read_csv(census_sp_csv)
+census_bogota <- safe_read_parquet(census_bogota_pq)
+census_cdmx <- safe_read_parquet(census_cdmx_pq)
+census_santiago <- safe_read_parquet(census_santiago_pq)
+census_sp <- safe_read_parquet(census_sp_pq)
 
 
 # ======================================================================================

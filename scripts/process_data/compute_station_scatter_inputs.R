@@ -55,14 +55,14 @@ gpkg_geo_sp       <- here::here(dir_geospatial, "sao_paulo",
                                 "sao_paulo_metro_2010_weighting_areas.gpkg")
 
 # Define collapsed census files
-census_bogota_csv   <- here::here(dir_census, "bogota_2018",
-                                  "census_2018_metro_collapsed.csv")
-census_cdmx_csv     <- here::here(dir_census, "cdmx_extended_2020",
-                                  "collapse_metro_area_2020.csv")
-census_santiago_csv <- here::here(dir_census, "santiago_2024",
-                                  "census_santiago_collapsed_2024.csv")
-census_sp_csv       <- here::here(dir_census, "sao_paulo_2010",
-                                  "census_sp_collapsed_2010.csv")
+census_bogota_pq   <- here::here(dir_census, "bogota_2018",
+                                 "census_2018_metro_collapsed.parquet")
+census_cdmx_pq     <- here::here(dir_census, "cdmx_extended_2020",
+                                 "collapse_metro_area_2020.parquet")
+census_santiago_pq <- here::here(dir_census, "santiago_2024",
+                                 "census_santiago_collapsed_2024.parquet")
+census_sp_pq       <- here::here(dir_census, "sao_paulo_2010",
+                                 "census_sp_collapsed_2010.parquet")
 
 # Read station spatial data
 stations_bogota   <- sf::st_read(gpkg_stations_bogota, quiet = TRUE)
@@ -76,13 +76,15 @@ geo_cdmx     <- sf::st_read(gpkg_geo_cdmx, quiet = TRUE)
 geo_santiago <- sf::st_read(gpkg_geo_santiago, quiet = TRUE)
 geo_sp       <- sf::st_read(gpkg_geo_sp, quiet = TRUE)
 
-# Read collapsed census data
-census_bogota   <- data.table::fread(census_bogota_csv)
-census_cdmx     <- data.table::fread(census_cdmx_csv)
-census_santiago <- data.table::fread(census_santiago_csv)
-census_sp       <- data.table::fread(census_sp_csv)
+# Read collapsed census data. Parquet carries the schema, so the geographic keys
+# arrive as character without a colClasses argument.
+census_bogota   <- data.table::as.data.table(arrow::read_parquet(census_bogota_pq))
+census_cdmx     <- data.table::as.data.table(arrow::read_parquet(census_cdmx_pq))
+census_santiago <- data.table::as.data.table(arrow::read_parquet(census_santiago_pq))
+census_sp       <- data.table::as.data.table(arrow::read_parquet(census_sp_pq))
 
-# CDMX geo key: the gpkg stores CVE_MUN as the full 5-digit code ("09012"), but
+# CDMX geo key: the gpkg stores CVE_MUN as the full 5-digit code ("09012"), so pad
+# the census side to match before joining.
 census_cdmx[, CVE_MUN := canonical_geo_id(CVE_MUN, width = 5)]
 
 # ============================================================================================

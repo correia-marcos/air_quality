@@ -49,42 +49,43 @@ dist_sp            <- here::here(dir_distances, "sao_paulo_2010",
                                  "matrix_geo_station_distances.parquet")
 
 # Define individual census paths
-micro_bogota_csv       <- here::here(dir_census, "bogota_2018",
-                                     "census_2018_metro_individual.csv")
-micro_cdmx_csv         <- here::here(dir_census, "cdmx_extended_2020",
-                                     "census_metro_individual_2020.csv")
-micro_santiago_pq      <- here::here(dir_census, "santiago_2017",
-                                     "census_individual_2017.parquet")
-micro_santiago_rob_csv <- here::here(dir_census, "santiago_2024",
-                                     "census_santiago_individual_2024.csv")
-micro_sp_csv           <- here::here(dir_census, "sao_paulo_2010",
-                                     "census_sp_individual_2010.csv")
+micro_bogota_pq       <- here::here(dir_census, "bogota_2018",
+                                    "census_2018_metro_individual.parquet")
+micro_cdmx_pq         <- here::here(dir_census, "cdmx_extended_2020",
+                                    "census_metro_individual_2020.parquet")
+micro_santiago_pq     <- here::here(dir_census, "santiago_2017",
+                                    "census_individual_2017.parquet")
+micro_santiago_rob_pq <- here::here(dir_census, "santiago_2024",
+                                    "census_santiago_individual_2024.parquet")
+micro_sp_pq           <- here::here(dir_census, "sao_paulo_2010",
+                                    "census_sp_individual_2010.parquet")
 
 # Define collapsed census paths
-geo_bogota_csv       <- here::here(dir_census, "bogota_2018",
-                                   "census_2018_metro_collapsed.csv")
-geo_cdmx_csv         <- here::here(dir_census, "cdmx_extended_2020",
-                                   "collapse_metro_area_2020.csv")
-geo_santiago_pq      <- here::here(dir_census, "santiago_2017",
-                                   "census_collapsed_2017.parquet")
-geo_santiago_rob_csv <- here::here(dir_census, "santiago_2024",
-                                   "census_santiago_collapsed_2024.csv")
-geo_sp_csv           <- here::here(dir_census, "sao_paulo_2010",
-                                   "census_sp_collapsed_2010.csv")
+geo_bogota_pq       <- here::here(dir_census, "bogota_2018",
+                                  "census_2018_metro_collapsed.parquet")
+geo_cdmx_pq         <- here::here(dir_census, "cdmx_extended_2020",
+                                  "collapse_metro_area_2020.parquet")
+geo_santiago_pq     <- here::here(dir_census, "santiago_2017",
+                                  "census_collapsed_2017.parquet")
+geo_santiago_rob_pq <- here::here(dir_census, "santiago_2024",
+                                  "census_santiago_collapsed_2024.parquet")
+geo_sp_pq           <- here::here(dir_census, "sao_paulo_2010",
+                                  "census_sp_collapsed_2010.parquet")
 
-# Read census microdata
-mi_bogota       <- data.table::fread(micro_bogota_csv)
-mi_cdmx         <- data.table::fread(micro_cdmx_csv)
+# Read census microdata. Parquet carries its own schema, so the geographic keys
+# arrive as character without a colClasses argument.
+mi_bogota       <- data.table::as.data.table(arrow::read_parquet(micro_bogota_pq))
+mi_cdmx         <- data.table::as.data.table(arrow::read_parquet(micro_cdmx_pq))
 mi_santiago     <- data.table::as.data.table(arrow::read_parquet(micro_santiago_pq))
-mi_santiago_rob <- data.table::fread(micro_santiago_rob_csv)
-mi_sp           <- data.table::fread(micro_sp_csv)
+mi_santiago_rob <- data.table::as.data.table(arrow::read_parquet(micro_santiago_rob_pq))
+mi_sp           <- data.table::as.data.table(arrow::read_parquet(micro_sp_pq))
 
 # Read collapsed census data
-geo_bogota       <- data.table::fread(geo_bogota_csv)
-geo_cdmx         <- data.table::fread(geo_cdmx_csv)
+geo_bogota       <- data.table::as.data.table(arrow::read_parquet(geo_bogota_pq))
+geo_cdmx         <- data.table::as.data.table(arrow::read_parquet(geo_cdmx_pq))
 geo_santiago     <- data.table::as.data.table(arrow::read_parquet(geo_santiago_pq))
-geo_santiago_rob <- data.table::fread(geo_santiago_rob_csv)
-geo_sp           <- data.table::fread(geo_sp_csv)
+geo_santiago_rob <- data.table::as.data.table(arrow::read_parquet(geo_santiago_rob_pq))
+geo_sp           <- data.table::as.data.table(arrow::read_parquet(geo_sp_pq))
 
 # ============================================================================================
 # II: Process and save

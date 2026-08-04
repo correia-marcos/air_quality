@@ -96,9 +96,9 @@ build_bogota_progression_specs <- function(cfg, buffer_km = 5L) {
   has_legacy_sta_2018_dist <- file.exists(legacy_sta_2018_dist)
   
   # New 2018 census individual microdata (adult flag + years of schooling).
-  new_census_indiv_csv <- here::here("data", "interim", "census", "bogota_2018",
-                                     "census_2018_metro_individual.csv")
-  has_new_census_indiv <- file.exists(new_census_indiv_csv)
+  new_census_indiv_pq <- here::here("data", "interim", "census", "bogota_2018",
+                                    "census_2018_metro_individual.parquet")
+  has_new_census_indiv <- file.exists(new_census_indiv_pq)
   
   # ----------------------------------------------------------------------
   # Legacy geo-station distance RDS → parquet (tempdir cache). The RDS
@@ -201,15 +201,20 @@ build_bogota_progression_specs <- function(cfg, buffer_km = 5L) {
       mode  = "compute",
       enabled = has_new_census_indiv && has_legacy_sta_2018_dist &&
         dir.exists(legacy_mock_clean),
-      reason  = if (!has_new_census_indiv)             "missing 2018 manzana-level census CSV"
-      else if (!has_legacy_sta_2018_dist)    "missing bogota_2018_legacy_stations_geo_station_distances.parquet (run generate_distances_matrices.R)"
-      else if (!dir.exists(legacy_mock_clean)) "run compare_outlier_procedure() first"
-      else NULL,
+      reason  =
+        if (!has_new_census_indiv)
+          "missing 2018 manzana-level census Parquet"
+        else if (!has_legacy_sta_2018_dist)
+          paste("missing bogota_2018_legacy_stations_geo_station_distances.parquet",
+                "(run generate_distances_matrices.R)")
+        else if (!dir.exists(legacy_mock_clean))
+          "run compare_outlier_procedure() first"
+        else NULL,
       args    = list(
         arrow_dir      = legacy_mock_clean,
         geo_sta_pq     = legacy_sta_2018_dist,
         census_col     = if (has_new_census_indiv)
-          vroom::vroom(new_census_indiv_csv, col_types = "cnnnnccc") else NULL,
+          arrow::read_parquet(new_census_indiv_pq) else NULL,
         geo_id_col     = "GEO_ID",
         pop_col        = "fe",
         edu_col        = "escolaridad",

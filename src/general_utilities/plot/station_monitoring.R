@@ -15,7 +15,7 @@
 #   5. plot_station_distance_trend
 #   6. plot_dual_pollutant_station_scatter
 #   7. save_city_monitoring_figures
-#   8. safe_read_parquet / safe_read_csv / prepare_station_scatter_data
+#   8. safe_read_parquet / prepare_station_scatter_data
 #      (all three flagged in doc/deletion_candidates.md)
 #
 # @Date: August 2026
@@ -750,24 +750,6 @@ safe_read_parquet <- function(path) {
   }
   
   data.table::as.data.table(arrow::read_parquet(path))
-}
-
-
-# --------------------------------------------------------------------------------------
-# Function: safe_read_csv
-#
-# @Arg path : string; path to CSV file.
-#
-# @Output : data.table.
-# --------------------------------------------------------------------------------------
-safe_read_csv <- function(path) {
-  
-  # Stop early if an expected processed file is missing.
-  if (!file.exists(path)) {
-    stop("File not found: ", path)
-  }
-  
-  data.table::fread(path)
 }
 
 

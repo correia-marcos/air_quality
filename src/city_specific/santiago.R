@@ -2341,11 +2341,14 @@ santiago_process_census_2017 <- function(
 # @Arg census_dir : string; folder containing chile_census_2024_people.zip.
 # @Arg sf_data    : sf object; spatial data used to filter communes.
 # @Arg match_col  : string; column in sf_data with commune codes.
-# @Arg out_dir    : string; output folder for processed CSVs.
+# @Arg out_dir    : string; output folder for the two processed Parquet files.
 # @Arg overwrite  : logical; re-extract ZIP if file exists. Default FALSE.
 # @Arg quiet      : logical; suppress messages. Default FALSE.
 #
-# @Output : list(individual, collapsed); processed census data.
+# @Output : list(individual, collapsed); processed census data. Also writes
+#           census_santiago_individual_2024.parquet and
+#           census_santiago_collapsed_2024.parquet. Parquet keeps CUT character;
+#           a CSV roundtrip drops the leading zero on region-1 communes.
 #
 # @Purpose:
 #   Extracts the 2024 Census CSV, filters communes, harmonizes variables,
@@ -2529,16 +2532,14 @@ santiago_process_census_2024 <- function(
     message("[santiago_2024] Saving outputs to: ", out_dir)
   }
   
-  vroom::vroom_write(
+  arrow::write_parquet(
     df_harm,
-    file.path(out_dir, "census_santiago_individual_2024.csv"),
-    delim = ","
+    file.path(out_dir, "census_santiago_individual_2024.parquet")
   )
-  
-  vroom::vroom_write(
+
+  arrow::write_parquet(
     df_collapse,
-    file.path(out_dir, "census_santiago_collapsed_2024.csv"),
-    delim = ","
+    file.path(out_dir, "census_santiago_collapsed_2024.parquet")
   )
   
   return(list(individual = df_harm, collapsed = df_collapse))

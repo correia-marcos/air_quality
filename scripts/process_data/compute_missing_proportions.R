@@ -53,8 +53,8 @@ city_specs <- data.table::data.table(
   census_file = here::here(
     "data", "interim", "census",
     c("bogota_2018", "cdmx_extended_2020", "santiago_2024", "sao_paulo_2010"),
-    c("census_2018_metro_individual.csv", "census_metro_individual_2020.csv",
-      "census_santiago_individual_2024.csv", "census_sp_individual_2010.csv")
+    c("census_2018_metro_individual.parquet", "census_metro_individual_2020.parquet",
+      "census_santiago_individual_2024.parquet", "census_sp_individual_2010.parquet")
   )
 )
 

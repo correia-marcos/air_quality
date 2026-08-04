@@ -19,8 +19,8 @@ Written August 2026. Re-check before acting — the "used by" column is a snapsh
 
 | Function | Now in | Why removable | What breaks |
 |---|---|---|---|
-| `safe_read_parquet` | `plot/station_monitoring.R` | Adds a `file.exists()` check in front of `arrow::read_parquet()`, which already errors with the path. The rules discourage defensive wrapping. | 3 call sites in `plot_station_monitoring_figures.R` would call `arrow::read_parquet()` directly; the error message loses the "File not found:" prefix but still names the file. |
-| `safe_read_csv` | `plot/station_monitoring.R` | Same, over `data.table::fread()`. **Also dies naturally at Step 5**, when its only inputs become Parquet. | Nothing, once Step 5 lands. Worth revisiting then rather than now. |
+| `safe_read_parquet` | `plot/station_monitoring.R` | Adds a `file.exists()` check in front of `arrow::read_parquet()`, which already errors with the path. The rules discourage defensive wrapping. | 8 call sites in `plot_station_monitoring_figures.R` would call `arrow::read_parquet()` directly; the error message loses the "File not found:" prefix but still names the file. |
+| ~~`safe_read_csv`~~ | — | **Deleted in Step 5**, as predicted: its only inputs were the four collapsed census CSVs, and those are now Parquet. Its callers moved to `safe_read_parquet`. | Already gone; nothing referenced it. |
 
 ## Column-name fallback lists
 
@@ -54,8 +54,8 @@ functions with explicit arguments rather than moved verbatim, so there is nothin
 `save_both` → `save_table_parquet_csv()` · `meta_first` → `set_meta_cols_first()` ·
 `stack_runs` → `stack_city_tables()` · `save_pdf` → `save_plot_pdf()` ·
 `group_axis_label` → `exposure_group_axis_label()` · `.read_table` → deleted (your call;
-every input is Parquet after Step 5) · `normalize_station_id` → deleted (5th byte-identical
-copy of `normalize_station()`).
+every census input is Parquet as of Step 5) · `normalize_station_id` → deleted (5th
+byte-identical copy of `normalize_station()`).
 
 ## Unused non-function items
 

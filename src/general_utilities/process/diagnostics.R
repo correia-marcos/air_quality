@@ -485,7 +485,7 @@ compute_missing_proportions <- function(
 # --------------------------------------------------------------------------------------------
 # Function: compute_city_census_summary
 #
-# @Arg census_path : string; path to a city's collapsed census file.
+# @Arg census_path : string; path to a city's collapsed census Parquet file.
 # @Arg city        : string; display name for the output row.
 # @Arg city_latex  : string; the same name, LaTeX-escaped for the table.
 # @Arg census_year : integer; census vintage.
@@ -496,12 +496,10 @@ compute_missing_proportions <- function(
 # @Output : one-row data.table with population, unit count and mean population per unit.
 #
 # @Details:
-#   Arguments are named rather than taken as a spec row, so the signature documents what
-#   the
-#   function needs. Units with a missing id, missing weight or non-positive weight are
-#   dropped
-#   before counting, which is what makes n_census_geographic_units the estimation-relevant
-#   count rather than the file's row count.
+#   Arguments are named rather than taken as a spec row, so the signature documents
+#   what the function needs. Units with a missing id, missing weight or non-positive
+#   weight are dropped before counting, which is what makes n_census_geographic_units
+#   the estimation-relevant count rather than the file's row count.
 #
 # @Written_by : Marcos Paulo
 # @Updated_on : August 2026
@@ -512,7 +510,7 @@ compute_city_census_summary <- function(census_path, city, city_latex, census_ye
     stop("Census file not found: ", census_path)
   }
 
-  dt <- data.table::fread(census_path)
+  dt <- data.table::as.data.table(arrow::read_parquet(census_path))
 
   missing_cols <- setdiff(c(geo_id_col, pop_col), names(dt))
 
@@ -622,26 +620,24 @@ count_stations_reporting <- function(arrow_dir,
 # Function: station_education_quintile
 #
 # @Arg dist_pq     : string; path to the geo-to-station distance matrix.
-# @Arg census_file : string; path to the city's individual census file.
+# @Arg census_file : string; path to the city's individual census Parquet file.
 # @Arg geo_id_col  : string; geographic identifier column in the census.
 #
 # @Output : data.table mapping each station to the education quintile of its nearest unit.
 #
 # @Details:
-#   Collapses the census to geographic units, ranks them by population-weighted mean years
-#   of
-#   schooling, cuts into five equal-count bins, then assigns each station the quintile of
-#   the
-#   unit whose representative point is nearest to it. Nearest unit, not units within a
-#   buffer:
-#   this asks which population a station sits among, not which population it measures.
+#   Collapses the census to geographic units, ranks them by population-weighted mean
+#   years of schooling, cuts into five equal-count bins, then assigns each station the
+#   quintile of the unit whose representative point is nearest to it. Nearest unit, not
+#   units within a buffer: this asks which population a station sits among, not which
+#   population it measures.
 #
 # @Written_by : Marcos Paulo
 # @Updated_on : August 2026
 # --------------------------------------------------------------------------------------------
 station_education_quintile <- function(dist_pq, census_file, geo_id_col) {
   dist <- data.table::as.data.table(arrow::read_parquet(dist_pq))
-  census <- data.table::fread(census_file)
+  census <- data.table::as.data.table(arrow::read_parquet(census_file))
   
   station_col <- find_col(
     dist,

@@ -898,10 +898,11 @@ compare_census <- function(
   
   if (!quiet) message("[", cfg$id, "] Comparing census data (Extended 2005) ...")
   
-  # 2) Load collapsed datasets
-  new_col <- readr::read_csv(new_col_path, show_col_types = FALSE) |>
+  # 2) Load collapsed datasets. The new side is Parquet; the legacy side stays CSV,
+  # because data/_legacy/ is an input of record and is never rewritten.
+  new_col <- arrow::read_parquet(new_col_path) |>
     dplyr::mutate(dplyr::across(dplyr::where(is.character), trimws))
-  
+
   legacy_col <- readr::read_csv(leg_col_path, show_col_types = FALSE) |>
     dplyr::mutate(dplyr::across(dplyr::where(is.character), trimws))
   
@@ -1019,7 +1020,7 @@ compare_census <- function(
   if (!is.null(leg_ind_path) && file.exists(leg_ind_path) && file.exists(new_ind_path)) {
     if (!quiet) message("  Comparing individual-level census ...")
     
-    new_ind <- readr::read_csv(new_ind_path, show_col_types = FALSE)
+    new_ind <- arrow::read_parquet(new_ind_path)
     leg_ind <- readr::read_csv(leg_ind_path, show_col_types = FALSE)
     
     names(new_ind) <- tolower(names(new_ind))

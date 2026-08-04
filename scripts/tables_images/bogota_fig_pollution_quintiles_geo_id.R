@@ -43,12 +43,12 @@ gpkg_stations_bogota_2005      <- here::here(dir_geospatial, "bogota",
                                              "bogota_2005_stations_buffer_metro.gpkg")
 gpkg_stations_bogota_2018      <- here::here(dir_geospatial, "bogota",
                                              "bogota_2018_stations_buffer_metro.gpkg")
-csv_bogota_basic_2005          <- here::here(dir_census, "bogota_basic_2005",
-                                             "collapse_metro_area_basic.csv")
-csv_bogota_extended_2005       <- here::here(dir_census, "bogota_extended_2005",
-                                             "collapse_metro_area_extended.csv")
-csv_bogota_cnpv_2018           <- here::here(dir_census, "bogota_2018",
-                                             "census_2018_metro_collapsed.csv")
+pq_bogota_basic_2005           <- here::here(dir_census, "bogota_basic_2005",
+                                             "collapse_metro_area_basic.parquet")
+pq_bogota_extended_2005        <- here::here(dir_census, "bogota_extended_2005",
+                                             "collapse_metro_area_extended.parquet")
+pq_bogota_cnpv_2018            <- here::here(dir_census, "bogota_2018",
+                                             "census_2018_metro_collapsed.parquet")
 arrow_bogota_dir               <- here::here(dir_pollution, "bogota_metro_dataset")
 
 # Read the necessary files
@@ -57,9 +57,9 @@ bogota_metro_2005_sf         <- sf::st_read(gpkg_bogota_2005_metro_area)
 bogota_metro_2018_sf         <- sf::st_read(gpkg_bogota_2018_metro_area)
 bogota_stations_2005_sf      <- sf::st_read(gpkg_stations_bogota_2005)
 bogota_stations_2018_sf      <- sf::st_read(gpkg_stations_bogota_2018)
-bogota_census_basic_2005     <- readr::read_csv(csv_bogota_basic_2005, col_types = "c")
-bogota_census_extend_2005    <- readr::read_csv(csv_bogota_extended_2005, col_types = "c")
-bogota_cnpv_2018             <- readr::read_csv(csv_bogota_cnpv_2018, col_types = "c")
+bogota_census_basic_2005     <- arrow::read_parquet(pq_bogota_basic_2005)
+bogota_census_extend_2005    <- arrow::read_parquet(pq_bogota_extended_2005)
+bogota_cnpv_2018             <- arrow::read_parquet(pq_bogota_cnpv_2018)
 
 # ============================================================================================
 # II: Process & Plot

@@ -2989,7 +2989,10 @@ bogota_filter_census_2005 <- function(
 # @Arg       : out_dir — Where to save the processed individual and collapsed data
 # @Arg       : quiet — Suppress progress messages
 #
-# @Output    : Saves CSV/RData files; returns list of processed dataframes
+# @Output    : list(individual, collapsed); returns the processed dataframes. Also writes
+#              census_metro_individual_<prefix>.parquet and
+#              collapse_metro_area_<prefix>.parquet, where prefix is basic or extended.
+#              Parquet keeps GEO_ID character; a CSV roundtrip drops its leading zeros.
 # @Purpose   : Replicates Stata logic: Harmonizes education, creates labor/demographic
 #              dummies, filters adults (25+), and collapses to geographic level.
 # @Written_on: 21/01/2026
@@ -3251,16 +3254,14 @@ bogota_harmonize_census_2005_data <- function(
   # ===========================================================================
   prefix <- if (is_extended) "extended" else "basic"
   
-  vroom::vroom_write(
-    all_census, 
-    file.path(out_dir, paste0("census_metro_individual_", prefix, ".csv")), 
-    delim = ","
+  arrow::write_parquet(
+    all_census,
+    file.path(out_dir, paste0("census_metro_individual_", prefix, ".parquet"))
   )
-  
-  vroom::vroom_write(
-    collapse_data, 
-    file.path(out_dir, paste0("collapse_metro_area_", prefix, ".csv")), 
-    delim = ","
+
+  arrow::write_parquet(
+    collapse_data,
+    file.path(out_dir, paste0("collapse_metro_area_", prefix, ".parquet"))
   )
   
   return(list(individual = all_census, collapsed = collapse_data))
@@ -3388,7 +3389,9 @@ bogota_filter_census_2018 <- function(
 # @Arg out_dir       : string; output folder for processed data.
 # @Arg quiet         : logical; suppress progress messages. Default FALSE.
 #
-# @Output : list(individual, collapsed); processed census data.
+# @Output : list(individual, collapsed); processed census data. Also writes
+#           census_2018_metro_individual.parquet and census_2018_metro_collapsed.parquet.
+#           Parquet keeps GEO_ID character; a CSV roundtrip drops its leading zeros.
 #
 # @Purpose:
 #   Merges person and geographic files, filters the Bogota metro area,
@@ -3571,16 +3574,14 @@ bogota_harmonize_census_2018_data <- function(
     message("Saving processed Bogota census files.")
   }
   
-  vroom::vroom_write(
+  arrow::write_parquet(
     all_census,
-    file.path(out_dir, "census_2018_metro_individual.csv"),
-    delim = ","
+    file.path(out_dir, "census_2018_metro_individual.parquet")
   )
-  
-  vroom::vroom_write(
+
+  arrow::write_parquet(
     collapse_data,
-    file.path(out_dir, "census_2018_metro_collapsed.csv"),
-    delim = ","
+    file.path(out_dir, "census_2018_metro_collapsed.parquet")
   )
   
   return(list(individual = all_census, collapsed = collapse_data))

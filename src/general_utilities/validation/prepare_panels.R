@@ -81,7 +81,7 @@ build_compare_cfg <- function(city_id) {
       metro_buffer_km         = 20,
       new_census_collapsed    = here::here("data", "interim", "census",
                                            "bogota_extended_2005",
-                                           "collapse_metro_area_extended.csv"),
+                                           "collapse_metro_area_extended.parquet"),
       legacy_census_collapsed = here::here("data", "_legacy", "census",
                                            "collapse_bogota_metro.csv"),
       census_join_key         = "GEO_ID",
