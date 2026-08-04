@@ -28,8 +28,9 @@ endif
 
 # Stamp dir lives under data/ so it inherits data/'s .gitignore (no gitignore edit needed).
 STAMP := data/.make
-# If a src/ function changes, dependent stages should rebuild.
-SRC := $(wildcard src/city_specific/*.R) $(wildcard src/general_utilities/*.R)
+# If a src/ function changes, dependent stages should rebuild. `find` rather than `wildcard`
+# so the stamps still track src/ once its files sit in subdirectories.
+SRC := $(shell find src -name '*.R')
 
 # ---- Phony convenience targets -------------------------------------------------------------
 .PHONY: all download process distances outliers exposure figures tables validate clean help
@@ -64,17 +65,19 @@ $(STAMP)/outliers.stamp: scripts/process_data/detect_outliers.R $(STAMP)/process
 	$(RUN) scripts/process_data/detect_outliers.R
 	touch $@
 
-# 4. IDW exposure; needs both distances and outlier flags.
+# 4. IDW exposure, then the group regressions the figures read; needs distances and outliers.
 exposure: $(STAMP)/exposure.stamp
 $(STAMP)/exposure.stamp: scripts/process_data/estimate_idw_exposure.R \
+                         scripts/process_data/compute_exposure_regressions.R \
                          $(STAMP)/distances.stamp $(STAMP)/outliers.stamp
 	$(RUN) scripts/process_data/estimate_idw_exposure.R
+	$(RUN) scripts/process_data/compute_exposure_regressions.R
 	touch $@
 
 # 5. Publication artefacts. Read only from data/processed; regenerate on demand (phony).
 #    Add each figure/table script here as you finish it.
 figures: exposure
-	$(RUN) scripts/tables_images/figure_exposure_by_quintile_with_ci.R
+	$(RUN) scripts/tables_images/generate_exposure_plots.R
 	$(RUN) scripts/tables_images/figure_hours_above_target_by_quintile.R
 
 tables: exposure

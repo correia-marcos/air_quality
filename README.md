@@ -157,7 +157,7 @@ With credentials in place, simply run our [download script](src/download_data/ru
    docker run --rm -it \
      -v "$(pwd)/data/raw:/air_monitoring/data/raw" \
      correiamarcos/air_monitoring:latest run \
-       scripts/download_data/run_download_merra2.R \
+       scripts/download_data/download_merra2_data.R \
        2023-01-01 2023-12-31 M2T1NXAER.5.12.4 data/raw/merra2
    ```
 
@@ -190,14 +190,13 @@ With credentials in place, simply run our [download script](src/download_data/ru
 - **Run a single script:**
 
   ```bash
-  ./entrypoint.sh run scripts/process_data/clean_pollution_data.R
+  ./entrypoint.sh run scripts/process_data/detect_outliers.R
   ```
 
 - **Generate all analyses and outputs:**
 
   ```bash
   ./entrypoint.sh run \
-    scripts/config/setup.R \
     scripts/process_data/*.R \
     scripts/tables_images/*.R
   ```
@@ -232,7 +231,7 @@ We also provide a visualization of scripts dependencies as following:
 flowchart TD
   DL["scripts/download_data/download_merra2_data.R"]
   GP["scripts/process_data/generate_panel_air_quality.R"]
-  CU["scripts/process_data/convert_unit_calculate_pm.R"]
+  CU["scripts/process_data/convert_unit_calculate_pm_merra.R"]
   CS["scripts/process_data/compare_pm25_merra2_stations.R"]
   CM["scripts/process_data/compare_monthly_country_pm25_nasa.R"]
 
