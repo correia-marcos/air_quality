@@ -13,7 +13,7 @@
 #   I.   Projections  — aeqd_crs, utm_epsg, aeqd_for
 #   II.  Identifiers  — normalize_station, safe_chr
 #   III. Formatting   — to_iso, latex_escape
-#   IV.  Disk         — write_pq
+#   IV.  Disk         — write_pq, save_raw_data_tidy_formatted
 #
 # @Date: August 2026
 # @Author: Marcos Paulo
@@ -269,4 +269,124 @@ write_pq <- function(df, dir, name) {
   )
 
   invisible(NULL)
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: save_raw_data_tidy_formatted
+#
+# @Arg       : data          - data.frame or tibble to write.
+# @Arg       : out_dir       - string; directory to write outputs (created if missing).
+# @Arg       : out_name      - string|NULL; base filename without extension. If NULL,
+#                              inferred from available columns ('city' and 'year').
+# @Arg       : write_rds     - logical; write .rds (default TRUE).
+# @Arg       : write_parquet - logical; write .parquet via {arrow} (default TRUE).
+# @Arg       : write_csv_gz  - logical; write .csv.gz (default FALSE).
+# @Arg       : rds_compress  - string; RDS compress method (default "xz").
+# @Arg       : parquet_comp  - string; Parquet compression codec (default "zstd").
+# @Arg       : quiet         - logical; suppress messages (default FALSE).
+#
+# @Output    : (invisible) Named list containing the written file paths.
+# @Purpose   : Materializes a dataframe to standard formats with consistent naming.
+# @Written_on: 27/08/2025
+# @Written_by: Marcos Paulo
+# --------------------------------------------------------------------------------------------
+save_raw_data_tidy_formatted <- function(
+    data,
+    out_dir,
+    out_name        = NULL,
+    write_rds       = TRUE,
+    write_parquet   = TRUE,
+    write_csv_gz    = FALSE,
+    rds_compress    = "xz",
+    parquet_comp    = "zstd",
+    quiet           = FALSE
+) {
+  # 1. Validate inputs
+  stopifnot(is.data.frame(data))
+  
+  # 2. Ensure output directory exists
+  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+  
+  # 3. Dynamic Filename Inference (if out_name is not provided)
+  infer_stub <- function(df) {
+    has_city <- "city" %in% names(df)
+    has_year <- "year" %in% names(df)
+    
+    # Scenario A: Dataset contains both city and year
+    if (has_city && has_year) {
+      city_val <- as.character(df$city[which(!is.na(df$city))[1]])
+      ymin <- suppressWarnings(min(df$year, na.rm = TRUE))
+      ymax <- suppressWarnings(max(df$year, na.rm = TRUE))
+      
+      if (is.finite(ymin) && is.finite(ymax) && nzchar(city_val)) {
+        # Strip spaces from city name for clean file naming
+        clean_city <- gsub("\\s+", "", city_val)
+        return(sprintf("%s_%d_%d", clean_city, ymin, ymax))
+      }
+    }
+    
+    # Scenario B: Dataset contains only year
+    if (has_year) {
+      ymin <- suppressWarnings(min(df$year, na.rm = TRUE))
+      ymax <- suppressWarnings(max(df$year, na.rm = TRUE))
+      
+      if (is.finite(ymin) && is.finite(ymax)) {
+        return(sprintf("dataset_%d_%d", ymin, ymax))
+      }
+    }
+    
+    # Scenario C: Default fallback
+    return("dataset")
+  }
+  
+  if (is.null(out_name) || !nzchar(out_name)) {
+    out_name <- infer_stub(data)
+  }
+  
+  # Initialize tracking list for generated paths
+  paths <- list(rds = NA_character_, parquet = NA_character_, csv = NA_character_)
+  
+  # 4. Write RDS Artifact
+  if (isTRUE(write_rds)) {
+    rds_path <- file.path(out_dir, paste0(out_name, ".rds"))
+    saveRDS(data, rds_path, compress = rds_compress)
+    
+    paths$rds <- normalizePath(rds_path, winslash = "/", mustWork = FALSE)
+    if (!quiet) message("[save] Wrote RDS: ", paths$rds)
+  }
+  
+  # 5. Write Parquet Artifact
+  if (isTRUE(write_parquet)) {
+    if (!requireNamespace("arrow", quietly = TRUE)) {
+      stop("Package 'arrow' is required for Parquet output. Please install it.")
+    }
+    
+    pq_path <- file.path(out_dir, paste0(out_name, ".parquet"))
+    arrow::write_parquet(data, pq_path, compression = parquet_comp)
+    
+    paths$parquet <- normalizePath(pq_path, winslash = "/", mustWork = FALSE)
+    if (!quiet) message("[save] Wrote Parquet: ", paths$parquet)
+  }
+  
+  # 6. Write Compressed CSV Artifact
+  if (isTRUE(write_csv_gz)) {
+    if (!requireNamespace("readr", quietly = TRUE)) {
+      stop("Package 'readr' is required for CSV output. Please install it.")
+    }
+    
+    csv_path <- file.path(out_dir, paste0(out_name, ".csv.gz"))
+    con <- gzfile(csv_path, open = "wt")
+    
+    # Ensure the connection closes even if write_csv fails
+    on.exit(try(close(con), silent = TRUE), add = TRUE)
+    
+    readr::write_csv(data, con)
+    
+    paths$csv <- normalizePath(csv_path, winslash = "/", mustWork = FALSE)
+    if (!quiet) message("[save] Wrote CSV.GZ: ", paths$csv)
+  }
+  
+  # Return the absolute paths invisibly for downstream use
+  invisible(paths)
 }

@@ -33,6 +33,7 @@ Imports:
     forcats,
     fs,
     geobr,
+    geosphere,
     ggmap,
     ggplot2,
     ggspatial,
