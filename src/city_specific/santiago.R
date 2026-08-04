@@ -2544,3 +2544,13 @@ santiago_process_census_2024 <- function(
   return(list(individual = df_harm, collapsed = df_collapse))
 }
 
+
+# --------------------------------------------------------------------------------------------
+# Register this city so city_cfg() can find it. Registered under the slug the scripts use,
+# not cfg$id, which is a display name for some cities. No download/process wrappers exist
+# for this city yet, so only the config is exposed.
+# --------------------------------------------------------------------------------------------
+register_city(
+  id  = "santiago",
+  cfg = santiago_cfg
+)

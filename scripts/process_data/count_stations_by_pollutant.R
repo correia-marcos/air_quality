@@ -22,6 +22,7 @@
 
 # Get all libraries and functions.
 source(here::here("src", "general_utilities", "config_utils_process_data.R"))
+source(here::here("src", "general_utilities", "config_utils_plot_tables.R"))
 
 # ====================================================================================
 # I: Import data
@@ -57,112 +58,6 @@ city_labels <- data.table::data.table(
   city_id = c("santiago", "bogota", "cdmx", "sao_paulo_metro"),
   city    = c("Santiago", "Bogotá", "Mexico City", "São Paulo")
 )
-
-# ====================================================================================
-# II: Small script-level helpers
-# ====================================================================================
-# Count stations with at least one valid value for each requested pollutant.
-.count_stations_by_pollutant <- function(arrow_dir,
-                                         pollutants = c("pm10", "pm25"),
-                                         year_filter = 2023L,
-                                         mem_gb = 8) {
-  for (p in c("duckdb", "DBI", "data.table")) {
-    if (!requireNamespace(p, quietly = TRUE)) {
-      stop("Package '", p, "' required but not installed.")
-    }
-  }
-  
-  if (!dir.exists(arrow_dir)) {
-    stop("`arrow_dir` not found: ", arrow_dir)
-  }
-  
-  con <- DBI::dbConnect(duckdb::duckdb())
-  on.exit(try(DBI::dbDisconnect(con, shutdown = TRUE), silent = TRUE), add = TRUE)
-  
-  DBI::dbExecute(con, sprintf("PRAGMA memory_limit='%dGB';", as.integer(mem_gb)))
-  DBI::dbExecute(con, "INSTALL icu;")
-  DBI::dbExecute(con, "LOAD icu;")
-  
-  glob_q <- paste0("'", gsub("\\\\", "/", arrow_dir), "/**/*.parquet'")
-  
-  DBI::dbExecute(con, paste0(
-    "CREATE VIEW pollution AS SELECT * FROM read_parquet(",
-    glob_q, ", hive_partitioning = true);"
-  ))
-  
-  col_info <- DBI::dbGetQuery(con, "PRAGMA table_info('pollution');")
-  present_cols <- tolower(col_info$name)
-  pollutants <- intersect(tolower(pollutants), present_cols)
-  
-  if (length(pollutants) == 0L) {
-    stop("None of the requested pollutants are present in: ", arrow_dir)
-  }
-  
-  count_sql <- paste(
-    vapply(pollutants, function(p) {
-      paste0(
-        "COUNT(DISTINCT CASE WHEN ", p,
-        " IS NOT NULL THEN station END) AS ", p
-      )
-    }, character(1)),
-    collapse = ", "
-  )
-  
-  q <- sprintf(
-    paste0(
-      "SELECT %s ",
-      "FROM pollution ",
-      "WHERE EXTRACT(year FROM datetime) = %d;"
-    ),
-    count_sql,
-    as.integer(year_filter)
-  )
-  
-  res <- data.table::as.data.table(DBI::dbGetQuery(con, q))
-  
-  for (p in c("pm10", "pm25")) {
-    if (!p %in% names(res)) {
-      res[, (p) := NA_integer_]
-    }
-  }
-  
-  res[, .(pm10 = as.integer(pm10), pm25 = as.integer(pm25))]
-}
-
-# Write the monitoring-station count table in presentation-ready LaTeX.
-.write_station_count_latex <- function(station_counts,
-                                       out_file,
-                                       table_size = "\\tiny") {
-  station_counts <- data.table::copy(station_counts)
-  
-  lines_body <- apply(station_counts, 1, function(x) {
-    paste0("  ", x[["city"]], " &  ", x[["pm10"]], " &  ",
-           x[["pm25"]], " \\\\ ")
-  })
-  
-  latex_lines <- c(
-    "\\vspace{0.1cm}",
-    "\\begin{center}",
-    table_size,
-    "\\begin{tabular}{lcc}",
-    "\\toprule",
-    "\\toprule",
-    "\\multicolumn{2}{c}{\\textbf{Number of monitoring stations}} \\",
-    "\\cmidrule{2-3}",
-    "\\textbf{City} & $PM_{10}$ & $PM_{2.5}$ \\",
-    "\\midrule",
-    lines_body,
-    "\\bottomrule",
-    "\\bottomrule",
-    "\\end{tabular}",
-    "\\end{center}"
-  )
-  
-  dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
-  writeLines(latex_lines, out_file, useBytes = TRUE)
-  
-  invisible(out_file)
-}
 
 # ====================================================================================
 # III: Process raw data: structural missingness
@@ -216,7 +111,7 @@ for (city in names(arrow_raw_dirs)) {
     next
   }
   
-  tmp <- .count_stations_by_pollutant(
+  tmp <- count_stations_reporting(
     arrow_dir    = arrow_raw_dirs[[city]],
     pollutants   = pollutants,
     year_filter  = analysis_year,
@@ -247,7 +142,7 @@ data.table::fwrite(
   file.path(outdir_tables, "stations_by_pollutant_2023.csv")
 )
 
-.write_station_count_latex(
+write_station_count_latex(
   station_counts = station_counts,
   out_file = file.path(outdir_tables, "stations_by_pollutant_2023.tex")
 )

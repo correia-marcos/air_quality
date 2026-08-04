@@ -3,7 +3,8 @@
 # ============================================================================================
 # @Goal: Functions for LaTeX tables.
 #
-# @Description: Renders the paper's tables to .tex. These read tables the process stage already computed;
+# @Description: Renders the paper's tables to .tex. These read tables the process stage
+# already computed;
 #   no statistics are calculated here.
 #   Sourced by config_utils_plot_tables.R; never sourced directly by a script.
 #
@@ -260,7 +261,8 @@ table_who_exceedances <- function(
 # --------------------------------------------------------------------------------------------
 # Function: table_stations_by_pollutant
 #
-# @Arg stations_long  : data.table, the $long element from summarize_stations_by_pollutant().
+# @Arg stations_long  : data.table, the $long element from
+# summarize_stations_by_pollutant().
 #                        Must contain (city, year, pollutant, n_stations).
 # @Arg save_latex_table: logical. Default FALSE.
 # @Arg out_file       : path to .tex file.
@@ -328,7 +330,8 @@ table_stations_by_pollutant <- function(
 # Function: table_missing_by_dimension
 #
 # @Arg missing_list    : list; output of compute_missing_proportions() (names are dims).
-# @Arg dim             : string; which dimension to render. Must be a name in `missing_list`.
+# @Arg dim             : string; which dimension to render. Must be a name in
+# `missing_list`.
 # @Arg city_label      : string; first column ("City") value in the rendered table.
 # @Arg save_latex_table: logical; default FALSE.
 # @Arg out_file        : path to .tex file.
@@ -581,4 +584,130 @@ plot_missing_heatmap <- function(
       panel.grid = ggplot2::element_blank(),
       plot.title = ggplot2::element_text(face = "bold")
     )
+}
+
+
+
+# --------------------------------------------------------------------------------------------
+# Function: write_station_count_latex
+#
+# @Arg station_counts : data.table with columns city, pm10, pm25.
+# @Arg out_file       : string; destination .tex path.
+# @Arg table_size     : string; LaTeX size macro. Default "\\tiny".
+#
+# @Output : invisible out_file. Writes a three-column city/PM10/PM2.5 table.
+#
+# @Details:
+#   Not the same table as table_stations_by_pollutant(), which renders city x year x
+#   pollutant
+#   from a coverage summary. This one is the paper's compact station count for a single
+#   year.
+#   The two header rows previously ended in a single backslash, which LaTeX reads as
+#   escaping
+#   the newline rather than ending the row; both now emit the required double backslash.
+#
+# @Written_by : Marcos Paulo
+# @Updated_on : August 2026
+# --------------------------------------------------------------------------------------------
+write_station_count_latex <- function(station_counts,
+                                       out_file,
+                                       table_size = "\\tiny") {
+  station_counts <- data.table::copy(station_counts)
+  
+  lines_body <- apply(station_counts, 1, function(x) {
+    paste0("  ", x[["city"]], " &  ", x[["pm10"]], " &  ",
+           x[["pm25"]], " \\\\ ")
+  })
+  
+  latex_lines <- c(
+    "\\vspace{0.1cm}",
+    "\\begin{center}",
+    table_size,
+    "\\begin{tabular}{lcc}",
+    "\\toprule",
+    "\\toprule",
+    "\\multicolumn{2}{c}{\\textbf{Number of monitoring stations}} \\\\",
+    "\\cmidrule{2-3}",
+    "\\textbf{City} & $PM_{10}$ & $PM_{2.5}$ \\\\",
+    "\\midrule",
+    lines_body,
+    "\\bottomrule",
+    "\\bottomrule",
+    "\\end{tabular}",
+    "\\end{center}"
+  )
+  
+  dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
+  writeLines(latex_lines, out_file, useBytes = TRUE)
+  
+  invisible(out_file)
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: latex_missing_by_quintile
+#
+# @Arg dt     : data.table from compute_missing_by_quintile(), stacked across cities.
+# @Arg digits : integer; decimal places for the shares. Default 3.
+#
+# @Output : character scalar; the LaTeX tabular, ready for writeLines().
+#
+# @Written_by : Marcos Paulo
+# @Updated_on : August 2026
+# --------------------------------------------------------------------------------------------
+latex_missing_by_quintile <- function(dt, digits = 3L) {
+  wide <- data.table::dcast(
+    dt,
+    pollutant + city_order + city ~ quintile,
+    value.var = "value"
+  )
+  
+  data.table::setorder(wide, pollutant, city_order)
+  
+  q_cols <- as.character(1:5)
+  for (q in q_cols) {
+    if (!q %in% names(wide)) {
+      wide[, (q) := NA_real_]
+    }
+  }
+  
+  fmt <- function(x) {
+    out <- sprintf(paste0("%0.", digits, "f"), x)
+    out[is.na(x)] <- "--"
+    out
+  }
+  
+  pol_lab <- c(pm10 = "$PM_{10}$", pm25 = "$PM_{2.5}$")
+  
+  lines <- c(
+    "\\begin{tabular}{llccccc}",
+    "\\toprule",
+    "Pollutant & City & Q1 & Q2 & Q3 & Q4 & Q5 \\\\",
+    "\\midrule"
+  )
+  
+  pollutants_in_table <- unique(wide$pollutant)
+  
+  for (p in pollutants_in_table) {
+    block <- wide[pollutant == p]
+    
+    for (i in seq_len(nrow(block))) {
+      vals <- fmt(as.numeric(block[i, ..q_cols]))
+      pol <- if (i == 1L) pol_lab[[p]] else ""
+      
+      line <- paste0(
+        pol, " & ", block$city[i], " & ",
+        paste(vals, collapse = " & "), " \\\\"
+      )
+      
+      lines <- c(lines, line)
+    }
+    
+    if (p != tail(pollutants_in_table, 1L)) {
+      lines <- c(lines, "\\addlinespace")
+    }
+  }
+  
+  lines <- c(lines, "\\bottomrule", "\\end{tabular}")
+  paste(lines, collapse = "\n")
 }

@@ -4,15 +4,17 @@
 # @Goal: One definition of every helper more than one stage needs.
 #
 # @Description: Sourced by config_utils_process_data.R, config_utils_plot_tables.R and
-#   config_utils_validation_old_version.R. Loads no packages and has no side effects, so it is
+#   config_utils_validation_old_version.R. Loads no packages and has no side effects, so
+#   it is
 #   safe to source more than once; scripts never source it directly. Absorbs the former
-#   geo_utils.R. Every function here previously existed in two or more copies; keeping one copy
+#   geo_utils.R. Every function here previously existed in two or more copies; keeping one
+#   copy
 #   is what stops them drifting apart the way .safe_chr did.
 #
 # @Summary:
 #   I.   Projections  — aeqd_crs, utm_epsg, aeqd_for
 #   II.  Identifiers  — normalize_station, safe_chr
-#   III. Formatting   — to_iso, latex_escape
+#   III. Formatting   — to_iso, latex_escape, format_int_latex
 #   IV.  Disk         — write_pq, save_raw_data_tidy_formatted
 #
 # @Date: August 2026
@@ -29,11 +31,13 @@
 #
 # @Purpose   : Puts a layer on a metre grid centred on the study area, so a 20 km ring is
 #              20 000 ground metres whatever CRS the provider shipped. A provider's own
-#              projected CRS carries its own scale factor and does not give that: EPSG:6372
+#              projected CRS carries its own scale factor and does not give that:
+#              EPSG:6372
 #              is 0.99712 at Mexico City's latitude, which stretched a "20 000 m" ring to
 #              20 058 m on the ground.
 #
-# @Details   : Exact along rays from the origin, so the origin only has to be near the area.
+# @Details   : Exact along rays from the origin, so the origin only has to be near the
+# area.
 #              Metro extent only — error grows with distance off-axis.
 #
 # @Written_on: July 2026
@@ -49,9 +53,11 @@ aeqd_crs <- function(lon0, lat0) {
 #
 # @Arg       : x — sf or sfc object, in any CRS.
 #
-# @Output    : integer; EPSG code of the UTM zone holding the layer's bounding-box midpoint.
+# @Output    : integer; EPSG code of the UTM zone holding the layer's bounding-box
+# midpoint.
 #
-# @Purpose   : Gives one metric CRS for a metro-scale layer, used for area, distance and any
+# @Purpose   : Gives one metric CRS for a metro-scale layer, used for area, distance and
+# any
 #              geometry repair that must run planar (GEOS) rather than spherical (s2).
 #
 # @Details   : 326xx north of the equator, 327xx south. The zone formula is defined on
@@ -77,10 +83,12 @@ utm_epsg <- function(x) {
 #
 # @Output    : character; proj4 string of an AEQD grid centred on the layer.
 #
-# @Purpose   : Picks the AEQD origin from the bounding-box midpoint instead of the centroid.
+# @Purpose   : Picks the AEQD origin from the bounding-box midpoint instead of the
+# centroid.
 #              A centroid needs st_union() first, and on a lon/lat layer that runs through
 #              s2, whose rebuild snaps vertices to a ~1.1 cm grid — enough to collapse the
-#              sub-centimetre edges some providers ship into degenerate (duplicate) vertices.
+#              sub-centimetre edges some providers ship into degenerate (duplicate)
+#              vertices.
 #              A bounding box touches no vertices, so the layer never reaches s2.
 #
 # @Written_on: July 2026
@@ -102,13 +110,16 @@ aeqd_for <- function(x) {
 # @Output    : character; upper-cased, trimmed, accent-stripped, quote-free names.
 #
 # @Purpose   : Gives every stage one spelling per station, so hourly readings, station
-#              catalogues and distance matrices join on the same key. Providers ship the same
+#              catalogues and distance matrices join on the same key. Providers ship the
+#              same
 #              station as "Nezahualcóyotl", "NEZAHUALCOYOTL" and ' "Nezahualcoyotl" '.
 #
 # @Details   : Case, accents and quotes only. It deliberately does NOT repair genuine
 #              misspellings — those belong in a city's station_nme_map, where each pair is
-#              visible and reviewable. Stations whose names differ by more than accents will
-#              still fail to join, which aggregate_idw_exposure() reports rather than hides.
+#              visible and reviewable. Stations whose names differ by more than accents
+#              will
+#              still fail to join, which aggregate_idw_exposure() reports rather than
+#              hides.
 #
 # @Written_by: Marcos Paulo
 # @Updated_on: August 2026
@@ -127,14 +138,18 @@ normalize_station <- function(x) {
 #
 # @Output    : character; upper-cased, accent-stripped, alphanumeric-only keys.
 #
-# @Purpose   : Matches a station to the file that carries its readings when the two differ in
-#              punctuation, spacing or case — "Cerro Navia", "CERRO_NAVIA" and "cerro-navia"
+# @Purpose   : Matches a station to the file that carries its readings when the two differ
+# in
+#              punctuation, spacing or case — "Cerro Navia", "CERRO_NAVIA" and "cerro-
+#              navia"
 #              all reduce to "CERRONAVIA".
 #
-# @Details   : Stricter than normalize_station(): it removes every non-alphanumeric character,
+# @Details   : Stricter than normalize_station(): it removes every non-alphanumeric
+# character,
 #              which is right for filename matching and wrong for a display name. Santiago
 #              needs an extra step and therefore keeps its own santiago_normalize_key() in
-#              santiago.R: SINCA prefixes its filenames with the region, so "METROPOLITANA DE
+#              santiago.R: SINCA prefixes its filenames with the region, so "METROPOLITANA
+#              DE
 #              SANTIAGO" must come off before the station name can be isolated.
 #
 # @Written_by: Marcos Paulo
@@ -155,11 +170,13 @@ normalize_key <- function(x) {
 # @Output    : character; the identifiers without scientific notation or lost digits.
 #
 # @Purpose   : Geographic keys are zero-padded codes that arrive as integer64, integer,
-#              double or character depending on the reader. as.character() on a double gives
+#              double or character depending on the reader. as.character() on a double
+#              gives
 #              "1e+05" for 100000, which then joins to nothing.
 #
 # @Details   : Doubles go through sprintf("%.0f"), which prints all digits. Above 2^53 a
-#              double cannot hold an exact integer, so those warn rather than fail silently —
+#              double cannot hold an exact integer, so those warn rather than fail
+#              silently —
 #              the fix there is to read the column as character or integer64 upstream.
 #
 # @Written_by: Marcos Paulo
@@ -223,7 +240,8 @@ to_iso <- function(x) {
 # @Purpose   : Stops a city or station name containing &, %, _ or $ from breaking the
 #              generated .tex at compile time.
 #
-# @Details   : Backslash is escaped first, otherwise it would re-escape the backslashes the
+# @Details   : Backslash is escaped first, otherwise it would re-escape the backslashes
+# the
 #              later substitutions insert.
 #
 # @Written_by: Marcos Paulo
@@ -244,6 +262,24 @@ latex_escape <- function(x) {
 
 
 # --------------------------------------------------------------------------------------------
+# Function: format_int_latex
+#
+# @Arg x : numeric; values to render as whole numbers in a LaTeX cell.
+#
+# @Output : character; rounded, thousands-separated, no scientific notation.
+#
+# @Details:
+#   scientific = FALSE matters: population totals run to eight digits, and format() would
+#   otherwise print "1.2e+07" into the table.
+#
+# @Written_by : Marcos Paulo
+# @Updated_on : August 2026
+# --------------------------------------------------------------------------------------------
+format_int_latex <- function(x) {
+  format(round(x), big.mark = ",", scientific = FALSE, trim = TRUE)
+}
+
+# --------------------------------------------------------------------------------------------
 # Function: write_pq
 #
 # @Arg       : df   — data frame to write.
@@ -252,10 +288,12 @@ latex_escape <- function(x) {
 #
 # @Output    : invisible NULL. Writes <dir>/<name>.parquet.
 #
-# @Purpose   : One Parquet writer for the comparison outputs, so compression and the tibble
+# @Purpose   : One Parquet writer for the comparison outputs, so compression and the
+# tibble
 #              conversion are decided once rather than in each caller.
 #
-# @Details   : `dir` is an argument because the four call sites this replaced closed over two
+# @Details   : `dir` is an argument because the four call sites this replaced closed over
+# two
 #              different folder variables (cmp_dir and out_dir).
 #
 # @Written_by: Marcos Paulo
@@ -389,4 +427,38 @@ save_raw_data_tidy_formatted <- function(
   
   # Return the absolute paths invisibly for downstream use
   invisible(paths)
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: find_col
+#
+# @Arg dt         : data.table to search.
+# @Arg candidates : character; acceptable column names, most preferred first.
+# @Arg file_label : string; used in the error message so a failure names its file.
+#
+# @Output : string; the first candidate present in dt.
+#
+# @Details:
+#   Resolves the column-name differences between providers (station vs station_id vs
+#   codigo_estacion). Flagged in doc/deletion_candidates.md: a fallback list is a
+#   guardrail
+#   standing in for a test, and naming the column explicitly per city would be stricter.
+#
+# @Written_by : Marcos Paulo
+# @Updated_on : August 2026
+# --------------------------------------------------------------------------------------------
+find_col <- function(dt, candidates, file_label) {
+  hit <- candidates[candidates %in% names(dt)]
+  
+  if (length(hit) == 0L) {
+    stop(
+      "None of these columns were found in ", file_label, ": ",
+      paste(candidates, collapse = ", "),
+      "\nAvailable columns are: ",
+      paste(names(dt), collapse = ", ")
+    )
+  }
+  
+  hit[1L]
 }

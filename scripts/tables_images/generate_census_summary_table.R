@@ -85,72 +85,28 @@ city_specs <- data.table::data.table(
 # ======================================================================================
 # II: Process data
 # ======================================================================================
-# Helper to format large integers for LaTeX tables.
-.format_int_latex <- function(x) {
-  format(round(x), big.mark = ",", scientific = FALSE, trim = TRUE)
-}
-
-# Helper to escape characters that can break LaTeX in ordinary text cells.
-.escape_latex <- function(x) {
-  x <- gsub("&", "\\\\&", x, fixed = TRUE)
-  x <- gsub("%", "\\\\%", x, fixed = TRUE)
-  x <- gsub("_", "\\\\_", x, fixed = TRUE)
-  x
-}
-
-# Compute summary statistics for one city.
-.compute_city_census_summary <- function(spec_row) {
-  if (!file.exists(spec_row$census_path)) {
-    stop("Census file not found: ", spec_row$census_path)
-  }
-
-  dt <- data.table::fread(spec_row$census_path)
-
-  needed_cols <- c(spec_row$geo_id_col, spec_row$pop_col)
-  missing_cols <- setdiff(needed_cols, names(dt))
-
-  if (length(missing_cols) > 0L) {
-    stop(
-      "Missing column(s) in ", spec_row$city, ": ",
-      paste(missing_cols, collapse = ", ")
-    )
-  }
-
-  dt <- dt[
-    !is.na(get(spec_row$geo_id_col)) &
-      !is.na(get(spec_row$pop_col)) &
-      get(spec_row$pop_col) > 0
-  ]
-
-  total_population <- sum(dt[[spec_row$pop_col]], na.rm = TRUE)
-  n_geo_units <- data.table::uniqueN(dt[[spec_row$geo_id_col]])
-
-  data.table::data.table(
-    city = spec_row$city,
-    city_latex = spec_row$city_latex,
-    year = spec_row$census_year,
-    total_population = total_population,
-    census_geographic_level = spec_row$census_level,
-    n_census_geographic_units = n_geo_units,
-    average_population_per_unit = total_population / n_geo_units
-  )
-}
-
 # Apply city-level summary function and preserve the table order in city_specs.
 summary_dt <- data.table::rbindlist(
   lapply(seq_len(nrow(city_specs)), function(i) {
-    .compute_city_census_summary(city_specs[i])
+    compute_city_census_summary(
+      census_path  = city_specs$census_path[i],
+      city         = city_specs$city[i],
+      city_latex   = city_specs$city_latex[i],
+      census_year  = city_specs$census_year[i],
+      census_level = city_specs$census_level[i],
+      geo_id_col   = city_specs$geo_id_col[i],
+      pop_col      = city_specs$pop_col[i])
   })
 )
 
 # Build display columns used in the LaTeX table.
 table_dt <- data.table::copy(summary_dt)
 
-table_dt[, total_population_fmt := .format_int_latex(total_population)]
-table_dt[, n_units_fmt := .format_int_latex(n_census_geographic_units)]
-table_dt[, avg_pop_fmt := .format_int_latex(average_population_per_unit)]
+table_dt[, total_population_fmt := format_int_latex(total_population)]
+table_dt[, n_units_fmt := format_int_latex(n_census_geographic_units)]
+table_dt[, avg_pop_fmt := format_int_latex(average_population_per_unit)]
 
-table_dt[, census_level_latex := .escape_latex(census_geographic_level)]
+table_dt[, census_level_latex := latex_escape(census_geographic_level)]
 
 # ======================================================================================
 # III: Save data and LaTeX table

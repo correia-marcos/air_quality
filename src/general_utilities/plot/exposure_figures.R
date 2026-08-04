@@ -3,7 +3,8 @@
 # ============================================================================================
 # @Goal: Functions for exposure-by-group figures.
 #
-# @Description: Exposure across the socioeconomic distribution: quintile levels, kernel densities, hours
+# @Description: Exposure across the socioeconomic distribution: quintile levels, kernel
+# densities, hours
 #   above WHO targets, and the regression gaps with clustered intervals.
 #   Sourced by config_utils_plot_tables.R; never sourced directly by a script.
 #
@@ -982,4 +983,140 @@ plot_group_levels <- function(summary_table,
     pollutants == "pm10", "PM10",
     default = toupper(pollutants)
   )
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: save_plot_pdf
+#
+# @Arg plot_obj : ggplot object, or NULL.
+# @Arg path     : string; destination PDF path.
+# @Arg width    : numeric; figure width in inches. Default 6.
+# @Arg height   : numeric; figure height in inches. Default 4.5.
+#
+# @Output : invisible NULL. Writes the PDF, or does nothing when plot_obj is NULL.
+#
+# @Details:
+#   The NULL case is not an error: the plot builders return NULL when a city lacks the
+#   columns
+#   a figure needs, and skipping quietly keeps one missing city from stopping a whole run.
+#
+# @Written_by : Marcos Paulo
+# @Updated_on : August 2026
+# --------------------------------------------------------------------------------------------
+save_plot_pdf <- function(plot_obj, path, width = 6, height = 4.5) {
+  if (is.null(plot_obj)) {
+    return(invisible(NULL))
+  }
+
+  ggplot2::ggsave(filename = path, plot = plot_obj, device = cairo_pdf,
+                  width = width, height = height, dpi = 300, bg = "white")
+
+  invisible(NULL)
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: exposure_group_axis_label
+#
+# @Arg socio_var  : string; "income" or "education".
+# @Arg group_type : string; "quintile" or "decile".
+#
+# @Output : string; x-axis label, e.g. "Income quintile".
+#
+# @Details:
+#   Keys on both fields because the two no longer imply each other: CDMX income runs on
+#   quintiles while Sao Paulo income runs on deciles, so keying on group_type alone would
+#   label a CDMX income figure "Education quintile".
+#
+# @Written_by : Marcos Paulo
+# @Updated_on : August 2026
+# --------------------------------------------------------------------------------------------
+exposure_group_axis_label <- function(socio_var, group_type) {
+  var_label <- if (identical(socio_var, "income")) "Income" else "Education"
+  paste(var_label, group_type)
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: save_exposure_ci_figures
+#
+# @Arg ci_dt       : data.table; CI estimates from compute_exposure_regressions.R.
+# @Arg tag         : string; grouping tag used in the file name, e.g. "education".
+# @Arg out_dir     : string; folder for the PDFs.
+# @Arg city_labels : named character; city -> display label.
+# @Arg city_files  : named character; city -> file-safe name.
+#
+# @Output : invisible NULL. Writes one PDF per city x outcome.
+#
+# @Details:
+#   Exceedance-hour outcomes carry both pollutants, so PM2.5 and PM10 are drawn in the
+#   same
+#   figure and the file name records both. Labels and paths are arguments, not captured
+#   from
+#   the calling script, so the function is readable on its own.
+#
+# @Written_by : Marcos Paulo
+# @Updated_on : August 2026
+# --------------------------------------------------------------------------------------------
+save_exposure_ci_figures <- function(ci_dt, tag, out_dir, city_labels, city_files) {
+  combos <- unique(ci_dt[!is.na(city) & !is.na(outcome),
+                         .(city, outcome, group_type, socioeconomic_var)])
+
+  for (j in seq_len(nrow(combos))) {
+    city_j <- combos$city[j]
+    out_j  <- combos$outcome[j]
+    poll_j <- intersect(c("pm25", "pm10"),
+                        ci_dt[city == city_j & outcome == out_j, unique(pollutant)])
+
+    if (length(poll_j) == 0L) next
+
+    p <- plot_group_ci(
+      ci_table    = ci_dt[city == city_j],
+      outcome     = out_j,
+      pollutant   = poll_j,
+      group_label = exposure_group_axis_label(combos$socioeconomic_var[j],
+                                              combos$group_type[j]),
+      city_label  = city_labels[[city_j]])
+
+    poll_tag <- if (length(poll_j) > 1L) "pm25_pm10" else poll_j
+
+    fname <- sprintf("%s_%s_%s_%s_ci.pdf", city_files[[city_j]], tag, out_j, poll_tag)
+    save_plot_pdf(p, file.path(out_dir, fname))
+  }
+
+  invisible(NULL)
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: save_exposure_level_figures
+#
+# @Arg sum_dt      : data.table; group summaries from compute_exposure_regressions.R.
+# @Arg tag         : string; grouping tag used in the file name, e.g. "education".
+# @Arg out_dir     : string; folder for the PDFs.
+# @Arg city_labels : named character; city -> display label.
+# @Arg city_files  : named character; city -> file-safe name.
+#
+# @Output : invisible NULL. Writes one dual-axis PM10/PM2.5 PDF per city.
+#
+# @Written_by : Marcos Paulo
+# @Updated_on : August 2026
+# --------------------------------------------------------------------------------------------
+save_exposure_level_figures <- function(sum_dt, tag, out_dir, city_labels, city_files) {
+  for (city_j in unique(sum_dt[!is.na(city), city])) {
+    sub <- sum_dt[city == city_j]
+
+    p <- plot_group_levels(
+      summary_table = sub,
+      group_label   = exposure_group_axis_label(sub$socioeconomic_var[1],
+                                                sub$group_type[1]),
+      city_label    = city_labels[[city_j]],
+      year_label    = as.character(sub$year[1]))
+
+    save_plot_pdf(p, file.path(out_dir, sprintf("%s_%s_levels.pdf",
+                                                city_files[[city_j]], tag)))
+  }
+
+  invisible(NULL)
 }

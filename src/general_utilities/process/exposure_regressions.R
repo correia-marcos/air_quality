@@ -3,7 +3,8 @@
 # ============================================================================================
 # @Goal: Functions for exposure summaries, regressions and coverage.
 #
-# @Description: Weighted exposure summaries by socioeconomic group, the regression gaps relative to the
+# @Description: Weighted exposure summaries by socioeconomic group, the regression gaps
+# relative to the
 #   top group with clustered intervals, and the geographic coverage behind each estimate.
 #   Sourced by config_utils_process_data.R; never sourced directly by a script.
 #
@@ -655,4 +656,195 @@ compute_exposure_regressions <- function(exposure_dt,
   }
   
   return(out)
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: idw_artifact_path
+#
+# @Arg dir_idw   : string; root folder of the IDW estimates.
+# @Arg city_id   : string; city folder and file prefix, e.g. "cdmx_2020".
+# @Arg what      : string; artifact suffix, "idw_exposure" or "indiv_groups".
+# @Arg buffer_km : numeric; buffer the artifact was built with.
+# @Arg suffix    : string; optional grouping tag, e.g. "_income". Default "".
+#
+# @Output : string; full path to the requested Parquet file.
+#
+# @Details:
+#   estimate_idw_exposure.R names every artifact
+#   <city_id>/<city_id>_<buffer>km[_suffix]_<what>
+#   .parquet. Building the name in one place keeps the readers from drifting from the
+#   writer.
+#
+# @Written_by : Marcos Paulo
+# @Updated_on : August 2026
+# --------------------------------------------------------------------------------------------
+idw_artifact_path <- function(dir_idw, city_id, what, buffer_km, suffix = "") {
+  here::here(dir_idw, city_id,
+             sprintf("%s_%dkm%s_%s.parquet", city_id, buffer_km, suffix, what))
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: read_idw_artifact
+#
+# @Arg dir_idw   : string; root folder of the IDW estimates.
+# @Arg city_id   : string; city folder and file prefix.
+# @Arg what      : string; "idw_exposure" or "indiv_groups".
+# @Arg buffer_km : numeric; buffer the artifact was built with.
+# @Arg suffix    : string; optional grouping tag, e.g. "_income". Default "".
+#
+# @Output : data.table with the artifact's contents.
+#
+# @Written_by : Marcos Paulo
+# @Updated_on : August 2026
+# --------------------------------------------------------------------------------------------
+read_idw_artifact <- function(dir_idw, city_id, what, buffer_km, suffix = "") {
+  path <- idw_artifact_path(dir_idw, city_id, what, buffer_km, suffix)
+
+  if (!file.exists(path)) {
+    stop("IDW artifact not found: ", path)
+  }
+
+  data.table::as.data.table(arrow::read_parquet(path))
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: run_city_exposure
+#
+# @Arg city           : string; display label stamped on every output row.
+# @Arg city_id        : string; machine id stamped on every output row.
+# @Arg exposure_dt    : data.table; geo-level IDW exposure for this city.
+# @Arg individual_dt  : data.table; geo-by-group population weights.
+# @Arg geo_station_pq : string; path to this city's geo-to-station distance matrix.
+# @Arg pop_col        : string; population or expansion-weight column.
+# @Arg socio_var      : string; "education" or "income", stamped on every row.
+# @Arg group_col      : string; socioeconomic group column.
+# @Arg group_values   : integer vector; valid groups, e.g. 1:5.
+# @Arg base_group     : integer; omitted reference group.
+# @Arg group_type     : string; "quintile" or "decile", stamped on every row.
+# @Arg year           : integer; exposure year to keep.
+# @Arg buffer_km      : numeric; buffer the exposure was built with.
+# @Arg pollutants     : character vector; pollutants to keep.
+# @Arg summary_pattern: string; regex selecting summary outcome columns.
+# @Arg ci_pattern     : string; regex selecting regression outcome columns.
+# @Arg conf_level     : numeric; confidence level for intervals.
+# @Arg normalized     : logical; divide each outcome by the base-group mean.
+# @Arg regression_unit: string; "geo_group" (main), "individual", or "geo".
+# @Arg se_type        : string; "cluster_geo" (preferred) or "classic".
+#
+# @Output : list(summary, ci, coverage); the three tables for this city, each carrying the
+# same
+#           run labels (city, city_id, year, buffer_km, socioeconomic_var, group_type) so
+#           they
+#           can be stacked across cities without further work.
+#
+# @Details:
+#   One city-grouping run of the exposure stage. Every methodological value is a required
+#   argument rather than a default: those are the paper's specification and belong where a
+#   referee reads them, in the calling script. Labelling happens here rather than in the
+#   caller,
+#   which is what stops the three tables from disagreeing about which run produced them.
+#
+# @Written_by : Marcos Paulo
+# @Updated_on : August 2026
+# --------------------------------------------------------------------------------------------
+run_city_exposure <- function(city, city_id, exposure_dt, individual_dt, geo_station_pq,
+                              pop_col, socio_var, group_col, group_values, base_group,
+                              group_type, year, buffer_km, pollutants, summary_pattern,
+                              ci_pattern, conf_level, normalized, regression_unit,
+                              se_type) {
+
+  # Stamp the run labels on a table, so every family carries the same provenance.
+  label <- function(dt) {
+    dt[, `:=`(city = city, city_id = city_id, year = year, buffer_km = buffer_km,
+              socioeconomic_var = socio_var, group_type = group_type)]
+    dt[]
+  }
+
+  list(
+    summary = label(compute_exposure_summaries(
+      exposure_dt = exposure_dt, individual_dt = individual_dt, pop_col = pop_col,
+      group_col = group_col, group_values = group_values, pollutants = pollutants,
+      outcome_pattern = summary_pattern, year_filter = year)),
+
+    ci = label(compute_exposure_regressions(
+      exposure_dt = exposure_dt, individual_dt = individual_dt, pop_col = pop_col,
+      group_col = group_col, group_values = group_values, base_group = base_group,
+      pollutants = pollutants, outcome_pattern = ci_pattern, year_filter = year,
+      conf_level = conf_level, normalized = normalized,
+      regression_unit = regression_unit, se_type = se_type)),
+
+    coverage = label(compute_exposure_coverage(
+      exposure_dt = exposure_dt, individual_dt = individual_dt,
+      geo_station_pq = geo_station_pq, pop_col = pop_col, group_col = group_col,
+      group_values = group_values, pollutants = pollutants, buffer_km = buffer_km,
+      year_filter = year)))
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: stack_city_tables
+#
+# @Arg runs : list; each element a list returned by run_city_exposure().
+# @Arg what : string; which table to pull, "summary", "ci" or "coverage".
+#
+# @Output : data.table stacking that table across all runs.
+#
+# @Written_by : Marcos Paulo
+# @Updated_on : August 2026
+# --------------------------------------------------------------------------------------------
+stack_city_tables <- function(runs, what) {
+  data.table::rbindlist(lapply(runs, `[[`, what), fill = TRUE)
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: set_meta_cols_first
+#
+# @Arg dt        : data.table; modified in place.
+# @Arg meta_cols : character vector; columns to move to the front, in order.
+#
+# @Output : the same data.table, invisibly; column order changed by reference.
+#
+# @Details:
+#   Puts the run labels ahead of the numbers so a reader opening the artifact sees which
+#   city
+#   and specification a row belongs to before its values.
+#
+# @Written_by : Marcos Paulo
+# @Updated_on : August 2026
+# --------------------------------------------------------------------------------------------
+set_meta_cols_first <- function(dt, meta_cols) {
+  data.table::setcolorder(dt, c(meta_cols, setdiff(names(dt), meta_cols)))
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: save_table_parquet_csv
+#
+# @Arg dt      : data.table to write.
+# @Arg out_dir : string; destination folder.
+# @Arg name    : string; file stem, without extension.
+# @Arg quiet   : logical; suppress the confirmation message. Default FALSE.
+#
+# @Output : invisible NULL. Writes <out_dir>/<name>.parquet and <name>.csv.
+#
+# @Details:
+#   Parquet is the file of record because it keeps column types; the CSV copy exists so
+#   coauthors can open the same table in a spreadsheet.
+#
+# @Written_by : Marcos Paulo
+# @Updated_on : August 2026
+# --------------------------------------------------------------------------------------------
+save_table_parquet_csv <- function(dt, out_dir, name, quiet = FALSE) {
+  arrow::write_parquet(dt, file.path(out_dir, paste0(name, ".parquet")))
+  data.table::fwrite(dt, file.path(out_dir, paste0(name, ".csv")))
+
+  if (!quiet) {
+    cat("Saved:", file.path(out_dir, name), "(.parquet and .csv)\n")
+  }
+
+  invisible(NULL)
 }

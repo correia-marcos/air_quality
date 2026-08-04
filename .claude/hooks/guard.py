@@ -45,7 +45,9 @@ ASK_WRITE = (
 SRC_EXEMPT = ("config_utils_", "setup_packages.r", "registry.r", "theme_paper.r")
 
 # A top-level `name <- function(` under scripts/ means logic escaped src/.
-SCRIPT_FN_RE = re.compile(r"^[A-Za-z._][A-Za-z0-9._]*\s*(?:<-|=)\s*function\s*\(", re.M)
+# Only `<-` counts: a column-0 `error = function(e)` is a tryCatch handler
+# argument in a multi-line call, not a definition.
+SCRIPT_FN_RE = re.compile(r"^[A-Za-z._][A-Za-z0-9._]*\s*<-\s*function\s*\(", re.M)
 
 # Top-level *actions* in src/. src/ declares packages and defines functions; it does not run.
 SRC_EFFECT_RE = re.compile(

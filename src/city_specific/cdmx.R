@@ -5111,3 +5111,14 @@ mexico_harmonize_census_data <- function(
   
   return(list(individual = all_census, collapsed = collapse_data))
 }
+
+
+# --------------------------------------------------------------------------------------------
+# Register this city so city_cfg() can find it. Registered under the slug the scripts use,
+# not cfg$id, which is a display name for some cities. No download/process wrappers exist
+# for this city yet, so only the config is exposed.
+# --------------------------------------------------------------------------------------------
+register_city(
+  id  = "cdmx",
+  cfg = cdmx_cfg
+)
