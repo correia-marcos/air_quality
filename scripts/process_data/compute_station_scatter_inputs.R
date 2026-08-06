@@ -76,8 +76,7 @@ geo_cdmx     <- sf::st_read(gpkg_geo_cdmx, quiet = TRUE)
 geo_santiago <- sf::st_read(gpkg_geo_santiago, quiet = TRUE)
 geo_sp       <- sf::st_read(gpkg_geo_sp, quiet = TRUE)
 
-# Read collapsed census data. Parquet carries the schema, so the geographic keys
-# arrive as character without a colClasses argument.
+# Read collapsed census data.
 census_bogota   <- data.table::as.data.table(arrow::read_parquet(census_bogota_pq))
 census_cdmx     <- data.table::as.data.table(arrow::read_parquet(census_cdmx_pq))
 census_santiago <- data.table::as.data.table(arrow::read_parquet(census_santiago_pq))

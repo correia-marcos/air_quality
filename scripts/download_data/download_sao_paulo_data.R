@@ -63,9 +63,7 @@ sao_paulo_metro_2010_weighting <- sao_paulo_download_weighting_areas(
   keep_municipality = sao_paulo_cfg$cities_in_metro,
   year              = 2010,
   out_file          = here::here(sao_paulo_cfg$out_dir, "geospatial_data",
-                                 "sao_paulo", "sao_paulo_metro_2010_weighting_areas.gpkg")
-)
-
+                                 "sao_paulo", "sao_paulo_metro_2010_weighting_areas.gpkg"))
 
 # Apply function to save a LaTeX table of the states that we must download stations data
 table_states_to_download <- table_state_metro_distances(
