@@ -88,10 +88,7 @@ compute_distance_matrices <- function(
   if (dist_metric == "geosphere") {
     pkgs <- c(pkgs, "geosphere")
   }
-  
-  for (p in pkgs) {
-  }
-  
+
   # 2. Inner helpers
   # -----------------------------------------------------------------------
   # Normalize station IDs: uppercase, strip accents and quotes.
