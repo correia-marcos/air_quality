@@ -76,8 +76,9 @@ detect_pollution_outliers <- function(
   # -----------------------------------------------------------------------
   # stringi is required to harmonize station identifiers across files.
   pkgs <- c("arrow", "data.table", "dplyr", "stringi")
-  
+
   for (p in pkgs) {
+    if (!requireNamespace(p, quietly = TRUE)) stop("Package '", p, "' required.")
   }
   
   # Validate behavioral options early to avoid silent mistakes.

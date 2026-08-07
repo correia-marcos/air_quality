@@ -84,9 +84,13 @@ compute_distance_matrices <- function(
   # 1. Check required packages
   # -----------------------------------------------------------------------
   pkgs <- c("sf", "data.table", "arrow", "stringi")
-  
+
   if (dist_metric == "geosphere") {
     pkgs <- c(pkgs, "geosphere")
+  }
+
+  for (p in pkgs) {
+    if (!requireNamespace(p, quietly = TRUE)) stop("Package '", p, "' required.")
   }
 
   # 2. Inner helpers
