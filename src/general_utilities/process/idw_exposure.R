@@ -155,6 +155,7 @@ aggregate_idw_exposure <- function(
   pkgs <- c("duckdb", "DBI", "arrow", "data.table", "dplyr", "stringi")
   
   for (p in pkgs) {
+    if (!requireNamespace(p, quietly = TRUE)) stop("Package '", p, "' required.")
   }
   
   # Check DuckDB version for out-of-core stability.
@@ -328,8 +329,8 @@ aggregate_idw_exposure <- function(
   )
 
   # Install and load the ICU extension
-  dbExecute(con, "INSTALL icu;")
-  dbExecute(con, "LOAD icu;")
+  DBI::dbExecute(con, "INSTALL icu;")
+  DBI::dbExecute(con, "LOAD icu;")
 
   # 4. Load and normalize distance matrix
   # -----------------------------------------------------------------------
