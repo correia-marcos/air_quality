@@ -45,6 +45,10 @@ the difference can be toggled and quantified in the Step 0-4 framework.
 
 ## Output
 
-Write to `doc/audits/$1.md`: a one-line verdict, the Goal-1 parameter table, Goal-2 findings
-(grouped Blocker / Should-fix / Nit with `file:line`), the Goal-3 deviation/toggle table, and a
-short TL;DR. Do not edit analysis code. End by asking me which findings to act on.
+Write to `doc/audits/<procedure>/$1.md`, where `<procedure>` is the short slug for the
+procedure under audit (e.g. `idw`, `distance_matrices`, `outlier_procedure`). Run
+`ls doc/audits/` first and reuse the existing subdirectory that matches; create it only if
+this is the first audit of that procedure. The report contains: a one-line verdict, the
+Goal-1 parameter table, Goal-2 findings (grouped Blocker / Should-fix / Nit with
+`file:line`), the Goal-3 deviation/toggle table, and a short TL;DR. Do not edit analysis
+code. End by asking me which findings to act on.
