@@ -14,10 +14,8 @@
 #   II.  Run: execute every test-*.R file under tests/testthat/.
 #
 # @Date: August 2026
-# @Author: Marcos Paulo (initial draft by Claude Code)
+# @Author: Marcos Paulo
 # ============================================================================================
-
-library(testthat)
 
 # Functions under test. geo_ids.R and base_utils.R provide the helpers that
 # idw_exposure.R calls (safe_chr, normalize_station, reconcile_geo_ids).

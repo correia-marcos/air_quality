@@ -3,8 +3,8 @@
 # ============================================================================================
 # @Goal: Functions for inverse-distance-weighted exposure.
 #
-# @Description: Interpolates hourly station readings to each geographic unit inside a buffer, then
-#   aggregates to annual exposure and WHO interim-target exceedance hours.
+# @Description: Interpolates hourly station readings to each geographic unit inside a buffer, 
+#   then aggregates to annual exposure and WHO interim-target exceedance hours.
 #   Sourced by config_utils_process_data.R; never sourced directly by a script.
 #
 # @Summary:
