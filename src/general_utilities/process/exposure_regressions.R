@@ -269,12 +269,10 @@ compute_exposure_coverage <- function(exposure_dt,
 #   regression_unit = "geo_group": collapse merged data to geo-unit-by-group cells,
 #   then weight each cell by its population share within group. "individual" runs
 #   one row per individual; "geo" runs one row per geo unit (no group merge).
-#   classic SEs use the t-distribution and reproduce the legacy confint();
-#   cluster_geo clusters by geographic unit and uses a t(G-1) critical value.
-#   With G <= number of coefficients the clustered variance is not identified,
-#   so SEs and intervals come back NA with a warning rather than as small numbers.
-#   To reproduce the coauthor's original specification, use
-#   compute_exposure_regressions_legacy() in config_utils_validation_old_version.R.
+#   classic SEs use the t-distribution; cluster_geo clusters by geographic unit
+#   and uses a t(G-1) critical value. With G <= number of coefficients the
+#   clustered variance is not identified, so SEs and intervals come back NA with
+#   a warning rather than as small numbers.
 #
 # @Written_by : Marcos Paulo
 # @Updated_on : July 2026
@@ -500,16 +498,14 @@ compute_exposure_regressions <- function(exposure_dt,
     crit <- stats::qt(1 - (1 - conf_level) / 2, stats::df.residual(fit))
   }
 
-  # cluster_geo: cluster-robust vcov by geo unit. The cluster sandwich is built
-  # from G cluster-level score sums, so its rank is at most G - 1. with fewer
-  # clusters than coefficients the standard errors are badly downward biased,
-  # and sandwich only warns 
+  # cluster_geo: vcovCL clustered by geo unit. See the @Details of
+  # compute_exposure_regressions for why the sandwich is refused when G <= k.
   if (se_type == "cluster_geo") {
     n_clusters <- data.table::uniqueN(model_dt$.cluster_geo)
     n_coef     <- length(stats::coef(fit))
 
     if (n_clusters <= n_coef) {
-      # When G < 2, fewer clusters than coefficients: Refuse to report in this case.
+      # G <= k: clustered SEs are not identified; return NA instead.
       warning("Only ", n_clusters, " geographic cluster(s) for ", n_coef,
               " coefficients; clustered standard errors are not identified. ",
               "Returning NA standard errors and intervals.", call. = FALSE)

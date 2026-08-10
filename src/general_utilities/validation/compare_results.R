@@ -790,9 +790,10 @@ compare_outlier_procedure <- function(
 #     3. Individuals whose geographic unit never receives an exposure value are kept
 #        through the collapse (legacy used a left join), so they enter the denominator
 #        in (2) even though lm() later drops them.
-#   The adult 25+ restriction is NOT applied here: legacy applied it for three cities
-#   and silently omitted it for Sao Paulo. Pass individual_dt already filtered (or not)
-#   to reproduce whichever variant you are auditing.
+#   The adult 25+ restriction is NOT applied here. Legacy applied it in all
+#   four cities, in both the quintile and the decile scripts, so to reproduce
+#   the legacy numbers pass individual_dt already filtered to adults; pass it
+#   unfiltered only to audit the restriction's own effect.
 #   Do not use for paper results; use compute_exposure_regressions() instead.
 #
 # @Written_on : July 2026
