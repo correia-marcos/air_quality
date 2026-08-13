@@ -248,6 +248,13 @@ aggregate_idw_exposure_legacy <- function(
 #   twice: over all pairs, and over pairs within 5 km — only the latter can change
 #   which units fall inside the 3 km buffer.
 #
+#   LEGACY DISTANCE UNITS
+#   Legacy geo distances are always km, but 5_stats.R stored them differently per city.
+#   Santiago saved before its own as.numeric() call, so that file keeps the units label
+#   ("42.88 [km]") as character or factor; the other three saved after and are plain
+#   numeric. as.numeric() on a factor returns level codes — small, plausible, and wrong
+#   — so .parse_km() strips the label before converting.
+#
 #' @Written_on: 10/04/2026
 #' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
@@ -302,11 +309,8 @@ compare_idw <- function(
     gsub('["\']', "", x)
   }
 
-  # Legacy geo distances are always km, but 5_stats.R stored them differently per
-  # city: Santiago saved before its own as.numeric() call, so that file keeps the
-  # units label ("42.88 [km]") as character or factor; the other three saved after
-  # and are plain numeric. as.numeric() on a factor returns level codes — small,
-  # plausible, and wrong — so strip the label before converting.
+  # Strip any units label before converting, so a factor never yields level codes.
+  # See @Details: legacy distance units.
   .parse_km <- function(x) {
     if (inherits(x, "units") || is.numeric(x)) return(as.numeric(x))
     as.numeric(gsub("[^0-9.eE+-]", "", as.character(x)))

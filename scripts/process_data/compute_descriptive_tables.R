@@ -46,14 +46,10 @@ pollutants    <- c("pm10", "pm25")
 report        <- "available"
 missing_dims  <- c("station", "month", "hour", "day_of_week")
 
-# One row per city. This is the shared infrastructure the five families all need; display
-# labels stay next to the section that uses them, because the paper genuinely names the
-# cities differently from table to table.
-#
-# Two geographic id columns, not one: Santiago's individual census carries `comuna`, which
-# the collapse step renames to `CUT`. The Santiago rows use the 2024 commune-level census
-# here, matching the distance matrix this diagnostic needs, not the 2017 zonas the main
-# exposure specification uses.
+# One row per city, shared by all five table families. Two geographic id columns because
+# Santiago's individual census carries `comuna` and the collapse step renames it to `CUT`.
+# Santiago uses the 2024 commune census here, matching this diagnostic's distance matrix,
+# not the 2017 zonas of the main exposure specification.
 city_specs <- data.table::data.table(
   city_id      = c("bogota", "cdmx", "santiago", "sao_paulo_metro"),
   census_id    = c("bogota_2018", "cdmx_extended_2020", "santiago_2024",

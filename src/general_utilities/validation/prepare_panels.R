@@ -30,6 +30,14 @@
 # Function: build_compare_cfg
 #' @Goal   : Generate the validation config sublist dynamically based on city_id.
 #' @details Keeps production configs (bogota.R) clean by isolating test parameters.
+#
+#          The two distance tolerances differ because the two matrices differ for
+#          different reasons. Stations: legacy geosphere::distHaversine uses the
+#          equatorial radius (6378137 m), overstating north-south pairs near the
+#          equator by ~0.5% (~150 m over 30 km) — expected metric noise, so 0.25 km.
+#          Geo units: the legacy-vs-new gap is dominated by the centroid ->
+#          point_on_surface shift (routinely 100-500 m), which is exactly what the
+#          Step 0-4 ladder must detect, so the tolerance stays well under that.
 # -----------------------------------------------------------------------------------
 build_compare_cfg <- function(city_id) {
   
@@ -43,13 +51,7 @@ build_compare_cfg <- function(city_id) {
     value_cols       = c("pm10", "pm25", "ozone", "co", "no2"),
     gs_tol           = c(pm10 = 0, pm25 = 0, ozone = 0, co = 0, no2 = 0),
     census_tol       = 0.001,
-    # Two tolerances, because the two matrices differ for different reasons.
-    # Stations: legacy geosphere::distHaversine uses the *equatorial* radius
-    # (6378137 m), which near the equator overstates north-south pairs by ~0.5%
-    # (~150 m over 30 km). That is expected metric noise, so allow 0.25 km.
-    # Geo units: the legacy-vs-new gap is dominated by the centroid ->
-    # point_on_surface shift (routinely 100-500 m), which is exactly what the
-    # Step 0-4 ladder must detect — so keep this well under that scale.
+    # Two different tolerances -- see @details: station vs geo-unit distances
     station_tol_km   = 0.25,
     geo_tol_km       = 0.05,
     outlier_params   = list(

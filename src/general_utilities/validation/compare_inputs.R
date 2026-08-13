@@ -297,6 +297,11 @@ compare_panels <- function(
 #   bug only affects Air_Pollution_Bogota_2002_2023.csv. The individual
 #   period CSVs used here are unaffected.
 #
+#   pipeline_tz is deliberately separate from cfg$tz, the city's true local
+#   timezone: the processing pipeline may store timestamps under a different
+#   label to work around DuckDB driver bugs, so reading the Arrow dataset has
+#   to use the label the pipeline wrote, not the one the city actually uses.
+#
 #' @Written_on: 20/03/2026
 #' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
@@ -340,11 +345,8 @@ compare_ground_stations <- function(
       paste(unknown_pols, collapse = ", ")
     )
   
-  # 3) Resolve the timezone for reading the Arrow dataset.
-  # pipeline_tz is intentionally separate from cfg$tz (the city's true local timezone) 
-  # because the processing pipeline may store timestamps with a different label to avoid 
-  # DuckDB driver bugs.
-  # Priority: function arg > cfg$compare$pipeline_tz > cfg$compare$tz > cfg$tz.
+  # 3) Resolve the timezone for reading the Arrow dataset. pipeline_tz is separate from
+  # cfg$tz on purpose -- see @details. Priority: arg > pipeline_tz > compare$tz > cfg$tz.
   cmp_tz <- pipeline_tz %||%
     cmp$pipeline_tz %||%
     cmp$tz %||%
@@ -372,14 +374,8 @@ compare_ground_stations <- function(
     )
   }
 
-  # 5) Load and prepare the legacy dataset.
-  # Two sub-paths:
-  # A) Single merged CSV (produced by the coauthor's Stata pipeline).
-  #    Contains a known bug: Jan 31 24:00 is wrongly mapped to March 1
-  #    00:00 in the combined file (see @Details above). Avoid this path
-  #    for Bogotá unless the bug has been corrected.
-  # B) Individual period CSVs (preferred). Exported before the Stata
-  #    combine+correction step, so free of the day+1 bug.
+  # 5) Load and prepare the legacy dataset, from either the single merged CSV or the
+  # individual period CSVs. See @Details: the merged file carries the day+1 bug.
   # -----------------------------------------------------------------------
   use_single <- !is.null(cmp$legacy_single_csv) &&
     file.exists(cmp$legacy_single_csv)

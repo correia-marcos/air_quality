@@ -30,6 +30,12 @@
 #                3 — Step 2 + new 2018 metro (manzana-level) + new 2018 census.
 #                4 — Step 3 + new station set.
 #              A step with any missing input is marked enabled=FALSE with a reason.
+#' @details    The legacy census needs recoding because Steps 1 and 2 key on different
+#              geo_id forms. Step 1 uses the legacy distance matrix, whose geo_id is
+#              LocCodigo (01..20 for Bogotá localidades, 25xxx for the surrounding
+#              municipalities). Step 2 uses the new 2005 gpkg matrix, whose geo_id is
+#              "11001<LocCodigo>" for localidades and the 5-digit DANE code for the
+#              municipalities — so Step 2 needs an augmented GEO_ID column.
 #' @Written_on: 17/04/2026
 #' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
@@ -130,13 +136,8 @@ build_bogota_progression_specs <- function(cfg, buffer_km = 5L) {
   legacy_geo_dist_pq <- if (has_legacy_geo_dist) .legacy_dist_to_parquet() else NULL
   
   # ----------------------------------------------------------------------
-  # Legacy census recoders.
-  #   * Step 1 uses the legacy distance matrix whose geo_id is LocCodigo
-  #     (01..20 for Bogotá localidades, 25xxx for surrounding municipalities).
-  #   * Step 2 uses the new 2005 gpkg distance matrix whose geo_id is
-  #     "11001<LocCodigo>" for Bogotá localidades, and 5-digit DANE code
-  #     for the surrounding municipalities. So for Step 2 the census needs
-  #     an augmented GEO_ID column.
+  # Legacy census recoders. Step 1 and Step 2 key on different geo_id forms,
+  # so Step 2 needs an augmented GEO_ID column -- see @details.
   # ----------------------------------------------------------------------
   legacy_census_raw <- if (has_legacy_census)
     readr::read_csv(legacy_census_csv, show_col_types = FALSE,

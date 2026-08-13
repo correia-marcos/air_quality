@@ -419,11 +419,8 @@ plot_metro_area_interactive <- function(
   buffers_84 <- sf::st_transform(buffers_m, 4326)
   
   # ---- 4) Color scheme + counts to display in the legend ---------------------
-  # We build:
-  #  • 'category' vector for each station (entity or presence/absence),
-  #  • 'counts' of each category,
-  #  • a color palette over unique categories,
-  #  • and final *labels with counts* for the legend.
+  # Builds a category per station, its counts, a palette over the unique categories,
+  # and the legend labels carrying those counts.
   if (color_scheme == "entity") {
     category      <- stations_84$entity
     cats          <- sort(unique(category))
