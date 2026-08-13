@@ -1,13 +1,13 @@
 # ============================================================================================
 # IDB: Air monitoring — time series and hourly profiles
 # ============================================================================================
-# @Goal: Functions for time series and hourly profiles.
+#' @Goal: Functions for time series and hourly profiles.
 #
-# @Description: Concentration over time and over the hour of day, including the ridgeline profiles and the
+#' @Description: Concentration over time and over the hour of day, including the ridgeline profiles and the
 #   time-above-target spans.
 #   Sourced by config_utils_plot_tables.R; never sourced directly by a script.
 #
-# @Summary:
+#' @Summary:
 #   1. plot_city_distributions
 #   2. save_plot_list_to_pdf
 #   3. plot_pm25_timeseries_smooth
@@ -18,25 +18,25 @@
 #   8. summarize_hourly_by_station
 #   9. plot_hourly_stacked_stations
 #
-# @Date: August 2026
-# @Author: Marcos Paulo
+#' @Date: August 2026
+#' @Author: Marcos Paulo
 # ============================================================================================
 
 # --------------------------------------------------------------------------------------------
 # Function: plot_city_distributions
-# @Arg         : df is a data frame containing columns "Date", "Hour", 
+#' @param        df is a data frame containing columns "Date", "Hour",
 #                "DUSMASS25", "OCSMASS", "BCSMASS", "SSSMASS25", "SO4SMASS" and "pm25_estimate".
-# @Arg         : city_name is a string representing the city's name.
-# @Output      : A list of five ggplot objects, each representing the distribution 
+#' @param        city_name is a string representing the city's name.
+#' @return       A list of five ggplot objects, each representing the distribution
 #                of a selected variable for the given city.
-# @Purpose     : This function creates five distribution plots (histograms) for 
+#' @Purpose     : This function creates five distribution plots (histograms) for 
 #                selected variables from the given data frame. The chosen variables are:
 #                - DUSMASS25, OCSMASS, BCSMASS, SSSMASS25, and pm25_estimate.
 #                For pm25_estimate, two vertical lines are added to indicate WHO guidelines:
 #                Interim Target 1 (IT1): 35 µg/m³
 #                Interim Target 2 (IT2): 25 µg/m³
-# @Written_on  : 13/12/2024
-# @Written_by  : Marcos Paulo
+#' @Written_on  : 13/12/2024
+#' @Written_by  : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 plot_city_distributions <- function(df, city_name) {
   
@@ -110,13 +110,13 @@ plot_city_distributions <- function(df, city_name) {
 
 # --------------------------------------------------------------------------------------------
 # Function: save_plot_list_to_pdf
-# @Arg       : plot_list is a list of ggplot objects for a single city.
-# @Arg       : city_name is a string specifying the name of the city.
-# @Arg       : output_dir is a string specifying the directory to save the PDFs.
-# @Output    : Saves a single PDF for the provided plot list.
-# @Purpose   : Save each list of plots into a separate PDF efficiently.
-# @Written_on: 13/12/2024
-# @Written_by: Marcos Paulo
+#' @param      plot_list is a list of ggplot objects for a single city.
+#' @param      city_name is a string specifying the name of the city.
+#' @param      output_dir is a string specifying the directory to save the PDFs.
+#' @return     Saves a single PDF for the provided plot list.
+#' @Purpose   : Save each list of plots into a separate PDF efficiently.
+#' @Written_on: 13/12/2024
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 save_plot_list_to_pdf <- function(plot_list, city_name, output_dir) {
   # Ensure the output directory exists
@@ -145,19 +145,19 @@ save_plot_list_to_pdf <- function(plot_list, city_name, output_dir) {
 
 # --------------------------------------------------------------------------------------------
 # Function: plot_pm25_timeseries_smooth
-# @Arg         : df is a data frame with columns "Date", "Hour", and PM 2.5 data.
-# @Arg         : region_name is a string representing the region or city name.
-# @Arg         : apply_rolling is a logical indicating whether to apply a rolling window.
-# @Arg         : window_hours is an integer specifying size (in hours) of the rolling window.
-# @Arg         : corr_method is a string specifying the correlation method ("pearson" default).
-# @Arg         : color_merra2 is a string specifying the color for the MERRA-2 series.
-# @Arg         : color_stations is a string specifying the color for the ground station series.
-# @Output      : A ggplot object showing the PM2.5 time series (raw or optionally smoothed),
+#' @param        df is a data frame with columns "Date", "Hour", and PM 2.5 data.
+#' @param        region_name is a string representing the region or city name.
+#' @param        apply_rolling is a logical indicating whether to apply a rolling window.
+#' @param        window_hours is an integer specifying size (in hours) of the rolling window.
+#' @param        corr_method is a string specifying the correlation method ("pearson" default).
+#' @param        color_merra2 is a string specifying the color for the MERRA-2 series.
+#' @param        color_stations is a string specifying the color for the ground station series.
+#' @return       A ggplot object showing the PM2.5 time series (raw or optionally smoothed),
 #                with an annotation showing the correlation (based on raw data).
-# @Purpose     : To visualize PM2.5 from MERRA-2 and ground stations, optionally applying a 
+#' @Purpose    : To visualize PM2.5 from MERRA-2 and ground stations, optionally applying a
 #                rolling average to reduce noise, and annotate the correlation of the raw data.
-# @Written_on  : 14/02/2025
-# @Written_by  : Marcos Paulo
+#' @Written_on  : 14/02/2025
+#' @Written_by  : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 plot_pm25_timeseries_smooth <- function(df, 
                                         region_name, 
@@ -260,25 +260,25 @@ plot_pm25_timeseries_smooth <- function(df,
 
 # --------------------------------------------------------------------------------------------
 # Function: plot_hourly_avg_pollution
-# @Arg         : df is a data frame with columns "Date", "Hour", "pm25_merra2" 
+#' @param        df is a data frame with columns "Date", "Hour", "pm25_merra2"
 #                and "pm25_stations".
-# @Arg         : region_name is a string representing the region or city name.
-# @Arg         : plot_ci is a logical indicating whether to add error bars (standard error).
-# @Arg         : bar_width is a numeric value for the width of the bars (default is 0.7).
-# @Arg         : color_merra2_main is a string specifying the main color for MERRA-2 bars.
-# @Arg         : color_stations_main is a string specifying the main color for stations bars.
-# @Arg         : color_merra2_error is a string specifying the color for MERRA-2 error bars.
-# @Arg         : color_stations_error is a string specifying the color for station error bars.
-# @Output      : A ggplot object showing the average hourly PM2.5 (from MERRA-2 and stations),
+#' @param        region_name is a string representing the region or city name.
+#' @param        plot_ci is a logical indicating whether to add error bars (standard error).
+#' @param        bar_width is a numeric value for the width of the bars (default is 0.7).
+#' @param        color_merra2_main is a string specifying the main color for MERRA-2 bars.
+#' @param        color_stations_main is a string specifying the main color for stations bars.
+#' @param        color_merra2_error is a string specifying the color for MERRA-2 error bars.
+#' @param        color_stations_error is a string specifying the color for station error bars.
+#' @return       A ggplot object showing the average hourly PM2.5 (from MERRA-2 and stations),
 #                with optional error bars in matching/darker tones, and with dashed vertical 
 #                lines indicating WHO Interim Targets: IT2 (25 µg/m³, orange) and IT1 (35 µg/m³,
 #                dark red). This is the IT1 and IT2 values for annual averages.
-# @Purpose     : To visualize and compare the hourly persistence of PM2.5 pollution, 
+#' @Purpose     : To visualize and compare the hourly persistence of PM2.5 pollution, 
 #                facilitating an understanding of differences among cities/hours.
 #                The IT dashed lines help highlight when pollutant concentrations
 #                exceed WHO targets.
-# @Written_on  : 28/02/2025
-# @Written_by  : Marcos Paulo
+#' @Written_on  : 28/02/2025
+#' @Written_by  : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 plot_hourly_avg_pollution <- function(df, 
                                       region_name, 
@@ -377,17 +377,17 @@ plot_hourly_avg_pollution <- function(df,
 
 # --------------------------------------------------------------------------------------------
 # Function: plot_hourly_ridgeline_pollution
-# @Arg         : df is a data frame with columns "Date", "Hour", and PM2.5 data
+#' @param        df is a data frame with columns "Date", "Hour", and PM2.5 data
 #                (either "pm25_merra2" or "pm25_stations").
-# @Arg         : region_name is a string representing the region or city name.
-# @Arg         : pollution_var is a string specifying which column of PM2.5 data to visualize.
-# @Output      : A ggplot object showing the distribution of PM2.5 across 24 hours in ridgeline 
+#' @param        region_name is a string representing the region or city name.
+#' @param        pollution_var is a string specifying which column of PM2.5 data to visualize.
+#' @return       A ggplot object showing the distribution of PM2.5 across 24 hours in ridgeline
 #                form, with dashed vertical lines indicating WHO Interim Targets: IT2 (50 µg/m³, 
 #                orange) and IT1 (75 µg/m³, dark red). IT1 and IT2 are the 24 hours average.
-# @Purpose     : To visualize the distribution (rather than just the mean) of pollutants by 
+#' @Purpose    : To visualize the distribution (rather than just the mean) of pollutants by
 #                hour of day, helping to spot patterns in how pollution accumulates over time.
-# @Written_on  : 28/02/2025
-# @Written_by  : Marcos Paulo
+#' @Written_on  : 28/02/2025
+#' @Written_by  : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 plot_hourly_ridgeline_pollution <- function(df, 
                                             region_name,
@@ -443,19 +443,19 @@ plot_hourly_ridgeline_pollution <- function(df,
 
 # --------------------------------------------------------------------------------------------
 # Function: compute_time_spans_above_target
-# @Arg         : df is a data frame with columns "Date", "Hour", and at least one
+#' @param        df is a data frame with columns "Date", "Hour", and at least one
 #                PM2.5 column (e.g., "pm25_stations" or "pm25_merra2").
-# @Arg         : city_name is a string identifying the city/region (e.g., "Bogotá").
-# @Arg         : target is a string, either "IT1" or "IT2". 
+#' @param        city_name is a string identifying the city/region (e.g., "Bogotá").
+#' @param        target is a string, either "IT1" or "IT2".
 #                "IT1" => threshold = 75 µg/m³
 #                "IT2" => threshold = 50 µg/m³
-# @Arg         : pollution_var is a string specifying which PM2.5 column to check.
-# @Output      : A data frame listing each episode above the chosen threshold, 
+#' @param        pollution_var is a string specifying which PM2.5 column to check.
+#' @return       A data frame listing each episode above the chosen threshold,
 #                with columns: Date, Hour, time_span_above_target, city.
-# @Purpose     : To identify consecutive hours where PM2.5 is >= the chosen WHO interim target
+#' @Purpose    : To identify consecutive hours where PM2.5 is >= the chosen WHO interim target
 #                (IT1 or IT2), facilitating further analysis and plotting.
-# @Written_on  : 10/03/2025
-# @Written_by  : Marcos Paulo
+#' @Written_on  : 10/03/2025
+#' @Written_by  : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 compute_time_spans_above_target <- function(df, 
                                             city_name, 
@@ -566,16 +566,16 @@ compute_time_spans_above_target <- function(df,
 
 # --------------------------------------------------------------------------------------------
 # Function: plot_time_spans_ridgeline
-# @Arg         : list_of_dfs is a named list of data frames (e.g., 
+#' @param        list_of_dfs is a named list of data frames (e.g.,
 #                list("Bogotá" = bogota_pm25, "Santiago" = santiago_pm25, ...)).
-# @Arg         : target is a string, either "IT1" or "IT2".
-# @Arg         : pollution_var is a string specifying which PM2.5 column to check.
-# @Output      : A ggplot object showing the distribution of consecutive hours 
+#' @param        target is a string, either "IT1" or "IT2".
+#' @param        pollution_var is a string specifying which PM2.5 column to check.
+#' @return       A ggplot object showing the distribution of consecutive hours
 #                above the chosen WHO Interim Target, faceted by city on the y-axis.
-# @Purpose     : To reveal how often and for how long each city experiences 
+#' @Purpose     : To reveal how often and for how long each city experiences 
 #                pollution levels above a WHO interim target, using a ridgeline plot.
-# @Written_on  : 06/03/2025
-# @Written_by  : Marcos Paulo
+#' @Written_on  : 06/03/2025
+#' @Written_by  : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 plot_time_spans_ridgeline <- function(list_of_dfs, 
                                       target = c("IT1", "IT2"),
@@ -635,20 +635,20 @@ plot_time_spans_ridgeline <- function(list_of_dfs,
 
 # ---------------------------------------------------------------------------------------------
 # Function: summarize_hourly_by_station
-# @Arg         : df           a data frame with columns for station code, datetime, and value.
-# @Arg         : station_col  name of the station code column (default "station_code").
-# @Arg         : datetime_col name of the datetime column (default "date2_hour").
-# @Arg         : value_col    name of the pollutant column to average - default pm25_validated
-# @Arg         : filter_type  one of "none", "gt_it1", or "gt_it2" for threshold filtering.
-# @Arg         : it1, it2     numeric thresholds (defaults reflect WHO annual PM2.5 IT1/IT2).
-# @Arg         : tz           timezone for parsing if needed (kept for signature parity).
-# @Arg         : station_lookup data.frame with columns Station (char) and StationName (char).
-# @Output      : A data frame with columns Station, Hour, mean_value, n and an attribute
+#' @param        df           a data frame with columns for station code, datetime, and value.
+#' @param        station_col  name of the station code column (default "station_code").
+#' @param        datetime_col name of the datetime column (default "date2_hour").
+#' @param        value_col    name of the pollutant column to average - default pm25_validated
+#' @param        filter_type  one of "none", "gt_it1", or "gt_it2" for threshold filtering.
+#' @param        it1, it2     numeric thresholds (defaults reflect WHO annual PM2.5 IT1/IT2).
+#' @param        tz           timezone for parsing if needed (kept for signature parity).
+#' @param        station_lookup data.frame with columns Station (char) and StationName (char).
+#' @return       A data frame with columns Station, Hour, mean_value, n and an attribute
 #                "station_levels" giving a fixed station order across hours.
-# @Purpose     : Build hourly means per station, optionally filtering by WHO interim targets,
+#' @Purpose    : Build hourly means per station, optionally filtering by WHO interim targets,
 #                and attach a stable station ordering for consistent stacked plots.
-# @Written_on  : 12/08/2025
-# @Written_by  : Marcos Paulo
+#' @Written_on  : 12/08/2025
+#' @Written_by  : Marcos Paulo
 # ---------------------------------------------------------------------------------------------
 summarize_hourly_by_station <- function(df,
                                         station_col    = "station_code",
@@ -713,20 +713,20 @@ summarize_hourly_by_station <- function(df,
 
 # ---------------------------------------------------------------------------------------------
 # Function: plot_hourly_stacked_stations
-# @Arg         : hourly_df      output of summarize_hourly_by_station().
-# @Arg         : region_name    string for the plot title (e.g., "Santiago").
-# @Arg         : pollutant_label label to show (e.g., "PM2.5" or "PM10").
-# @Arg         : filter_label   subtitle (e.g., "All values", "Values > IT1 (35 µg/m³)").
-# @Arg         : normalize      if TRUE, 100% stacks by hour (shares); else stacks abs means.
-# @Arg         : show_it_lines  if TRUE and not normalized, add IT2/IT1 vertical lines.
-# @Arg         : year           integer shown in title (default 2012L for signature parity).
-# @Arg         : it1, it2       numeric WHO lines if show_it_lines = TRUE.
-# @Arg         : base_family    font family for theme.
-# @Output      : A ggplot object (horizontal stacked bars; one bar per hour; segment = station).
-# @Purpose     : Visualize composition and level (or share) of hourly averages by station 
+#' @param        hourly_df      output of summarize_hourly_by_station().
+#' @param        region_name    string for the plot title (e.g., "Santiago").
+#' @param        pollutant_label label to show (e.g., "PM2.5" or "PM10").
+#' @param        filter_label   subtitle (e.g., "All values", "Values > IT1 (35 µg/m³)").
+#' @param        normalize      if TRUE, 100% stacks by hour (shares); else stacks abs means.
+#' @param        show_it_lines  if TRUE and not normalized, add IT2/IT1 vertical lines.
+#' @param        year           integer shown in title (default 2012L for signature parity).
+#' @param        it1, it2       numeric WHO lines if show_it_lines = TRUE.
+#' @param        base_family    font family for theme.
+#' @return       A ggplot object (horizontal stacked bars; one bar per hour; segment = station).
+#' @Purpose     : Visualize composition and level (or share) of hourly averages by station
 # with a fixed station order across all hours to ease comparisons.
-# @Written_on  : 12/08/2025
-# @Written_by  : Marcos Paulo
+#' @Written_on  : 12/08/2025
+#' @Written_by  : Marcos Paulo
 # ---------------------------------------------------------------------------------------------
 plot_hourly_stacked_stations <- function(hourly_df,
                                          region_name     = "Santiago",

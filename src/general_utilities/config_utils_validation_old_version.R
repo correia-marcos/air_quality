@@ -1,13 +1,13 @@
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-# @Goal: Create configuration file for setup of packages and functions used in the project
+#' @Goal: Configuration file for setup of packages and functions used in the project
 # 
-# @Description: This script sets up the necessary environment by checking and installing 
+#' @Description: This script sets up the necessary environment by checking and installing 
 # required packages and defining utility functions for all "validation_old_version" scripts.
 # 
-# @Date: Aug 2025
-# @Author: Marcos Paulo
+#' @Date: Aug 2025
+#' @Author: Marcos Paulo
 # ============================================================================================
 
 # List of required packages

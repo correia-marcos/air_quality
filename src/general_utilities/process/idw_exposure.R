@@ -1,33 +1,33 @@
 # ============================================================================================
 # IDB: Air monitoring — inverse-distance-weighted exposure
 # ============================================================================================
-# @Goal: Functions for inverse-distance-weighted exposure.
+#' @Goal: Functions for inverse-distance-weighted exposure.
 #
-# @Description: Interpolates hourly station readings to each geographic unit inside a buffer, 
+#' @Description: Interpolates hourly station readings to each geographic unit inside a buffer,
 #   then aggregates to annual exposure and WHO interim-target exceedance hours.
 #   Sourced by config_utils_process_data.R; never sourced directly by a script.
 #
-# @Summary:
+#' @Summary:
 #   1. assign_socio_group
 #   2. aggregate_idw_exposure
 #   3. run_idw_city
 #
-# @Date: August 2026
-# @Author: Marcos Paulo
+#' @Date: August 2026
+#' @Author: Marcos Paulo
 # ============================================================================================
 
 # --------------------------------------------------------------------------------------------
 # Function: assign_socio_group
 #
-# @Arg dt      : data.table; modified in place. Must contain a `geo_id` column.
-# @Arg var     : string; continuous variable that defines the ranking.
-# @Arg wcol    : string; population or expansion-weight column.
-# @Arg n       : integer; number of equal-population groups.
-# @Arg out_col : string; name of the group column to create.
+#' @param dt     data.table; modified in place. Must contain a `geo_id` column.
+#' @param var    string; continuous variable that defines the ranking.
+#' @param wcol   string; population or expansion-weight column.
+#' @param n      integer; number of equal-population groups.
+#' @param out_col string; name of the group column to create.
 #
-# @Output : the same data.table, invisibly, with `out_col` added.
+#' @return  the same data.table, invisibly, with `out_col` added.
 #
-# @Details:
+#' @details
 #   Assigns 1..n by cumulative weight share of `var`. Group 1 holds the lowest
 #   values and the last group takes the residual share, which reproduces the old
 #   hardcoded quintile cut when n = 5. Used at two levels: on individuals inside
@@ -36,8 +36,8 @@
 #   apart — they define the same socioeconomic groups and must cut them the same
 #   way.
 #
-# @Written_on : July 2026
-# @Written_by : Marcos Paulo
+#' @Written_on : July 2026
+#' @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 assign_socio_group <- function(dt, var, wcol, n, out_col) {
 
@@ -72,39 +72,39 @@ assign_socio_group <- function(dt, var, wcol, n, out_col) {
 # --------------------------------------------------------------------------------------------
 # Function: aggregate_idw_exposure
 #
-# @Arg arrow_dir           : string; path to partitioned Arrow/Parquet hourly data.
-# @Arg geo_sta_pq          : string; path to geo-station distance Parquet file.
-# @Arg census_col          : data.frame; census data used for group assignment.
-# @Arg geo_id_col          : string; geographic ID column in census_col.
-# @Arg pop_col             : string; population or expansion-weight column.
-# @Arg group_var           : string; continuous variable used to define groups
+#' @param arrow_dir          string; path to partitioned Arrow/Parquet hourly data.
+#' @param geo_sta_pq         string; path to geo-station distance Parquet file.
+#' @param census_col         data.frame; census data used for group assignment.
+#' @param geo_id_col         string; geographic ID column in census_col.
+#' @param pop_col            string; population or expansion-weight column.
+#' @param group_var          string; continuous variable used to define groups
 #                            (e.g. "escolaridad_avg" or "income").
-# @Arg n_groups            : integer; number of equal-population groups (5 or 10).
-# @Arg group_name          : string; output group column name
+#' @param n_groups           integer; number of equal-population groups (5 or 10).
+#' @param group_name         string; output group column name
 #                            (e.g. "edu_quintile" or "income_decile").
-# @Arg quintile_level      : string; "geo" or "individual". Default "geo".
-# @Arg indiv_adult_col     : string; adult filter column. Default "adult".
-# @Arg buffer_km           : numeric; maximum geo-to-station distance. Default 3.
-# @Arg distance_power      : numeric; IDW distance exponent. Default 1.
-# @Arg target_years        : numeric vector or NULL; years to process.
-# @Arg pollutants          : character vector; pollutant columns to aggregate.
-# @Arg who_it              : named list; WHO interim target thresholds.
-# @Arg mem_gb              : numeric; DuckDB memory ceiling in GB. Default 40.
-# @Arg n_threads           : integer; DuckDB worker threads. Default 2.
-# @Arg duckdb_temp_dir     : string or NULL; DuckDB spill directory.
-# @Arg out_dir             : string; output directory.
-# @Arg out_name            : string; output file prefix.
-# @Arg overwrite           : logical; skip computation if outputs exist.
-# @Arg quiet               : logical; suppress messages. Default FALSE.
-# @Arg return_data         : logical; return data.tables in memory. Default FALSE.
-# @Arg fail_on_query_error : logical; stop if a SQL query fails. Default TRUE.
-# @Arg chunk_by_month      : logical; process each year-pollutant by month.
-# @Arg edu_col             : string; deprecated alias for group_var, kept so old
+#' @param quintile_level     string; "geo" or "individual". Default "geo".
+#' @param indiv_adult_col    string; adult filter column. Default "adult".
+#' @param buffer_km          numeric; maximum geo-to-station distance. Default 3.
+#' @param distance_power     numeric; IDW distance exponent. Default 1.
+#' @param target_years       numeric vector or NULL; years to process.
+#' @param pollutants         character vector; pollutant columns to aggregate.
+#' @param who_it             named list; WHO interim target thresholds.
+#' @param mem_gb             numeric; DuckDB memory ceiling in GB. Default 40.
+#' @param n_threads          integer; DuckDB worker threads. Default 2.
+#' @param duckdb_temp_dir    string or NULL; DuckDB spill directory.
+#' @param out_dir            string; output directory.
+#' @param out_name           string; output file prefix.
+#' @param overwrite          logical; skip computation if outputs exist.
+#' @param quiet              logical; suppress messages. Default FALSE.
+#' @param return_data        logical; return data.tables in memory. Default FALSE.
+#' @param fail_on_query_error logical; stop if a SQL query fails. Default TRUE.
+#' @param chunk_by_month     logical; process each year-pollutant by month.
+#' @param edu_col            string; deprecated alias for group_var, kept so old
 #                            calls still run. Used only if group_var is NULL.
 #
-# @Output : Named list with saved file paths and, optionally, data.tables.
+#' @return  Named list with saved file paths and, optionally, data.tables.
 #
-# @Details:
+#' @details
 #   Aggregates hourly station pollution to geographic units using missingness-aware
 #   inverse-distance weighting. For each geo-hour-pollutant cell, only stations
 #   within buffer_km and with non-missing readings enter the numerator and
@@ -113,8 +113,8 @@ assign_socio_group <- function(dt, var, wcol, n, out_col) {
 #   same code path serves education quintiles and income deciles. One grouping is
 #   produced per call (run separately for edu_quintile and income_decile).
 #
-# @Written_on : 02/02/2026
-# @Written_by : Marcos Paulo
+#' @Written_on : 02/02/2026
+#' @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 aggregate_idw_exposure <- function(
     arrow_dir,
@@ -799,44 +799,44 @@ aggregate_idw_exposure <- function(
 # --------------------------------------------------------------------------------------------
 # Function: run_idw_city
 #
-# @Arg city_label     : string; city name used in progress messages.
-# @Arg city_id        : string; city identifier used in output folders and files.
-# @Arg arrow_dir      : string; path to cleaned partitioned Arrow/Parquet data.
-# @Arg distance_power : numeric; IDW distance exponent.
-# @Arg geo_sta_pq     : string; path to geo-station distance Parquet file.
-# @Arg geo_census     : data.frame; collapsed geographic-unit census data.
-# @Arg micro_census   : data.frame; individual-level census microdata.
-# @Arg geo_id_col     : string; geographic ID column in collapsed census data.
-# @Arg geo_pop_col    : string; population column in collapsed census data.
-# @Arg geo_group_var  : string; group variable in collapsed census data
+#' @param city_label    string; city name used in progress messages.
+#' @param city_id       string; city identifier used in output folders and files.
+#' @param arrow_dir     string; path to cleaned partitioned Arrow/Parquet data.
+#' @param distance_power numeric; IDW distance exponent.
+#' @param geo_sta_pq    string; path to geo-station distance Parquet file.
+#' @param geo_census    data.frame; collapsed geographic-unit census data.
+#' @param micro_census  data.frame; individual-level census microdata.
+#' @param geo_id_col    string; geographic ID column in collapsed census data.
+#' @param geo_pop_col   string; population column in collapsed census data.
+#' @param geo_group_var string; group variable in collapsed census data
 #                       (e.g. "education_mean" or "income").
-# @Arg micro_id_col   : string; geographic ID column in individual census data.
-# @Arg micro_pop_col  : string; weight column in individual census data.
-# @Arg micro_group_var: string; group variable in individual census data
+#' @param micro_id_col  string; geographic ID column in individual census data.
+#' @param micro_pop_col string; weight column in individual census data.
+#' @param micro_group_var string; group variable in individual census data
 #                       (e.g. "escolaridad" or "income").
-# @Arg n_groups       : integer; number of equal-population groups (5 or 10).
-# @Arg group_name     : string; output group column name
+#' @param n_groups      integer; number of equal-population groups (5 or 10).
+#' @param group_name    string; output group column name
 #                       (e.g. "edu_quintile" or "income_decile").
-# @Arg buffer_km      : numeric; maximum geo-to-station distance.
-# @Arg outdir_exp     : string; root output directory for IDW estimates.
-# @Arg out_suffix     : string or NULL; extra tag in file names to separate
+#' @param buffer_km     numeric; maximum geo-to-station distance.
+#' @param outdir_exp    string; root output directory for IDW estimates.
+#' @param out_suffix    string or NULL; extra tag in file names to separate
 #                       groupings (e.g. "income"). NULL keeps the plain name.
-# @Arg mem_gb         : numeric; DuckDB memory ceiling in GB. Default 40.
-# @Arg n_threads      : integer; DuckDB worker threads. Default 2.
-# @Arg overwrite      : logical; overwrite existing outputs. Default TRUE.
-# @Arg return_data    : logical; return data objects in memory. Default FALSE.
+#' @param mem_gb        numeric; DuckDB memory ceiling in GB. Default 40.
+#' @param n_threads     integer; DuckDB worker threads. Default 2.
+#' @param overwrite     logical; overwrite existing outputs. Default TRUE.
+#' @param return_data   logical; return data objects in memory. Default FALSE.
 #
-# @Output : Named list with geo and individual output paths.
+#' @return  Named list with geo and individual output paths.
 #
-# @Details:
+#' @details
 #   Computes the expensive IDW exposure table once using individual mode for the
 #   requested grouping, then builds the geo-level exposure output by merging the
 #   same exposure table with collapsed census and assigning geo-level groups.
 #   One grouping is produced per call; call once for edu_quintile and once for
 #   income_decile to obtain separate files.
 #
-# @Written_on : April 2026
-# @Written_by : Marcos Paulo
+#' @Written_on : April 2026
+#' @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 run_idw_city <- function(
     city_label,

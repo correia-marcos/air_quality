@@ -1,43 +1,43 @@
 # ============================================================================================
 # IDB: Air monitoring — station socioeconomic context
 # ============================================================================================
-# @Goal: Functions for station socioeconomic context.
+#' @Goal: Functions for station socioeconomic context.
 #
-# @Description: Summarises pollution per station and attaches the socioeconomic profile of the census
+#' @Description: Summarises pollution per station and attaches the socioeconomic profile of the census
 #   units around it, which feeds the station-level scatter figures.
 #   Sourced by config_utils_process_data.R; never sourced directly by a script.
 #
-# @Summary:
+#' @Summary:
 #   1. compute_station_pollution_summary
 #   2. compute_station_socio_context
 #   3. build_station_scatter_inputs
 #
-# @Date: August 2026
-# @Author: Marcos Paulo
+#' @Date: August 2026
+#' @Author: Marcos Paulo
 # ============================================================================================
 
 # --------------------------------------------------------------------------------------------
 # Function: compute_station_pollution_summary
 #
-# @Arg arrow_dir        : string; path to partitioned Arrow/Parquet hourly data.
-# @Arg year_filter      : integer; year to process. Default 2023.
-# @Arg station_col      : string; station column in the pollution data.
-# @Arg pollutants       : character vector; pollutant columns to summarize.
-# @Arg who_it           : named list; WHO interim target thresholds.
-# @Arg min_obs_active   : integer; minimum observations to define active station.
-# @Arg quiet            : logical; suppress messages. Default FALSE.
+#' @param arrow_dir       string; path to partitioned Arrow/Parquet hourly data.
+#' @param year_filter     integer; year to process. Default 2023.
+#' @param station_col     string; station column in the pollution data.
+#' @param pollutants      character vector; pollutant columns to summarize.
+#' @param who_it          named list; WHO interim target thresholds.
+#' @param min_obs_active  integer; minimum observations to define active station.
+#' @param quiet           logical; suppress messages. Default FALSE.
 #
-# @Output : data.table with one row per active station.
+#' @return  data.table with one row per active station.
 #
-# @Details:
+#' @details
 #   Computes station-level annual means and hours above WHO thresholds. A station
 #   is considered active if it has at least min_obs_active non-missing observation
 #   for at least one pollutant in the requested year. Hours above a threshold count
 #   hourly observations at or above it; the 24-hour IT values are used as a proxy
 #   for an hourly extreme-pollution threshold, consistent with the IDW step.
 #
-# @Written_on : June 2026
-# @Written_by : Marcos Paulo
+#' @Written_on : June 2026
+#' @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 compute_station_pollution_summary <- function(
     arrow_dir,
@@ -190,24 +190,24 @@ compute_station_pollution_summary <- function(
 # --------------------------------------------------------------------------------------------
 # Function: compute_station_socio_context
 #
-# @Arg stations_sf        : sf POINT object; monitoring stations.
-# @Arg geo_sf             : sf POLYGON object; geographic units.
-# @Arg census_col         : data.frame; collapsed census data by geographic unit.
-# @Arg station_id_col     : string; station ID/name column in stations_sf.
-# @Arg geo_id_col         : string; geographic unit ID column.
-# @Arg pop_col            : string; population or expansion-weight column.
-# @Arg socio_vars         : character vector; socioeconomic variables to attach.
-# @Arg context_method     : string; "containing_geo" or "buffer".
-# @Arg buffer_km          : numeric; buffer radius when context_method = "buffer".
-# @Arg representative_pt  : string; "point_on_surface" or "centroid".
-# @Arg geo_id_repair      : string; "none", "bogota", or "suffix".
-# @Arg bogota_max_suffix  : integer; maximum suffix repair for Bogota IDs.
-# @Arg bogota_broad_ids   : logical; allow broad Bogota ID repairs?
-# @Arg quiet              : logical; suppress messages. Default FALSE.
+#' @param stations_sf       sf POINT object; monitoring stations.
+#' @param geo_sf            sf POLYGON object; geographic units.
+#' @param census_col        data.frame; collapsed census data by geographic unit.
+#' @param station_id_col    string; station ID/name column in stations_sf.
+#' @param geo_id_col        string; geographic unit ID column.
+#' @param pop_col           string; population or expansion-weight column.
+#' @param socio_vars        character vector; socioeconomic variables to attach.
+#' @param context_method    string; "containing_geo" or "buffer".
+#' @param buffer_km         numeric; buffer radius when context_method = "buffer".
+#' @param representative_pt string; "point_on_surface" or "centroid".
+#' @param geo_id_repair     string; "none", "bogota", or "suffix".
+#' @param bogota_max_suffix integer; maximum suffix repair for Bogota IDs.
+#' @param bogota_broad_ids  logical; allow broad Bogota ID repairs?
+#' @param quiet             logical; suppress messages. Default FALSE.
 #
-# @Output : data.table with one row per station and socioeconomic context.
+#' @return  data.table with one row per station and socioeconomic context.
 #
-# @Details:
+#' @details
 #   In containing_geo mode, each station receives the characteristics of the
 #   polygon containing it; if a station falls on a shared boundary and matches
 #   more than one polygon, only the first match is kept and a message reports it.
@@ -220,8 +220,8 @@ compute_station_pollution_summary <- function(
 #   municipality component while the census stores a full state-municipality code.
 #   A repair is accepted only when the suffix match is unique.
 #
-# @Written_on : June 2026
-# @Written_by : Marcos Paulo
+#' @Written_on : June 2026
+#' @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 compute_station_socio_context <- function(
     stations_sf,
@@ -587,39 +587,39 @@ compute_station_socio_context <- function(
 # ------------------------------------------------------------------------------------
 # Function: build_station_scatter_inputs
 #
-# @Arg arrow_dir        : string; path to partitioned Arrow/Parquet hourly data.
-# @Arg stations_sf      : sf POINT object; monitoring stations.
-# @Arg geo_sf           : sf POLYGON object; geographic units.
-# @Arg census_col       : data.frame; collapsed census data by geographic unit.
-# @Arg station_id_col   : string; station ID/name column in stations_sf.
-# @Arg geo_id_col       : string; geographic unit ID column.
-# @Arg pop_col          : string; population or expansion-weight column.
-# @Arg socio_vars       : character vector; socioeconomic variables to attach.
-# @Arg year_filter      : integer; year to process. Default 2023.
-# @Arg context_method   : string; "containing_geo" or "buffer".
-# @Arg context_buffer_km: numeric; buffer radius when context_method = "buffer".
-# @Arg geo_id_repair    : string; "none", "bogota", or "suffix".
-# @Arg bogota_max_suffix: integer; maximum suffix repair for Bogota IDs.
-# @Arg bogota_broad_ids : logical; allow broad Bogota ID repairs?
-# @Arg pollutants       : character vector; pollutant columns to summarize.
-# @Arg who_it           : named list; WHO interim target thresholds.
-# @Arg out_dir          : string; output directory.
-# @Arg out_name         : string; output file prefix.
-# @Arg overwrite        : logical; overwrite existing output. Default TRUE.
-# @Arg quiet            : logical; suppress messages. Default FALSE.
-# @Arg return_data      : logical; return data.table in memory. Default TRUE.
+#' @param arrow_dir       string; path to partitioned Arrow/Parquet hourly data.
+#' @param stations_sf     sf POINT object; monitoring stations.
+#' @param geo_sf          sf POLYGON object; geographic units.
+#' @param census_col      data.frame; collapsed census data by geographic unit.
+#' @param station_id_col  string; station ID/name column in stations_sf.
+#' @param geo_id_col      string; geographic unit ID column.
+#' @param pop_col         string; population or expansion-weight column.
+#' @param socio_vars      character vector; socioeconomic variables to attach.
+#' @param year_filter     integer; year to process. Default 2023.
+#' @param context_method  string; "containing_geo" or "buffer".
+#' @param context_buffer_km numeric; buffer radius when context_method = "buffer".
+#' @param geo_id_repair   string; "none", "bogota", or "suffix".
+#' @param bogota_max_suffix integer; maximum suffix repair for Bogota IDs.
+#' @param bogota_broad_ids logical; allow broad Bogota ID repairs?
+#' @param pollutants      character vector; pollutant columns to summarize.
+#' @param who_it          named list; WHO interim target thresholds.
+#' @param out_dir         string; output directory.
+#' @param out_name        string; output file prefix.
+#' @param overwrite       logical; overwrite existing output. Default TRUE.
+#' @param quiet           logical; suppress messages. Default FALSE.
+#' @param return_data     logical; return data.table in memory. Default TRUE.
 #
-# @Output : Named list with output path and, optionally, station-level data.
+#' @return  Named list with output path and, optionally, station-level data.
 #
-# @Details:
+#' @details
 #   Produces the station-level scatterplot inputs used in the exposure section:
 #   one row per active station with annual mean concentration, hours above WHO
 #   targets, and the socioeconomic context of the geographic unit where the
 #   station is located (or a buffer around it). It does not produce maps,
 #   distance-by-radius tables, or the share-of-non-missing-by-quintile table.
 #
-# @Written_on : June 2026
-# @Written_by : Marcos Paulo
+#' @Written_on : June 2026
+#' @Written_by : Marcos Paulo
 # ------------------------------------------------------------------------------------
 build_station_scatter_inputs <- function(
     arrow_dir,

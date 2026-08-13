@@ -1,44 +1,44 @@
 # ============================================================================================
 # IDB: Air monitoring — coverage and exceedance diagnostics
 # ============================================================================================
-# @Goal: Functions for coverage and exceedance diagnostics.
+#' @Goal: Functions for coverage and exceedance diagnostics.
 #
-# @Description: Counts reporting stations, WHO exceedances and missingness. These feed the
+#' @Description: Counts reporting stations, WHO exceedances and missingness. They feed the
 # paper's
 #   descriptive tables rather than the exposure estimates.
 #   Sourced by config_utils_process_data.R; never sourced directly by a script.
 #
-# @Summary:
+#' @Summary:
 #   1. summarize_stations_by_pollutant
 #   2. compute_who_exceedances
 #   3. compute_missing_proportions
 #
-# @Date: August 2026
-# @Author: Marcos Paulo
+#' @Date: August 2026
+#' @Author: Marcos Paulo
 # ============================================================================================
 
 # --------------------------------------------------------------------------------------------
 # Function: summarize_stations_by_pollutant
 #
-# @Arg arrow_dir     : string; path to the Arrow pollution dataset.
-# @Arg city_label    : string; city identifier.
-# @Arg pollutants    : character; default c("pm10", "pm25", "o3", "no2", "co").
-# @Arg year_filter   : integer|NULL; restrict to one year. Default NULL.
-# @Arg min_valid_pct : numeric [0,1]; minimum share of expected hours per year.
-# @Arg mem_gb        : numeric; DuckDB memory ceiling in GB. Default 4.
-# @Arg quiet         : logical; suppress messages. Default FALSE.
+#' @param arrow_dir    string; path to the Arrow pollution dataset.
+#' @param city_label   string; city identifier.
+#' @param pollutants   character; default c("pm10", "pm25", "o3", "no2", "co").
+#' @param year_filter  integer|NULL; restrict to one year. Default NULL.
+#' @param min_valid_pct numeric [0,1]; minimum share of expected hours per year.
+#' @param mem_gb       numeric; DuckDB memory ceiling in GB. Default 4.
+#' @param quiet        logical; suppress messages. Default FALSE.
 #
-# @Output : Named list ($wide and $long) of data.tables.
+#' @return  Named list ($wide and $long) of data.tables.
 #
-# @Details:
+#' @details
 #   Implements Algebraic Balancing: Instead of physically imputing missing rows 
 #   to fix implicit missingness, the SQL dynamically calculates the exact number 
 #   of expected hours in the year (accounting for leap years) as the denominator.
 #   This guarantees mathematically perfect coverage percentages at near-zero 
 #   computational cost. Matches legacy behavior perfectly at min_valid_pct = 0.0.
 #
-# @Written_on : 17/04/2026
-# @Written_by : Marcos Paulo
+#' @Written_on : 17/04/2026
+#' @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 summarize_stations_by_pollutant <- function(
     arrow_dir,
@@ -167,22 +167,22 @@ summarize_stations_by_pollutant <- function(
 # --------------------------------------------------------------------------------------------
 # Function: compute_who_exceedances
 #
-# @Arg arrow_dir    : string; path to the cleaned Arrow pollution dataset.
-# @Arg city_label   : string; city identifier added as a column in the output.
-# @Arg pollutants   : character; default c("pm10","pm25").
-# @Arg year_filter  : integer|NULL; restrict to a single year. Default NULL.
-# @Arg who_annual   : named numeric; WHO AQG annual averages in μg/m³. 
-# @Arg station_aggr : string; "mean" or "median". 
-# @Arg legacy_mode  : logical; if TRUE, uses a pooled grand mean (duration-weighted).
+#' @param arrow_dir   string; path to the cleaned Arrow pollution dataset.
+#' @param city_label  string; city identifier added as a column in the output.
+#' @param pollutants  character; default c("pm10","pm25").
+#' @param year_filter integer|NULL; restrict to a single year. Default NULL.
+#' @param who_annual  named numeric; WHO AQG annual averages in μg/m³.
+#' @param station_aggr string; "mean" or "median".
+#' @param legacy_mode logical; if TRUE, uses a pooled grand mean (duration-weighted).
 #                     if FALSE, uses mean-of-means (spatial-weighted). Default FALSE.
-# @Arg mem_gb       : numeric; DuckDB memory ceiling in GB. Default 12.
-# @Arg quiet        : logical; suppress info messages. Default FALSE.
+#' @param mem_gb      numeric; DuckDB memory ceiling in GB. Default 12.
+#' @param quiet       logical; suppress info messages. Default FALSE.
 #
-# @Output : data.table with city, year, pollutant, city_avg, who_aqg, 
+#' @return  data.table with city, year, pollutant, city_avg, who_aqg,
 #           exceedance_factor, n_stations, n_valid_hrs.
 #
-# @Written_on : 17/04/2026
-# @Written_by : Marcos Paulo
+#' @Written_on : 17/04/2026
+#' @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 compute_who_exceedances <- function(
     arrow_dir,
@@ -332,22 +332,22 @@ compute_who_exceedances <- function(
 # --------------------------------------------------------------------------------------------
 # Function: compute_missing_proportions
 #
-# @Arg arrow_dir   : string; path to partitioned Arrow/Parquet pollution dataset.
-# @Arg pollutants  : character; default c("pm10","pm25","o3","no2","co").
-# @Arg dims        : character; dimensions to aggregate by. Valid values:
+#' @param arrow_dir  string; path to partitioned Arrow/Parquet pollution dataset.
+#' @param pollutants character; default c("pm10","pm25","o3","no2","co").
+#' @param dims       character; dimensions to aggregate by. Valid values:
 #                    "station", "month", "hour", "day_of_week", "year".
-# @Arg year_filter : integer|NULL; restrict to a single year. Default NULL.
-# @Arg out_dir     : string|NULL; directory to write Parquet files.
-# @Arg out_name    : string; file prefix. Required if out_dir is provided.
-# @Arg mem_gb      : numeric; DuckDB memory ceiling in GB. Default 8.
-# @Arg quiet       : logical; suppress info messages. Default FALSE.
+#' @param year_filter integer|NULL; restrict to a single year. Default NULL.
+#' @param out_dir    string|NULL; directory to write Parquet files.
+#' @param out_name   string; file prefix. Required if out_dir is provided.
+#' @param mem_gb     numeric; DuckDB memory ceiling in GB. Default 8.
+#' @param quiet      logical; suppress info messages. Default FALSE.
 #
-# @Output : Named list of data.tables.
-# @Details: Calculates structural and algorithmic missingness cleanly inside DuckDB.
+#' @return  Named list of data.tables.
+#' @details Calculates structural and algorithmic missingness cleanly inside DuckDB.
 #           Avoids RAM bottlenecks by resolving all math before pulling to R.
 #
-# @Written_on : 17/04/2026
-# @Written_by : Marcos Paulo
+#' @Written_on : 17/04/2026
+#' @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 compute_missing_proportions <- function(
     arrow_dir,
@@ -485,24 +485,24 @@ compute_missing_proportions <- function(
 # --------------------------------------------------------------------------------------------
 # Function: compute_city_census_summary
 #
-# @Arg census_path : string; path to a city's collapsed census Parquet file.
-# @Arg city        : string; display name for the output row.
-# @Arg city_latex  : string; the same name, LaTeX-escaped for the table.
-# @Arg census_year : integer; census vintage.
-# @Arg census_level: string; the geographic level, e.g. "Municipality".
-# @Arg geo_id_col  : string; geographic identifier column in the census file.
-# @Arg pop_col     : string; population weight column.
+#' @param census_path string; path to a city's collapsed census Parquet file.
+#' @param city       string; display name for the output row.
+#' @param city_latex string; the same name, LaTeX-escaped for the table.
+#' @param census_year integer; census vintage.
+#' @param census_level string; the geographic level, e.g. "Municipality".
+#' @param geo_id_col string; geographic identifier column in the census file.
+#' @param pop_col    string; population weight column.
 #
-# @Output : one-row data.table with population, unit count and mean population per unit.
+#' @return  one-row data.table with population, unit count and mean population per unit.
 #
-# @Details:
+#' @details
 #   Arguments are named rather than taken as a spec row, so the signature documents
 #   what the function needs. Units with a missing id, missing weight or non-positive
 #   weight are dropped before counting, which is what makes n_census_geographic_units
 #   the estimation-relevant count rather than the file's row count.
 #
-# @Written_by : Marcos Paulo
-# @Updated_on : August 2026
+#' @Written_by : Marcos Paulo
+#' @Updated_on : August 2026
 # --------------------------------------------------------------------------------------------
 compute_city_census_summary <- function(census_path, city, city_latex, census_year,
                                         census_level, geo_id_col, pop_col) {
@@ -538,21 +538,21 @@ compute_city_census_summary <- function(census_path, city, city_latex, census_ye
 # --------------------------------------------------------------------------------------------
 # Function: count_stations_reporting
 #
-# @Arg arrow_dir   : string; path to the city's hive-partitioned Arrow pollution dataset.
-# @Arg pollutants  : character; pollutants to count. Default c("pm10", "pm25").
-# @Arg year_filter : integer; year to restrict to. Default 2023.
-# @Arg mem_gb      : numeric; DuckDB memory ceiling in GB. Default 8.
+#' @param arrow_dir  string; path to the city's hive-partitioned Arrow pollution dataset.
+#' @param pollutants character; pollutants to count. Default c("pm10", "pm25").
+#' @param year_filter integer; year to restrict to. Default 2023.
+#' @param mem_gb     numeric; DuckDB memory ceiling in GB. Default 8.
 #
-# @Output : one-row data.table with one integer column per pollutant.
+#' @return  one-row data.table with one integer column per pollutant.
 #
-# @Details:
+#' @details
 #   Counts distinct stations reporting at least one non-missing value. This is a different
 #   question from summarize_stations_by_pollutant(), which counts stations meeting a
 #   minimum
 #   coverage share of the year; a station reporting one hour counts here and not there.
 #
-# @Written_by : Marcos Paulo
-# @Updated_on : August 2026
+#' @Written_by : Marcos Paulo
+#' @Updated_on : August 2026
 # --------------------------------------------------------------------------------------------
 count_stations_reporting <- function(arrow_dir,
                                          pollutants = c("pm10", "pm25"),
@@ -619,21 +619,21 @@ count_stations_reporting <- function(arrow_dir,
 # --------------------------------------------------------------------------------------------
 # Function: station_education_quintile
 #
-# @Arg dist_pq     : string; path to the geo-to-station distance matrix.
-# @Arg census_file : string; path to the city's individual census Parquet file.
-# @Arg geo_id_col  : string; geographic identifier column in the census.
+#' @param dist_pq    string; path to the geo-to-station distance matrix.
+#' @param census_file string; path to the city's individual census Parquet file.
+#' @param geo_id_col string; geographic identifier column in the census.
 #
-# @Output : data.table mapping each station to the education quintile of its nearest unit.
+#' @return  data.table mapping each station to the education quintile of its nearest unit.
 #
-# @Details:
+#' @details
 #   Collapses the census to geographic units, ranks them by population-weighted mean
 #   years of schooling, cuts into five equal-count bins, then assigns each station the
 #   quintile of the unit whose representative point is nearest to it. Nearest unit, not
 #   units within a buffer: this asks which population a station sits among, not which
 #   population it measures.
 #
-# @Written_by : Marcos Paulo
-# @Updated_on : August 2026
+#' @Written_by : Marcos Paulo
+#' @Updated_on : August 2026
 # --------------------------------------------------------------------------------------------
 station_education_quintile <- function(dist_pq, census_file, geo_id_col) {
   dist <- data.table::as.data.table(arrow::read_parquet(dist_pq))
@@ -754,20 +754,20 @@ station_education_quintile <- function(dist_pq, census_file, geo_id_col) {
 # --------------------------------------------------------------------------------------------
 # Function: compute_missing_by_quintile
 #
-# @Arg city          : string; display name for the output row.
-# @Arg city_order    : integer; row order in the final table.
-# @Arg pollution_dir : string; hive-partitioned Arrow dataset of cleaned hourly readings.
-# @Arg dist_pq       : string; geo-to-station distance matrix.
-# @Arg census_file   : string; individual census file for the city.
-# @Arg geo_id_col    : string; geographic identifier column in the census.
-# @Arg pollutants    : character; pollutants to report.
-# @Arg year          : integer; year to restrict to.
-# @Arg report        : string; "available" or "missing" shares.
-# @Arg mem_gb        : numeric; DuckDB memory ceiling in GB. Default 8.
+#' @param city         string; display name for the output row.
+#' @param city_order   integer; row order in the final table.
+#' @param pollution_dir string; hive-partitioned Arrow dataset of cleaned hourly readings.
+#' @param dist_pq      string; geo-to-station distance matrix.
+#' @param census_file  string; individual census file for the city.
+#' @param geo_id_col   string; geographic identifier column in the census.
+#' @param pollutants   character; pollutants to report.
+#' @param year         integer; year to restrict to.
+#' @param report       string; "available" or "missing" shares.
+#' @param mem_gb       numeric; DuckDB memory ceiling in GB. Default 8.
 #
-# @Output : data.table; one row per pollutant with the share by education quintile Q1..Q5.
+#' @return  data.table; one row per pollutant with the share by education quintile Q1..Q5.
 #
-# @Details:
+#' @details
 #   Answers whether monitoring coverage itself is unequal: if stations in poorer quintiles
 #   report a smaller share of their expected hours, the exposure estimates are less
 #   reliable
@@ -775,8 +775,8 @@ station_education_quintile <- function(dist_pq, census_file, geo_id_col) {
 #   spec
 #   row, so the signature documents what the function needs.
 #
-# @Written_by : Marcos Paulo
-# @Updated_on : August 2026
+#' @Written_by : Marcos Paulo
+#' @Updated_on : August 2026
 # --------------------------------------------------------------------------------------------
 compute_missing_by_quintile <- function(city, city_order, pollution_dir, dist_pq,
                                         census_file, geo_id_col, pollutants, year,

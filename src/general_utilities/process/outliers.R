@@ -1,36 +1,36 @@
 # ============================================================================================
 # IDB: Air monitoring — hourly outlier detection
 # ============================================================================================
-# @Goal: Functions for hourly outlier detection.
+#' @Goal: Functions for hourly outlier detection.
 #
-# @Description: Flags anomalous hourly readings by comparing each station against its own history and
+#' @Description: Flags anomalous hourly readings by comparing each station against its own history and
 #   against its nearest neighbours, out-of-core via DuckDB.
 #   Sourced by config_utils_process_data.R; never sourced directly by a script.
 #
-# @Summary:
+#' @Summary:
 #   1. detect_pollution_outliers
 #
-# @Date: August 2026
-# @Author: Marcos Paulo
+#' @Date: August 2026
+#' @Author: Marcos Paulo
 # ============================================================================================
 
 # --------------------------------------------------------------------------------------------
 # Function: detect_pollution_outliers
 #
-# @Arg arrow_dir           : string; path to Arrow dataset of hourly data.
-# @Arg station_dist_path   : string; station_distances.parquet path.
-# @Arg out_dir             : string; output directory.
-# @Arg out_name            : string; prefix, e.g. "bogota_2018".
-# @Arg pollutants          : character; default c("pm10", "pm25").
-# @Arg pct_flag            : numeric [0,1]; upper-tail quantile. Default 0.99.
-# @Arg n_sd                : numeric; tolerance half-width in SD units. Default 2.
-# @Arg on_missing_temporal : string; "finish" or "continue". Default "continue".
-# @Arg on_missing_neighbor : string; "finish" or "second". Default "second".
-# @Arg neighbor_eligibility: string; "with_data" or "all". Default "with_data".
-# @Arg overwrite           : logical; skip if output exists. Default TRUE.
-# @Arg quiet               : logical; suppress messages. Default FALSE.
+#' @param arrow_dir          string; path to Arrow dataset of hourly data.
+#' @param station_dist_path  string; station_distances.parquet path.
+#' @param out_dir            string; output directory.
+#' @param out_name           string; prefix, e.g. "bogota_2018".
+#' @param pollutants         character; default c("pm10", "pm25").
+#' @param pct_flag           numeric [0,1]; upper-tail quantile. Default 0.99.
+#' @param n_sd               numeric; tolerance half-width in SD units. Default 2.
+#' @param on_missing_temporal string; "finish" or "continue". Default "continue".
+#' @param on_missing_neighbor string; "finish" or "second". Default "second".
+#' @param neighbor_eligibility string; "with_data" or "all". Default "with_data".
+#' @param overwrite          logical; skip if output exists. Default TRUE.
+#' @param quiet              logical; suppress messages. Default FALSE.
 #
-# @Details:
+#' @details
 #   `neighbor_eligibility` decides which stations may serve as the neighbor:
 #     "with_data" = the paper's rule: only stations with at least one non-missing
 #                   reading for this pollutant in this year are candidates.
@@ -54,8 +54,8 @@
 #     `{pollutant}_n_missing_spatial_sd`
 #     `{pollutant}_n_zero_spatial_sd`
 #
-# @Written_on : 02/02/2026
-# @Written_by : Marcos Paulo
+#' @Written_on : 02/02/2026
+#' @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 detect_pollution_outliers <- function(
     arrow_dir,

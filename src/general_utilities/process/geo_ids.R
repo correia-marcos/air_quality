@@ -1,39 +1,39 @@
 # ============================================================================================
 # IDB: Air monitoring — geographic identifier repair
 # ============================================================================================
-# @Goal: Functions for geographic identifier repair.
+#' @Goal: Functions for geographic identifier repair.
 #
-# @Description: Reconciles the geographic keys the census and the spatial layers ship, which differ in
+#' @Description: Reconciles the geographic keys the census and the spatial layers ship, which differ in
 #   zero padding and width between providers.
 #   Sourced by config_utils_process_data.R; never sourced directly by a script.
 #
-# @Summary:
+#' @Summary:
 #   1. repair_bogota_geo_ids
 #   2. canonical_geo_id
 #   3. reconcile_geo_ids
 #
-# @Date: August 2026
-# @Author: Marcos Paulo
+#' @Date: August 2026
+#' @Author: Marcos Paulo
 # ============================================================================================
 
 # --------------------------------------------------------------------------------------------
 # Function: repair_bogota_geo_ids
 #
-# @Arg geo_ids          : character vector; spatial geographic IDs to repair.
-# @Arg census_ids       : character vector; valid census geographic IDs.
-# @Arg id_width         : integer; target Bogotá MGN ID width. Default 22.
-# @Arg max_zero_suffix  : integer; maximum trailing digits to replace by zero.
-# @Arg allow_broad_ids  : logical; allow broader zero-suffix repairs?
+#' @param geo_ids         character vector; spatial geographic IDs to repair.
+#' @param census_ids      character vector; valid census geographic IDs.
+#' @param id_width        integer; target Bogotá MGN ID width. Default 22.
+#' @param max_zero_suffix integer; maximum trailing digits to replace by zero.
+#' @param allow_broad_ids logical; allow broader zero-suffix repairs?
 #
-# @Output : data.table with original ID, repaired ID, method, and diagnostics.
+#' @return  data.table with original ID, repaired ID, method, and diagnostics.
 #
-# @Details:
+#' @details
 #   Repairs Bogotá geographic IDs for spatial-to-census joins. The function
 #   first preserves exact matches, then tries right-padding short IDs, and
 #   then tries hierarchical trailing-zero repairs. By default, only local
 #   repairs are allowed. Broad repairs should be used only for diagnostics.
 #
-# @Written_by : Marcos Paulo
+#' @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 repair_bogota_geo_ids <- function(
     geo_ids,
@@ -159,20 +159,20 @@ repair_bogota_geo_ids <- function(
 # --------------------------------------------------------------------------------------------
 # Function: canonical_geo_id
 #
-# @Arg x        : vector; raw geographic IDs (character, integer, numeric, int64).
-# @Arg width    : integer or NULL; if given, left-pad with zeros to this width.
-# @Arg state    : string or NULL; if given, prefix this state code (then pad).
+#' @param x       vector; raw geographic IDs (character, integer, numeric, int64).
+#' @param width   integer or NULL; if given, left-pad with zeros to this width.
+#' @param state   string or NULL; if given, prefix this state code (then pad).
 #
-# @Output : character vector of canonical geo IDs.
+#' @return  character vector of canonical geo IDs.
 #
-# @Purpose:
+#' @Purpose:
 #   Single source of truth for geo-id formatting so that the distance matrix,
 #   the IDW census merge, and the station-socio census merge all agree. Numeric
 #   IDs are printed without scientific notation; an optional fixed width fixes
 #   leading-zero loss (e.g. Mexico "9007" -> "09007").
 #
-# @Written_on : June 2026
-# @Written_by : Marcos Paulo
+#' @Written_on : June 2026
+#' @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 canonical_geo_id <- function(x, width = NULL, state = NULL) {
   
@@ -203,13 +203,13 @@ canonical_geo_id <- function(x, width = NULL, state = NULL) {
 # --------------------------------------------------------------------------------------------
 # Function: reconcile_geo_ids
 #
-# @Arg geo_ids    : character; geographic IDs from the spatial/exposure side.
-# @Arg census_ids : character; geographic IDs from the census side.
-# @Arg label      : string; used in the diagnostic message.
-# @Arg quiet      : logical; suppress the message. Default FALSE.
+#' @param geo_ids   character; geographic IDs from the spatial/exposure side.
+#' @param census_ids character; geographic IDs from the census side.
+#' @param label     string; used in the diagnostic message.
+#' @param quiet     logical; suppress the message. Default FALSE.
 #
-# @Output : character vector the same length as geo_ids, with repairable IDs rewritten.
-# @Details:
+#' @return  character vector the same length as geo_ids, with repairable IDs rewritten.
+#' @details
 #   Spatial and census layers spell the same geographic code in different ways. Two
 #   defects occur in this project and they are opposites, so neither rule can be
 #   applied blindly:
@@ -223,8 +223,8 @@ canonical_geo_id <- function(x, width = NULL, state = NULL) {
 #   ambiguous and is left alone. This makes the census the arbiter of every repair, so
 #   the function can never invent a match that the census does not already contain.
 #
-# @Written_on : 02/03/2026
-# @Written_by : Marcos Paulo
+#' @Written_on : 02/03/2026
+#' @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 reconcile_geo_ids <- function(geo_ids, census_ids, label = "", quiet = FALSE) {
 

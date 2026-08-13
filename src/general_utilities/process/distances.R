@@ -1,36 +1,36 @@
 # ============================================================================================
 # IDB: Air monitoring — geo-to-station distance matrices
 # ============================================================================================
-# @Goal: Functions for geo-to-station distance matrices.
+#' @Goal: Functions for geo-to-station distance matrices.
 #
-# @Description: Builds the station-to-station and geographic-unit-to-station distance matrices every
+#' @Description: Builds the station-to-station and geographic-unit-to-station distance matrices every
 #   later stage joins on, on an AEQD metre grid centred on each metro area.
 #   Sourced by config_utils_process_data.R; never sourced directly by a script.
 #
-# @Summary:
+#' @Summary:
 #   1. compute_distance_matrices
 #
-# @Date: August 2026
-# @Author: Marcos Paulo
+#' @Date: August 2026
+#' @Author: Marcos Paulo
 # ============================================================================================
 
 # --------------------------------------------------------------------------------------------
 # Function: compute_distance_matrices
 #
-# @Arg stations_sf          : sf POINT object; monitoring stations.
-# @Arg station_id_col       : string; column in stations_sf with station IDs.
-# @Arg geo_sf               : sf POLYGON object or NULL; geographic units.
-# @Arg geo_id_col           : string or NULL; unique ID column in geo_sf.
-# @Arg out_dir              : string; output directory.
-# @Arg out_name             : string; prefix, e.g. "bogota_2018".
-# @Arg distance_metric      : string; "aeqd", "haversine", or "geosphere".
-# @Arg representative_point : string; "point_on_surface", "math_centroid",
+#' @param stations_sf         sf POINT object; monitoring stations.
+#' @param station_id_col      string; column in stations_sf with station IDs.
+#' @param geo_sf              sf POLYGON object or NULL; geographic units.
+#' @param geo_id_col          string or NULL; unique ID column in geo_sf.
+#' @param out_dir             string; output directory.
+#' @param out_name            string; prefix, e.g. "bogota_2018".
+#' @param distance_metric     string; "aeqd", "haversine", or "geosphere".
+#' @param representative_point string; "point_on_surface", "math_centroid",
 #                             or "math_centroid_legacy".
-# @Arg overwrite            : logical; skip if output exists. Default TRUE.
-# @Arg quiet                : logical; suppress messages. Default FALSE.
+#' @param overwrite           logical; skip if output exists. Default TRUE.
+#' @param quiet               logical; suppress messages. Default FALSE.
 #
-# @Output : Named list of data.tables for station and geo distances.
-# @Details:
+#' @return  Named list of data.tables for station and geo distances.
+#' @details
 #   Calculates station-to-station and geo-to-station distance matrices. If
 #   representative_point = "point_on_surface", it uses an internal point returned by
 #   st_point_on_surface() for every geo unit. If representative_point = "math_centroid",
@@ -59,8 +59,8 @@
 #                     a 3 km distance. Safe at metro extent for that reason, and only
 #                     for that reason: do not reuse it at national extent.
 #
-# @Written_on : 01/02/2026
-# @Written_by : Marcos Paulo
+#' @Written_on : 01/02/2026
+#' @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 compute_distance_matrices <- function(
     stations_sf,

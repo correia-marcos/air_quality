@@ -1,13 +1,13 @@
 # ============================================================================================
 # IDB: Air monitoring — legacy/new panel preparation
 # ============================================================================================
-# @Goal: Functions for legacy/new panel preparation.
+#' @Goal: Functions for legacy/new panel preparation.
 #
-# @Description: Reshapes both the legacy artefacts and the new pipeline output into one comparable shape,
+#' @Description: Reshapes both the legacy artefacts and the new pipeline output into one comparable shape,
 #   so a difference in a comparison is a real difference and not a formatting one.
 #   Sourced by config_utils_validation_old_version.R; never sourced directly.
 #
-# @Summary:
+#' @Summary:
 #   1. build_compare_cfg
 #   2. prepare_new_bogota_like_legacy
 #   3. prepare_legacy_bogota
@@ -19,8 +19,8 @@
 #   9. prepare_legacy_cdmx
 #   10. prepare_new_panel_like_legacy
 #
-# @Date: August 2026
-# @Author: Marcos Paulo
+#' @Date: August 2026
+#' @Author: Marcos Paulo
 # ============================================================================================
 
 # ============================================================================================
@@ -28,8 +28,8 @@
 # ============================================================================================
 # -----------------------------------------------------------------------------------
 # Function: build_compare_cfg
-# @Goal   : Generate the validation config sublist dynamically based on city_id.
-# @Details: Keeps production configs (bogota.R) clean by isolating test parameters.
+#' @Goal   : Generate the validation config sublist dynamically based on city_id.
+#' @details Keeps production configs (bogota.R) clean by isolating test parameters.
 # -----------------------------------------------------------------------------------
 build_compare_cfg <- function(city_id) {
   
@@ -296,13 +296,13 @@ build_time_parts <- function(df, tz = "America/Bogota",
 
 # --------------------------------------------------------------------------------------------
 # Function: harmonize_station_names
-# @Arg       : df            — tibble/data.frame with a 'station' column (chr)
-# @Arg       : rename_map    — named chr vector c("Old Name"="NewName", ...)
-# @Arg       : drop_stations — chr vector of stations to drop after renaming
-# @Output    : tibble with station names harmonized and dropped as requested.
-# @Purpose   : Standardize station labels so legacy vs new data align.
-# @Written_on: 27/08/2025
-# @Written_by: Marcos Paulo
+#' @param df                   tibble/data.frame with a 'station' column (chr)
+#' @param rename_map           named chr vector c("Old Name"="NewName", ...)
+#' @param drop_stations        chr vector of stations to drop after renaming
+#' @return     tibble with station names harmonized and dropped as requested.
+#' @Purpose   : Standardize station labels so legacy vs new data align.
+#' @Written_on: 27/08/2025
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 harmonize_station_names <- function(df, rename_map = c(), drop_stations = character()) {
   stopifnot("station" %in% names(df))
@@ -318,14 +318,14 @@ harmonize_station_names <- function(df, rename_map = c(), drop_stations = charac
 
 # ---------------------------------------------------------------------------
 # .std_name
-# @Arg  x : character vector of station names (any case/encoding)
-# @Out    : character; uppercase, accents stripped, non-alphanumeric removed.
+#' @param x character vector of station names (any case/encoding)
+#' @Out    : character; uppercase, accents stripped, non-alphanumeric removed.
 #           "LasFerias" and "LAS FERIAS" both → "LASFERIAS".
-# @Purpose: Normalise station names so that differences in casing, spaces,
+#' @Purpose: Normalise station names so that differences in casing, spaces,
 #           hyphens and accents do not produce spurious mismatches.
 #           Apply BEFORE any residual_map lookup.
-# @Written_on: 20/03/2026
-# @Written_by: Marcos Paulo
+#' @Written_on: 20/03/2026
+#' @Written_by: Marcos Paulo
 # ---------------------------------------------------------------------------
 .std_name <- function(x) {
   if (!requireNamespace("stringi", quietly = TRUE))
@@ -339,7 +339,7 @@ harmonize_station_names <- function(df, rename_map = c(), drop_stations = charac
 # ---------------------------------------------------------------------------
 # prepare_legacy_single_csv
 #
-# @Arg legacy_csv    : string; path to the single merged CSV from the
+#' @param legacy_csv   string; path to the single merged CSV from the
 #                      old Stata pipeline.
 #                      Required columns (minimum):
 #                        datehour  — chr, Stata "01jan2002 01:00:00"
@@ -347,19 +347,19 @@ harmonize_station_names <- function(df, rename_map = c(), drop_stations = charac
 #                        station   — chr, any case/accents
 #                        year, month, day — integer date parts
 #                        pm10, pm25, ozono, co, no2 — numeric pollutants
-# @Arg residual_map  : named chr vec; overrides applied AFTER .std_name().
+#' @param residual_map named chr vec; overrides applied AFTER .std_name().
 #                      Keys are already-normalised names. Default c().
-# @Arg drop_stations : chr vec (raw); excluded after normalisation.
-# @Arg tz            : Olson timezone. Default "UTC".
-# @Arg compare_years : integer vector; years to retain. NULL = all.
-# @Arg panelize      : logical; expand to full station × hour grid.
-# @Arg verbose       : logical; print progress counts. Default TRUE.
+#' @param drop_stations chr vec (raw); excluded after normalisation.
+#' @param tz           Olson timezone. Default "UTC".
+#' @param compare_years integer vector; years to retain. NULL = all.
+#' @param panelize     logical; expand to full station × hour grid.
+#' @param verbose      logical; print progress counts. Default TRUE.
 #
-# @Output: tibble with columns:
+#' @return tibble with columns:
 #            station, datetime, pm10, pm25, ozone, co, no2,
 #            year, month, day, hour
-# @Written_on: 20/03/2026
-# @Written_by: Marcos Paulo
+#' @Written_on: 20/03/2026
+#' @Written_by: Marcos Paulo
 # ---------------------------------------------------------------------------
 prepare_legacy_single_csv <- function(
     legacy_csv,
@@ -501,15 +501,15 @@ prepare_legacy_single_csv <- function(
 
 # --------------------------------------------------------------------------------------------
 # Function: prepare_legacy_cdmx
-# @Arg       : legacy_df  — tibble read from legacy Stata/CSV for Mexico City
-# @Arg       : tz         — Olson timezone for datetime parsing (default "UTC")
-# @Output    : tibble with columns (order fixed):
+#' @param legacy_df         tibble read from legacy Stata/CSV for Mexico City
+#' @param tz                Olson timezone for datetime parsing (default "UTC")
+#' @return     tibble with columns (order fixed):
 #              datehour, year, month, day, hour, station_code, pm25, pm10, no2, o3, co
-# @Purpose   : Normalize the *legacy* panel to the comparison schema:
+#' @Purpose   : Normalize the *legacy* panel to the comparison schema:
 #              - keep a single datetime (datehour), drop datehour2/day_week
 #              - rename station → station_code
 #              - enforce types and column order
-# @Notes     : Assumes legacy_df already has datehour (POSIXct), year/month/day/hour.
+#' @Notes     : Assumes legacy_df already has datehour (POSIXct), year/month/day/hour.
 # --------------------------------------------------------------------------------------------
 prepare_legacy_cdmx <- function(legacy_df, tz = "UTC") {
   df <- legacy_df
@@ -565,22 +565,22 @@ prepare_legacy_cdmx <- function(legacy_df, tz = "UTC") {
 
 # --------------------------------------------------------------------------------------------
 # Function : prepare_new_panel_like_legacy
-# @Arg  : new_data         — tibble/data.frame OR Arrow Dataset/dplyr tbl with columns:
+#' @param new_data           tibble/data.frame OR Arrow Dataset/dplyr tbl with columns:
 #                            datetime, station_code (or station), pm10, `pm2.5`,
 #                            no2, co, and ozone (or o3/ozono).
-# @Arg  : stations_keep_df — OPTIONAL data.frame/sf with a station code column
+#' @param stations_keep_df   OPTIONAL data.frame/sf with a station code column
 #                            (see station_code_col). Geometry is ignored.
-# @Arg  : station_code_col — column name in stations_keep_df (default "code")
-# @Arg  : year_keep        — integer vector of UTC years to keep (default 2010:2023)
-# @Arg  : tz               — Olson tz string. Used to RELABEL timestamps after collect
+#' @param station_code_col   column name in stations_keep_df (default "code")
+#' @param year_keep          integer vector of UTC years to keep (default 2010:2023)
+#' @param tz                 Olson tz string. Used to RELABEL timestamps after collect
 #                            (no clock shift; like lubridate::force_tz).
-# @Arg  : return           — "tibble" (collect to R) or "arrow" (keep lazy). Default "tibble".
+#' @param return             "tibble" (collect to R) or "arrow" (keep lazy). Default "tibble".
 #
-# @Output : tibble (if return="tibble") or lazy dplyr query (if return="arrow")
+#' @return  tibble (if return="tibble") or lazy dplyr query (if return="arrow")
 #           with columns:
 #           datehour, year, month, day, hour, station_code, pm25, pm10, no2, o3, co
 #
-# @Purpose : Make a new panel comparable to the legacy schema in an Arrow-friendly way:
+#' @Purpose : Make a new panel comparable to the legacy schema in an Arrow-friendly way:
 #            • no base R string ops inside the lazy pipeline,
 #            • Arrow-translatable datetime filters,
 #            • robust ozone column detection,

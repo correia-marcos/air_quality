@@ -1,42 +1,42 @@
 # ============================================================================================
 # IDB: Air monitoring — result comparisons
 # ============================================================================================
-# @Goal: Functions for result comparisons.
+#' @Goal: Functions for result comparisons.
 #
-# @Description: Reproduces the legacy IDW and regression estimators, then quantifies how the new pipeline's
+#' @Description: Reproduces the legacy IDW and regression estimators, then quantifies how the new pipeline's
 #   results differ from them.
 #   Sourced by config_utils_validation_old_version.R; never sourced directly.
 #
-# @Summary:
+#' @Summary:
 #   1. aggregate_idw_exposure_legacy
 #   2. compare_idw
 #   3. compare_outlier_procedure
 #   4. compute_exposure_regressions_legacy
 #
-# @Date: August 2026
-# @Author: Marcos Paulo
+#' @Date: August 2026
+#' @Author: Marcos Paulo
 # ============================================================================================
 
 # ----------------------------------------------------------------------------------------
 # Function: aggregate_idw_exposure_legacy
 #
-# @Arg arrow_dir      : string; cleaned partitioned Arrow/Parquet hourly data.
-# @Arg geo_sta_pq     : string; geo-station distance Parquet (geo_id, station_id,
+#' @param arrow_dir     string; cleaned partitioned Arrow/Parquet hourly data.
+#' @param geo_sta_pq    string; geo-station distance Parquet (geo_id, station_id,
 #                       distance_km) from compute_distance_matrices().
-# @Arg census_col     : data.frame; individual-level census (one row per person).
-# @Arg geo_id_col     : string; geo ID column in census_col.
-# @Arg pop_col        : string; expansion-weight column in census_col.
-# @Arg group_var      : string; schooling variable to quintile (e.g. "escolaridad").
-# @Arg adult_col      : string; adult filter column. Default "adult".
-# @Arg target_year    : integer; the single year to process (legacy ran 2023).
-# @Arg buffer_km      : numeric; max geo-to-station distance. Default 3.
-# @Arg out_dir        : string; output directory.
-# @Arg out_name       : string; output file prefix.
-# @Arg quiet          : logical; suppress messages. Default FALSE.
+#' @param census_col    data.frame; individual-level census (one row per person).
+#' @param geo_id_col    string; geo ID column in census_col.
+#' @param pop_col       string; expansion-weight column in census_col.
+#' @param group_var     string; schooling variable to quintile (e.g. "escolaridad").
+#' @param adult_col     string; adult filter column. Default "adult".
+#' @param target_year   integer; the single year to process (legacy ran 2023).
+#' @param buffer_km     numeric; max geo-to-station distance. Default 3.
+#' @param out_dir       string; output directory.
+#' @param out_name      string; output file prefix.
+#' @param quiet         logical; suppress messages. Default FALSE.
 #
-# @Output : list(exposure_path, individual_path); writes two parquet files.
+#' @return  list(exposure_path, individual_path); writes two parquet files.
 #
-# @Details:
+#' @details
 #   STEP-0 LEGACY REPLICATION ONLY — reproduces the *old* IDW scheme so the
 #   Quarto report can compare it to aggregate_idw_exposure() on identical data.
 #   It is intentionally NOT missingness-aware: inverse-distance weights are
@@ -51,8 +51,8 @@
 #   weights — matching the 2023 legacy script.
 #   Do not use for paper results; use aggregate_idw_exposure() instead.
 #
-# @Written_on : June 2026
-# @Written_by : Marcos Paulo
+#' @Written_on : June 2026
+#' @Written_by : Marcos Paulo
 # ----------------------------------------------------------------------------------------
 aggregate_idw_exposure_legacy <- function(
     arrow_dir,
@@ -194,17 +194,17 @@ aggregate_idw_exposure_legacy <- function(
 
 # --------------------------------------------------------------------------------------------
 # compare_idw
-# @Arg      : cfg              — city cfg list. Must contain a $compare sublist with:
+#' @param cfg                    city cfg list. Must contain a $compare sublist with:
 #                                new_station_dist, legacy_station_dist, and optionally
 #                                new_geo_dist, legacy_geo_dist, station_tol_km,
 #                                and geo_tol_km.
-# @Arg      : out_root         — root output folder; {out_root}/{cfg$id}/ is created.
-# @Arg      : station_audit    — data.frame; output from compare_ground_stations().
+#' @param out_root               root output folder; {out_root}/{cfg$id}/ is created.
+#' @param station_audit          data.frame; output from compare_ground_stations().
 #                                Used to restrict the new pipeline's distance matrix to 
 #                                the legacy station universe for fair comparison.
-# @Arg      : quiet            — logical; suppress messages. Default FALSE.
+#' @param quiet                  logical; suppress messages. Default FALSE.
 #
-# @Output   : named list (invisible) with:
+#' @return    named list (invisible) with:
 #   $station_dist_summary — tibble; per-station-pair comparison statistics
 #   $station_dist_diffs   — tibble; station pairs differing > station_tol_km
 #   $geo_dist_summary     — tibble or NULL; per-geo-unit comparison statistics,
@@ -214,8 +214,8 @@ aggregate_idw_exposure_legacy <- function(
 #   $out_dir              — path to the output directory
 #   Parquet files written to {out_root}/{cfg$id}/distance_comparison/.
 #
-# @Purpose  : Compare distance matrices between the new pipeline and Dropbox legacy.
-# @Details  :
+#' @Purpose  : Compare distance matrices between the new pipeline and Dropbox legacy.
+#' @details
 #   METHODOLOGICAL DIFFERENCES
 #   The new pipeline projects to an Azimuthal Equidistant (AEQD) projection whose
 #   origin is the midpoint of the COMBINED bounding box of stations and geographic
@@ -248,8 +248,8 @@ aggregate_idw_exposure_legacy <- function(
 #   twice: over all pairs, and over pairs within 5 km — only the latter can change
 #   which units fall inside the 3 km buffer.
 #
-# @Written_on: 10/04/2026
-# @Written_by: Marcos Paulo
+#' @Written_on: 10/04/2026
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 compare_idw <- function(
     cfg,
@@ -519,12 +519,12 @@ compare_idw <- function(
 
 # ----------------------------------------------------------------------------------
 # compare_outlier_procedure
-# @Arg cfg           : city cfg list (must contain $id and $compare sublist).
-# @Arg out_root      : root output folder; {out_root}/{cfg$id}/ is created.
-# @Arg station_audit : data.frame; from compare_ground_stations().
-# @Arg quiet         : logical; suppress messages. Default FALSE.
+#' @param cfg          city cfg list (must contain $id and $compare sublist).
+#' @param out_root     root output folder; {out_root}/{cfg$id}/ is created.
+#' @param station_audit data.frame; from compare_ground_stations().
+#' @param quiet        logical; suppress messages. Default FALSE.
 #
-# @Output : named list (invisible) with step_summary, comparison, out_dir.
+#' @return  named list (invisible) with step_summary, comparison, out_dir.
 #           Parquet files written to {out_root}/{cfg$id}/outlier_comparison/.
 # ----------------------------------------------------------------------------------
 compare_outlier_procedure <- function(
@@ -759,24 +759,24 @@ compare_outlier_procedure <- function(
 # ----------------------------------------------------------------------------------------
 # Function: compute_exposure_regressions_legacy
 #
-# @Arg exposure_dt   : data.table; geo-level IDW exposure (one row per geo unit-year).
-# @Arg individual_dt : data.table; individual census microdata with group and weight.
-# @Arg geo_id_col    : string; geographic identifier column. Default "geo_id".
-# @Arg pop_col       : string; expansion-weight column (Santiago: a column of 1s).
-# @Arg group_col     : string; socioeconomic group column. Default "edu_quintile".
-# @Arg group_values  : integer vector; valid groups, e.g. 1:5.
-# @Arg base_group    : integer; omitted reference group. Default max(group_values).
-# @Arg outcomes      : character vector; exposure columns to regress, one model each.
-# @Arg year_filter   : integer; exposure year to keep. Default 2023.
-# @Arg conf_level    : numeric; confidence level. Default 0.95.
-# @Arg listwise      : logical; drop cells missing ANY outcome before weighting.
+#' @param exposure_dt  data.table; geo-level IDW exposure (one row per geo unit-year).
+#' @param individual_dt data.table; individual census microdata with group and weight.
+#' @param geo_id_col   string; geographic identifier column. Default "geo_id".
+#' @param pop_col      string; expansion-weight column (Santiago: a column of 1s).
+#' @param group_col    string; socioeconomic group column. Default "edu_quintile".
+#' @param group_values integer vector; valid groups, e.g. 1:5.
+#' @param base_group   integer; omitted reference group. Default max(group_values).
+#' @param outcomes     character vector; exposure columns to regress, one model each.
+#' @param year_filter  integer; exposure year to keep. Default 2023.
+#' @param conf_level   numeric; confidence level. Default 0.95.
+#' @param listwise     logical; drop cells missing ANY outcome before weighting.
 #                      TRUE reproduces legacy Santiago; FALSE the other three cities.
-# @Arg quiet         : logical; suppress messages. Default FALSE.
+#' @param quiet        logical; suppress messages. Default FALSE.
 #
-# @Output : data.table with the same columns as compute_exposure_regressions(), so the
+#' @return  data.table with the same columns as compute_exposure_regressions(), so the
 #           two can be stacked and differenced directly.
 #
-# @Details:
+#' @details
 #   STEP-0 LEGACY REPLICATION ONLY — reproduces the coauthor's exposure regression so
 #   the Quarto reports can difference it against compute_exposure_regressions() on
 #   identical inputs. It differs from the current estimator in exactly three ways, all
@@ -796,8 +796,8 @@ compare_outlier_procedure <- function(
 #   unfiltered only to audit the restriction's own effect.
 #   Do not use for paper results; use compute_exposure_regressions() instead.
 #
-# @Written_on : July 2026
-# @Written_by : Marcos Paulo
+#' @Written_on : July 2026
+#' @Written_by : Marcos Paulo
 # ----------------------------------------------------------------------------------------
 compute_exposure_regressions_legacy <- function(
     exposure_dt,

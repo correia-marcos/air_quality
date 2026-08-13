@@ -1,13 +1,13 @@
 # ============================================================================================
 # IDB: Air monitoring — station-level monitoring figures
 # ============================================================================================
-# @Goal: Functions for the station-level monitoring figures.
+#' @Goal: Functions for the station-level monitoring figures.
 #
-# @Description: How far each census unit sits from its nearest station, how that has changed
+#' @Description: How far each census unit sits from its nearest station, how that has changed
 #   over time, and how a station's pollution relates to the socioeconomic profile of the units
 #   around it. Sourced by config_utils_plot_tables.R; never sourced directly by a script.
 #
-# @Summary:
+#' @Summary:
 #   1. make_station_acronyms
 #   2. rescale_station_education
 #   3. get_active_station_ids
@@ -18,16 +18,16 @@
 #   8. safe_read_parquet / prepare_station_scatter_data
 #      (all three flagged in doc/deletion_candidates.md)
 #
-# @Date: August 2026
-# @Author: Marcos Paulo
+#' @Date: August 2026
+#' @Author: Marcos Paulo
 # ============================================================================================
 
 # --------------------------------------------------------------------------------------
 # Function: make_station_acronyms
 #
-# @Arg station_ids : character vector; normalized station identifiers.
+#' @param station_ids character vector; normalized station identifiers.
 #
-# @Output : character vector with unique three-letter acronyms.
+#' @return  character vector with unique three-letter acronyms.
 # --------------------------------------------------------------------------------------
 make_station_acronyms <- function(station_ids) {
   
@@ -77,11 +77,11 @@ make_station_acronyms <- function(station_ids) {
 # --------------------------------------------------------------------------------------
 # Function: rescale_station_education
 #
-# @Arg station_dt  : data.table; station-level socioeconomic exposure data.
-# @Arg city_label  : string; city name used in messages.
-# @Arg x_col       : string; education column to check and possibly rescale.
+#' @param station_dt data.table; station-level socioeconomic exposure data.
+#' @param city_label string; city name used in messages.
+#' @param x_col      string; education column to check and possibly rescale.
 #
-# @Output : data.table with the same columns, after a plausible-scale correction.
+#' @return  data.table with the same columns, after a plausible-scale correction.
 # --------------------------------------------------------------------------------------
 rescale_station_education <- function(
     station_dt,
@@ -116,10 +116,10 @@ rescale_station_education <- function(
 # --------------------------------------------------------------------------------------
 # Function: get_active_station_ids
 #
-# @Arg station_dt : data.table; station-socioeconomic processed data.
-# @Arg pollutant  : string; "pm10" or "pm25".
+#' @param station_dt data.table; station-socioeconomic processed data.
+#' @param pollutant string; "pm10" or "pm25".
 #
-# @Output : character vector with active station IDs for the pollutant.
+#' @return  character vector with active station IDs for the pollutant.
 # --------------------------------------------------------------------------------------
 get_active_station_ids <- function(station_dt, pollutant = c("pm10", "pm25")) {
   
@@ -146,14 +146,14 @@ get_active_station_ids <- function(station_dt, pollutant = c("pm10", "pm25")) {
 # --------------------------------------------------------------------------------------
 # Function: build_station_distance_trend_data
 #
-# @Arg dist_pq      : string; geo-to-station distance matrix Parquet.
-# @Arg census_dt    : data.table; collapsed census data by geographic unit.
-# @Arg active_ids   : character vector; active station IDs for one pollutant.
-# @Arg geo_id_col   : string; geographic unit ID column in census_dt.
-# @Arg edu_col      : string; average education column in census_dt.
-# @Arg radius_km    : numeric; radius used to count nearby stations.
+#' @param dist_pq     string; geo-to-station distance matrix Parquet.
+#' @param census_dt   data.table; collapsed census data by geographic unit.
+#' @param active_ids  character vector; active station IDs for one pollutant.
+#' @param geo_id_col  string; geographic unit ID column in census_dt.
+#' @param edu_col     string; average education column in census_dt.
+#' @param radius_km   numeric; radius used to count nearby stations.
 #
-# @Output : data.table with geographic-unit trend inputs.
+#' @return  data.table with geographic-unit trend inputs.
 # --------------------------------------------------------------------------------------
 build_station_distance_trend_data <- function(
     dist_pq,
@@ -224,17 +224,17 @@ build_station_distance_trend_data <- function(
 # --------------------------------------------------------------------------------------
 # Function: plot_station_distance_trend
 #
-# @Arg dt                     : data.table; station-distance trend inputs.
-# @Arg city_label             : string; city label.
-# @Arg pollutant              : string; pollutant label.
-# @Arg radius_km              : numeric; radius used for nearby-station count.
-# @Arg out_file               : string; output image path.
-# @Arg distance_color         : string; color for nearest-station distance.
-# @Arg station_count_color    : string; color for number of nearby stations.
-# @Arg font_family            : string; base font family.
-# @Arg adaptive_y_axis        : logical; zoom y-axis to fitted curves. Default TRUE.
+#' @param dt                    data.table; station-distance trend inputs.
+#' @param city_label            string; city label.
+#' @param pollutant             string; pollutant label.
+#' @param radius_km             numeric; radius used for nearby-station count.
+#' @param out_file              string; output image path.
+#' @param distance_color        string; color for nearest-station distance.
+#' @param station_count_color   string; color for number of nearby stations.
+#' @param font_family           string; base font family.
+#' @param adaptive_y_axis       logical; zoom y-axis to fitted curves. Default TRUE.
 #
-# @Output : ggplot object, saved to disk.
+#' @return  ggplot object, saved to disk.
 # --------------------------------------------------------------------------------------
 plot_station_distance_trend <- function(
     dt,
@@ -363,23 +363,23 @@ plot_station_distance_trend <- function(
 # --------------------------------------------------------------------------------------
 # Function: plot_dual_pollutant_station_scatter
 #
-# @Arg station_dt          : data.table; station-level socioeconomic exposure data.
-# @Arg y_pm10              : string; PM10 outcome column.
-# @Arg y_pm25              : string; PM2.5 outcome column.
-# @Arg city_label          : string; city name used in title.
-# @Arg x_col               : string; socioeconomic variable on the x-axis.
-# @Arg x_label             : string; x-axis label.
-# @Arg y_left              : string; left y-axis label for PM10.
-# @Arg y_right             : string; right y-axis label for PM2.5.
-# @Arg title               : string or NULL; plot title.
-# @Arg out_file            : string or NULL; if provided, saves the figure.
-# @Arg pollutant_colors    : named vector with colors for PM10 and PM2.5.
-# @Arg font_family         : string; base font family.
-# @Arg adaptive_y_axis     : logical; zoom y-axis to observed data. Default TRUE.
+#' @param station_dt         data.table; station-level socioeconomic exposure data.
+#' @param y_pm10             string; PM10 outcome column.
+#' @param y_pm25             string; PM2.5 outcome column.
+#' @param city_label         string; city name used in title.
+#' @param x_col              string; socioeconomic variable on the x-axis.
+#' @param x_label            string; x-axis label.
+#' @param y_left             string; left y-axis label for PM10.
+#' @param y_right            string; right y-axis label for PM2.5.
+#' @param title              string or NULL; plot title.
+#' @param out_file           string or NULL; if provided, saves the figure.
+#' @param pollutant_colors   named vector with colors for PM10 and PM2.5.
+#' @param font_family        string; base font family.
+#' @param adaptive_y_axis    logical; zoom y-axis to observed data. Default TRUE.
 #
-# @Output : ggplot object.
+#' @return  ggplot object.
 #
-# @Purpose:
+#' @Purpose:
 #   Plots station-level PM10 and PM2.5 outcomes against education in the census
 #   tract where the station is located. PM2.5 is rescaled to the PM10 axis.
 # --------------------------------------------------------------------------------------
@@ -600,17 +600,17 @@ plot_dual_pollutant_station_scatter <- function(
 # --------------------------------------------------------------------------------------
 # Function: save_city_monitoring_figures
 #
-# @Arg city_label  : string; city name for plot titles.
-# @Arg city_id     : string; city identifier for filenames.
-# @Arg dist_pq     : string; distance matrix path.
-# @Arg census_dt   : data.table; collapsed census data.
-# @Arg station_dt  : data.table; station-socioeconomic data.
-# @Arg geo_id_col  : string; geographic ID column in census_dt.
-# @Arg edu_col     : string; average education column in census_dt.
-# @Arg radius_km   : numeric; radius used in coverage figure.
-# @Arg outdir_fig  : string; output folder.
+#' @param city_label string; city name for plot titles.
+#' @param city_id    string; city identifier for filenames.
+#' @param dist_pq    string; distance matrix path.
+#' @param census_dt  data.table; collapsed census data.
+#' @param station_dt data.table; station-socioeconomic data.
+#' @param geo_id_col string; geographic ID column in census_dt.
+#' @param edu_col    string; average education column in census_dt.
+#' @param radius_km  numeric; radius used in coverage figure.
+#' @param outdir_fig string; output folder.
 #
-# @Output : invisible list with ggplot objects.
+#' @return  invisible list with ggplot objects.
 # --------------------------------------------------------------------------------------
 save_city_monitoring_figures <- function(
     city_label,
@@ -738,9 +738,9 @@ save_city_monitoring_figures <- function(
 # --------------------------------------------------------------------------------------
 # Function: safe_read_parquet
 #
-# @Arg path : string; path to Parquet file.
+#' @param path string; path to Parquet file.
 #
-# @Output : data.table.
+#' @return  data.table.
 # --------------------------------------------------------------------------------------
 safe_read_parquet <- function(path) {
   
@@ -756,11 +756,11 @@ safe_read_parquet <- function(path) {
 # --------------------------------------------------------------------------------------
 # Function: prepare_station_scatter_data
 #
-# @Arg station_dt : data.table; station-socioeconomic data.
-# @Arg y_cols     : character vector; outcome columns to plot.
-# @Arg y_labels   : named character vector; labels for outcome columns.
+#' @param station_dt data.table; station-socioeconomic data.
+#' @param y_cols    character vector; outcome columns to plot.
+#' @param y_labels  named character vector; labels for outcome columns.
 #
-# @Output : data.table in long format.
+#' @return  data.table in long format.
 # --------------------------------------------------------------------------------------
 prepare_station_scatter_data <- function(
     station_dt,

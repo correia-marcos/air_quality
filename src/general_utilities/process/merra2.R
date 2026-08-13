@@ -1,13 +1,13 @@
 # ============================================================================================
 # IDB: Air monitoring — MERRA-2 satellite products
 # ============================================================================================
-# @Goal: Functions for MERRA-2 satellite products.
+#' @Goal: Functions for MERRA-2 satellite products.
 #
-# @Description: Reads MERRA-2 .nc4 aerosol fields over a city polygon, converts them to PM2.5, and
+#' @Description: Reads MERRA-2 .nc4 aerosol fields over a city polygon, converts them to PM2.5, and
 #   compares the result against NASA country means and against the ground stations.
 #   Sourced by config_utils_process_data.R; never sourced directly by a script.
 #
-# @Summary:
+#' @Summary:
 #   1. process_merra2_region_hourly
 #   2. convert_and_add_pm25
 #   3. compare_pm25_to_nasa
@@ -16,8 +16,8 @@
 #   6. aggregate_and_correlate
 #   7. compute_correlations_for_cities
 #
-# @Date: August 2026
-# @Author: Marcos Paulo
+#' @Date: August 2026
+#' @Author: Marcos Paulo
 # ============================================================================================
 
 # ############################################################################################
@@ -26,31 +26,31 @@
 
 # --------------------------------------------------------------------------------------------
 # Function: process_merra2_region_hourly
-# @Arg         : shapefile is an 'sf' object representing the boundary of the region 
+#' @param        shapefile is an 'sf' object representing the boundary of the region
 #                (or any polygon collection for which grid‐level values are desired).
-# @Arg         : nc_files is a vector of file paths to the .nc4 files.
-# @Arg         : region_name is a string with the name of the region (or country).
-# @Arg         : num_cores is the number of CPU cores to use for parallel processing. 
+#' @param        nc_files is a vector of file paths to the .nc4 files.
+#' @param        region_name is a string with the name of the region (or country).
+#' @param        num_cores is the number of CPU cores to use for parallel processing.
 #                If NULL, one less than the total available cores is used.
-# @Arg         : extraction_fun is either a character string (e.g., "mean") that will be 
+#' @param        extraction_fun is either a character string (e.g., "mean") that will be
 #                passed to exact_extract via its 'fun' argument, or NULL. When not NULL, 
 #                exact_extract returns an aggregated (single) value per hour. When NULL, 
 #                exact_extract returns a list of data frames (one per feature in the input 
 #                shapefile) and the function will add a column 'feature_index' to identify 
 #                each grid cell.
-# @Arg         : parallel is a logical indicating whether to attempt parallel processing.
+#' @param        parallel is a logical indicating whether to attempt parallel processing.
 #                When TRUE, the function checks if available RAM is > 30GB. Otherwise,
 #                processing is sequential.
-# @Output      : A data frame with Date, Hour, and the aerosol variables. When extraction_fun 
+#' @return       A data frame with Date, Hour, and the aerosol variables. When extraction_fun
 #                is not NULL, a single row per hour is returned (aggregated over the shapefile).
 #                When extraction_fun is NULL, the output includes one row per grid (feature) 
 #                per hour, including a 'feature_index' column.
-# @Purpose     : Processes MERRA-2 .nc4 files for a given region by extracting aerosol variables 
+#' @Purpose    : Processes MERRA-2 .nc4 files for a given region by extracting aerosol variables
 #                at hourly resolution. The extraction can be done in an aggregated manner (e.g.,
 #                using "mean") or on a per-grid basis. The function automatically selects
 #               parallel or sequential processing based on user input and available system RAM.
-# @Written_on  : 02/12/2024
-# @Written_by  : Marcos Paulo
+#' @Written_on  : 02/12/2024
+#' @Written_by  : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 process_merra2_region_hourly <- function(shapefile,
                                          nc_files, 
@@ -242,18 +242,18 @@ process_merra2_region_hourly <- function(shapefile,
 
 # --------------------------------------------------------------------------------------------
 # Function: convert_and_add_pm25
-# @Arg         : df is a data frame containing columns "DUSMASS25", "OCSMASS", "BCSMASS", 
+#' @param        df is a data frame containing columns "DUSMASS25", "OCSMASS", "BCSMASS",
 #                "SSSMASS25", and "SO4SMASS" in kg m^-3.
-# @Arg         : new_column_name is a string representing the name of the new PM2.5 column.
-# @Output      : The original data frame with:
+#' @param        new_column_name is a string representing the name of the new PM2.5 column.
+#' @return       The original data frame with:
 #                1) The given aerosol mass columns converted from kg m^-3 to µg m^-3.
 #                2) An additional column for estimated PM2.5 (also in µg m^-3).
-# @Purpose     : This function first converts the specified aerosol mass columns from kg m^-3
+#' @Purpose    : This function first converts the specified aerosol mass columns from kg m^-3
 #                to µg m^-2. Then, it calculates the PM2.5 estimate based on the formula:
 #                PM2.5 = DUSMASS25 + OCSMASS + BCSMASS + SSSMASS25 + (SO4SMASS * 132.14/96.06)
 #                The final PM2.5 column will also be in µg m^-3.
-# @Written_on  : 13/12/2024
-# @Written_by  : Marcos Paulo
+#' @Written_on  : 13/12/2024
+#' @Written_by  : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 convert_and_add_pm25 <- function(df, new_column_name = "pm25_estimate") {
   # Check if required columns exist
@@ -283,17 +283,17 @@ convert_and_add_pm25 <- function(df, new_column_name = "pm25_estimate") {
 
 # --------------------------------------------------------------------------------------------
 # Function: compare_pm25_to_nasa
-# @Arg         : user_pm_data (data frame of hourly data for one country, containing 
+#' @param        user_pm_data (data frame of hourly data for one country, containing
 #                columns "Date" (as a Date object) and "pm25_estimate" in µg/m^3).
-# @Arg         : nasa_monthly_data (data frame of monthly data from NASA, containing:
+#' @param        nasa_monthly_data (data frame of monthly data from NASA, containing:
 #                - a "date" column in YYYY-MM format (e.g. "2023-01")
 #                - a column named exactly as the country, e.g. "Brazil").
-# @Arg         : country_name (string, e.g., "Brazil"), matching column in nasa_monthly_data.
-# @Output      : A data frame with three columns: "country", "my_pm25", and "nasa_pm25".
-# @Purpose     : This function computes monthly means from your hourly PM2.5, then merges 
+#' @param        country_name (string, e.g., "Brazil"), matching column in nasa_monthly_data.
+#' @return       A data frame with three columns: "country", "my_pm25", and "nasa_pm25".
+#' @Purpose     : This function computes monthly means from your hourly PM2.5, then merges
 #                with NASA's monthly PM2.5, producing a simple comparison table.
-# @Written_on  : 01/02/2025
-# @Written_by  : Marcos Paulo
+#' @Written_on  : 01/02/2025
+#' @Written_by  : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 compare_pm25_to_nasa <- function(user_pm_data,
                                  nasa_monthly_data, 
@@ -334,33 +334,33 @@ compare_pm25_to_nasa <- function(user_pm_data,
 
 # --------------------------------------------------------------------------------------------
 # Function: generate_region_comparison
-# @Arg         : shapefile is an 'sf' object containing boundaries for all regions.
-# @Arg         : filter_field is a string specifying the column name in the shapefile used 
+#' @param        shapefile is an 'sf' object containing boundaries for all regions.
+#' @param        filter_field is a string specifying the column name in the shapefile used
 #                to identify a region (e.g., "sov_a3" or "admin").
-# @Arg         : filter_value is a string with the value in filter_field corresponding to the 
+#' @param        filter_value is a string with the value in filter_field corresponding to the
 #                desired region (e.g., "BRA" for Brazil or "Argentina" for Argentina).
-# @Arg         : region_name is a string with the full name of the region (or country) used 
+#' @param        region_name is a string with the full name of the region (or country) used
 #                for labeling in the output (e.g., "Brazil" or "Argentina").
-# @Arg         : nc_files is a vector of file paths to the MERRA-2 .nc4 files.
-# @Arg         : nasa_monthly_data is a dataframe with monthly PM2.5 values from NASA. It should
+#' @param        nc_files is a vector of file paths to the MERRA-2 .nc4 files.
+#' @param        nasa_monthly_data is a dataframe with monthly PM2.5 values from NASA. It should
 #                contain a "date" column (in "YYYY-MM" format) and a column named exactly as
 #                region_name.
-# @Arg         : num_cores is the number of CPU cores to use for parallel processing (default: 
+#' @param        num_cores is the number of CPU cores to use for parallel processing (default:
 #                NULL, which uses one less than the total available cores).
-# @Arg         : extraction_fun is either a character string (e.g., "mean") for aggregated
+#' @param        extraction_fun is either a character string (e.g., "mean") for aggregated
 #                extraction, or NULL to return grid-level values.
-# @Arg         : parallel is a logical indicating whether to attempt parallel processing.
+#' @param        parallel is a logical indicating whether to attempt parallel processing.
 #                When TRUE, the function checks if available RAM is >30GB before running in
 #                parallel.
-# @Output      : A data frame with columns "country", "year_month", "IDB_pm25" (the region's 
+#' @return       A data frame with columns "country", "year_month", "IDB_pm25" (the region's
 #                monthly PM2.5 estimate from your MERRA-2 processing) and "nasa_pm25" (NASA's
 #                monthly PM2.5 value).
-# @Purpose     : This function automates the creation of a monthly PM2.5 comparison panel for a 
+#' @Purpose    : This function automates the creation of a monthly PM2.5 comparison panel for a
 #                given region. It filters the shapefile, processes MERRA-2 netCDF files to
 #                generate hourly data, converts the data to monthly averages, and then merges
 #                the result with NASA's PM2.5 data.
-# @Written_on  : 01/02/2025
-# @Written_by  : Marcos Paulo
+#' @Written_on  : 01/02/2025
+#' @Written_by  : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 generate_region_comparison <- function(shapefile, 
                                        filter_field = "sov_a3", 
@@ -401,23 +401,23 @@ generate_region_comparison <- function(shapefile,
 
 # --------------------------------------------------------------------------------------------
 # Function: combine_station_merra2_pm25
-# @Arg         : station_df is a data frame containing ground station PM2.5 measurements
-# @Arg         : station_datetime_col is a string with the name of the column in station_df 
+#' @param        station_df is a data frame containing ground station PM2.5 measurements
+#' @param        station_datetime_col is a string with the name of the column in station_df
 #                that stores the date-time information (e.g., "datetime"). 
-# @Arg         : station_pm25_col is a string with the name of the PM2.5 column in station_df
-# @Arg         : merra2_df is a data frame representing MERRA-2 data, which must have columns:
+#' @param        station_pm25_col is a string with the name of the PM2.5 column in station_df
+#' @param        merra2_df is a data frame representing MERRA-2 data, which must have columns:
 #                "Date", "Hour", and "pm25_estimate".
-# @Output      : A data frame with the following columns:
+#' @return       A data frame with the following columns:
 #                - "Date"          : The date (in YYYY-MM-DD format)
 #                - "Hour"          : The hour of the day (0 to 23)
 #                - "pm25_stations" : The averaged PM2.5 values from the ground station data
 #                - "pm25_merra2"   : The PM2.5 estimates from the MERRA-2 data
-# @Purpose     : This function merges hourly ground station PM2.5 data with MERRA-2 PM2.5 
+#' @Purpose     : This function merges hourly ground station PM2.5 data with MERRA-2 PM2.5
 #                estimates by matching on date and hour. The ground station data may contain 
 #                multiple stations in the same city; the function computes an average PM2.5 for 
 #                each hour across all stations.
-# @Written_on  : 13/02/2025
-# @Written_by  : Marcos Paulo
+#' @Written_on  : 13/02/2025
+#' @Written_by  : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 combine_station_merra2_pm25 <- function(station_df,
                                         station_datetime_col = "datetime",
@@ -452,22 +452,22 @@ combine_station_merra2_pm25 <- function(station_df,
 
 # --------------------------------------------------------------------------------------------
 # Function: aggregate_and_correlate
-# @Arg         : df is a data frame that results from combining ground station and 
+#' @param        df is a data frame that results from combining ground station and
 #                MERRA-2 data. It must contain at least the following columns:
 #                - "Date"          : Date (in YYYY-MM-DD format)
 #                - "pm25_merra2"   : PM2.5 estimates from MERRA-2 data
 #                - "pm25_stations" : Averaged ground station PM2.5 values
-# @Arg         : time_scale is a string indicating the aggregation level. It must be one of:
+#' @param        time_scale is a string indicating the aggregation level. It must be one of:
 #                "hourly", "daily", or "monthly". 
 #                - "hourly": Use the data as-is (assumes one row per hour).
 #                - "daily": Average over each day.
 #                - "monthly": Average over each month.
-# @Output      : A numeric value representing the Pearson correlation between 
+#' @return       A numeric value representing the Pearson correlation between
 #                pm25_merra2 and pm25_stations for the specified time scale.
-# @Purpose     : Aggregates the merged data to a desired time scale and computes 
+#' @Purpose     : Aggregates the merged data to a desired time scale and computes 
 #                the correlation between the MERRA-2 and ground station PM2.5 values.
-# @Written_on  : 14/02/2025
-# @Written_by  : Marcos Paulo
+#' @Written_on  : 14/02/2025
+#' @Written_by  : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 aggregate_and_correlate <- function(df, time_scale = "daily") {
 
@@ -505,18 +505,18 @@ aggregate_and_correlate <- function(df, time_scale = "daily") {
 
 # --------------------------------------------------------------------------------------------
 # Function: compute_correlations_for_cities
-# @Arg         : city_dfs is a named list of merged data frames (one per city) produced by
+#' @param        city_dfs is a named list of merged data frames (one per city) produced by
 #                combine_station_merra2_pm25(). Each data frame must contain the columns:
 #                "Date", "pm25_merra2", and "pm25_stations".
-# @Arg         : timescales is a character vector specifying the aggregation levels to test.
+#' @param        timescales is a character vector specifying the aggregation levels to test.
 #                Default is c("hourly", "daily", "monthly").
-# @Output      : A data frame with columns "City", "Time_Scale", and "Correlation", containing
+#' @return       A data frame with columns "City", "Time_Scale", and "Correlation", containing
 #                the Pearson correlation between pm25_merra2 and pm25_stations for each city and
 #                each specified time scale.
-# @Purpose     : This function computes the correlation between MERRA-2 and ground station PM2.5
+#' @Purpose    : This function computes the correlation between MERRA-2 and ground station PM2.5
 #                measurements at different time scales for a collection of cities.
-# @Written_on  : 14/02/2025
-# @Written_by  : Marcos Paulo
+#' @Written_on  : 14/02/2025
+#' @Written_by  : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 compute_correlations_for_cities <- function(city_dfs,
                                             timescales = c("hourly", "daily", "monthly")) {

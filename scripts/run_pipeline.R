@@ -1,13 +1,13 @@
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-# @Goal: Master orchestrator to execute the entire data pipeline sequentially.
+#' @Goal: Master orchestrator to execute the entire data pipeline sequentially.
 # 
-# @Description: This script allows coauthors and reviewers to reproduce the entire 
+#' @Description: This script allows coauthors and reviewers to reproduce the entire 
 # project by running a single file top-to-bottom. It sources individual module scripts 
 # in the strict dependency order required for the data architecture.
 # 
-# @Summary:
+#' @Summary:
 #   0.   Download all raw data (Ground Stations, Census, MERRA-2)
 #   1.   Process and format city-specific data
 #   2.   Generate distance matrices
@@ -18,8 +18,8 @@
 #   7.   MERRA-2 satellite track
 #   8.   Tables and figures
 #
-# @Date: August 2026
-# @Author: Marcos Paulo
+#' @Date: August 2026
+#' @Author: Marcos Paulo
 # ============================================================================================
 
 # Load `here` to ensure pathing is robust regardless of the working directory

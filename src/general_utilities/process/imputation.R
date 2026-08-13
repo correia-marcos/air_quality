@@ -1,33 +1,33 @@
 # ============================================================================================
 # IDB: Air monitoring — hourly imputation
 # ============================================================================================
-# @Goal: Functions for hourly imputation.
+#' @Goal: Functions for hourly imputation.
 #
-# @Description: Fills missing hourly readings by OLS on neighbouring stations, used for the imputed
+#' @Description: Fills missing hourly readings by OLS on neighbouring stations, used for the imputed
 #   robustness specification.
 #   Sourced by config_utils_process_data.R; never sourced directly by a script.
 #
-# @Summary:
+#' @Summary:
 #   1. impute_missing_hourly_ols
 #
-# @Date: August 2026
-# @Author: Marcos Paulo
+#' @Date: August 2026
+#' @Author: Marcos Paulo
 # ============================================================================================
 
 # --------------------------------------------------------------------------------------------
 # Function: impute_missing_hourly_ols
 #
-# @Arg arrow_dir   : string; Arrow dataset (hourly).
-# @Arg out_dir     : string; output directory.
-# @Arg out_name    : string; prefix for output folder.
-# @Arg pollutants  : character; default c("pm10","pm25").
-# @Arg id_col      : string; unique station column. Default "station_code".
-# @Arg legacy_mode : logical; if TRUE, replicates the shifting-identity 
+#' @param arrow_dir  string; Arrow dataset (hourly).
+#' @param out_dir    string; output directory.
+#' @param out_name   string; prefix for output folder.
+#' @param pollutants character; default c("pm10","pm25").
+#' @param id_col     string; unique station column. Default "station_code".
+#' @param legacy_mode logical; if TRUE, replicates the shifting-identity
 #                    compaction bug of the legacy pipeline. Default FALSE.
-# @Arg overwrite   : logical; skip if output exists. Default TRUE.
-# @Arg quiet       : logical; suppress messages. Default FALSE.
+#' @param overwrite  logical; skip if output exists. Default TRUE.
+#' @param quiet      logical; suppress messages. Default FALSE.
 #
-# @Details
+#' @details
 #   LEGACY MODE (TRUE):
 #     Replicates the Dropbox pipeline exactly. It collects non-NA readings from 
 #     other stations and compacts them leftward into anonymous `other_X` columns.
@@ -38,10 +38,10 @@
 #     Correctly implements the paper's intended Eq(1). Fits separate models per 
 #     station, using explicitly named neighboring stations as predictors, 
 #     preserving exact spatial correlation and distinct missingness states.
-# @Output     : List with out_path = out_path, n_imputed = sum(pp_summary$n_imputed), 
+#' @return      List with out_path = out_path, n_imputed = sum(pp_summary$n_imputed),
 #               per_poll = pp_summary, per_year = pp)
-# @Written_on : 02/02/2026
-# @Written_by : Marcos Paulo
+#' @Written_on : 02/02/2026
+#' @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 impute_missing_hourly_ols <- function(
     arrow_dir,

@@ -1,14 +1,14 @@
 # ============================================================================================
 # IDB: Air monitoring — exposure-by-group figures
 # ============================================================================================
-# @Goal: Functions for exposure-by-group figures.
+#' @Goal: Functions for exposure-by-group figures.
 #
-# @Description: Exposure across the socioeconomic distribution: quintile levels, kernel
+#' @Description: Exposure across the socioeconomic distribution: quintile levels, kernel
 # densities, hours
 #   above WHO targets, and the regression gaps with clustered intervals.
 #   Sourced by config_utils_plot_tables.R; never sourced directly by a script.
 #
-# @Summary:
+#' @Summary:
 #   1. plot_exposure_by_quintile
 #   2. plot_exposure_by_quintile_with_ci
 #   3. plot_kernel_density_by_quintile
@@ -18,18 +18,18 @@
 #   7. plot_group_levels
 #   8. .format_pollutant_label
 #
-# @Date: August 2026
-# @Author: Marcos Paulo
+#' @Date: August 2026
+#' @Author: Marcos Paulo
 # ============================================================================================
 
 # ---------------------------------------------------------------------------
 # Function: plot_exposure_by_quintile
 #
-# @Arg exposure_dir  : string; folder where aggregate_idw_exposure()
+#' @param exposure_dir string; folder where aggregate_idw_exposure()
 #                      wrote its Parquet outputs.
-# @Arg out_name      : string; file prefix used in aggregate_idw_exposure()
+#' @param out_name     string; file prefix used in aggregate_idw_exposure()
 #                      (used to locate the correct Parquet files).
-# @Arg quintile_level: string; "geo" or "individual". Must match the
+#' @param quintile_level string; "geo" or "individual". Must match the
 #                      mode used when aggregate_idw_exposure() was called.
 #                      Default "geo".
 #                      "geo"        — reads {out_name}_idw_exposure.parquet,
@@ -37,18 +37,18 @@
 #                      "individual" — additionally reads
 #                                     {out_name}_individual_quintiles.parquet
 #                                     and joins it to exposure by geo_id.
-# @Arg pop_col       : string; population weight column present in the
+#' @param pop_col      string; population weight column present in the
 #                      Parquet file(s). Default "n" (geo mode) — set to
 #                      "fe" for individual mode.
-# @Arg year_filter   : integer or NULL; restrict to one year. If NULL,
+#' @param year_filter  integer or NULL; restrict to one year. If NULL,
 #                      all available years are used.
-# @Arg pollutants    : character vector; default c("pm10", "pm25").
-# @Arg who_it_plot   : character vector; which WHO ITs to tabulate.
+#' @param pollutants   character vector; default c("pm10", "pm25").
+#' @param who_it_plot  character vector; which WHO ITs to tabulate.
 #                      Default c("it1", "it2").
-# @Arg city_label    : string; city name shown on the plot title.
-# @Arg quiet         : logical; suppress messages. Default FALSE.
+#' @param city_label   string; city name shown on the plot title.
+#' @param quiet        logical; suppress messages. Default FALSE.
 #
-# @Output : Named list (nothing is written to disk):
+#' @return  Named list (nothing is written to disk):
 #   $plot       — ggplot object. NULL if no matching avg_* columns found.
 #   $table_mean — data.table; weighted mean concentration by quintile.
 #   $table_hrs  — data.table; weighted mean hours-above-IT by quintile.
@@ -56,7 +56,7 @@
 #   $data       — data.table; the analysis-ready panel used for all
 #                 computations (useful for ad-hoc checks).
 #
-# @Details:
+#' @details
 #   INDIVIDUAL MODE JOIN
 #   In individual mode, aggregate_idw_exposure() stores geo-level
 #   exposure and individual quintile assignments in two separate files.
@@ -70,8 +70,8 @@
 #   automatically as the ratio of their Q5 weighted means, so no
 #   hard-coded multiplier is needed.
 #
-# @Written_on : 02/02/2026
-# @Written_by : Marcos Paulo
+#' @Written_on : 02/02/2026
+#' @Written_by : Marcos Paulo
 # ---------------------------------------------------------------------------
 plot_exposure_by_quintile <- function(
     exposure_dir,
@@ -366,25 +366,25 @@ plot_exposure_by_quintile <- function(
 # --------------------------------------------------------------------------------------------
 # Function: plot_exposure_by_quintile_with_ci
 #
-# @Arg ci_table    : data.table as produced by compute_exposure_ci_regression().
+#' @param ci_table   data.table as produced by compute_exposure_ci_regression().
 #                    Must contain columns: outcome, pollutant, quintile, estimate,
 #                    ci_low, ci_high.
-# @Arg outcome     : string; which outcome to plot (e.g. "avg" for concentration,
+#' @param outcome    string; which outcome to plot (e.g. "avg" for concentration,
 #                    "hrs_d_it1" for hours above WHO IT1). Must match a value of
 #                    `ci_table$outcome`.
-# @Arg pollutant   : string; filter to one pollutant. Default "pm25".
-# @Arg city_label  : string; shown as plot title.
-# @Arg y_label     : string|NULL; y-axis title. If NULL, a sensible default is picked
+#' @param pollutant  string; filter to one pollutant. Default "pm25".
+#' @param city_label string; shown as plot title.
+#' @param y_label    string|NULL; y-axis title. If NULL, a sensible default is picked
 #                    from `outcome`/`pollutant`.
-# @Arg color_line  : string; line/point color. Default "black".
+#' @param color_line string; line/point color. Default "black".
 #
-# @Output : ggplot2 object. Error bars are 95% CIs (or whatever was used upstream).
+#' @return  ggplot2 object. Error bars are 95% CIs (or whatever was used upstream).
 #
-# @Purpose: Rebuild of the quintile plots in legacy 4_exposure_plots_*_regCI.R.
+#' @Purpose: Rebuild of the quintile plots in legacy 4_exposure_plots_*_regCI.R.
 #           Designed to pair 1-to-1 with compute_exposure_ci_regression().
 #
-# @Written_on : 17/04/2026
-# @Written_by : Marcos Paulo
+#' @Written_on : 17/04/2026
+#' @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 plot_exposure_by_quintile_with_ci <- function(
     ci_table,
@@ -438,25 +438,25 @@ plot_exposure_by_quintile_with_ci <- function(
 # --------------------------------------------------------------------------------------------
 # Function: plot_kernel_density_by_quintile
 #
-# @Arg exposure_dir    : string; folder with aggregate_idw_exposure() outputs.
-# @Arg out_name        : string; prefix (same as in aggregate_idw_exposure()).
-# @Arg pollutant       : string; one of the columns "avg_<pollutant>" in the file.
+#' @param exposure_dir   string; folder with aggregate_idw_exposure() outputs.
+#' @param out_name       string; prefix (same as in aggregate_idw_exposure()).
+#' @param pollutant      string; one of the columns "avg_<pollutant>" in the file.
 #                         Default "pm25".
-# @Arg quintile_level  : string; "geo" or "individual" (see aggregate_idw_exposure()).
-# @Arg pop_col         : string; weight column. Default "n".
-# @Arg year_filter     : integer|NULL; restrict to one year.
-# @Arg city_label      : string; plot title.
-# @Arg bw_adjust       : numeric; ggplot2::geom_density(adjust = ...). Default 1.
-# @Arg x_trim_q        : numeric in (0,1); trim x above this weighted quantile to
+#' @param quintile_level string; "geo" or "individual" (see aggregate_idw_exposure()).
+#' @param pop_col        string; weight column. Default "n".
+#' @param year_filter    integer|NULL; restrict to one year.
+#' @param city_label     string; plot title.
+#' @param bw_adjust      numeric; ggplot2::geom_density(adjust = ...). Default 1.
+#' @param x_trim_q       numeric in (0,1); trim x above this weighted quantile to
 #                         avoid long tails dominating the plot. Default 0.995.
 #
-# @Output : ggplot2 object (overlaid weighted kernel densities coloured by
+#' @return  ggplot2 object (overlaid weighted kernel densities coloured by
 #           education quintile).
 #
-# @Purpose: Rebuild of inputs/1_kernel_plots_quintiles_3km.R / _20km.R.
+#' @Purpose: Rebuild of inputs/1_kernel_plots_quintiles_3km.R / _20km.R.
 #
-# @Written_on : 17/04/2026
-# @Written_by : Marcos Paulo
+#' @Written_on : 17/04/2026
+#' @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 plot_kernel_density_by_quintile <- function(
     exposure_dir,
@@ -527,25 +527,25 @@ plot_kernel_density_by_quintile <- function(
 # --------------------------------------------------------------------------------------------
 # Function: plot_scatter_pollutants
 #
-# @Arg arrow_dir    : string; Arrow dataset (hourly).
-# @Arg x_pol        : string; pollutant on x-axis. Default "pm10".
-# @Arg y_pol        : string; pollutant on y-axis. Default "pm25".
-# @Arg city_label   : string; shown in plot title.
-# @Arg year_filter  : integer|NULL; restrict to one year.
-# @Arg by_station   : logical; facet by station if TRUE (and few enough stations).
+#' @param arrow_dir   string; Arrow dataset (hourly).
+#' @param x_pol       string; pollutant on x-axis. Default "pm10".
+#' @param y_pol       string; pollutant on y-axis. Default "pm25".
+#' @param city_label  string; shown in plot title.
+#' @param year_filter integer|NULL; restrict to one year.
+#' @param by_station  logical; facet by station if TRUE (and few enough stations).
 #                      Default FALSE.
-# @Arg sample_n     : integer; random subsample of hourly points for plotting (rendering
+#' @param sample_n    integer; random subsample of hourly points for plotting (rendering
 #                      millions of points is slow). Default 50000. Use NA for full data.
-# @Arg point_alpha  : numeric in (0,1]. Default 0.3.
-# @Arg add_45       : logical; overlay the y = x reference line. Default TRUE.
-# @Arg mem_gb       : numeric; DuckDB memory ceiling in GB. Default 4.
+#' @param point_alpha numeric in (0,1]. Default 0.3.
+#' @param add_45      logical; overlay the y = x reference line. Default TRUE.
+#' @param mem_gb      numeric; DuckDB memory ceiling in GB. Default 4.
 #
-# @Output : ggplot2 object (scatter + optional facets + 45° reference).
+#' @return  ggplot2 object (scatter + optional facets + 45° reference).
 #
-# @Purpose: Rebuild of the scatter plots in legacy 6_scatter_plots.do.
+#' @Purpose: Rebuild of the scatter plots in legacy 6_scatter_plots.do.
 #
-# @Written_on : 17/04/2026
-# @Written_by : Marcos Paulo
+#' @Written_on : 17/04/2026
+#' @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 plot_scatter_pollutants <- function(
     arrow_dir,
@@ -617,24 +617,24 @@ plot_scatter_pollutants <- function(
 # --------------------------------------------------------------------------------------------
 # Function: plot_hours_above_target_by_quintile
 #
-# @Arg exposure_dir    : string; folder with aggregate_idw_exposure() outputs.
-# @Arg out_name        : string; prefix used in aggregate_idw_exposure().
-# @Arg quintile_level  : string; "geo" or "individual".
-# @Arg pop_col         : string; weight column. Default "n".
-# @Arg pollutant       : string; "pm10" or "pm25". Default "pm25".
-# @Arg who_it          : string; which interim target. Default "it1".
-# @Arg year_filter     : integer|NULL; restrict to one year.
-# @Arg city_label      : string; plot title.
-# @Arg bar_fill        : string; fill color. Default "grey35".
+#' @param exposure_dir   string; folder with aggregate_idw_exposure() outputs.
+#' @param out_name       string; prefix used in aggregate_idw_exposure().
+#' @param quintile_level string; "geo" or "individual".
+#' @param pop_col        string; weight column. Default "n".
+#' @param pollutant      string; "pm10" or "pm25". Default "pm25".
+#' @param who_it         string; which interim target. Default "it1".
+#' @param year_filter    integer|NULL; restrict to one year.
+#' @param city_label     string; plot title.
+#' @param bar_fill       string; fill color. Default "grey35".
 #
-# @Output : ggplot2 object — bar chart of population-weighted mean hours above the
+#' @return  ggplot2 object — bar chart of population-weighted mean hours above the
 #           requested WHO interim target, by education quintile.
 #
-# @Purpose: Complements plot_exposure_by_quintile() with a WHO-target view,
+#' @Purpose: Complements plot_exposure_by_quintile() with a WHO-target view,
 #           which is the second panel in the legacy 4_exposure_plots_*_PM.R scripts.
 #
-# @Written_on : 17/04/2026
-# @Written_by : Marcos Paulo
+#' @Written_on : 17/04/2026
+#' @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 plot_hours_above_target_by_quintile <- function(
     exposure_dir,
@@ -695,20 +695,20 @@ plot_hours_above_target_by_quintile <- function(
 # ------------------------------------------------------------------------------------
 # Function: plot_group_ci
 #
-# @Arg ci_table         : data.table from compute_exposure_regressions(). Must contain
+#' @param ci_table        data.table from compute_exposure_regressions(). Must contain
 #                         outcome, pollutant, group, estimate, ci_low, ci_high.
-# @Arg outcome          : string; outcome to plot, e.g. "hrs_d_it1".
-# @Arg pollutant        : string vector; pollutant(s) to plot. Use c("pm25", "pm10")
+#' @param outcome         string; outcome to plot, e.g. "hrs_d_it1".
+#' @param pollutant       string vector; pollutant(s) to plot. Use c("pm25", "pm10")
 #                         to place both pollutants in the same figure.
-# @Arg group_label      : string; x-axis label, e.g. "Education quintile".
-# @Arg city_label       : string; plot title.
-# @Arg y_label          : string or NULL; y-axis title. If NULL, a default is derived.
-# @Arg pollutant_colors : named character vector with pollutant colors.
-# @Arg color_line       : string or NULL; backward-compatible single-pollutant color.
+#' @param group_label     string; x-axis label, e.g. "Education quintile".
+#' @param city_label      string; plot title.
+#' @param y_label         string or NULL; y-axis title. If NULL, a default is derived.
+#' @param pollutant_colors named character vector with pollutant colors.
+#' @param color_line      string or NULL; backward-compatible single-pollutant color.
 #
-# @Output : ggplot2 object. Error bars are the intervals already in ci_table.
+#' @return  ggplot2 object. Error bars are the intervals already in ci_table.
 #
-# @Details:
+#' @details
 #   Draws regression gaps relative to the base group with confidence intervals.
 #   The function now supports one or more pollutants in the same plot. This is
 #   useful for exceedance-hour outcomes, where PM2.5 and PM10 should be compared
@@ -717,9 +717,9 @@ plot_hours_above_target_by_quintile <- function(
 #   interval is otherwise drawn exactly like a G = 37,000 one. No threshold is applied,
 #   because none is defensible -- the caption informs, it does not adjudicate.
 #
-# @Written_on : June 2026
-# @Written_by : Marcos Paulo
-# @Updated_on : June 2026
+#' @Written_on : June 2026
+#' @Written_by : Marcos Paulo
+#' @Updated_on : June 2026
 # ------------------------------------------------------------------------------------
 plot_group_ci <- function(ci_table,
                           outcome,
@@ -844,25 +844,25 @@ plot_group_ci <- function(ci_table,
 # ------------------------------------------------------------------------------------
 # Function: plot_group_levels
 #
-# @Arg summary_table     : data.table from compute_exposure_summaries(). Must contain
+#' @param summary_table    data.table from compute_exposure_summaries(). Must contain
 #                          outcome, pollutant, group, weighted_mean.
-# @Arg group_label       : string; x-axis label, e.g. "Education quintile".
-# @Arg city_label        : string; plot title.
-# @Arg year_label        : string; subtitle, e.g. "2023".
-# @Arg base_group        : integer; top group used to derive the dual-axis scale.
-# @Arg pollutant_colors  : named character vector with pollutant colors.
+#' @param group_label      string; x-axis label, e.g. "Education quintile".
+#' @param city_label       string; plot title.
+#' @param year_label       string; subtitle, e.g. "2023".
+#' @param base_group       integer; top group used to derive the dual-axis scale.
+#' @param pollutant_colors named character vector with pollutant colors.
 #
-# @Output : ggplot2 object, or NULL if the mean concentration columns are absent.
+#' @return  ggplot2 object, or NULL if the mean concentration columns are absent.
 #
-# @Details:
+#' @details
 #   Draws population-weighted mean PM10 and PM2.5 by socioeconomic group on a
 #   dual-axis figure. The right-axis scale factor is the ratio of the two
 #   pollutants' base-group means, so no multiplier is hard-coded. By default,
 #   PM2.5 is dark red and PM10 is black.
 #
-# @Written_on : June 2026
-# @Written_by : Marcos Paulo
-# @Updated_on : June 2026
+#' @Written_on : June 2026
+#' @Written_by : Marcos Paulo
+#' @Updated_on : June 2026
 # ------------------------------------------------------------------------------------
 plot_group_levels <- function(summary_table,
                               group_label = "Group",
@@ -989,20 +989,20 @@ plot_group_levels <- function(summary_table,
 # --------------------------------------------------------------------------------------------
 # Function: save_plot_pdf
 #
-# @Arg plot_obj : ggplot object, or NULL.
-# @Arg path     : string; destination PDF path.
-# @Arg width    : numeric; figure width in inches. Default 6.
-# @Arg height   : numeric; figure height in inches. Default 4.5.
+#' @param plot_obj ggplot object, or NULL.
+#' @param path    string; destination PDF path.
+#' @param width   numeric; figure width in inches. Default 6.
+#' @param height  numeric; figure height in inches. Default 4.5.
 #
-# @Output : invisible NULL. Writes the PDF, or does nothing when plot_obj is NULL.
+#' @return  invisible NULL. Writes the PDF, or does nothing when plot_obj is NULL.
 #
-# @Details:
+#' @details
 #   The NULL case is not an error: the plot builders return NULL when a city lacks the
 #   columns
 #   a figure needs, and skipping quietly keeps one missing city from stopping a whole run.
 #
-# @Written_by : Marcos Paulo
-# @Updated_on : August 2026
+#' @Written_by : Marcos Paulo
+#' @Updated_on : August 2026
 # --------------------------------------------------------------------------------------------
 save_plot_pdf <- function(plot_obj, path, width = 6, height = 4.5) {
   if (is.null(plot_obj)) {
@@ -1019,18 +1019,18 @@ save_plot_pdf <- function(plot_obj, path, width = 6, height = 4.5) {
 # --------------------------------------------------------------------------------------------
 # Function: exposure_group_axis_label
 #
-# @Arg socio_var  : string; "income" or "education".
-# @Arg group_type : string; "quintile" or "decile".
+#' @param socio_var string; "income" or "education".
+#' @param group_type string; "quintile" or "decile".
 #
-# @Output : string; x-axis label, e.g. "Income quintile".
+#' @return  string; x-axis label, e.g. "Income quintile".
 #
-# @Details:
+#' @details
 #   Keys on both fields because the two no longer imply each other: CDMX income runs on
 #   quintiles while Sao Paulo income runs on deciles, so keying on group_type alone would
 #   label a CDMX income figure "Education quintile".
 #
-# @Written_by : Marcos Paulo
-# @Updated_on : August 2026
+#' @Written_by : Marcos Paulo
+#' @Updated_on : August 2026
 # --------------------------------------------------------------------------------------------
 exposure_group_axis_label <- function(socio_var, group_type) {
   var_label <- if (identical(socio_var, "income")) "Income" else "Education"
@@ -1041,23 +1041,23 @@ exposure_group_axis_label <- function(socio_var, group_type) {
 # --------------------------------------------------------------------------------------------
 # Function: save_exposure_ci_figures
 #
-# @Arg ci_dt       : data.table; CI estimates from estimate_exposure.R.
-# @Arg tag         : string; grouping tag used in the file name, e.g. "education".
-# @Arg out_dir     : string; folder for the PDFs.
-# @Arg city_labels : named character; city -> display label.
-# @Arg city_files  : named character; city -> file-safe name.
+#' @param ci_dt      data.table; CI estimates from estimate_exposure.R.
+#' @param tag        string; grouping tag used in the file name, e.g. "education".
+#' @param out_dir    string; folder for the PDFs.
+#' @param city_labels named character; city -> display label.
+#' @param city_files named character; city -> file-safe name.
 #
-# @Output : invisible NULL. Writes one PDF per city x outcome.
+#' @return  invisible NULL. Writes one PDF per city x outcome.
 #
-# @Details:
+#' @details
 #   Exceedance-hour outcomes carry both pollutants, so PM2.5 and PM10 are drawn in the
 #   same
 #   figure and the file name records both. Labels and paths are arguments, not captured
 #   from
 #   the calling script, so the function is readable on its own.
 #
-# @Written_by : Marcos Paulo
-# @Updated_on : August 2026
+#' @Written_by : Marcos Paulo
+#' @Updated_on : August 2026
 # --------------------------------------------------------------------------------------------
 save_exposure_ci_figures <- function(ci_dt, tag, out_dir, city_labels, city_files) {
   combos <- unique(ci_dt[!is.na(city) & !is.na(outcome),
@@ -1092,16 +1092,16 @@ save_exposure_ci_figures <- function(ci_dt, tag, out_dir, city_labels, city_file
 # --------------------------------------------------------------------------------------------
 # Function: save_exposure_level_figures
 #
-# @Arg sum_dt      : data.table; group summaries from estimate_exposure.R.
-# @Arg tag         : string; grouping tag used in the file name, e.g. "education".
-# @Arg out_dir     : string; folder for the PDFs.
-# @Arg city_labels : named character; city -> display label.
-# @Arg city_files  : named character; city -> file-safe name.
+#' @param sum_dt     data.table; group summaries from estimate_exposure.R.
+#' @param tag        string; grouping tag used in the file name, e.g. "education".
+#' @param out_dir    string; folder for the PDFs.
+#' @param city_labels named character; city -> display label.
+#' @param city_files named character; city -> file-safe name.
 #
-# @Output : invisible NULL. Writes one dual-axis PM10/PM2.5 PDF per city.
+#' @return  invisible NULL. Writes one dual-axis PM10/PM2.5 PDF per city.
 #
-# @Written_by : Marcos Paulo
-# @Updated_on : August 2026
+#' @Written_by : Marcos Paulo
+#' @Updated_on : August 2026
 # --------------------------------------------------------------------------------------------
 save_exposure_level_figures <- function(sum_dt, tag, out_dir, city_labels, city_files) {
   for (city_j in unique(sum_dt[!is.na(city), city])) {

@@ -1,13 +1,13 @@
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-# @Goal: Create configuration file for setup of packages and functions used in the project
+#' @Goal: Configuration file for setup of packages and functions used in the project
 # 
-# @Description: This script sets up the necessary environment by checking and installing 
+#' @Description: This script sets up the necessary environment by checking and installing 
 # required packages and defining utility functions for all "plot_table" scripts.
 # 
-# @Date: Nov 2024
-# @Author: Marcos Paulo
+#' @Date: Nov 2024
+#' @Author: Marcos Paulo
 # ============================================================================================
 
 # List of required packages

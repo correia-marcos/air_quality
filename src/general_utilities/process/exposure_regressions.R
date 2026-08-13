@@ -1,14 +1,14 @@
 # ============================================================================================
 # IDB: Air monitoring — exposure summaries, regressions and coverage
 # ============================================================================================
-# @Goal: Functions for exposure summaries, regressions and coverage.
+#' @Goal: Functions for exposure summaries, regressions and coverage.
 #
-# @Description: Weighted exposure summaries by socioeconomic group, the regression gaps
+#' @Description: Weighted exposure summaries by socioeconomic group, the regression gaps
 # relative to the
 #   top group with clustered intervals, and the geographic coverage behind each estimate.
 #   Sourced by config_utils_process_data.R; never sourced directly by a script.
 #
-# @Summary:
+#' @Summary:
 #   1. compute_exposure_summaries
 #   2. compute_exposure_coverage
 #   3. compute_exposure_regressions
@@ -19,35 +19,35 @@
 #   8. .exposure_coef_table
 #   9. .exposure_fit_one
 #
-# @Date: August 2026
-# @Author: Marcos Paulo
+#' @Date: August 2026
+#' @Author: Marcos Paulo
 # ============================================================================================
 
 # --------------------------------------------------------------------------------------------
 # Function: compute_exposure_summaries
 #
-# @Arg exposure_dt   : data.table; geo-level IDW exposure (one row per geo unit-year).
-# @Arg individual_dt : data.table; geo-by-group population/expansion weights.
-# @Arg geo_id_col    : string; geographic identifier column. Default "geo_id".
-# @Arg pop_col       : string; population or expansion-weight column. Default "n".
-# @Arg group_col     : string; socioeconomic group column. Default "edu_quintile".
-# @Arg group_values  : integer vector; valid groups, e.g. 1:5.
-# @Arg pollutants    : character vector; pollutants to keep, e.g. pm10/pm25.
-# @Arg outcome_pattern : string; regex selecting exposure outcome columns.
-# @Arg year_filter   : integer or NULL; if set, keeps only this exposure year.
-# @Arg quiet         : logical; suppress progress messages. Default FALSE.
+#' @param exposure_dt  data.table; geo-level IDW exposure (one row per geo unit-year).
+#' @param individual_dt data.table; geo-by-group population/expansion weights.
+#' @param geo_id_col   string; geographic identifier column. Default "geo_id".
+#' @param pop_col      string; population or expansion-weight column. Default "n".
+#' @param group_col    string; socioeconomic group column. Default "edu_quintile".
+#' @param group_values integer vector; valid groups, e.g. 1:5.
+#' @param pollutants   character vector; pollutants to keep, e.g. pm10/pm25.
+#' @param outcome_pattern string; regex selecting exposure outcome columns.
+#' @param year_filter  integer or NULL; if set, keeps only this exposure year.
+#' @param quiet        logical; suppress progress messages. Default FALSE.
 #
-# @Output : data.table with weighted mean, weighted median, population, and counts
+#' @return  data.table with weighted mean, weighted median, population, and counts
 #           by outcome, pollutant, and group.
 #
-# @Details:
+#' @details
 #   Raw exposure levels by socioeconomic group. Merges geo-level exposure with the
 #   geo-by-group population, collapses to geo-unit-by-group cells (exposure is
 #   constant within a geo unit), then aggregates to group level. Cells are weighted
 #   by population so groups reflect the population they represent.
 #
-# @Written_by : Marcos Paulo
-# @Updated_on : June 2026
+#' @Written_by : Marcos Paulo
+#' @Updated_on : June 2026
 # --------------------------------------------------------------------------------------------
 compute_exposure_summaries <- function(exposure_dt,
                                        individual_dt,
@@ -136,22 +136,22 @@ compute_exposure_summaries <- function(exposure_dt,
 # --------------------------------------------------------------------------------------------
 # Function: compute_exposure_coverage
 #
-# @Arg exposure_dt    : data.table; geo-level IDW exposure (one row per geo unit-year).
-# @Arg individual_dt  : data.table; geo-by-group population/expansion weights.
-# @Arg geo_station_pq : string; path to the matrix_geo_station_distances.parquet used
+#' @param exposure_dt   data.table; geo-level IDW exposure (one row per geo unit-year).
+#' @param individual_dt data.table; geo-by-group population/expansion weights.
+#' @param geo_station_pq string; path to the matrix_geo_station_distances.parquet used
 #                       to build this city's exposure.
-# @Arg geo_id_col     : string; geographic identifier column. Default "geo_id".
-# @Arg pop_col        : string; population or expansion-weight column. Default "n".
-# @Arg group_col      : string; socioeconomic group column. Default "edu_quintile".
-# @Arg group_values   : integer vector; valid groups, e.g. 1:5.
-# @Arg pollutants     : character vector; pollutants to report.
-# @Arg buffer_km      : numeric; buffer used to build the exposure. Default 3.
-# @Arg year_filter     : integer or NULL; if set, keeps only this exposure year.
+#' @param geo_id_col    string; geographic identifier column. Default "geo_id".
+#' @param pop_col       string; population or expansion-weight column. Default "n".
+#' @param group_col     string; socioeconomic group column. Default "edu_quintile".
+#' @param group_values  integer vector; valid groups, e.g. 1:5.
+#' @param pollutants    character vector; pollutants to report.
+#' @param buffer_km     numeric; buffer used to build the exposure. Default 3.
+#' @param year_filter    integer or NULL; if set, keeps only this exposure year.
 #
-# @Output : data.table with one row per pollutant, tracing how many geographic units
+#' @return  data.table with one row per pollutant, tracing how many geographic units
 #           survive each stage between the full metro area and the estimation sample.
 #
-# @Details:
+#' @details
 #   Records the attrition that determines the cluster count. A metro geo unit is lost
 #   when no station falls inside buffer_km of its representative point, then when no
 #   in-buffer station reports the pollutant, then when it has no census row. For CDMX
@@ -159,8 +159,8 @@ compute_exposure_summaries <- function(exposure_dt,
 #   intervals are fragile. n_geo_estimation is computed through the same merge helper
 #   the regressions use, so it must equal the n_clusters they report.
 #
-# @Written_by : Marcos Paulo
-# @Updated_on : August 2026
+#' @Written_by : Marcos Paulo
+#' @Updated_on : August 2026
 # --------------------------------------------------------------------------------------------
 compute_exposure_coverage <- function(exposure_dt,
                                       individual_dt,
@@ -243,28 +243,28 @@ compute_exposure_coverage <- function(exposure_dt,
 # --------------------------------------------------------------------------------------------
 # Function: compute_exposure_regressions
 #
-# @Arg exposure_dt   : data.table; geo-level IDW exposure (one row per geo unit-year).
-# @Arg individual_dt : data.table or NULL; geo-by-group population/expansion weights.
-# @Arg geo_id_col    : string; geographic identifier column. Default "geo_id".
-# @Arg pop_col       : string; population or expansion-weight column. Default "n".
-# @Arg group_col     : string; socioeconomic group column. Default "edu_quintile".
-# @Arg group_values  : integer vector; valid groups, e.g. 1:5.
-# @Arg base_group    : integer; omitted reference group. Default max(group_values).
-# @Arg pollutants    : character vector; pollutants to keep.
-# @Arg outcome_pattern : string; regex selecting exposure outcome columns.
-# @Arg year_filter   : integer or NULL; if set, keeps only this exposure year.
-# @Arg conf_level    : numeric; confidence level for intervals. Default 0.95.
-# @Arg normalized    : logical; if TRUE, divide each outcome by the base-group mean.
-# @Arg regression_unit : string; "geo_group" (main), "individual", or "geo".
-# @Arg se_type       : string; "cluster_geo" (preferred) or "classic" (legacy CI).
-# @Arg quiet         : logical; suppress progress messages. Default FALSE.
+#' @param exposure_dt  data.table; geo-level IDW exposure (one row per geo unit-year).
+#' @param individual_dt data.table or NULL; geo-by-group population/expansion weights.
+#' @param geo_id_col   string; geographic identifier column. Default "geo_id".
+#' @param pop_col      string; population or expansion-weight column. Default "n".
+#' @param group_col    string; socioeconomic group column. Default "edu_quintile".
+#' @param group_values integer vector; valid groups, e.g. 1:5.
+#' @param base_group   integer; omitted reference group. Default max(group_values).
+#' @param pollutants   character vector; pollutants to keep.
+#' @param outcome_pattern string; regex selecting exposure outcome columns.
+#' @param year_filter  integer or NULL; if set, keeps only this exposure year.
+#' @param conf_level   numeric; confidence level for intervals. Default 0.95.
+#' @param normalized   logical; if TRUE, divide each outcome by the base-group mean.
+#' @param regression_unit string; "geo_group" (main), "individual", or "geo".
+#' @param se_type      string; "cluster_geo" (preferred) or "classic" (legacy CI).
+#' @param quiet        logical; suppress progress messages. Default FALSE.
 #
-# @Output : data.table with one row per outcome, pollutant, and group, giving the
+#' @return  data.table with one row per outcome, pollutant, and group, giving the
 #           gap relative to base_group with confidence interval. Carries n_units
 #           (cells in the fit), n_clusters (distinct geographic units) and n_coef
 #           (coefficients the cluster sandwich has to support).
 #
-# @Details:
+#' @details
 #   Estimates exposure gaps versus base_group. The main paper estimator is
 #   regression_unit = "geo_group": collapse merged data to geo-unit-by-group cells,
 #   then weight each cell by its population share within group. "individual" runs
@@ -274,8 +274,8 @@ compute_exposure_coverage <- function(exposure_dt,
 #   clustered variance is not identified, so SEs and intervals come back NA with
 #   a warning rather than as small numbers.
 #
-# @Written_by : Marcos Paulo
-# @Updated_on : July 2026
+#' @Written_by : Marcos Paulo
+#' @Updated_on : July 2026
 # --------------------------------------------------------------------------------------------
 compute_exposure_regressions <- function(exposure_dt,
                                          individual_dt   = NULL,
@@ -658,22 +658,22 @@ compute_exposure_regressions <- function(exposure_dt,
 # --------------------------------------------------------------------------------------------
 # Function: idw_artifact_path
 #
-# @Arg dir_idw   : string; root folder of the IDW estimates.
-# @Arg city_id   : string; city folder and file prefix, e.g. "cdmx_2020".
-# @Arg what      : string; artifact suffix, "idw_exposure" or "indiv_groups".
-# @Arg buffer_km : numeric; buffer the artifact was built with.
-# @Arg suffix    : string; optional grouping tag, e.g. "_income". Default "".
+#' @param dir_idw  string; root folder of the IDW estimates.
+#' @param city_id  string; city folder and file prefix, e.g. "cdmx_2020".
+#' @param what     string; artifact suffix, "idw_exposure" or "indiv_groups".
+#' @param buffer_km numeric; buffer the artifact was built with.
+#' @param suffix   string; optional grouping tag, e.g. "_income". Default "".
 #
-# @Output : string; full path to the requested Parquet file.
+#' @return  string; full path to the requested Parquet file.
 #
-# @Details:
+#' @details
 #   estimate_idw.R names every artifact
 #   <city_id>/<city_id>_<buffer>km[_suffix]_<what>
 #   .parquet. Building the name in one place keeps the readers from drifting from the
 #   writer.
 #
-# @Written_by : Marcos Paulo
-# @Updated_on : August 2026
+#' @Written_by : Marcos Paulo
+#' @Updated_on : August 2026
 # --------------------------------------------------------------------------------------------
 idw_artifact_path <- function(dir_idw, city_id, what, buffer_km, suffix = "") {
   here::here(dir_idw, city_id,
@@ -684,16 +684,16 @@ idw_artifact_path <- function(dir_idw, city_id, what, buffer_km, suffix = "") {
 # --------------------------------------------------------------------------------------------
 # Function: read_idw_artifact
 #
-# @Arg dir_idw   : string; root folder of the IDW estimates.
-# @Arg city_id   : string; city folder and file prefix.
-# @Arg what      : string; "idw_exposure" or "indiv_groups".
-# @Arg buffer_km : numeric; buffer the artifact was built with.
-# @Arg suffix    : string; optional grouping tag, e.g. "_income". Default "".
+#' @param dir_idw  string; root folder of the IDW estimates.
+#' @param city_id  string; city folder and file prefix.
+#' @param what     string; "idw_exposure" or "indiv_groups".
+#' @param buffer_km numeric; buffer the artifact was built with.
+#' @param suffix   string; optional grouping tag, e.g. "_income". Default "".
 #
-# @Output : data.table with the artifact's contents.
+#' @return  data.table with the artifact's contents.
 #
-# @Written_by : Marcos Paulo
-# @Updated_on : August 2026
+#' @Written_by : Marcos Paulo
+#' @Updated_on : August 2026
 # --------------------------------------------------------------------------------------------
 read_idw_artifact <- function(dir_idw, city_id, what, buffer_km, suffix = "") {
   path <- idw_artifact_path(dir_idw, city_id, what, buffer_km, suffix)
@@ -709,42 +709,42 @@ read_idw_artifact <- function(dir_idw, city_id, what, buffer_km, suffix = "") {
 # --------------------------------------------------------------------------------------------
 # Function: run_city_exposure
 #
-# @Arg city           : string; display label stamped on every output row.
-# @Arg city_id        : string; machine id stamped on every output row.
-# @Arg exposure_dt    : data.table; geo-level IDW exposure for this city.
-# @Arg individual_dt  : data.table; geo-by-group population weights.
-# @Arg geo_station_pq : string; path to this city's geo-to-station distance matrix.
-# @Arg pop_col        : string; population or expansion-weight column.
-# @Arg socio_var      : string; "education" or "income", stamped on every row.
-# @Arg group_col      : string; socioeconomic group column.
-# @Arg group_values   : integer vector; valid groups, e.g. 1:5.
-# @Arg base_group     : integer; omitted reference group.
-# @Arg group_type     : string; "quintile" or "decile", stamped on every row.
-# @Arg year           : integer; exposure year to keep.
-# @Arg buffer_km      : numeric; buffer the exposure was built with.
-# @Arg pollutants     : character vector; pollutants to keep.
-# @Arg summary_pattern: string; regex selecting summary outcome columns.
-# @Arg ci_pattern     : string; regex selecting regression outcome columns.
-# @Arg conf_level     : numeric; confidence level for intervals.
-# @Arg normalized     : logical; divide each outcome by the base-group mean.
-# @Arg regression_unit: string; "geo_group" (main), "individual", or "geo".
-# @Arg se_type        : string; "cluster_geo" (preferred) or "classic".
+#' @param city          string; display label stamped on every output row.
+#' @param city_id       string; machine id stamped on every output row.
+#' @param exposure_dt   data.table; geo-level IDW exposure for this city.
+#' @param individual_dt data.table; geo-by-group population weights.
+#' @param geo_station_pq string; path to this city's geo-to-station distance matrix.
+#' @param pop_col       string; population or expansion-weight column.
+#' @param socio_var     string; "education" or "income", stamped on every row.
+#' @param group_col     string; socioeconomic group column.
+#' @param group_values  integer vector; valid groups, e.g. 1:5.
+#' @param base_group    integer; omitted reference group.
+#' @param group_type    string; "quintile" or "decile", stamped on every row.
+#' @param year          integer; exposure year to keep.
+#' @param buffer_km     numeric; buffer the exposure was built with.
+#' @param pollutants    character vector; pollutants to keep.
+#' @param summary_pattern string; regex selecting summary outcome columns.
+#' @param ci_pattern    string; regex selecting regression outcome columns.
+#' @param conf_level    numeric; confidence level for intervals.
+#' @param normalized    logical; divide each outcome by the base-group mean.
+#' @param regression_unit string; "geo_group" (main), "individual", or "geo".
+#' @param se_type       string; "cluster_geo" (preferred) or "classic".
 #
-# @Output : list(summary, ci, coverage); the three tables for this city, each carrying the
+#' @return  list(summary, ci, coverage); the three tables for this city, each carrying the
 # same
 #           run labels (city, city_id, year, buffer_km, socioeconomic_var, group_type) so
 #           they
 #           can be stacked across cities without further work.
 #
-# @Details:
+#' @details
 #   One city-grouping run of the exposure stage. Every methodological value is a required
 #   argument rather than a default: those are the paper's specification and belong where a
 #   referee reads them, in the calling script. Labelling happens here rather than in the
 #   caller,
 #   which is what stops the three tables from disagreeing about which run produced them.
 #
-# @Written_by : Marcos Paulo
-# @Updated_on : August 2026
+#' @Written_by : Marcos Paulo
+#' @Updated_on : August 2026
 # --------------------------------------------------------------------------------------------
 run_city_exposure <- function(city, city_id, exposure_dt, individual_dt, geo_station_pq,
                               pop_col, socio_var, group_col, group_values, base_group,
@@ -783,13 +783,13 @@ run_city_exposure <- function(city, city_id, exposure_dt, individual_dt, geo_sta
 # --------------------------------------------------------------------------------------------
 # Function: stack_city_tables
 #
-# @Arg runs : list; each element a list returned by run_city_exposure().
-# @Arg what : string; which table to pull, "summary", "ci" or "coverage".
+#' @param runs list; each element a list returned by run_city_exposure().
+#' @param what string; which table to pull, "summary", "ci" or "coverage".
 #
-# @Output : data.table stacking that table across all runs.
+#' @return  data.table stacking that table across all runs.
 #
-# @Written_by : Marcos Paulo
-# @Updated_on : August 2026
+#' @Written_by : Marcos Paulo
+#' @Updated_on : August 2026
 # --------------------------------------------------------------------------------------------
 stack_city_tables <- function(runs, what) {
   data.table::rbindlist(lapply(runs, `[[`, what), fill = TRUE)
@@ -799,18 +799,18 @@ stack_city_tables <- function(runs, what) {
 # --------------------------------------------------------------------------------------------
 # Function: set_meta_cols_first
 #
-# @Arg dt        : data.table; modified in place.
-# @Arg meta_cols : character vector; columns to move to the front, in order.
+#' @param dt       data.table; modified in place.
+#' @param meta_cols character vector; columns to move to the front, in order.
 #
-# @Output : the same data.table, invisibly; column order changed by reference.
+#' @return  the same data.table, invisibly; column order changed by reference.
 #
-# @Details:
+#' @details
 #   Puts the run labels ahead of the numbers so a reader opening the artifact sees which
 #   city
 #   and specification a row belongs to before its values.
 #
-# @Written_by : Marcos Paulo
-# @Updated_on : August 2026
+#' @Written_by : Marcos Paulo
+#' @Updated_on : August 2026
 # --------------------------------------------------------------------------------------------
 set_meta_cols_first <- function(dt, meta_cols) {
   data.table::setcolorder(dt, c(meta_cols, setdiff(names(dt), meta_cols)))
@@ -820,19 +820,19 @@ set_meta_cols_first <- function(dt, meta_cols) {
 # --------------------------------------------------------------------------------------------
 # Function: save_table_parquet_csv
 #
-# @Arg dt      : data.table to write.
-# @Arg out_dir : string; destination folder.
-# @Arg name    : string; file stem, without extension.
-# @Arg quiet   : logical; suppress the confirmation message. Default FALSE.
+#' @param dt     data.table to write.
+#' @param out_dir string; destination folder.
+#' @param name   string; file stem, without extension.
+#' @param quiet  logical; suppress the confirmation message. Default FALSE.
 #
-# @Output : invisible NULL. Writes <out_dir>/<name>.parquet and <name>.csv.
+#' @return  invisible NULL. Writes <out_dir>/<name>.parquet and <name>.csv.
 #
-# @Details:
+#' @details
 #   Parquet is the file of record because it keeps column types; the CSV copy exists so
 #   coauthors can open the same table in a spreadsheet.
 #
-# @Written_by : Marcos Paulo
-# @Updated_on : August 2026
+#' @Written_by : Marcos Paulo
+#' @Updated_on : August 2026
 # --------------------------------------------------------------------------------------------
 save_table_parquet_csv <- function(dt, out_dir, name, quiet = FALSE) {
   arrow::write_parquet(dt, file.path(out_dir, paste0(name, ".parquet")))

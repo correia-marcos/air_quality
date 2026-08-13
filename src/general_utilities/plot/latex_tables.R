@@ -1,13 +1,13 @@
 # ============================================================================================
 # IDB: Air monitoring — LaTeX tables
 # ============================================================================================
-# @Goal: Functions for LaTeX tables.
+#' @Goal: Functions for LaTeX tables.
 #
-# @Description: Renders the paper's tables to .tex. These read tables the process stage
+#' @Description: Renders the paper's tables to .tex. These read tables the process stage
 # already computed; no statistics are calculated here. Sourced by
 # config_utils_plot_tables.R; never sourced directly by a script.
 #
-# @Summary:
+#' @Summary:
 #   1. table_state_metro_distances
 #   2. table_who_exceedances
 #   3. table_stations_by_pollutant
@@ -18,8 +18,8 @@
 #   8. latex_missing_by_quintile
 #   9. latex_census_summary
 #
-# @Date: August 2026
-# @Author: Marcos Paulo
+#' @Date: August 2026
+#' @Author: Marcos Paulo
 # ============================================================================================
 
 # ############################################################################################
@@ -28,23 +28,23 @@
 
 # --------------------------------------------------------------------------------------------
 # Function: table_state_metro_distances
-# @Arg : national_states_sf — sf MULTIPOLYGON of country states (any CRS)
-# @Arg : metro_area_sf      — sf (MULTI)POLYGON for the metro area (any CRS)
-# @Arg : state_name_col     — column in `national_states_sf` with state names
+#' @param national_states_sf  sf MULTIPOLYGON of country states (any CRS)
+#' @param metro_area_sf       sf (MULTI)POLYGON for the metro area (any CRS)
+#' @param state_name_col      column in `national_states_sf` with state names
 #                             (default "name"; falls back to common variants)
-# @Arg : caption            — LaTeX caption (default auto: country/neutral text)
-# @Arg : save_latex_table   — write LaTeX to file? (default FALSE)
-# @Arg : out_file           — path to .tex file if saving
-# @Arg : overwrite_tex      — overwrite existing .tex? (default FALSE)
-# @Arg : quiet              — suppress info messages (default FALSE)
-# @Output : data.frame with columns: state_name, distance_km, Potential_source
+#' @param caption             LaTeX caption (default auto: country/neutral text)
+#' @param save_latex_table    write LaTeX to file? (default FALSE)
+#' @param out_file            path to .tex file if saving
+#' @param overwrite_tex       overwrite existing .tex? (default FALSE)
+#' @param quiet               suppress info messages (default FALSE)
+#' @return  data.frame with columns: state_name, distance_km, Potential_source
 #           (If save_latex_table = TRUE, also writes a .tex file.)
-# @Purpose: Min distance (km) from each state to the metro area (0 for overlaps).
+#' @Purpose: Min distance (km) from each state to the metro area (0 for overlaps).
 #           Adds an indicator (≤ 20 km) as Potential_source (1/0).
-# @Notes  : Distances computed in a local UTM for accuracy; then converted to km.
+#' @Notes  : Distances computed in a local UTM for accuracy; then converted to km.
 #           Uses st_make_valid() as a guard for tricky polygons.
-# @Written_on: 28/09/2025
-# @Written_by: Marcos Paulo
+#' @Written_on: 28/09/2025
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 table_state_metro_distances <- function(
     national_states_sf,
@@ -185,24 +185,24 @@ table_state_metro_distances <- function(
 # --------------------------------------------------------------------------------------------
 # Function: table_who_exceedances
 #
-# @Arg exceedances_dt : data.table from compute_who_exceedances() (possibly row-bound
+#' @param exceedances_dt data.table from compute_who_exceedances() (possibly row-bound
 #                        across cities).
-# @Arg save_latex_table: logical; write LaTeX to file? Default FALSE.
-# @Arg out_file        : path to .tex file if saving.
-# @Arg caption         : LaTeX caption.
-# @Arg label           : LaTeX label.
-# @Arg overwrite_tex   : logical; overwrite existing .tex file. Default FALSE.
-# @Arg digits          : integer; decimal digits in the printed numbers. Default 2.
-# @Arg quiet           : logical; suppress info messages. Default FALSE.
+#' @param save_latex_table logical; write LaTeX to file? Default FALSE.
+#' @param out_file       path to .tex file if saving.
+#' @param caption        LaTeX caption.
+#' @param label          LaTeX label.
+#' @param overwrite_tex  logical; overwrite existing .tex file. Default FALSE.
+#' @param digits         integer; decimal digits in the printed numbers. Default 2.
+#' @param quiet          logical; suppress info messages. Default FALSE.
 #
-# @Output : data.table (wide: city × year rows, pollutant columns for city_avg
+#' @return  data.table (wide: city × year rows, pollutant columns for city_avg
 #           and exceedance_factor). Optionally writes a booktabs-style LaTeX
 #           table.
 #
-# @Purpose: LaTeX table for legacy inputs/1_AQG_guidelines.R results.
+#' @Purpose: LaTeX table for legacy inputs/1_AQG_guidelines.R results.
 #
-# @Written_on : 17/04/2026
-# @Written_by : Marcos Paulo
+#' @Written_on : 17/04/2026
+#' @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 table_who_exceedances <- function(
     exceedances_dt,
@@ -263,23 +263,23 @@ table_who_exceedances <- function(
 # --------------------------------------------------------------------------------------------
 # Function: table_stations_by_pollutant
 #
-# @Arg stations_long  : data.table, the $long element from
+#' @param stations_long data.table, the $long element from
 # summarize_stations_by_pollutant().
 #                        Must contain (city, year, pollutant, n_stations).
-# @Arg save_latex_table: logical. Default FALSE.
-# @Arg out_file       : path to .tex file.
-# @Arg caption        : LaTeX caption.
-# @Arg label          : LaTeX label.
-# @Arg overwrite_tex  : logical. Default FALSE.
-# @Arg quiet          : logical. Default FALSE.
+#' @param save_latex_table logical. Default FALSE.
+#' @param out_file      path to .tex file.
+#' @param caption       LaTeX caption.
+#' @param label         LaTeX label.
+#' @param overwrite_tex logical. Default FALSE.
+#' @param quiet         logical. Default FALSE.
 #
-# @Output : data.table (wide): city × year × pollutant counts. Side effect: a
+#' @return  data.table (wide): city × year × pollutant counts. Side effect: a
 #           booktabs-style LaTeX table when requested.
 #
-# @Purpose: LaTeX-ready rebuild of inputs/1_number_stations_pollutant.R.
+#' @Purpose: LaTeX-ready rebuild of inputs/1_number_stations_pollutant.R.
 #
-# @Written_on : 17/04/2026
-# @Written_by : Marcos Paulo
+#' @Written_on : 17/04/2026
+#' @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 table_stations_by_pollutant <- function(
     stations_long,
@@ -331,26 +331,26 @@ table_stations_by_pollutant <- function(
 # --------------------------------------------------------------------------------------------
 # Function: table_missing_by_dimension
 #
-# @Arg missing_list    : list; output of compute_missing_proportions() (names are dims).
-# @Arg dim             : string; which dimension to render. Must be a name in
+#' @param missing_list   list; output of compute_missing_proportions() (names are dims).
+#' @param dim            string; which dimension to render. Must be a name in
 # `missing_list`.
-# @Arg city_label      : string; first column ("City") value in the rendered table.
-# @Arg save_latex_table: logical; default FALSE.
-# @Arg out_file        : path to .tex file.
-# @Arg caption         : LaTeX caption.
-# @Arg label           : LaTeX label.
-# @Arg overwrite_tex   : logical. Default FALSE.
-# @Arg digits          : integer; decimal digits. Default 1.
-# @Arg quiet           : logical. Default FALSE.
+#' @param city_label     string; first column ("City") value in the rendered table.
+#' @param save_latex_table logical; default FALSE.
+#' @param out_file       path to .tex file.
+#' @param caption        LaTeX caption.
+#' @param label          LaTeX label.
+#' @param overwrite_tex  logical. Default FALSE.
+#' @param digits         integer; decimal digits. Default 1.
+#' @param quiet          logical. Default FALSE.
 #
-# @Output : data.table; the selected dimension table plus a city column.
+#' @return  data.table; the selected dimension table plus a city column.
 #           Side effect: a booktabs LaTeX table when requested.
 #
-# @Purpose: LaTeX rebuild of the missing-proportion tables from legacy
+#' @Purpose: LaTeX rebuild of the missing-proportion tables from legacy
 #           Missing analysis/auxiliar_missings.R and 5_stats_non_missing.R.
 #
-# @Written_on : 17/04/2026
-# @Written_by : Marcos Paulo
+#' @Written_on : 17/04/2026
+#' @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 table_missing_by_dimension <- function(
     missing_list,
@@ -412,18 +412,18 @@ table_missing_by_dimension <- function(
 # --------------------------------------------------------------------------------------------
 # Function: write_exposure_summary_table_tex
 #
-# @Arg summary_dt : data.table; output from compute_exposure_group_summaries().
-# @Arg out_path   : string; path to save .tex table.
-# @Arg digits     : integer; number of decimal places. Default 2.
-# @Arg caption    : string; LaTeX table caption.
-# @Arg label      : string; LaTeX table label.
+#' @param summary_dt data.table; output from compute_exposure_group_summaries().
+#' @param out_path  string; path to save .tex table.
+#' @param digits    integer; number of decimal places. Default 2.
+#' @param caption   string; LaTeX table caption.
+#' @param label     string; LaTeX table label.
 #
-# @Output : Invisibly returns out_path.
+#' @return  Invisibly returns out_path.
 #
-# @Details:
+#' @details
 #   Writes a compact LaTeX table with weighted means and medians by group.
 #
-# @Written_by: Marcos Paulo
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 write_exposure_summary_table_tex <- function(
     summary_dt,
@@ -487,28 +487,28 @@ write_exposure_summary_table_tex <- function(
 # --------------------------------------------------------------------------------------------
 # Function: plot_missing_heatmap
 #
-# @Arg missing_list : list; output of compute_missing_proportions() with at least two
+#' @param missing_list list; output of compute_missing_proportions() with at least two
 #                      dimensions of interest (default: "month" and "hour").
-# @Arg row_dim      : string; dimension on the y-axis. Default "month".
-# @Arg col_dim      : string; dimension on the x-axis. Default "hour".
-# @Arg pollutant    : string; which {pollutant}_missing_pct column to render.
+#' @param row_dim     string; dimension on the y-axis. Default "month".
+#' @param col_dim     string; dimension on the x-axis. Default "hour".
+#' @param pollutant   string; which {pollutant}_missing_pct column to render.
 #                      Default "pm25".
-# @Arg city_label   : string; plot title.
-# @Arg arrow_dir    : string|NULL; if given, a secondary query is run to get the
+#' @param city_label  string; plot title.
+#' @param arrow_dir   string|NULL; if given, a secondary query is run to get the
 #                      two-way aggregation directly (recommended: ignoring row_dim/col_dim
 #                      in missing_list). If NULL, the function falls back to a naive
 #                      outer-join reconstruction, which only works when the dims are
 #                      independent.
-# @Arg mem_gb       : numeric; DuckDB memory ceiling. Default 4.
+#' @param mem_gb      numeric; DuckDB memory ceiling. Default 4.
 #
-# @Output : ggplot2 heatmap.
+#' @return  ggplot2 heatmap.
 #
-# @Purpose: Quick visual rebuild of the "missing by month × hour" diagnostic from
+#' @Purpose: Quick visual rebuild of the "missing by month × hour" diagnostic from
 #           legacy 7_missing_analysis.do. Prefer passing `arrow_dir` so the
 #           two-way shares are computed exactly.
 #
-# @Written_on : 17/04/2026
-# @Written_by : Marcos Paulo
+#' @Written_on : 17/04/2026
+#' @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 plot_missing_heatmap <- function(
     missing_list,
@@ -593,13 +593,13 @@ plot_missing_heatmap <- function(
 # --------------------------------------------------------------------------------------------
 # Function: write_station_count_latex
 #
-# @Arg station_counts : data.table with columns city, pm10, pm25.
-# @Arg out_file       : string; destination .tex path.
-# @Arg table_size     : string; LaTeX size macro. Default "\\tiny".
+#' @param station_counts data.table with columns city, pm10, pm25.
+#' @param out_file      string; destination .tex path.
+#' @param table_size    string; LaTeX size macro. Default "\\tiny".
 #
-# @Output : invisible out_file. Writes a three-column city/PM10/PM2.5 table.
+#' @return  invisible out_file. Writes a three-column city/PM10/PM2.5 table.
 #
-# @Details:
+#' @details
 #   Not the same table as table_stations_by_pollutant(), which renders city x year x
 #   pollutant
 #   from a coverage summary. This one is the paper's compact station count for a single
@@ -608,8 +608,8 @@ plot_missing_heatmap <- function(
 #   escaping
 #   the newline rather than ending the row; both now emit the required double backslash.
 #
-# @Written_by : Marcos Paulo
-# @Updated_on : August 2026
+#' @Written_by : Marcos Paulo
+#' @Updated_on : August 2026
 # --------------------------------------------------------------------------------------------
 write_station_count_latex <- function(station_counts,
                                        out_file,
@@ -649,13 +649,13 @@ write_station_count_latex <- function(station_counts,
 # --------------------------------------------------------------------------------------------
 # Function: latex_missing_by_quintile
 #
-# @Arg dt     : data.table from compute_missing_by_quintile(), stacked across cities.
-# @Arg digits : integer; decimal places for the shares. Default 3.
+#' @param dt    data.table from compute_missing_by_quintile(), stacked across cities.
+#' @param digits integer; decimal places for the shares. Default 3.
 #
-# @Output : character scalar; the LaTeX tabular, ready for writeLines().
+#' @return  character scalar; the LaTeX tabular, ready for writeLines().
 #
-# @Written_by : Marcos Paulo
-# @Updated_on : August 2026
+#' @Written_by : Marcos Paulo
+#' @Updated_on : August 2026
 # --------------------------------------------------------------------------------------------
 latex_missing_by_quintile <- function(dt, digits = 3L) {
   wide <- data.table::dcast(
@@ -718,20 +718,20 @@ latex_missing_by_quintile <- function(dt, digits = 3L) {
 # --------------------------------------------------------------------------------------------
 # Function: latex_census_summary
 #
-# @Arg dt : data.table from compute_city_census_summary(), stacked across cities. Needs
+#' @param dt data.table from compute_city_census_summary(), stacked across cities. Needs
 #           city_latex, year, total_population, census_geographic_level,
 #           n_census_geographic_units and average_population_per_unit.
 #
-# @Output : character vector; the LaTeX tabular lines, ready for writeLines().
+#' @return  character vector; the LaTeX tabular lines, ready for writeLines().
 #
-# @Details:
+#' @details
 #   The body is deliberately a plain tabular with no table float or caption, so the paper
 #   can wrap it and the row order is whatever the caller stacked. Counts go through
 #   format_int_latex() for thousands separators and the level label through
 #   latex_escape(), because accented level names would otherwise break the build.
 #
-# @Written_by : Marcos Paulo
-# @Updated_on : August 2026
+#' @Written_by : Marcos Paulo
+#' @Updated_on : August 2026
 # --------------------------------------------------------------------------------------------
 latex_census_summary <- function(dt) {
   tbl <- data.table::copy(data.table::as.data.table(dt))

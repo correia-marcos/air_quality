@@ -1,37 +1,37 @@
 # ============================================================================================
 # IDB: Air monitoring — the Step 0-4 progression
 # ============================================================================================
-# @Goal: Functions for the Step 0-4 progression.
+#' @Goal: Functions for the Step 0-4 progression.
 #
-# @Description: Builds the additive Step 0-4 specifications and reports how each result moves as one input
+#' @Description: Builds the additive Step 0-4 specifications and reports how each result moves as one input
 #   layer at a time is updated. See .claude/rules/validation.md.
 #   Sourced by config_utils_validation_old_version.R; never sourced directly.
 #
-# @Summary:
+#' @Summary:
 #   1. build_bogota_progression_specs
 #   2. compare_results_progression
 #
-# @Date: August 2026
-# @Author: Marcos Paulo
+#' @Date: August 2026
+#' @Author: Marcos Paulo
 # ============================================================================================
 
 # --------------------------------------------------------------------------------------------
 # Function   : build_bogota_progression_specs
-# @Arg cfg   : city cfg with $compare sublist (paths).
-# @Output    : named list of 4 step specs. Each has:
+#' @param cfg  city cfg with $compare sublist (paths).
+#' @return     named list of 4 step specs. Each has:
 #                id, label, mode ("precomputed" | "compute"), enabled (logical),
 #                reason (NULL or skip explanation), and either `parquet_path`
 #                (precomputed exposure parquet) or a full argument bundle for
 #                `aggregate_idw_exposure()`.
-# @Purpose   : Declaratively describe the 4-step methodological progression for
+#' @Purpose   : Declaratively describe the 4-step methodological progression for
 #              Bogotá so `compare_results_progression()` stays generic. Steps:
 #                1 — Everything legacy (legacy census, legacy metro, legacy stations).
 #                2 — New 2005 metro gpkg (40 GEO_IDs) + legacy census + legacy stations.
 #                3 — Step 2 + new 2018 metro (manzana-level) + new 2018 census.
 #                4 — Step 3 + new station set.
 #              A step with any missing input is marked enabled=FALSE with a reason.
-# @Written_on: 17/04/2026
-# @Written_by: Marcos Paulo
+#' @Written_on: 17/04/2026
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 build_bogota_progression_specs <- function(cfg, buffer_km = 5L) {
   cmp <- cfg$compare %||% list()
@@ -245,17 +245,17 @@ build_bogota_progression_specs <- function(cfg, buffer_km = 5L) {
 
 # --------------------------------------------------------------------------------------------
 # Function   : compare_results_progression
-# @Arg cfg        : city cfg with $id and $compare sublist.
-# @Arg out_root   : results root; {out_root}/results_progression/ is created.
-# @Arg step_specs : list of step specs (see build_bogota_progression_specs).
+#' @param cfg       city cfg with $id and $compare sublist.
+#' @param out_root  results root; {out_root}/results_progression/ is created.
+#' @param step_specs list of step specs (see build_bogota_progression_specs).
 #                   If NULL, auto-built for Bogotá via build_bogota_progression_specs(cfg).
-# @Arg year       : integer; focus year for the summary (default 2023).
-# @Arg pollutants : character vector; pollutants to summarise. Default c("pm25","pm10").
-# @Arg buffer_km  : integer; buffer (km) applied to geo-station pairs inside
+#' @param year      integer; focus year for the summary (default 2023).
+#' @param pollutants character vector; pollutants to summarise. Default c("pm25","pm10").
+#' @param buffer_km integer; buffer (km) applied to geo-station pairs inside
 #                   aggregate_idw_exposure(). Must match the precomputed Step 4 parquet.
-# @Arg quiet      : logical; suppress messages. Default FALSE.
+#' @param quiet     logical; suppress messages. Default FALSE.
 #
-# @Output : invisible list with
+#' @return  invisible list with
 #            $progression_long — (step_id, step_label, pollutant, edu_quintile,
 #                                 n_geo, weighted_mean_conc, share_hrs_above_it1,
 #                                 share_hrs_above_it4, days_with_hr_above_it1,
@@ -267,13 +267,13 @@ build_bogota_progression_specs <- function(cfg, buffer_km = 5L) {
 #             progression_long.parquet, progression_gap.parquet, step_status.parquet,
 #             <step_id>_exposure.parquet (per-step exposure dump)
 #
-# @Purpose : Run `aggregate_idw_exposure()` across a 4-step methodological progression
+#' @Purpose : Run `aggregate_idw_exposure()` across a 4-step methodological progression
 #            (legacy → new metro → new census → new stations) and measure how the
 #            headline results — population-weighted mean PM concentration, share of
 #            hours above WHO interim targets, and "days with ≥1 / ≥2 hours above IT"
 #            — shift at each step, stratified by education quintile (Q1..Q5).
 #
-# @Details :
+#' @details
 #   For each enabled step:
 #     - mode = "precomputed": read parquet at parquet_path; if individual mode
 #       and individual_parquet_path is supplied, derive a modal geo-quintile.
@@ -286,8 +286,8 @@ build_bogota_progression_specs <- function(cfg, buffer_km = 5L) {
 #   the same IDW formula — only if `step_days` is computable (step provides a
 #   valid geo_sta_pq + arrow_dir).
 #
-# @Written_on: 17/04/2026
-# @Written_by: Marcos Paulo
+#' @Written_on: 17/04/2026
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 compare_results_progression <- function(
     cfg,

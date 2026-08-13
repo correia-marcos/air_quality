@@ -1,13 +1,13 @@
 # ============================================================================================
 # IDB: Air monitoring — maps
 # ============================================================================================
-# @Goal: Functions for maps.
+#' @Goal: Functions for maps.
 #
-# @Description: Static and interactive maps: national context, metro areas by education quintile, MERRA-2
+#' @Description: Static and interactive maps: national context, metro areas by education quintile, MERRA-2
 #   grids, and the Latin America locator.
 #   Sourced by config_utils_plot_tables.R; never sourced directly by a script.
 #
-# @Summary:
+#' @Summary:
 #   1. .stadia_tile
 #   2. plot_metro_area_national_context
 #   3. plot_metro_area_interactive
@@ -16,8 +16,8 @@
 #   6. plot_latin_america_map
 #   7. plot_inequality_pollution
 #
-# @Date: August 2026
-# @Author: Marcos Paulo
+#' @Date: August 2026
+#' @Author: Marcos Paulo
 # ============================================================================================
 
 # The theme is NOT set here: figure scripts call set_paper_theme() themselves, so a script
@@ -54,32 +54,32 @@
 
 # --------------------------------------------------------------------------------------------
 # Function: plot_metro_area_national_context
-# @Arg : national_states_sf — sf MULTIPOLYGON of country states (any CRS)
-# @Arg : metro_area_sf      — sf (MULTI)POLYGON for the metro area (any CRS)
-# @Arg : which_states       — chr vec; state names to highlight (must match `state_name_col`)
-# @Arg : state_name_col     — column in `national_states_sf` with state names (default "name")
-# @Arg : map_mode           — 'ggmap' (tiles) | 'sf' (no tiles). If 'ggmap' but the
+#' @param national_states_sf  sf MULTIPOLYGON of country states (any CRS)
+#' @param metro_area_sf       sf (MULTI)POLYGON for the metro area (any CRS)
+#' @param which_states        chr vec; state names to highlight (must match `state_name_col`)
+#' @param state_name_col      column in `national_states_sf` with state names (default "name")
+#' @param map_mode            'ggmap' (tiles) | 'sf' (no tiles). If 'ggmap' but the
 #                            Stadia Maps key is missing, it will fall back to 'sf'.
-# @Arg : basemap_zoom       — numeric zoom for ggmap::get_stadiamap (default 5)
-# @Arg : basemap_type       — one of possible options on the ggmap. ('stamen_terrain',
+#' @param basemap_zoom        numeric zoom for ggmap::get_stadiamap (default 5)
+#' @param basemap_type        one of possible options on the ggmap. ('stamen_terrain',
 # 'stamen_toner', 'stamen_toner_lite'...)
-# @Arg : city_name          — character; used in title (e.g., "Mexico City")
-# @Arg : states_border_col  — color for all state borders (default "grey20")
-# @Arg : states_border_lwd  — linewidth for borders (default 0.4)
-# @Arg : highlight_fill     — fill for highlighted states (default "#F59E0B")
-# @Arg : highlight_alpha    — alpha for highlighted states (default 0.20)
-# @Arg : highlight_border   — border color for highlighted states (default "#B45309")
-# @Arg : metro_fill         — fill for metro polygon (default "#1D4ED8")
-# @Arg : metro_alpha        — alpha for metro polygon (default 0.30)
-# @Arg : metro_border       — border color for metro polygon (default "#1E3A8A")
-# @Arg : add_graticule      — logical; add light graticule lines (default TRUE)
-# @Arg : stadiamaps_envkey  — env var name with Stadia key (default "STADIA_MAPS_KEY")
-# @Output : ggplot object
-# @Purpose: Country map with optional raster tiles, borders, highlighted states,
+#' @param city_name           character; used in title (e.g., "Mexico City")
+#' @param states_border_col   color for all state borders (default "grey20")
+#' @param states_border_lwd   linewidth for borders (default 0.4)
+#' @param highlight_fill      fill for highlighted states (default "#F59E0B")
+#' @param highlight_alpha     alpha for highlighted states (default 0.20)
+#' @param highlight_border    border color for highlighted states (default "#B45309")
+#' @param metro_fill          fill for metro polygon (default "#1D4ED8")
+#' @param metro_alpha         alpha for metro polygon (default 0.30)
+#' @param metro_border        border color for metro polygon (default "#1E3A8A")
+#' @param add_graticule       logical; add light graticule lines (default TRUE)
+#' @param stadiamaps_envkey   env var name with Stadia key (default "STADIA_MAPS_KEY")
+#' @return  ggplot object
+#' @Purpose: Country map with optional raster tiles, borders, highlighted states,
 #           and metro overlay. Legend shows what colors mean and metro area (km²).
-# @Notes  : Requires packages: sf, ggplot2. For 'ggmap' mode: ggmap + stadiamaps key.
-# @Written_on: 28/09/2025
-# @Written_by: Marcos Paulo
+#' @Notes  : Requires packages: sf, ggplot2. For 'ggmap' mode: ggmap + stadiamaps key.
+#' @Written_on: 28/09/2025
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 plot_metro_area_national_context <- function(
     national_states_sf,
@@ -274,40 +274,40 @@ plot_metro_area_national_context <- function(
 
 # ============================================================================================
 # Function: plot_metro_area_interactive
-# @Arg : metro_area_sf   — sf (MULTI)POLYGON of the metro area (any CRS)
-# @Arg : stations_sf     — sf POINTS of stations; must include columns:
+#' @param metro_area_sf    sf (MULTI)POLYGON of the metro area (any CRS)
+#' @param stations_sf      sf POINTS of stations; must include columns:
 #                          • code (station_code), • station (name),
 #                          • entity (state),      • altitude_m (meters)
-# @Arg : pollution_ds    — OPTIONAL Arrow Dataset (or dplyr tbl) with columns:
+#' @param pollution_ds     OPTIONAL Arrow Dataset (or dplyr tbl) with columns:
 #                          station_code, year, pm10, `pm2.5`  (default NULL)
-# @Arg : legacy_df       — OPTIONAL tibble with columns station, year
+#' @param legacy_df        OPTIONAL tibble with columns station, year
 #                          (used only for color_scheme = "legacy2023")
-# @Arg : filter_type     — one of:
+#' @param filter_type      one of:
 #                          "none"               : no filter
 #                          "has_pm_any"         : any non-NA in pm10 OR pm2.5 (any year)
 #                          "has_pm_in_year"     : non-NA in selected pollutant & year
 #                          "has_both_in_year"   : non-NA in BOTH pm10 & pm2.5 for year
-# @Arg : filter_year     — integer year used by *_in_year filters (default 2023)
-# @Arg : pollutant       — "none", "pm25", or "pm10" (used only by has_pm_in_year)
-# @Arg : color_scheme    — "entity" or "legacy2023"
+#' @param filter_year      integer year used by *_in_year filters (default 2023)
+#' @param pollutant        "none", "pm25", or "pm10" (used only by has_pm_in_year)
+#' @param color_scheme     "entity" or "legacy2023"
 #                          • entity     : color by stations_sf$entity
 #                          • legacy2023 : color by presence in legacy_df (year==2023)
-# @Arg : buffer_km       — numeric; radius for outside-station buffers (default 20)
-# @Arg : city_name       — character; used in the map title/control
-# @Arg : stadiamaps_key  — character; your Stadia Maps API key. If empty, function
+#' @param buffer_km        numeric; radius for outside-station buffers (default 20)
+#' @param city_name        character; used in the map title/control
+#' @param stadiamaps_key   character; your Stadia Maps API key. If empty, function
 #                          falls back to CartoDB Positron tiles (no key needed).
 #                          A convenient pattern is to pass:
 #                          Sys.getenv("STADIA_MAPS_API_KEY", unset = "")
-# @Arg : tileset         — Stadia tileset id (e.g. "stamen_terrain_background",
+#' @param tileset          Stadia tileset id (e.g. "stamen_terrain_background",
 #                          "stamen_toner", "stamen_watercolor").
-# @Output : leaflet htmlwidget (interactive map)
-# @Purpose : Interactive metro map with basemap, metro polygon, station points,
+#' @return  leaflet htmlwidget (interactive map)
+#' @Purpose : Interactive metro map with basemap, metro polygon, station points,
 #            optional 20-km buffers for stations outside the metro polygon,
 #            optional filters from a parquet/Arrow dataset, and info-rich tooltips.
 #            The corner box shows the city + number of stations; legend labels
 #            include per-category counts.
-# @Written_on: 30/09/2025
-# @Written_by: Marcos Paulo
+#' @Written_on: 30/09/2025
+#' @Written_by: Marcos Paulo
 # ============================================================================================
 plot_metro_area_interactive <- function(
     metro_area_sf,
@@ -632,18 +632,18 @@ plot_metro_area_interactive <- function(
 
 # --------------------------------------------------------------------------------------------
 # Function: plot_merra2_grid_city
-# @Arg       : shapefile is an 'sf' object representing the city boundary
-# @Arg       : nc_file is a string containing the path to a single .nc4 file
+#' @param      shapefile is an 'sf' object representing the city boundary
+#' @param      nc_file is a string containing the path to a single .nc4 file
 #              from the MERRA-2 dataset
-# @Arg       : city_name is a string with the name of the city
-# @Output    : A ggplot object representing the map of the city boundary and 
+#' @param      city_name is a string with the name of the city
+#' @return     A ggplot object representing the map of the city boundary and
 #              MERRA-2 grid cells
-# @Purpose   : Creates a spatial plot showing the city's boundary and the overlayed
+#' @Purpose   : Creates a spatial plot showing the city's boundary and the overlayed
 #              MERRA-2 grid cells from the specified nc_file. This visualization helps 
 #              in understanding the spatial extent of the MERRA-2 data relative to 
 #              the city's area.
-# @Written_on: 10/12/2024
-# @Written_by: Marcos Paulo
+#' @Written_on: 10/12/2024
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 plot_merra2_grid_city <- function(shapefile, nc_file, city_name) {
   
@@ -706,18 +706,18 @@ plot_merra2_grid_city <- function(shapefile, nc_file, city_name) {
 
 # --------------------------------------------------------------------------------------------
 # Function: plot_variable_across_cities
-# @Arg       : df_list is a named list of dataframes, where each dataframe contains
+#' @param      df_list is a named list of dataframes, where each dataframe contains
 #              aerosol concentration and PM 2.5 data.
-# @Arg       : variable is a string specifying the variable to plot (e.g., "DUSMASS25",
+#' @param      variable is a string specifying the variable to plot (e.g., "DUSMASS25",
 #              "OCSMASS", "pm25_estimate").
-# @Arg       : var_label is a string specifying the label for the x-axis and plot title.
+#' @param      var_label is a string specifying the label for the x-axis and plot title.
 #              Defaults to the variable name if not provided.
-# @Arg.      : max_x_limit is a number representing the right limit for the x axis
-# @Output    : A single density plot comparing the variable across cities.
-# @Purpose   : Generate a density plot for a specific aerosol or PM 2.5 concentration
+#' @param      max_x_limit is a number representing the right limit for the x axis
+#' @return     A single density plot comparing the variable across cities.
+#' @Purpose   : Generate a density plot for a specific aerosol or PM 2.5 concentration
 #              across multiple cities, including WHO PM 2.5 guidelines if applicable.
-# @Written_on: 13/12/2024
-# @Written_by: Marcos Paulo
+#' @Written_on: 13/12/2024
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 plot_variable_across_cities <- function(df_list,
                                         variable,
@@ -817,16 +817,16 @@ plot_variable_across_cities <- function(df_list,
 
 # --------------------------------------------------------------------------------------------
 # Function: plot_latin_america_map
-# @Arg       : latin_america - An 'sf' object representing Latin America map.
-# @Arg       : regions       - A list of 'sf' objects for metropolitan areas 
+#' @param latin_america        An 'sf' object representing Latin America map.
+#' @param regions              A list of 'sf' objects for metropolitan areas
 #                              (e.g., Bogota, ciudad_mexico, etc.).
-# @Arg       : region_names  - A vector of city names corresponding to 'regions'.
-# @Arg       : outline       - Logical; if TRUE, regions will be outlined.
-# @Output    : A high-quality map with scale bar, compass, and customized aesthetics.
-# @Purpose   : Produce a publication-ready map highlighting metropolitan regions 
+#' @param region_names         A vector of city names corresponding to 'regions'.
+#' @param outline              Logical; if TRUE, regions will be outlined.
+#' @return     A high-quality map with scale bar, compass, and customized aesthetics.
+#' @Purpose   : Produce a publication-ready map highlighting metropolitan regions 
 #              over Latin America with optional outlines.
-# @Written_on: 15/12/2024
-# @Written_by: Marcos Paulo
+#' @Written_on: 15/12/2024
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 plot_latin_america_map <- function(latin_america, regions, region_names, outline = TRUE) {
   # Check input validity
@@ -912,30 +912,30 @@ plot_latin_america_map <- function(latin_america, regions, region_names, outline
 # ---------------------------------------------------------------------------------------------
 # Function: plot_inequality_pollution
 #
-# @Arg metro_sf    : sf object; The metropolitan area boundaries (e.g. tracts).
-# @Arg stations_sf : sf object; The ground monitoring stations.
-# @Arg arrow_dir   : string; Path to the partitioned parquet dataset folder.
-# @Arg census_df   : data.frame; The collapsed census statistics.
-# @Arg join_sf_col : string; Column name in metro_sf to join on.
-# @Arg join_df_col : string; Column name in census_df to join on.
-# @Arg station_col : string; Column in stations_sf with the station name/code.
-# @Arg ed_col      : string; Column for education/sorting (e.g. "escolaridad").
-# @Arg pop_col     : string; Column for population weights (e.g. "n").
-# @Arg year_filter : numeric; Year to check for active stations.
-# @Arg buffer_km   : numeric; Buffer size around stations in kilometers.
-# @Arg city_label  : string; Text label to place in the map.
-# @Arg pollutants  : vector; Pollutants to check (e.g., c("pm25", "pm10")).
-# @Arg label_x_pct : numeric; X position of annotations (0 to 1, default 0.98).
-# @Arg label_y_pct : numeric; Y position of annotations (0 to 1, default 0.98).
-# @Arg legend_pos  : vector; Relative X/Y pos of legend (default top-right).
+#' @param metro_sf   sf object; The metropolitan area boundaries (e.g. tracts).
+#' @param stations_sf sf object; The ground monitoring stations.
+#' @param arrow_dir  string; Path to the partitioned parquet dataset folder.
+#' @param census_df  data.frame; The collapsed census statistics.
+#' @param join_sf_col string; Column name in metro_sf to join on.
+#' @param join_df_col string; Column name in census_df to join on.
+#' @param station_col string; Column in stations_sf with the station name/code.
+#' @param ed_col     string; Column for education/sorting (e.g. "escolaridad").
+#' @param pop_col    string; Column for population weights (e.g. "n").
+#' @param year_filter numeric; Year to check for active stations.
+#' @param buffer_km  numeric; Buffer size around stations in kilometers.
+#' @param city_label string; Text label to place in the map.
+#' @param pollutants vector; Pollutants to check (e.g., c("pm25", "pm10")).
+#' @param label_x_pct numeric; X position of annotations (0 to 1, default 0.98).
+#' @param label_y_pct numeric; Y position of annotations (0 to 1, default 0.98).
+#' @param legend_pos vector; Relative X/Y pos of legend (default top-right).
 #
-# @Output          : A ggplot object.
-# @Purpose         : Visualize inequality based on education levels and active 
+#' @return           A ggplot object.
+#' @Purpose         : Visualize inequality based on education levels and active 
 #                    air monitoring station buffers. Uses a Sequential Cascading
 #                    Join to seamlessly fill un-surveyed blocks with the median 
 #                    data of their geographic parent sections.
-# @Written_on      : 10/01/2026 (Updated 04/03/2026)
-# @Written_by      : Marcos Paulo
+#' @Written_on      : 10/01/2026 (Updated 04/03/2026)
+#' @Written_by      : Marcos Paulo
 # ---------------------------------------------------------------------------------------------
 plot_inequality_pollution <- function(
     metro_sf,

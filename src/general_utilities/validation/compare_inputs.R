@@ -1,43 +1,43 @@
 # ============================================================================================
 # IDB: Air monitoring — input comparisons
 # ============================================================================================
-# @Goal: Functions for input comparisons.
+#' @Goal: Functions for input comparisons.
 #
-# @Description: Compares the inputs of record between the legacy and new pipelines: hourly panels, ground
+#' @Description: Compares the inputs of record between the legacy and new pipelines: hourly panels, ground
 #   stations, metro-area definitions and census microdata.
 #   Sourced by config_utils_validation_old_version.R; never sourced directly.
 #
-# @Summary:
+#' @Summary:
 #   1. compare_panels
 #   2. compare_ground_stations
 #   3. compare_metro_area
 #   4. compare_census
 #
-# @Date: August 2026
-# @Author: Marcos Paulo
+#' @Date: August 2026
+#' @Author: Marcos Paulo
 # ============================================================================================
 
 # --------------------------------------------------------------------------------------------
 # Function: compare_panels
-# @Arg       : old_df      — legacy-prepared tibble
-# @Arg       : new_df      — new-prepared tibble
-# @Arg       : keys        — key cols (default station,y/m/d/h; consider
+#' @param old_df             legacy-prepared tibble
+#' @param new_df             new-prepared tibble
+#' @param keys               key cols (default station,y/m/d/h; consider
 #                            station_code,y/m/d/h for robustness)
-# @Arg       : values      — value columns to compare
-# @Arg       : tol         — named numeric tolerances per column (defaults 0)
-# @Arg       : restrict_to_old_codes — if TRUE, keep in new_df only rows whose
+#' @param values             value columns to compare
+#' @param tol                named numeric tolerances per column (defaults 0)
+#' @param restrict_to_old_codes        if TRUE, keep in new_df only rows whose
 #               station_code exists in old_df (no-op if column missing)
-# @Arg       : prefer_station — named chr vec: station_code -> preferred name
+#' @param prefer_station        named chr vec: station_code -> preferred name
 #               (applies to new_df). Example: c(ATI = "Atizapán")
-# @Arg       : new_exclude  — rows to drop from new_df before join:
+#' @param new_exclude         rows to drop from new_df before join:
 #               * character: station_code values to remove
 #               * data.frame/tibble: subset of cols to anti_join away
 #               * function(df): returns filtered new_df
-# @Arg       : new_shift_hours — integer hours to shift new_df time by.
+#' @param new_shift_hours        integer hours to shift new_df time by.
 #               Positive = move forward; negative = move backward.
 #               Works if new_df has 'datetime' OR y/m/d/h columns.
-# @Output    : list(only_old, only_new, diffs_long, diff_summary)
-# @Purpose   : Pinpoint row- and cell-level differences with tolerances.
+#' @return     list(only_old, only_new, diffs_long, diff_summary)
+#' @Purpose   : Pinpoint row- and cell-level differences with tolerances.
 # --------------------------------------------------------------------------------------------
 compare_panels <- function(
     old_df,
@@ -234,32 +234,32 @@ compare_panels <- function(
 
 # --------------------------------------------------------------------------------------------
 # compare_ground_stations
-# @Arg      : cfg              — city cfg list. Must contain a $compare sublist with:
+#' @param cfg                    city cfg list. Must contain a $compare sublist with:
 #                                legacy_single_csv, legacy_dir, legacy_pattern,
 #                                compare_years, value_cols, residual_map,
 #                                pipeline_tz, focus_pollutants (optional).
-# @Arg      : out_root         — root output folder; {out_root}/{cfg$id}/ is created.
-# @Arg      : focus_pollutants — character; restrict comparison to these pollutants.
+#' @param out_root               root output folder; {out_root}/{cfg$id}/ is created.
+#' @param focus_pollutants       character; restrict comparison to these pollutants.
 #                                Must be a subset of cfg$compare$value_cols. Default NULL falls 
 #                                back to cfg$compare$focus_pollutants, then 
 #                                cfg$compare$value_cols (all pollutants)
-# @Arg      : pipeline_tz      — string; timezone used when the Arrow dataset was BUILT.
+#' @param pipeline_tz            string; timezone used when the Arrow dataset was BUILT.
 #                                Set to "UTC" when bogota_process_stations_data_to_parquet was 
 #                                called with tz = "UTC" (the Bogotá default, used to avoid a 
 #                                DuckDB R-driver timezone-shift bug). Intentionally separate 
 #                                from cfg$tz, which holds the city's true local timezone and 
 #                                must remain intact for other pipeline steps. NULL falls back 
 #                                to cfg$compare$pipeline_tz, then cfg$tz.
-# @Arg      : tol        —  named numeric; per-pollutant tolerance. Default 0.
-# @Arg      : quiet      — logical; suppress messages. Default FALSE.
+#' @param tol               named numeric; per-pollutant tolerance. Default 0.
+#' @param quiet            logical; suppress messages. Default FALSE.
 #
-# @Output   : named list (invisible) with:
+#' @return    named list (invisible) with:
 #   $diff_summary, $diffs_long, $only_legacy, $only_new,
 #   $station_audit, $out_dir
 #   Five Parquet files written to {out_root}/{cfg$id}/ground_station_comparison/.
 #
-# @Purpose  : Create report of new vs legacy data handling.
-# @Details  :  
+#' @Purpose  : Create report of new vs legacy data handling.
+#' @details
 #   SISAIRE CONTAMINATION
 #   The new Arrow dataset contains both RMCAB core stations and SISAIRE
 #   metro-area stations. After .std_name() normalisation some SISAIRE
@@ -297,8 +297,8 @@ compare_panels <- function(
 #   bug only affects Air_Pollution_Bogota_2002_2023.csv. The individual
 #   period CSVs used here are unaffected.
 #
-# @Written_on: 20/03/2026
-# @Written_by: Marcos Paulo
+#' @Written_on: 20/03/2026
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 compare_ground_stations <- function(
     cfg,
@@ -562,21 +562,21 @@ compare_ground_stations <- function(
 
 # --------------------------------------------------------------------------------------------
 # compare_metro_area
-# @Arg      : cfg              — city cfg list (must contain $id, $tz).
-# @Arg      : out_root         — root output folder; {out_root}/{cfg$id}/ is created.
-# @Arg      : new_metro_gpkg   — character; path to the new pipeline metro area GeoPackage.
-# @Arg      : new_stations_gpkg — character; path to the new pipeline stations GeoPackage.
-# @Arg      : legacy_shp_dir   — character; path to the directory containing the legacy
+#' @param cfg                    city cfg list (must contain $id, $tz).
+#' @param out_root               root output folder; {out_root}/{cfg$id}/ is created.
+#' @param new_metro_gpkg         character; path to the new pipeline metro area GeoPackage.
+#' @param new_stations_gpkg       character; path to the new pipeline stations GeoPackage.
+#' @param legacy_shp_dir         character; path to the directory containing the legacy
 #                                 metro area shapefile (.shp + sidecar files).
-# @Arg      : station_audit    — data.frame; output from compare_ground_stations()$station_audit.
+#' @param station_audit          data.frame; output from compare_ground_stations()$station_audit.
 #                                 Used to identify which stations belong to the legacy RMCAB
 #                                 universe. If NULL, legacy stations are inferred from the
 #                                 new stations sf by filtering for source containing "RMCAB".
-# @Arg      : buffer_km        — numeric; radius (km) for outside-metro station buffers
+#' @param buffer_km              numeric; radius (km) for outside-metro station buffers
 #                                 in the new pipeline map. Default 20.
-# @Arg      : quiet            — logical; suppress messages. Default FALSE.
+#' @param quiet                  logical; suppress messages. Default FALSE.
 #
-# @Output   : named list (invisible) with:
+#' @return    named list (invisible) with:
 #   $summary        — tibble comparing key metrics (area, n_municipalities, n_stations)
 #   $new_metro_sf   — sf object of the new pipeline metro area (WGS84)
 #   $legacy_metro_sf — sf object of the legacy metro area (WGS84)
@@ -586,9 +586,9 @@ compare_ground_stations <- function(
 #   Four Parquet/GeoPackage files written to
 #   {out_root}/{cfg$id}/metro_area_comparison/.
 #
-# @Purpose  : Compare the geographic definitions of the metropolitan area and station
+#' @Purpose  : Compare the geographic definitions of the metropolitan area and station
 #             coverage between the Dropbox legacy pipeline and the new automated pipeline.
-# @Details  :
+#' @details
 #   The new pipeline uses the official SDP (2022) metropolitan area definition
 #   (Bogotá D.C. + 20 municipalities), while the legacy pipeline uses a
 #   Wikipedia-derived definition (23 municipalities). This function loads both
@@ -606,8 +606,8 @@ compare_ground_stations <- function(
 #   Both metro area polygons are transformed to WGS84 (EPSG:4326) for Leaflet
 #   rendering and to a local UTM zone for accurate area calculations.
 #
-# @Written_on: 10/04/2026
-# @Written_by: Marcos Paulo
+#' @Written_on: 10/04/2026
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 compare_metro_area <- function(
     cfg,
@@ -798,15 +798,15 @@ compare_metro_area <- function(
 
 # --------------------------------------------------------------------------------------------
 # compare_census
-# @Arg cfg          : city cfg list. Must contain a $compare sublist with:
+#' @param cfg         city cfg list. Must contain a $compare sublist with:
 #                     new_census_collapsed, legacy_census_collapsed, 
 #                     census_join_key, and optionally census_tol and individual paths.
-# @Arg out_root     : root output folder; {out_root}/{cfg$id}/ is created.
-# @Arg compare_vars : character vector; variable names to compare. Default covers 
+#' @param out_root    root output folder; {out_root}/{cfg$id}/ is created.
+#' @param compare_vars character vector; variable names to compare. Default covers
 #                     core education/labor shares.
-# @Arg quiet        : logical; suppress messages. Default FALSE.
+#' @param quiet       logical; suppress messages. Default FALSE.
 #
-# @Output   : named list (invisible) with:
+#' @return    named list (invisible) with:
 #   $collapsed_summary — tibble; per-variable match statistics
 #   $collapsed_diffs   — tibble; rows where values differ beyond tolerance
 #   $geo_coverage      — tibble; geographic units present in each pipeline
@@ -814,8 +814,8 @@ compare_metro_area <- function(
 #   $out_dir           — path to the output directory
 #   Parquet files written to {out_root}/{cfg$id}/census_comparison/.
 #
-# @Purpose  : Compare census processing between the new pipeline and the Dropbox legacy.
-# @Details  :
+#' @Purpose  : Compare census processing between the new pipeline and the Dropbox legacy.
+#' @details
 #   SCOPE
 #   This function compares the Extended 2005 Census processing, which is the
 #   census version used in the Dropbox legacy pipeline. The new pipeline also
@@ -844,8 +844,8 @@ compare_metro_area <- function(
 #   Any differences should therefore be small rounding artefacts from the
 #   expansion factor (fe = round(FACT_EXP_CAL_P_N)).
 #
-# @Written_on: 10/04/2026
-# @Written_by: Marcos Paulo
+#' @Written_on: 10/04/2026
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 compare_census <- function(
     cfg,

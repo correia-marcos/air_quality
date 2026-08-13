@@ -1,13 +1,13 @@
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-# @Goal: Create configuration file for setup of packages and functions used in the project
+#' @Goal: Configuration file for setup of packages and functions used in the project
 # 
-# @Description: This script sets up the necessary environment by checking and installing 
+#' @Description: This script sets up the necessary environment by checking and installing 
 # required packages and defining utility functions for all "download_data" scripts.
 # 
-# @Date: Apr 2025
-# @Author: Marcos Paulo
+#' @Date: Apr 2025
+#' @Author: Marcos Paulo
 # ============================================================================================
 
 # List of required packages
@@ -52,12 +52,12 @@ rm(pkgs)
 
 # --------------------------------------------------------------------------------------------
 # Function: wait_ready
-# @Arg       : session      — selenium::SeleniumSession; active browser session
-# @Arg       : timeout      — integer; max seconds to wait (default 30)
-# @Output    : invisible(TRUE) on success; error on timeout
-# @Purpose   : Wait until document.readyState is "complete" (page fully loaded).
-# @Written_on: 05/08/2025
-# @Written_by: Marcos Paulo
+#' @param session             selenium::SeleniumSession; active browser session
+#' @param timeout             integer; max seconds to wait (default 30)
+#' @return     invisible(TRUE) on success; error on timeout
+#' @Purpose   : Wait until document.readyState is "complete" (page fully loaded).
+#' @Written_on: 05/08/2025
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 wait_ready <- function(session, timeout = 30) {
   t0 <- Sys.time()
@@ -71,15 +71,15 @@ wait_ready <- function(session, timeout = 30) {
 }
 # --------------------------------------------------------------------------------------------
 # Function: wait_for
-# @Arg       : session         — selenium::SeleniumSession; active browser session
-# @Arg       : by              — string; locator strategy ("css selector", "xpath", etc.)
-# @Arg       : query           — string; selector/xpath
-# @Arg       : timeout         — integer; max seconds to wait (default 30)
-# @Arg       : require_visible — logical; TRUE requires element to be displayed (default TRUE)
-# @Output    : selenium element handle (on success); error on timeout
-# @Purpose   : Explicitly wait for an element to exist (and optionally be visible).
-# @Written_on: 05/08/2025
-# @Written_by: Marcos Paulo
+#' @param session                selenium::SeleniumSession; active browser session
+#' @param by                     string; locator strategy ("css selector", "xpath", etc.)
+#' @param query                  string; selector/xpath
+#' @param timeout                integer; max seconds to wait (default 30)
+#' @param require_visible        logical; TRUE requires element to be displayed (default TRUE)
+#' @return     selenium element handle (on success); error on timeout
+#' @Purpose   : Explicitly wait for an element to exist (and optionally be visible).
+#' @Written_on: 05/08/2025
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 wait_for <- function(session, by, query, timeout = 30, require_visible = TRUE) {
   t0 <- Sys.time()
@@ -97,26 +97,26 @@ wait_for <- function(session, by, query, timeout = 30, require_visible = TRUE) {
 }
 # --------------------------------------------------------------------------------------------
 # Function: css_from_id
-# @Arg       : input_id  — string; DOM id (e.g., "startDate") or CSS "#startDate"
-# @Output    : string; CSS selector that begins with "#"
-# @Purpose   : Normalize an input id into a CSS selector.
-# @Written_on: 05/08/2025
-# @Written_by: Marcos Paulo
+#' @param input_id         string; DOM id (e.g., "startDate") or CSS "#startDate"
+#' @return     string; CSS selector that begins with "#"
+#' @Purpose   : Normalize an input id into a CSS selector.
+#' @Written_on: 05/08/2025
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 css_from_id <- function(input_id) {
   if (startsWith(input_id, "#")) input_id else paste0("#", input_id)
 }
 # --------------------------------------------------------------------------------------------
 # Function: click_clear_and_type
-# @Arg       : session   — selenium::SeleniumSession; active browser session
-# @Arg       : input_id  — string; DOM id (or "#id") of the input
-# @Arg       : text      — string; value to type into the input
-# @Arg       : blur      — logical; send Tab after typing (default TRUE)
-# @Arg       : pause     — numeric; seconds to pause after typing (default 0.2)
-# @Output    : invisible(TRUE)
-# @Purpose   : Clicks an input, selects all (Ctrl+Shift+Home), clears, types text, tabs out.
-# @Written_on: 05/08/2025
-# @Written_by: Marcos Paulo
+#' @param session          selenium::SeleniumSession; active browser session
+#' @param input_id         string; DOM id (or "#id") of the input
+#' @param text             string; value to type into the input
+#' @param blur             logical; send Tab after typing (default TRUE)
+#' @param pause            numeric; seconds to pause after typing (default 0.2)
+#' @return     invisible(TRUE)
+#' @Purpose  : Clicks an input, selects all (Ctrl+Shift+Home), clears, types text, tabs out.
+#' @Written_on: 05/08/2025
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 click_clear_and_type <- function(session, input_id, text, blur = TRUE, pause = 0.2) {
   css <- css_from_id(input_id)
@@ -132,16 +132,16 @@ click_clear_and_type <- function(session, input_id, text, blur = TRUE, pause = 0
 }
 # --------------------------------------------------------------------------------------------
 # Function: click_date_input
-# @Arg       : session   — selenium::SeleniumSession; active browser session
-# @Arg       : input_id  — string; DOM id (or "#id") of a date input
-# @Arg       : day       — integer; 1–31
-# @Arg       : month     — integer; 1–12
-# @Arg       : year      — integer; 4-digit year
-# @Arg       : pause     — numeric; seconds to pause after typing (default 0.2)
-# @Output    : invisible(TRUE)
-# @Purpose   : Types a date as "DD-MM-YYYY" using click-clear-type sequence.
-# @Written_on: 05/08/2025
-# @Written_by: Marcos Paulo
+#' @param session          selenium::SeleniumSession; active browser session
+#' @param input_id         string; DOM id (or "#id") of a date input
+#' @param day              integer; 1–31
+#' @param month            integer; 1–12
+#' @param year             integer; 4-digit year
+#' @param pause            numeric; seconds to pause after typing (default 0.2)
+#' @return     invisible(TRUE)
+#' @Purpose   : Types a date as "DD-MM-YYYY" using click-clear-type sequence.
+#' @Written_on: 05/08/2025
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 click_date_input <- function(session, input_id, day, month, year, pause = 0.2) {
   val <- sprintf("%02d-%02d-%04d", day, month, year)
@@ -149,15 +149,15 @@ click_date_input <- function(session, input_id, day, month, year, pause = 0.2) {
 }
 # --------------------------------------------------------------------------------------------
 # Function: click_time_input
-# @Arg       : session   — selenium::SeleniumSession; active browser session
-# @Arg       : input_id  — string; DOM id (or "#id") of a time input
-# @Arg       : hh        — integer; hour 00–23
-# @Arg       : mm        — integer; minute 00–59
-# @Arg       : pause     — numeric; seconds to pause after typing (default 0.2)
-# @Output    : invisible(TRUE)
-# @Purpose   : Types a time as "HH:MM" using click-clear-type sequence.
-# @Written_on: 05/08/2025
-# @Written_by: Marcos Paulo
+#' @param session          selenium::SeleniumSession; active browser session
+#' @param input_id         string; DOM id (or "#id") of a time input
+#' @param hh               integer; hour 00–23
+#' @param mm               integer; minute 00–59
+#' @param pause            numeric; seconds to pause after typing (default 0.2)
+#' @return     invisible(TRUE)
+#' @Purpose   : Types a time as "HH:MM" using click-clear-type sequence.
+#' @Written_on: 05/08/2025
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 click_time_input <- function(session, input_id, hh, mm, pause = 0.2) {
   val <- sprintf("%02d:%02d", hh, mm)
@@ -165,32 +165,32 @@ click_time_input <- function(session, input_id, hh, mm, pause = 0.2) {
 }
 # --------------------------------------------------------------------------------------------
 # Function: click_end_date
-# @Arg       : session   — selenium::SeleniumSession; active browser session
-# @Arg       : year      — integer; year to use (defaults day=31, month=12)
-# @Arg       : day       — integer; default 31
-# @Arg       : month     — integer; default 12
-# @Arg       : pause     — numeric; seconds to pause after typing (default 0.2)
-# @Output    : invisible(TRUE)
-# @Purpose   : Convenience wrapper: force-type the end date (e.g., "31-12-year") into #endDate.
-# @Written_on: 05/08/2025
-# @Written_by: Marcos Paulo
+#' @param session          selenium::SeleniumSession; active browser session
+#' @param year             integer; year to use (defaults day=31, month=12)
+#' @param day              integer; default 31
+#' @param month            integer; default 12
+#' @param pause            numeric; seconds to pause after typing (default 0.2)
+#' @return     invisible(TRUE)
+#' @Purpose  : Convenience wrapper: force-type the end date (e.g., "31-12-year") into #endDate.
+#' @Written_on: 05/08/2025
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 click_end_date <- function(session, year, day = 31, month = 12, pause = 0.2) {
   click_date_input(session, "endDate", day, month, year, pause = pause)
 }
 # --------------------------------------------------------------------------------------------
 # Function: click_set_period
-# @Arg       : session   — selenium::SeleniumSession; active browser session
-# @Arg       : sd, sm, sy — integers; start day, month, year
-# @Arg       : sh, smin  — integers; start hour, minute
-# @Arg       : ed, em, ey — integers; end day, month, year
-# @Arg       : eh, emin  — integers; end hour, minute
-# @Arg       : pause     — numeric; seconds to pause between inputs (default 0.2)
-# @Output    : invisible(TRUE)
-# @Purpose   : Set a full period reliably:
+#' @param session          selenium::SeleniumSession; active browser session
+#' @param      sd, sm, sy — integers; start day, month, year
+#' @param      sh, smin  — integers; start hour, minute
+#' @param      ed, em, ey — integers; end day, month, year
+#' @param      eh, emin  — integers; end hour, minute
+#' @param pause            numeric; seconds to pause between inputs (default 0.2)
+#' @return     invisible(TRUE)
+#' @Purpose   : Set a full period reliably:
 #              startDate → startTime → endDate → endTime → re-apply endTime to lock value.
-# @Written_on: 05/08/2025
-# @Written_by: Marcos Paulo
+#' @Written_on: 05/08/2025
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 click_set_period <- function(session,
                              sd, sm, sy, sh, smin,
@@ -206,13 +206,13 @@ click_set_period <- function(session,
 }
 # --------------------------------------------------------------------------------------------
 # Function: robust_click_excel
-# @Arg       : session    — selenium::SeleniumSession; active browser session
-# @Arg       : timeout_btn— integer; seconds to wait for the Excel control (default 30)
-# @Output    : invisible(TRUE); raises if not clickable
-# @Purpose   : Reliably click the Excel export control. Tries the inner <a> first; falls back
+#' @param session           selenium::SeleniumSession; active browser session
+#' @param timeout_btn       integer; seconds to wait for the Excel control (default 30)
+#' @return     invisible(TRUE); raises if not clickable
+#' @Purpose  : Reliably click the Excel export control. Tries the inner <a> first; falls back
 #              to JS scroll + click on the container. Retries a few times for overlays.
-# @Written_on: 05/08/2025
-# @Written_by: Marcos Paulo
+#' @Written_on: 05/08/2025
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 robust_click_excel <- function(session, timeout_btn = 30) {
   # wait for the container; then prefer any <a> inside it
@@ -246,14 +246,14 @@ robust_click_excel <- function(session, timeout_btn = 30) {
 }
 # --------------------------------------------------------------------------------------------
 # Function: wait_for_download
-# @Arg       : dir        — string; directory to watch
-# @Arg       : pattern    — string; regex for final filename (default "\\.xlsx$")
-# @Arg       : quiet_sec  — integer; seconds with no size change to deem "finished" (default 2)
-# @Arg       : timeout    — integer; max seconds to wait (default 180)
-# @Output    : string; full path of the newest completed file
-# @Purpose   : Wait until a new download appears in `dir` and finishes (no .part/.tmp).
-# @Written_on: 05/08/2025
-# @Written_by: Marcos Paulo
+#' @param dir               string; directory to watch
+#' @param pattern           string; regex for final filename (default "\\.xlsx$")
+#' @param quiet_sec         integer; seconds with no size change to deem "finished" (default 2)
+#' @param timeout           integer; max seconds to wait (default 180)
+#' @return     string; full path of the newest completed file
+#' @Purpose   : Wait until a new download appears in `dir` and finishes (no .part/.tmp).
+#' @Written_on: 05/08/2025
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 wait_for_download <- function(dir, pattern = "\\.xlsx$", quiet_sec = 2, timeout = 180) {
   .Deprecated("wait_for_new_download",
@@ -265,16 +265,16 @@ wait_for_download <- function(dir, pattern = "\\.xlsx$", quiet_sec = 2, timeout 
 }
 # --------------------------------------------------------------------------------------------
 # Function: wait_for_new_download
-# @Arg       : dir        — string; directory to watch
-# @Arg       : before     — character; vector of file paths seen before clicking
-# @Arg       : pattern    — string; regex for final filename (default "\\.xlsx$")
-# @Arg       : quiet_sec  — integer; secs with no size change to deem "finished" (default 2)
-# @Arg       : timeout    — integer; max secs to wait (default 180)
-# @Output    : string; full path of the new completed file (not present in `before`)
-# @Purpose   : Wait until a new file appears in `dir` and finishes writing. Guarantees the
+#' @param dir               string; directory to watch
+#' @param before            character; vector of file paths seen before clicking
+#' @param pattern           string; regex for final filename (default "\\.xlsx$")
+#' @param quiet_sec         integer; secs with no size change to deem "finished" (default 2)
+#' @param timeout           integer; max secs to wait (default 180)
+#' @return     string; full path of the new completed file (not present in `before`)
+#' @Purpose  : Wait until a new file appears in `dir` and finishes writing. Guarantees the
 #              returned file was not present in `before` (avoids reusing a prior download).
-# @Written_on: 13/08/2025
-# @Written_by: Marcos Paulo
+#' @Written_on: 13/08/2025
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 wait_for_new_download <- function(dir,
                                   before,
@@ -320,11 +320,11 @@ wait_for_new_download <- function(dir,
 }
 # --------------------------------------------------------------------------------------------
 # Function: sanitize_name
-# @Arg       : x        — character; arbitrary station name
-# @Output    : character; ASCII, lowercase, filesystem-safe token (words joined by "_")
-# @Purpose   : Normalize station names for deterministic filenames like STATION_YEAR.xlsx.
-# @Written_on: 05/08/2025
-# @Written_by: Marcos Paulo
+#' @param x               character; arbitrary station name
+#' @return     character; ASCII, lowercase, filesystem-safe token (words joined by "_")
+#' @Purpose  : Normalize station names for deterministic filenames like STATION_YEAR.xlsx.
+#' @Written_on: 05/08/2025
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 sanitize_name <- function(x) {
   x <- iconv(x, to = "ASCII//TRANSLIT")
@@ -341,18 +341,18 @@ sanitize_name <- function(x) {
 
 # --------------------------------------------------------------------------------------------
 # Function: generate_merra2_urls
-# @Arg         : start_date is a Date or character (YYYY-MM-DD) referring to the beginning date
-# @Arg         : end_date is a Date or character (YYYY-MM-DD) referring to the end date
-# @Arg         : dataset_version is a character (e.g. "M2T1NXAER.5.12.4") referring to the 
+#' @param        start_date is a Date or character (YYYY-MM-DD) referring to the beginning date
+#' @param        end_date is a Date or character (YYYY-MM-DD) referring to the end date
+#' @param        dataset_version is a character (e.g. "M2T1NXAER.5.12.4") referring to the
 #                MERRA2 version version and type of archive
-# @Arg         : tile_id is a character (e.g. "400") referring to the processing stream/
+#' @param        tile_id is a character (e.g. "400") referring to the processing stream/
 #                version of the reanalysis output
-# @Arg         : var_name is a character (e.g. "tavg1_2d_aer_Nx") referring to the variable 
+#' @param        var_name is a character (e.g. "tavg1_2d_aer_Nx") referring to the variable
 #                collection
-# @Output      : A character vector containing the full URLs
-# @Purpose     : Build daily MERRA-2 .nc4 URLs for a given dataset, stream, and variable
-# @Written_on  : 01/04/2025
-# @Written_by  : Marcos Paulo
+#' @return       A character vector containing the full URLs
+#' @Purpose     : Build daily MERRA-2 .nc4 URLs for a given dataset, stream, and variable
+#' @Written_on  : 01/04/2025
+#' @Written_by  : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 generate_merra2_urls <- function(start_date,
                                  end_date,
@@ -395,18 +395,18 @@ generate_merra2_urls <- function(start_date,
 
 # --------------------------------------------------------------------------------------------
 # Function: download_merra2_files
-# @Arg       : urls      is a character vector of download URLs
-# @Arg       : dest_dir  is a directory path where files will be saved
-# @Arg       : user      is a character for the Earthdata username (character) 
+#' @param      urls      is a character vector of download URLs
+#' @param      dest_dir  is a directory path where files will be saved
+#' @param      user      is a character for the Earthdata username (character)
 #                        [optional if using ~/.netrc]
-# @Arg       : pass      is a character for the Earthdata password (character) 
+#' @param      pass      is a character for the Earthdata password (character)
 #                        [optional if using ~/.netrc]
-# @Arg       : overwrite is a logical term, whether to overwrite existing files
-# @Output    : logical vector indicating success (TRUE) or failure (FALSE)
-# @Purpose   : This function make the download of files using curl::curl_download() + .netrc 
+#' @param      overwrite is a logical term, whether to overwrite existing files
+#' @return     logical vector indicating success (TRUE) or failure (FALSE)
+#' @Purpose  : This function make the download of files using curl::curl_download() + .netrc
 #              (or basic auth) to fetch each URL - this is required for Earthdata - NASA files
-# @Written_on: 05/04/2025
-# @Written_by: Marcos Paulo
+#' @Written_on: 05/04/2025
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 download_merra2_files <- function(urls,
                                   dest_dir,
