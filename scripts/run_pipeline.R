@@ -69,7 +69,7 @@ source(here::here("scripts", "process_data", "detect_outliers.R"))
 # Estimates exposure using Inverse Distance Weighting. 
 # Can utilize outlier flags from Step 3 for sensitivity analysis.
 
-source(here::here("scripts", "process_data", "estimate_idw_exposure.R"))
+source(here::here("scripts", "process_data", "estimate_idw.R"))
 
 # ============================================================================================
 # Step 5: Exposure Regressions
@@ -77,7 +77,7 @@ source(here::here("scripts", "process_data", "estimate_idw_exposure.R"))
 # Turns the geo-level exposure of Step 4 into quintile/decile gaps relative to the
 # top group, with clustered confidence intervals. Produces the inputs of Figures 7-8.
 
-source(here::here("scripts", "process_data", "compute_exposure_regressions.R"))
+source(here::here("scripts", "process_data", "estimate_exposure.R"))
 
 # ============================================================================================
 # Step 6: Descriptive Tables

@@ -7,7 +7,7 @@
 # @Description: One script for the whole table layer, so a referee finds them all in one
 # place and no statistic is computed twice. Every input comes from data/processed/ and
 # every output is a .tex under results/tables/; nothing here calculates anything. Run
-# scripts/process_data/compute_descriptive_tables.R and compute_exposure_regressions.R
+# scripts/process_data/compute_descriptive_tables.R and estimate_exposure.R
 # first.
 #
 # @Summary:

@@ -5,7 +5,7 @@
 #   confidence intervals, and population-weighted concentration levels.
 #
 # @Description:
-#   Reads the tidy artifacts written by compute_exposure_regressions.R (the CI
+#   Reads the tidy artifacts written by estimate_exposure.R (the CI
 #   estimates and the raw group summaries, for education and for income) and draws
 #   two figure families: (1) regression gaps vs the base group with 95% CIs, per
 #   city/outcome/pollutant; (2) dual-axis PM10/PM2.5 mean concentration by group,
@@ -35,7 +35,7 @@ dir_reg    <- here::here("data", "processed", "idw_regressions")
 outdir_ci  <- here::here("results", "figures", "exposure_by_group", "ci")
 outdir_lvl <- here::here("results", "figures", "exposure_by_group", "levels")
 
-# Artifact paths written by compute_exposure_regressions.R
+# Artifact paths written by estimate_exposure.R
 ci_edu_pq      <- here::here(dir_reg, "exposure_ci_estimates_education_2023.parquet")
 ci_inc_pq      <- here::here(dir_reg, "exposure_ci_estimates_income_2023.parquet")
 summary_edu_pq <- here::here(dir_reg,

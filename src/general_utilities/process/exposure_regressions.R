@@ -667,7 +667,7 @@ compute_exposure_regressions <- function(exposure_dt,
 # @Output : string; full path to the requested Parquet file.
 #
 # @Details:
-#   estimate_idw_exposure.R names every artifact
+#   estimate_idw.R names every artifact
 #   <city_id>/<city_id>_<buffer>km[_suffix]_<what>
 #   .parquet. Building the name in one place keeps the readers from drifting from the
 #   writer.

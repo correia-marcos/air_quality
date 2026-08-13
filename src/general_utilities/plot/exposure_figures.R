@@ -1041,7 +1041,7 @@ exposure_group_axis_label <- function(socio_var, group_type) {
 # --------------------------------------------------------------------------------------------
 # Function: save_exposure_ci_figures
 #
-# @Arg ci_dt       : data.table; CI estimates from compute_exposure_regressions.R.
+# @Arg ci_dt       : data.table; CI estimates from estimate_exposure.R.
 # @Arg tag         : string; grouping tag used in the file name, e.g. "education".
 # @Arg out_dir     : string; folder for the PDFs.
 # @Arg city_labels : named character; city -> display label.
@@ -1092,7 +1092,7 @@ save_exposure_ci_figures <- function(ci_dt, tag, out_dir, city_labels, city_file
 # --------------------------------------------------------------------------------------------
 # Function: save_exposure_level_figures
 #
-# @Arg sum_dt      : data.table; group summaries from compute_exposure_regressions.R.
+# @Arg sum_dt      : data.table; group summaries from estimate_exposure.R.
 # @Arg tag         : string; grouping tag used in the file name, e.g. "education".
 # @Arg out_dir     : string; folder for the PDFs.
 # @Arg city_labels : named character; city -> display label.

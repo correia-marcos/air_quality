@@ -58,7 +58,9 @@ results/             figures/ tables/ validation_old_version/
 ```
 
 Scripts are named for what they produce, never numbered: the run order lives in
-`run_pipeline.R` and the dependencies in the `Makefile`, so a rename cannot desynchronise it.
+`run_pipeline.R` and the dependencies in the `Makefile`. Both spell every basename as its own
+literal string, so **a rename must update both by hand** — `tests/testthat/test-pipeline-paths.R`
+fails if you forget.
 
 `src/` holds functions; `scripts/` executes them. Never put runnable side-effects in `src/`.
 

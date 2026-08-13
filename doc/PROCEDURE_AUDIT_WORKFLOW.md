@@ -73,7 +73,7 @@ The inputs for `idw-exposure` map like this:
 - **Spec:** the "Spatial Aggregation of Air Quality Data" appendix (new draft) and the older IDW
   appendix (both in `doc/paper/`).
 - **Legacy:** `4_exposure_plots_3km_quintiles_2023_regCI.R` in the legacy repo.
-- **New:** `scripts/process_data/estimate_idw_exposure.R` (+ `src/` helpers it sources).
+- **New:** `scripts/process_data/estimate_idw.R` (+ `src/` helpers it sources).
 
 A known deviation to expect the audit to surface under Goal 3: the new spec uses
 `sf::st_point_on_surface()` for the representative point, while the legacy code used a plain

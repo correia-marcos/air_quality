@@ -18,7 +18,7 @@ do not modify analysis code; surface findings and let Marcos decide.
    via `--add-dir` or `permissions.additionalDirectories` (see the workflow doc). If you cannot read
    the path, stop and tell me exactly which file you need.
 3. **New code** — the matching script/function here (for IDW:
-   `scripts/process_data/estimate_idw_exposure.R` plus any `src/` helpers it calls).
+   `scripts/process_data/estimate_idw.R` plus any `src/` helpers it calls).
 
 Read all three fully before writing. For large files, delegate the deep read to the
 `legacy-validation-auditor` subagent (method-audit mode).

@@ -243,8 +243,8 @@ flowchart TD
   PC["process_data/process_&lt;city&gt;_data.R"]
   GD["process_data/generate_distances_matrices.R"]
   DO["process_data/detect_outliers.R"]
-  IDW["process_data/estimate_idw_exposure.R"]
-  REG["process_data/compute_exposure_regressions.R"]
+  IDW["process_data/estimate_idw.R"]
+  REG["process_data/estimate_exposure.R"]
   DESC["process_data/compute_descriptive_tables.R"]
 
   DL --> GP --> MP
@@ -259,9 +259,9 @@ flowchart TD
 ```mermaid
 flowchart TD
   MP["process_data/process_merra2_panels.R"]
-  REG["process_data/compute_exposure_regressions.R"]
+  REG["process_data/estimate_exposure.R"]
   DESC["process_data/compute_descriptive_tables.R"]
-  IDW["process_data/estimate_idw_exposure.R"]
+  IDW["process_data/estimate_idw.R"]
 
   MP --> FM["tables_images/figure_merra2_vs_stations.R"]
   MP --> FA["tables_images/figure_aerosol_composition.R"]

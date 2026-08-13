@@ -70,11 +70,11 @@ $(STAMP)/outliers.stamp: scripts/process_data/detect_outliers.R $(STAMP)/process
 
 # 4. IDW exposure, then the group regressions the figures read; needs distances and outliers.
 exposure: $(STAMP)/exposure.stamp
-$(STAMP)/exposure.stamp: scripts/process_data/estimate_idw_exposure.R \
-                         scripts/process_data/compute_exposure_regressions.R \
+$(STAMP)/exposure.stamp: scripts/process_data/estimate_idw.R \
+                         scripts/process_data/estimate_exposure.R \
                          $(STAMP)/distances.stamp $(STAMP)/outliers.stamp
-	$(RUN) scripts/process_data/estimate_idw_exposure.R
-	$(RUN) scripts/process_data/compute_exposure_regressions.R
+	$(RUN) scripts/process_data/estimate_idw.R
+	$(RUN) scripts/process_data/estimate_exposure.R
 	touch $@
 
 # 5. Descriptive statistics: station counts, missing shares, WHO exceedances, census
