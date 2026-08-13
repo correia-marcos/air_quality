@@ -14,8 +14,9 @@ Before writing, confirm with me (one line each) if unclear:
 
 Then generate the file:
 
-1. Standard header block (`@Goal / @Description / @Summary / @Date / @Author`) — copy the exact
-   style from an existing `scripts/process_data/*.R`. `@Goal` = "$2" if given.
+1. Standard header block (`@Goal / @Description / @Summary / @Date / @Author`) with `#'` on the
+   `@tag` lines and plain `#` on continuations — copy the exact style from an existing
+   `scripts/process_data/*.R`. `@Goal` = "$2" if given.
 2. Setup section sourcing the utilities it needs:
    `source(here::here("src","general_utilities","config_utils_process_data.R"))`
    plus `registry.R` and the city module if city-specific.

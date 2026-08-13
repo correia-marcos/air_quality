@@ -15,10 +15,10 @@ the code top-to-bottom and understand what happens **to the data**.
 
 - **Line length ≤ 90 characters.** Break long calls onto aligned argument lines.
 - **Comments: one home for rationale.** *Why* a function does what it does belongs in its
-  `@Description` / `@Details` block — written once, updated in place. Comments **inside** a
+  `@Description` / `@details` block — written once, updated in place. Comments **inside** a
   function body are at most **2 lines** and say only what happens *to the data* here, or point
   back: `# see @Details: cluster identification`. Never restate in the body what the block
-  above already says. If a change needs more explanation, extend `@Details` — do not grow a
+  above already says. If a change needs more explanation, extend `@details` — do not grow a
   paragraph mid-function. *Exempt:* the file header block and the `# ---` doc block above a
   `src/` function; those are the designated home and are long by design.
 - **Paths are always `here::here(...)`.** No absolute paths, no `setwd()`, no `~`.
@@ -34,22 +34,54 @@ the code top-to-bottom and understand what happens **to the data**.
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-# @Goal: <one line: what this script produces>
+#' @Goal: <one line: what this script produces>
 #
-# @Description: <2-4 lines: inputs, what is done, outputs and where they land>
+#' @Description: <2-4 lines: inputs, what is done, outputs and where they land>
+# <continuation lines keep the plain # prefix>
 #
-# @Summary:
+#' @Summary:
 #   I.   Setup: load dependencies, utilities, city config
 #   II.  <stage>
 #   III. <stage>
 #
-# @Date: <Month Year>
-# @Author: <name>
+#' @Date: <Month Year>
+#' @Author: <name>
 # ============================================================================================
 ```
 
-Match the existing files exactly (see `scripts/process_data/process_bogota_data.R`). Section
-dividers inside the script reuse the same `# ===` rule with a `# I:` / `# II:` label.
+**The `@tag` line takes `#'`; continuation lines and the `# ===` banner rules stay plain `#`.**
+The `#'` prefix is for RStudio only — it colours the tags and is what makes these blocks
+scannable. roxygen2 never runs here (no `R/`, no `NAMESPACE`, `DESCRIPTION` is `Type: Project`,
+`Coding.Rproj` is `BuildType: Makefile`), so the custom `@Goal` / `@Summary` tags cost nothing.
+
+Match the existing files exactly (see `scripts/process_data/estimate_exposure.R`). Section
+dividers inside the script reuse the same `# ===` rule with a `# I:` / `# II:` label. Banner
+rules are 94 characters wide throughout.
+
+## Every `src/` function has a doc block
+
+Same `#'`-on-the-tag-line rule, with roxygen's standard argument tags:
+
+```r
+# --------------------------------------------------------------------------------------------
+# Function: assign_socio_group
+#
+#' @param dt      data.table; modified in place. Must contain a `geo_id` column.
+#' @param out_col string; name of the group column to create.
+#
+#' @return  the same data.table, invisibly, with `out_col` added.
+#
+#' @details
+#   Why it does what it does. This is the one home for rationale.
+#
+#' @Written_on : July 2026
+#' @Written_by : Marcos Paulo
+# --------------------------------------------------------------------------------------------
+```
+
+Use `@param` / `@return` / `@details` — **not** the old `@Arg` / `@Output` / `@Details`. `@param`
+takes the name then the description, with no colon between them. `@Purpose`, `@Written_on` and
+`@Written_by` stay as project-specific tags.
 
 ## Idioms in this codebase
 

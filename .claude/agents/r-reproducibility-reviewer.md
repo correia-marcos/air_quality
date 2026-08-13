@@ -24,9 +24,11 @@ so your review matches the house style, not generic R advice.
 ## What to check (cite file:line for every finding)
 
 1. **Style & headers** — line length ≤ 90; the `@Goal/@Description/@Summary/@Date/@Author` header
-   present and correct; numbered `# ===` sections. **Comments** per `.claude/rules/r-style.md`:
-   rationale belongs in `@Description` / `@Details`; flag in-body comment blocks over 2 lines and
-   rationale duplicated between the body and the doc block.
+   present and correct, with `#'` on the `@tag` lines and plain `#` on continuations; 94-char
+   `# ===` banner rules; numbered `# ===` sections. `src/` function blocks use `@param` /
+   `@return` / `@details` (flag any surviving `@Arg` / `@Output`). **Comments** per
+   `.claude/rules/r-style.md`: rationale belongs in `@Description` / `@details`; flag in-body
+   comment blocks over 2 lines and rationale duplicated between the body and the doc block.
 2. **Paths** — every path via `here::here()`; no absolute paths, no `setwd()`.
 3. **Packages** — loaded via the stage `config_utils_*.R`, not stray `library()`; new deps recorded
    in `DESCRIPTION` and `renv.lock` (flag if a package is used but unpinned).

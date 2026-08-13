@@ -77,11 +77,13 @@ fails if you forget.
 
 - **R only.** Stack: renv, Docker, DuckDB, Arrow, data.table, dplyr, sf/terra (geospatial).
 - **Line length ≤ 90 characters.**
-- **Comments: rationale lives in `@Description` / `@Details`, once.** Comments inside a function
+- **Comments: rationale lives in `@Description` / `@details`, once.** Comments inside a function
   body are ≤ 2 lines and say what happens *to the data* here, or point back to that block. Full
   rule (with the header/doc-block exemption) in `.claude/rules/r-style.md`.
 - Every script starts with the standard header block (`@Goal / @Description / @Summary /
-  @Date / @Author`). Match the existing style exactly — see any file in `scripts/process_data/`.
+  @Date / @Author`), with `#'` on the `@tag` lines and plain `#` on continuations. `src/`
+  function blocks use roxygen's `@param` / `@return` / `@details`. Match the existing style
+  exactly — see any file in `scripts/process_data/`.
 - Paths are **always** `here::here(...)`. Never hard-code absolute paths or `setwd()`.
 - Packages are loaded through the stage's `config_utils_*.R`, not with scattered `library()` calls.
 - New cities are added through `src/city_specific/registry.R`, not by copy-pasting scripts.
