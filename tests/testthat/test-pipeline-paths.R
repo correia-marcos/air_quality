@@ -4,7 +4,7 @@
 #' @Goal: Guard that every script path named in run_pipeline.R and the Makefile exists.
 #
 #' @Description: run_pipeline.R holds the run order and the Makefile holds the stage
-# dependencies, but each spells every script basename as its own literal string. A `git mv`
+# dependencies, but each spells every basename as its own literal string. A `git mv`
 # updates neither, so a rename desynchronises both silently and the break only surfaces at
 # run time. This test turns that into a failing test instead: it extracts the script paths
 # from both files and checks them against disk, then checks the reverse direction so a new
@@ -19,7 +19,7 @@
 #' @Author: Marcos Paulo (initial draft by Claude Code)
 # ============================================================================================
 
-# Pull "scripts/<dir>/<file>.R" out of each here::here("scripts", "<dir>", "<file>.R") call.
+# Pull "scripts/<dir>/<file>.R" out of each here::here("scripts", <dir>, <file>) call.
 # Commented-out calls count too: a disabled source() still asserts that the path is real.
 pipeline_script_paths <- function(path) {
   lines <- readLines(path, warn = FALSE)
@@ -66,8 +66,9 @@ known_unwired <- c(
 )
 
 test_that("every process_data and tables_images script is wired in or opted out", {
-  on_disk <- list.files(file.path(root, c("scripts/process_data", "scripts/tables_images")),
-                        pattern = "\\.R$", full.names = TRUE)
+  stage_dirs <- c("scripts/process_data", "scripts/tables_images")
+  on_disk <- list.files(file.path(root, stage_dirs), pattern = "\\.R$",
+                        full.names = TRUE)
   on_disk <- sub(paste0("^", root, "/"), "", on_disk)
 
   unaccounted <- setdiff(on_disk, c(pipeline_refs, makefile_refs, known_unwired))

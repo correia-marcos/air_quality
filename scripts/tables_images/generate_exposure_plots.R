@@ -35,13 +35,14 @@ dir_reg    <- here::here("data", "processed", "idw_regressions")
 outdir_ci  <- here::here("results", "figures", "exposure_by_group", "ci")
 outdir_lvl <- here::here("results", "figures", "exposure_by_group", "levels")
 
-# Artifact paths written by estimate_exposure.R
-ci_edu_pq      <- here::here(dir_reg, "exposure_ci_estimates_education_2023.parquet")
-ci_inc_pq      <- here::here(dir_reg, "exposure_ci_estimates_income_2023.parquet")
+# Artifact paths written by estimate_exposure.R. It writes one set per buffer; the paper's
+# figures use 3 km and the 5 km twins are the robustness check.
+ci_edu_pq      <- here::here(dir_reg, "exposure_ci_estimates_education_3km_2023.parquet")
+ci_inc_pq      <- here::here(dir_reg, "exposure_ci_estimates_income_3km_2023.parquet")
 summary_edu_pq <- here::here(dir_reg,
-                             "exposure_group_summaries_education_2023.parquet")
+                             "exposure_group_summaries_education_3km_2023.parquet")
 summary_inc_pq <- here::here(dir_reg,
-                             "exposure_group_summaries_income_2023.parquet")
+                             "exposure_group_summaries_income_3km_2023.parquet")
 
 # Stop early if the required education artifacts are missing
 if (!file.exists(ci_edu_pq)) {
