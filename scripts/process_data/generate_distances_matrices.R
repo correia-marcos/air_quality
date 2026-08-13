@@ -1,21 +1,21 @@
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-# @Goal: Produce station-to-station and station-to-geo distance matrices for every city.
+#' @Goal: Produce station-to-station and station-to-geo distance matrices for every city.
 # 
-# @Description: This script calculates the spatial distances required for outlier detection
+#' @Description: This script calculates the spatial distances required for outlier detection
 # and spatial interpolation (IDW). For each city, it computes two types of matrices: the
 # distance between individual monitoring stations, and the distance from census geographic 
 # units to all stations. Results are saved as Parquet files for memory efficiency. Santiago is
-# run twice since the 2017 census allows smaller geographic identifiers.
+# run twice since the 2017 census allows smaller geographic identifie
 # 
-# @Summary: 
+#' @Summary: 
 #   I.   Setup: Load dependencies, utility functions, and define directory paths.
 #   II.  Import: Read raw geospatial boundaries (GPKG) and station location data.
 #   III. Process: Compute and save distance matrices as Parquet files for all four cities.
 # 
-# @Date: January 2026
-# @Author: Marcos
+#' @Date: January 2026
+#' @Author: Marcos
 # ============================================================================================
 
 # Get all libraries and functions

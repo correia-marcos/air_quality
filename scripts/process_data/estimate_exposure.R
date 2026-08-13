@@ -11,13 +11,13 @@
 # coverage table recording how many geographic units survive to estimation. Results are
 # stacked across cities and saved as Parquet and CSV.
 #
-# @Summary:
+#' @Summary:
 #   I.   Import data: define paths/options and read each city's inputs into memory.
 #   II.  Process: run every city, then stack the three table families across cities.
 #   III. Save: write Parquet and CSV outputs.
 #
-# @Date: June 2026
-# @Author: Marcos
+#' @Date: June 2026
+#' @Author: Marcos
 # ============================================================================================
 
 # Get all libraries and functions
