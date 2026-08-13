@@ -1,17 +1,17 @@
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-# @Goal: COMPARE LASTEST VERSION AND THE NEW ONE
+#' @Goal: COMPARE LASTEST VERSION AND THE NEW ONE
 # 
-# @Description: From 2000 to 2023 (NEED TO FINISH DOCUMENTATION)
+#' @Description: From 2000 to 2023 (NEED TO FINISH DOCUMENTATION)
 # 
-# @Summary: 
+#' @Summary: 
 #   I.   Load libraries, utility functions and necessary data
 #   II.  
 #   III. 
 # 
-# @Date: May 2025
-# @Author: Marcos
+#' @Date: May 2025
+#' @Author: Marcos
 # ============================================================================================
 source(here::here("src", "general_utilities", "config_utils_process_data.R"))
 source(here::here("src", "general_utilities", "config_utils_plot_tables.R"))

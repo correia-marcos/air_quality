@@ -1,18 +1,18 @@
 # ============================================================================================
 # IDB: Air monitoring - NEED TO UPDATE!!!!!
 # ============================================================================================
-# @Goal: Visualize the location of four metropolitan areas on Latin American
+#' @Goal: Visualize the location of four metropolitan areas on Latin American
 #  NEED TO UPDATE!!!!!
-# @Description: This script creates a high-resolution map of Latin America, highlighting the 
+#' @Description: This script creates a high-resolution map of Latin America, highlighting the 
 # metropolitan areas of Bogotá, Ciudad de México, Santiago, and São Paulo. 
 # NEED TO UPDATE!!!!!
-# @Summary: This program performs the following steps:
+#' @Summary: This program performs the following steps:
 #   I.   Import shapefiles for city boundaries and continents NEED TO UPDATE!!!!!
 #   II.  Process the data to exclude unnecessary regions and combine shapefiles
 #   III. Create and export a map of Latin America with the highlighted cities
 # NEED TO UPDATE!!!!!
-# @Date: Sep 2025
-# @author: Marcos Paulo
+#' @Date: Sep 2025
+#' @Author: Marcos Paulo
 # ============================================================================================
 
 # Get all libraries and functions

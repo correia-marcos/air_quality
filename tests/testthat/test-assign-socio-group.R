@@ -1,16 +1,16 @@
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-# @Goal: Golden-value tests for assign_socio_group() (pure: needs data.table only).
+#' @Goal: Golden-value tests for assign_socio_group() (pure: needs data.table only).
 #
-# @Description: Checks the spec's equal-population rule (k-1)/n < F <= k/n against
+#' @Description: Checks the spec's equal-population rule (k-1)/n < F <= k/n against
 #   hand-computed fixtures: unweighted and weighted cuts, deterministic tie-breaking
 #   by (value, geo_id, row order), invariance to input row order, and NA handling
 #   (rows with missing value or weight get NA group and leave the totals untouched).
 #   All fixtures are small enough to verify by counting on one hand.
 #
-# @Date: August 2026
-# @Author: Marcos Paulo (initial draft by Claude Code)
+#' @Date: August 2026
+#' @Author: Marcos Paulo (initial draft by Claude Code)
 # ============================================================================================
 
 test_that("unweighted values 1..10 cut into exact fifths", {

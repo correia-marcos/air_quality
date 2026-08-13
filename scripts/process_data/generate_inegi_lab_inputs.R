@@ -1,23 +1,23 @@
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-# @Goal: Build the two auxiliary inputs sent to INEGI's remote lab (folio LM 2786) together
+#' @Goal: Build the two auxiliary inputs sent to INEGI's remote lab (folio LM 2786) together
 # with scripts/process_data/LM2786CPV2020_2026-07-14_script.R.
 #
-# @Description: Produces (1) LM2786_insumo_contaminacion_horaria.csv — the outlier-cleaned
+#' @Description: Produces (1) LM2786_insumo_contaminacion_horaria.csv — the outlier-cleaned
 #   hourly PM data for CDMX 2023, with residual sensor sentinel values (negative or >= 9999)
 #   masked to NA; and (2) LM2786_insumo_distancias_ageb_estacion.csv — distances from every
 #   urban AGEB representative point in the metro municipalities to every station, computed
 #   with compute_distance_matrices() (same AEQD projection as the whole project). Requires
 #   the Marco Geoestadistico urban AGEB shapefiles (see section I) downloaded beforehand.
 #
-# @Summary:
+#' @Summary:
 #   I.   Setup: load dependencies, city config, and check required input files.
 #   II.  Pollution: export cleaned hourly PM 2023 to CSV, masking sentinel values.
 #   III. Distances: AGEB-to-station matrix at AGEB level, exported to CSV.
 #
-# @Date: July 2026
-# @Author: Marcos
+#' @Date: July 2026
+#' @Author: Marcos
 # ============================================================================================
 
 # Get all libraries and functions

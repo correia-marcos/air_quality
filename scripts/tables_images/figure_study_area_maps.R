@@ -1,22 +1,22 @@
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-# @Goal: Static context maps showing where the four metropolitan areas sit.
+#' @Goal: Static context maps showing where the four metropolitan areas sit.
 #
-# @Description: Two scales of the same orienting question. The continental map places
+#' @Description: Two scales of the same orienting question. The continental map places
 # Bogotá, Ciudad de México, Santiago and São Paulo within Latin America; the national map
 # places the Mexico City metro area within Mexico and shades the eight states whose
 # station data was downloaded, which is what makes the CDMX metro boundary legible. All
 # outputs are static PDFs under results/figures/maps/; the interactive station map lives
 # in figure_stations_on_metro_area.R.
 #
-# @Summary:
+#' @Summary:
 #   I.   Import data: city and metro shapefiles, country and state boundaries.
 #   II.  Continental map: the four cities within Latin America.
 #   III. National map: the CDMX metro area within Mexico, plain and over a basemap.
 #
-# @Date: August 2026
-# @Author: Marcos Paulo
+#' @Date: August 2026
+#' @Author: Marcos Paulo
 # ============================================================================================
 
 # Get all libraries and functions

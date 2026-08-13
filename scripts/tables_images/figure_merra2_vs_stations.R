@@ -1,17 +1,17 @@
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-# @Goal: Show how satellite-derived (MERRA-2) and ground-station PM2.5 compare, over time
+#' @Goal: Show how satellite-derived (MERRA-2) and ground-station PM2.5 compare, over time
 #   and over the day, and what area one MERRA-2 cell actually covers.
 #
-# @Description: Every figure here answers the same question: can MERRA-2 stand in for a
+#' @Description: Every figure here answers the same question: can MERRA-2 stand in for a
 # ground station? Sections II-V read the merged series from process_merra2_panels.R and
 # compare the two sources at different aggregations; section VI draws the MERRA-2 grid
 # over each metro area, which is the spatial version of the same caveat. Section III
 # repeats the Santiago series with thermal-inversion hours dropped, because inversion days
 # are where the two sources diverge most.
 #
-# @Summary:
+#' @Summary:
 #   I.   Import data: merged MERRA-2/station series, inversion flags, rasters, shapefiles.
 #   II.  Time series per city, smoothed and raw.
 #   III. Santiago excluding thermal-inversion hours.
@@ -19,8 +19,8 @@
 #   V.   Duration of episodes above the WHO interim targets.
 #   VI.  MERRA-2 grid footprint over each metro area.
 #
-# @Date: August 2026
-# @Author: Marcos Paulo
+#' @Date: August 2026
+#' @Author: Marcos Paulo
 # ============================================================================================
 
 # Get all libraries and functions

@@ -1,17 +1,17 @@
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-# @Goal: Compute every descriptive statistic the paper reports about monitoring coverage,
+#' @Goal: Compute every descriptive statistic the paper reports about monitoring coverage,
 #   data availability and the census populations behind the exposure estimates.
 #
-# @Description: One script for the paper's descriptive layer, because all five families
+#' @Description: One script for the paper's descriptive layer, because all five families
 # answer the same question — how much do we actually observe, and for whom. Each family
 # reads the hourly Arrow panels or the collapsed census and writes a machine-readable
 # artefact to data/processed/. No LaTeX is written here: render_paper_tables.R turns these
 # Parquet files into the .tex files, which keeps this script on the data side of the
 # data/ -> results/ ratchet.
 #
-# @Summary:
+#' @Summary:
 #   I.   Import data: paths, analysis options and one city specification table.
 #   II.  Missing proportions by station, month, hour and day of week (raw and cleaned).
 #   III. Station counts by pollutant.
@@ -19,8 +19,8 @@
 #   V.   Data availability by education quintile.
 #   VI.  Census summary.
 #
-# @Date: August 2026
-# @Author: Marcos
+#' @Date: August 2026
+#' @Author: Marcos
 # ============================================================================================
 
 # Get all libraries and functions

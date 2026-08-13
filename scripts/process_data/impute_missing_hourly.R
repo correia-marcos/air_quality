@@ -1,20 +1,20 @@
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-# @Goal: Fill missing station-hour readings using OLS regression imputation.
+#' @Goal: Fill missing station-hour readings using OLS regression imputation.
 #
-# @Description: For each city, this script uses an OLS model with temporal fixed effects and
+#' @Description: For each city, this script uses an OLS model with temporal fixed effects and
 # concurrent readings from all other stations to predict and fill NA values in
 # PM10 and PM2.5. By default, it runs in `legacy_mode = TRUE` to perfectly
 # replicate the original "shifting identity" spatial alignment.
 #
-# @Summary:
+#' @Summary:
 #   I.   Import data: Define paths for the input Arrow datasets.
 #   II.  Process: Apply OLS imputation for Bogotá, CDMX, Santiago, and São Paulo.
 #   III. Summary: Print total imputed cells and confirm successful execution.
 #
-# @Date: April 2026
-# @Author: Marcos
+#' @Date: April 2026
+#' @Author: Marcos
 # ============================================================================================
 
 source(here::here("src", "general_utilities", "config_utils_process_data.R"))

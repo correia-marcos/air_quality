@@ -1,21 +1,21 @@
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-# @Goal: Process and extract atmospheric aerosol data for the 4 cities in the study
+#' @Goal: Process and extract atmospheric aerosol data for the 4 cities in the study
 # 
-# @Description: This script applies a pre-defined function to process MERRA-2 aerosol data 
+#' @Description: This script applies a pre-defined function to process MERRA-2 aerosol data 
 # over the metropolitan areas of Bogota, Ciudad de Mexico, Santiago, and Sao Paulo. 
 # It uses city-specific shapefiles to crop the data and produces panel datasets for 
 # further analysis. The output includes time-series data at hourly resolution, segmented 
 # by city, for key aerosol variables.
 # 
-# @Summary: This program performs the following steps:
+#' @Summary: This program performs the following steps:
 #   I.   Import necessary libraries, functions, and data
 #   II.  Process MERRA-2 atmospheric data for each city's region using shapefiles
 #   III. Save processed datasets as CSV files for further analysis
 # 
-# @Date: Nov 2024
-# @Author: Marcos Paulo
+#' @Date: Nov 2024
+#' @Author: Marcos Paulo
 # ============================================================================================
 
 # Get all required libraries and functions

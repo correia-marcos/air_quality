@@ -1,22 +1,22 @@
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-# @Goal: Show what each city's particulate matter is actually made of.
+#' @Goal: Show what each city's particulate matter is actually made of.
 #
-# @Description: Two cuts of the MERRA-2 aerosol panels. Section II overlays the four
+#' @Description: Two cuts of the MERRA-2 aerosol panels. Section II overlays the four
 # cities on one axis per species, which is how the composition differences between them
 # become visible; section III gives each city its own multi-panel PDF across all species.
 # Both read the PM2.5 panels from process_merra2_panels.R. The species and their x-axis
 # limits sit in one specification table, because the limits are chosen per species and
 # were previously repeated across six near-identical blocks.
 #
-# @Summary:
+#' @Summary:
 #   I.   Import data: the four cities' MERRA-2 PM2.5 panels.
 #   II.  One cross-city distribution per aerosol species.
 #   III. One multi-species distribution set per city.
 #
-# @Date: August 2026
-# @Author: Marcos
+#' @Date: August 2026
+#' @Author: Marcos
 # ============================================================================================
 
 # Get all libraries and functions

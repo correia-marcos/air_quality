@@ -1,19 +1,19 @@
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-# @Goal: Download MERRA-2 aerosol diagnostics files for a specified date range
+#' @Goal: Download MERRA-2 aerosol diagnostics files for a specified date range
 # 
-# @Description: This script uses functions previously created on the config utilities file to 
+#' @Description: This script uses functions previously created on the config utilities file to 
 # generate daily URLs as a vector and then download all .nc4 files the vector defines
 # 
-# @Summary: 
+#' @Summary: 
 #   I.   Load packages and utility functions
 #   II.  Parse command-line arguments
 #   III. Generate MERRA-2 URLs
 #   IV.  Download files and report status
 # 
-# @Date: Apr 2025
-# @Author: Marcos Paulo
+#' @Date: Apr 2025
+#' @Author: Marcos Paulo
 # ============================================================================================
 
 # Get all libraries and functions

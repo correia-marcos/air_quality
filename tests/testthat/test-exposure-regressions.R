@@ -1,18 +1,18 @@
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-# @Goal: Golden-value tests for compute_exposure_regressions() (pure: data.table only,
+#' @Goal: Golden-value tests for compute_exposure_regressions() (pure: data.table only,
 #   plus sandwich for the clustered-interval test).
 #
-# @Description: Checks the estimator against hand-computed weighted group means on a
+#' @Description: Checks the estimator against hand-computed weighted group means on a
 #   4-geo-unit x 2-group toy: the saturated-model identity (the group coefficient is the
 #   difference of lambda-weighted group means), the zero-pinned base row, releveling to a
 #   non-default base group, exact invariance of the t-statistic to the normalization, the
 #   G <= k guard (NA standard errors with a warning), and the t(G-1) critical value.
 #   All fixtures are small enough to verify by counting on one hand.
 #
-# @Date: August 2026
-# @Author: Marcos Paulo (initial draft by Claude Code)
+#' @Date: August 2026
+#' @Author: Marcos Paulo (initial draft by Claude Code)
 # ============================================================================================
 
 # Toy: geo units g1..g4 with exposure y = 1, 2, 4, 0.5 (constant within a unit).

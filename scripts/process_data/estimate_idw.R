@@ -14,12 +14,12 @@
 #
 #' @Summary:
 #   I.   Import data: Define paths for Arrow datasets, matrices, and census files.
-#   II.  Process: Apply IDW interpolation for each city, grouping, and buffer.
-#   III. Save: Export the IDW estimates in two different files: one for individuals and other
-#        for geographic levels. Separate files for memory efficiency.
+#   II.  Process and save: Apply IDW interpolation for each city, grouping and buffer, then
+#        export the estimates as two files, one for individuals and one for geographic
+#        levels. Separate files for memory efficiency.
 #
-# @Date: April 2026
-# @Author: Marcos
+#' @Date: April 2026
+#' @Author: Marcos
 # ============================================================================================
 
 # Get all libraries and functions

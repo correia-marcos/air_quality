@@ -1,9 +1,9 @@
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-# @Goal: Download all required data for the metro area of the Ciudad de México (CDMX)
+#' @Goal: Download all required data for the metro area of the Ciudad de México (CDMX)
 # 
-# @Description: This functions uses previous created functions on city specific src  utilities 
+#' @Description: This functions uses previous created functions on city specific src  utilities 
 # to download all the necessary data for the project. It is based on download three major 
 # sources:
 #     1 - Geo-referenced administrative data to construct the metro area of CDMX
@@ -11,13 +11,13 @@
 #     2 - All ground station air pollution data inside the metro area
 #     3 - CENSUS microdata for the country
 # 
-# @Summary: 
+#' @Summary: 
 #   I.   Load all the sources in the correct order (order matters) for functions and variables
 #   II.  Use the named list in city_specific/cdmx.R to define parameters for functions
 #   III. Download all data (metro area -> stations -> census)
 # 
-# @Date: August 2025
-# @Author: Marcos
+#' @Date: August 2025
+#' @Author: Marcos
 # ============================================================================================
 
 # Get all libraries and functions - config_utils_plot_tables to generate one LaTeX table

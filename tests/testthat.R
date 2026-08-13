@@ -1,21 +1,21 @@
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-# @Goal: Run the project's golden-value regression tests.
+#' @Goal: Run the project's golden-value regression tests.
 #
-# @Description: Sources the minimal src/ dependencies and runs tests/testthat/ with
+#' @Description: Sources the minimal src/ dependencies and runs tests/testthat/ with
 #   testthat. The suite checks the grouping logic, the full IDW estimator against
 #   values computed by hand from a 3-station x 2-geo-unit toy (see
 #   tests/testthat/helper-fixtures.R), and the exposure-regression estimator against
 #   hand-computed weighted group means. Run inside the Docker container, after
 #   renv::restore(), with:  Rscript tests/testthat.R
 #
-# @Summary:
+#' @Summary:
 #   I.   Setup: load testthat, source the src/ functions under test.
 #   II.  Run: execute every test-*.R file under tests/testthat/.
 #
-# @Date: August 2026
-# @Author: Marcos Paulo
+#' @Date: August 2026
+#' @Author: Marcos Paulo
 # ============================================================================================
 
 # Functions under test. geo_ids.R and base_utils.R provide the helpers that

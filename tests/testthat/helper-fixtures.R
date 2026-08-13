@@ -1,9 +1,9 @@
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-# @Goal: Build the toy fixture shared by the golden-value tests.
+#' @Goal: Build the toy fixture shared by the golden-value tests.
 #
-# @Description: Three stations, three geographic units, three hours of 2023, one
+#' @Description: Three stations, three geographic units, three hours of 2023, one
 #   pollutant (pm10). The fixture is built so that every golden value in
 #   test-idw-exposure-golden.R can be recomputed by hand:
 #
@@ -18,8 +18,8 @@
 #   make_toy_fixture() is only *called* from tests that skip unless arrow and duckdb
 #   are installed, so sourcing this helper is free for the pure tests.
 #
-# @Date: August 2026
-# @Author: Marcos Paulo (initial draft by Claude Code)
+#' @Date: August 2026
+#' @Author: Marcos Paulo (initial draft by Claude Code)
 # ============================================================================================
 
 make_toy_fixture <- function(root) {

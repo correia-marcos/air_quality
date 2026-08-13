@@ -1,22 +1,22 @@
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-# @Goal: Render every LaTeX table the paper and appendix need, from the Parquet files the
+#' @Goal: Render every LaTeX table the paper and appendix need, from the Parquet files the
 #   process stage already computed.
 #
-# @Description: One script for the whole table layer, so a referee finds them all in one
+#' @Description: One script for the whole table layer, so a referee finds them all in one
 # place and no statistic is computed twice. Every input comes from data/processed/ and
 # every output is a .tex under results/tables/; nothing here calculates anything. Run
 # scripts/process_data/compute_descriptive_tables.R and estimate_exposure.R
 # first.
 #
-# @Summary:
+#' @Summary:
 #   I.   Import data: locate the process-stage Parquet files.
 #   II.  Render: station counts, WHO exceedances, missing shares, census summary.
 #   III. Report where each .tex landed.
 #
-# @Date: August 2026
-# @Author: Marcos
+#' @Date: August 2026
+#' @Author: Marcos
 # ============================================================================================
 
 # Get all libraries and functions

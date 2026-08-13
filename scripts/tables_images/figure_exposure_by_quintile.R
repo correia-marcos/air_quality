@@ -1,22 +1,22 @@
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-# @Goal: Show how PM exposure differs across the education distribution, as densities and
+#' @Goal: Show how PM exposure differs across the education distribution, as densities and
 #   as hours above the WHO interim targets.
 #
-# @Description: Two views of one question, so they share one specification list rather
+#' @Description: Two views of one question, so they share one specification list rather
 # than drifting apart in two files. Kernel densities show the whole exposure distribution
 # per quintile; the bar charts reduce it to the policy-relevant count of hours above WHO
 # IT1 and IT2. Both read the IDW exposure Parquets from estimate_idw.R and write
 # PDFs under results/figures/.
 #
-# @Summary:
+#' @Summary:
 #   I.   Import data: one spec per city, naming its exposure folder and weight column.
 #   II.  Kernel densities by quintile.
 #   III. Hours above WHO interim targets by quintile.
 #
-# @Date: August 2026
-# @Author: Marcos
+#' @Date: August 2026
+#' @Author: Marcos
 # ============================================================================================
 
 source(here::here("src", "general_utilities", "config_utils_plot_tables.R"))

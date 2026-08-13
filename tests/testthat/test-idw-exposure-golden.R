@@ -1,9 +1,9 @@
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-# @Goal: Golden-value regression test for aggregate_idw_exposure() at geo level.
+#' @Goal: Golden-value regression test for aggregate_idw_exposure() at geo level.
 #
-# @Description: Runs the real estimator (DuckDB SQL and all) on the toy fixture from
+#' @Description: Runs the real estimator (DuckDB SQL and all) on the toy fixture from
 #   helper-fixtures.R and compares every output column to hand-computed values:
 #
 #     hourly idw       g1: h0 = (60*1 + 120/2) / 1.5     = 80
@@ -22,8 +22,8 @@
 #   First run needs network: DuckDB downloads its ICU extension. Any pipeline run in
 #   the project container has already cached it.
 #
-# @Date: August 2026
-# @Author: Marcos Paulo (initial draft by Claude Code)
+#' @Date: August 2026
+#' @Author: Marcos Paulo (initial draft by Claude Code)
 # ============================================================================================
 
 test_that("aggregate_idw_exposure reproduces the hand-computed toy values", {

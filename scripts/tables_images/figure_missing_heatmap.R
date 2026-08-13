@@ -1,21 +1,21 @@
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-# @Goal: Month × hour heatmaps of the share of missing PM readings per city.
+#' @Goal: Month × hour heatmaps of the share of missing PM readings per city.
 #
-# @Description: Rebuild of the missing-pattern diagnostic from legacy
+#' @Description: Rebuild of the missing-pattern diagnostic from legacy
 # 7_missing_analysis.do. For each city we query DuckDB for the exact two-way
 # share of missing observations (month × hour) and render it with
 # `plot_missing_heatmap()`. One PDF per (city × pollutant) in
 # results/figures/joint_plots/missing_heatmap/.
 #
-# @Summary:
+#' @Summary:
 #   I.   Define Arrow datasets + output folder
 #   II.  Call plot_missing_heatmap() per (city × pollutant)
 #   III. Save PDFs
 #
-# @Date: April 2026
-# @Author: Marcos
+#' @Date: April 2026
+#' @Author: Marcos
 # ============================================================================================
 
 source(here::here("src", "general_utilities", "config_utils_plot_tables.R"))

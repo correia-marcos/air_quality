@@ -1,9 +1,9 @@
-# ============================================================================
+# ============================================================================================
 # IDB: Air monitoring
-# ============================================================================
-# @Goal  : Compare raw ground-station air quality data across all cities.
+# ============================================================================================
+#' @Goal  : Compare raw ground-station air quality data across all cities.
 #
-# @Description: Validates the new scraping/API pipeline against the legacy datasets from MP. 
+#' @Description: Validates the new scraping/API pipeline against the legacy datasets from MP. 
 # For each city we match records on station x year x month x day x hour, identify rows present 
 # in only one source, and measure cell-level pollutant differences.
 # Station names are normalised (with .std_name) before matching. A small residual_map inside
@@ -11,15 +11,15 @@
 # inside cfg$compare (see src/city_specific/bogota.R and equivalents). No separate
 # comparison_config.R is needed.
 #
-# @Summary:
+#' @Summary:
 #   I.   Load libraries, utility functions, city configs via registry.
 #   II.  Set run parameters.
 #   III. Run compare_ground_stations() for each city.
 #   IV.  Print console summary; render per-city Quarto report.
 #
-# @Date  : March 2026
-# @Author: Marcos Paulo
-# ============================================================================
+#' @Date  : March 2026
+#' @Author: Marcos Paulo
+# ============================================================================================
 
 # Load utility functions and city configs
 source(here::here("src", "general_utilities", "config_utils_validation_old_version.R"))
@@ -29,9 +29,9 @@ source(here::here("src", "city_specific", "cdmx.R"))
 source(here::here("src", "city_specific", "santiago.R"))
 source(here::here("src", "city_specific", "sao_paulo.R"))
 
-# ============================================================================
+# ============================================================================================
 # I: Parameters
-# ============================================================================
+# ============================================================================================
 # Root folder where per-city comparison artefacts will be written
 out_root <- here::here("results", "validation_rep_package")
 
@@ -46,9 +46,9 @@ cities_to_run <- c(
 # Per-pollutant tolerances (0 = exact match required)
 tolerances <- c(pm10 = 0, pm25 = 0, ozone = 0, co = 0, no2 = 0)
 
-# ============================================================================
+# ============================================================================================
 # II: Run comparisons
-# ============================================================================
+# ============================================================================================
 results <- vector("list", length(cities_to_run))
 names(results) <- cities_to_run
 
@@ -75,9 +75,9 @@ for (city_id in cities_to_run) {
   )
 }
 
-# ============================================================================
+# ============================================================================================
 # III: Console summary + Quarto reports
-# ============================================================================
+# ============================================================================================
 for (city_id in cities_to_run) {
   res <- results[[city_id]]
   if (is.null(res)) next

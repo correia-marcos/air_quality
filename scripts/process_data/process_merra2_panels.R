@@ -1,10 +1,10 @@
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-# @Goal: Turn the MERRA-2 aerosol panels into PM2.5 and check that estimate against both
+#' @Goal: Turn the MERRA-2 aerosol panels into PM2.5 and check that estimate against both
 #   ground stations and NASA's own published country aggregate.
 #
-# @Description: Three steps that used to be three scripts with an order nothing recorded.
+#' @Description: Three steps that used to be three scripts with an order nothing recorded.
 # Section II converts each city's hourly aerosol panel to PM2.5; section III merges that
 # with the ground-station readings and computes hourly/daily/monthly correlations; section
 # IV repeats it at country level against NASA's monthly product. Sections III and
@@ -12,14 +12,14 @@
 # absent. Section III reads section II's objects from memory, so the chain is visible here
 # rather than implied by a filename.
 #
-# @Summary:
+#' @Summary:
 #   I.   Import data: aerosol panels, station readings, MERRA-2 rasters, NASA reference.
 #   II.  Convert city aerosol panels to PM2.5 and save.
 #   III. Merge with ground stations, compute correlations and save.
 #   IV.  Compare the country-level monthly aggregate against NASA and save.
 #
-# @Date: August 2026
-# @Author: Marcos
+#' @Date: August 2026
+#' @Author: Marcos
 # ============================================================================================
 
 # Get all libraries and functions

@@ -1,24 +1,24 @@
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-# @Goal  : Run all validation comparisons for Bogotá and render a single city-level report.
+#' @Goal  : Run all validation comparisons for Bogotá and render a single city-level report.
 #
-# @Description: This script compares the new automated pipeline against the legacy dataset. 
+#' @Description: This script compares the new automated pipeline against the legacy dataset. 
 #   Artefacts are written to: results/validation_old_version/bogota/{data_type}/
 # 
-# @Details: This script is the single entry point for comparing every data layer
+#' @Details: This script is the single entry point for comparing every data layer
 # of the Bogotá pipeline against the coauthor's legacy dataset. Comparison functions are called
 # in pipeline order (raw → interim → processed → results). All artefacts are written to:
 #     results/validation_old_version/bogota/
 # A single self-contained HTML report is rendered from bogota_report.qmd.
 #
-# @Summary: 
+#' @Summary: 
 #   I.   Setup: Load dependencies and configurations.
 #   II.  Compare Data: Run modular validation functions for ground stations, outliers, etc.
 #   III. Render Report: Generate the final Quarto HTML document.
 #
-# @Date  : April 2026
-# @Author: Marcos Paulo
+#' @Date  : April 2026
+#' @Author: Marcos Paulo
 # ============================================================================================
 
 # Load all utility functions and city configs

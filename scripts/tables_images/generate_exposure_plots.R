@@ -1,10 +1,10 @@
-# =====================================================================================
+# ============================================================================================
 # IDB: Air monitoring
-# =====================================================================================
-# @Goal: Generate all exposure figures by socioeconomic group: regression gaps with
+# ============================================================================================
+#' @Goal: Generate all exposure figures by socioeconomic group: regression gaps with
 #   confidence intervals, and population-weighted concentration levels.
 #
-# @Description:
+#' @Description:
 #   Reads the tidy artifacts written by estimate_exposure.R (the CI
 #   estimates and the raw group summaries, for education and for income) and draws
 #   two figure families: (1) regression gaps vs the base group with 95% CIs, per
@@ -13,13 +13,13 @@
 #   consistent with the regressions and summary tables. Income figures are produced
 #   only for the cities whose artifacts contain income (CDMX and Sao Paulo).
 #
-# @Summary:
+#' @Summary:
 #   I.  Import data: read the CI and summary artifacts eagerly into memory.
 #   II. Process and save: draw and write both figure families per grouping.
 #
-# @Date: June 2026
-# @Author: Marcos
-# =====================================================================================
+#' @Date: June 2026
+#' @Author: Marcos
+# ============================================================================================
 
 # Get all libraries and functions
 source(here::here("src", "general_utilities", "config_utils_plot_tables.R"))
@@ -27,9 +27,9 @@ source(here::here("src", "general_utilities", "config_utils_plot_tables.R"))
 # Register Tex Gyre Pagella and set the paper ggplot theme for this script.
 set_paper_theme()
 
-# =====================================================================================
+# ============================================================================================
 # I: Import data
-# =====================================================================================
+# ============================================================================================
 # Define input and output folders
 dir_reg    <- here::here("data", "processed", "idw_regressions")
 outdir_ci  <- here::here("results", "figures", "exposure_by_group", "ci")
@@ -81,9 +81,9 @@ city_files  <- c(Bogota = "bogota", CDMX = "mexico_city",
 dir.create(outdir_ci, recursive = TRUE, showWarnings = FALSE)
 dir.create(outdir_lvl, recursive = TRUE, showWarnings = FALSE)
 
-# =====================================================================================
+# ============================================================================================
 # II: Build and save figures
-# =====================================================================================
+# ============================================================================================
 # Education figures, always produced
 save_exposure_ci_figures(ci_education, "education", outdir_ci, city_labels, city_files)
 save_exposure_level_figures(summary_education, "education", outdir_lvl,

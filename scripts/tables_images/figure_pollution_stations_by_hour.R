@@ -1,18 +1,18 @@
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-# @Goal: G
+#' @Goal: G
 # 
-# @Description: ss
+#' @Description: ss
 # 
-# @Summary: This program performs the following steps:
+#' @Summary: This program performs the following steps:
 #   I.   Import and Load the processed time series data for each city from CSV files.
 #   II.  Create bar plots and ridgeline plots for PM2.5 data using the custom functions 
 #        'plot_hourly_avg_pollution' and 'plot_hourly_ridgeline_pollution'.
 #   III. Save the generated plots as PDF files.
 # 
-# @Date: Mar 2025
-# @author: Marcos Paulo
+#' @Date: Mar 2025
+#' @Author: Marcos Paulo
 # ============================================================================================
 
 # Get all libraries and functions

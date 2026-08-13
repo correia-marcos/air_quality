@@ -1,22 +1,22 @@
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-# @Goal: Identify and flag anomalous hourly air pollution sensor readings across all cities.
+#' @Goal: Identify and flag anomalous hourly air pollution sensor readings across all cities.
 # 
-# @Description: This script processes applies the outlier detection procedure explained in 
+#' @Description: This script processes applies the outlier detection procedure explained in 
 # detail in our appendix. It uses hive-partitioned Arrow datasets of raw ground station 
 # data (from process_{city}_data.R) alongside the spatial distance matrices (from 
 # generate_distance_matrices.R). It applies temporal and spatial checks to detect and flag 
 # outlier observations without loading the entire datasets into active memory.
 # 
-# @Summary: 
+#' @Summary: 
 #   I.   Import data: Define directory paths for raw Arrow datasets and distance matrices.
 #   II.  Process: Apply the detection algorithm sequentially for Bogotá, CDMX, Santiago, 
 #        and São Paulo using out-of-core data structures.
 #   III. Save: Export the cleaned and flagged datasets as partitioned Parquet files.
 # 
-# @Date: January 2026
-# @Author: Marcos
+#' @Date: January 2026
+#' @Author: Marcos
 # ============================================================================================
 
 # Get all libraries and functions
@@ -47,7 +47,7 @@ dist_sp       <- here::here(outdir_distances, "sao_paulo_2010",
                             "matrix_station_distances.parquet")
 
 # ============================================================================================
-# II and III: Process and save matrix as parquet
+# II and III: Process and save
 # ============================================================================================
 # Create the folder of the results, if not yet created
 dir.create(outdir_results, recursive = TRUE, showWarnings = FALSE)
@@ -93,4 +93,4 @@ sp_cleaned <- detect_pollution_outliers(
 )
 
 # Print a success message for when running inside Docker Container
-cat("Script from the IDB projected executed successfully in the Docker container!\n")
+cat("Script from the IDB project executed successfully in the Docker container!\n")

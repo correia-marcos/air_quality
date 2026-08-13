@@ -1,20 +1,20 @@
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-# @Goal: Visualize inequality and pollution monitoring distribution for the 4 metro areas.
+#' @Goal: Visualize inequality and pollution monitoring distribution for the 4 metro areas.
 # 
-# @Description: Creates high-resolution maps of Latin American metro areas highlighting census 
+#' @Description: Creates high-resolution maps of Latin American metro areas highlighting census 
 #               education quintiles, active monitoring stations, and their respective spatial 
 #               buffers.
 # 
-# @Summary: 
+#' @Summary: 
 #   I.   Import shapefiles, census collapsed microdata and pollution information for Bogotá
 #   II.  Process the data to exclude unnecessary regions and combine shapefiles
 #   III. Create and export a map of the metro areas with the quintiles of education and 
 # stations buffers
 # 
-# @Date: January 2026
-# @Author: Marcos
+#' @Date: January 2026
+#' @Author: Marcos
 # ============================================================================================
 
 # Get all libraries and functions

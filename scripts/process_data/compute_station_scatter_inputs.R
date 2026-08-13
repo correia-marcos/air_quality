@@ -1,19 +1,19 @@
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-# @Goal: Build station-level data linking pollution outcomes to socioeconomic context.
+#' @Goal: Build station-level data linking pollution outcomes to socioeconomic context.
 #
-# @Description:
+#' @Description:
 #   This script computes station-level pollution outcomes for active monitoring stations
 #   in 2023 and attaches socioeconomic characteristics from nearby or containing
 #   geographic units. The resulting datasets are inputs for station-level scatterplots.
 #
-# @Summary:
+#' @Summary:
 #   I.   Import data: Define paths and read stations, geographic units, and census files.
 #   II.  Process: Build station-level pollution-socioeconomic datasets for each city.
 #
-# @Date: June 2026
-# @Author: Marcos
+#' @Date: June 2026
+#' @Author: Marcos
 # ============================================================================================
 
 # Get all libraries and functions
