@@ -6,7 +6,8 @@
 # @Description: This script calculates the spatial distances required for outlier detection
 # and spatial interpolation (IDW). For each city, it computes two types of matrices: the
 # distance between individual monitoring stations, and the distance from census geographic 
-# units to all stations. Results are saved as Parquet files for memory efficiency.
+# units to all stations. Results are saved as Parquet files for memory efficiency. Santiago is
+# run twice since the 2017 census allows smaller geographic identifiers.
 # 
 # @Summary: 
 #   I.   Setup: Load dependencies, utility functions, and define directory paths.

@@ -3,10 +3,11 @@
 # ============================================================================================
 # @Goal: Identify and flag anomalous hourly air pollution sensor readings across all cities.
 # 
-# @Description: This script processes hive-partitioned Arrow datasets of raw ground station 
-# data alongside pre-computed spatial distance matrices. It applies temporal and spatial 
-# algorithms (e.g., nearest neighbor comparison) to detect and flag outlier observations 
-# without loading the entire datasets into active memory.
+# @Description: This script processes applies the outlier detection procedure explained in 
+# detail in our appendix. It uses hive-partitioned Arrow datasets of raw ground station 
+# data (from process_{city}_data.R) alongside the spatial distance matrices (from 
+# generate_distances_matrices.R). It applies temporal and spatial checks to detect and flag 
+# outlier observations without loading the entire datasets into active memory.
 # 
 # @Summary: 
 #   I.   Import data: Define directory paths for raw Arrow datasets and distance matrices.
