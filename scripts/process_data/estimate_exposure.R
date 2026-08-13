@@ -4,8 +4,8 @@
 #' @Goal: Estimate raw exposure levels, normalized exposure regressions and the geographic 
 # coverage behind them.
 #
-# @Description: This script reads the geo-level IDW exposure and the geo-by-group
-# population. For every
+#' @Description: This script provides the main results related to exposure inequality in the
+# paper. It uses the geo-level IDW exposure and the geo-by-group population. For every
 # city it calls run_city_exposure(), which returns weighted exposure summaries by group,
 # regression gaps relative to the top group with clustered confidence intervals, and a
 # coverage table recording how many geographic units survive to estimation. Results are
