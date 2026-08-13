@@ -1,9 +1,9 @@
 # ============================================================================================
 # IDB: Air monitoring — Bogotá module
 # ============================================================================================
-# @Goal   : Bogotá-specific parameters, download/process wrappers, and any site-specific code
-# @Date   : Aug 2025
-# @Author : Marcos Paulo
+#' @Goal  : Bogotá-specific parameters, download/process wrappers, and any site-specific code
+#' @Date   : Aug 2025
+#' @Author : Marcos Paulo
 # Obs: Expect the caller to have already sourced:
 #   - src/config_utils_download_data.R  (selenium helpers, waits, clicking helpers, etc.)
 #   - src/config_utils_process_data.R   (merge, tidy, QA, parquet writing, etc.)
@@ -54,27 +54,27 @@ bogota_cfg <- list(
 # ============================================================================================
 # --------------------------------------------------------------------------------------------
 # Function: bogota_download_metro_area
-# @Arg       : level              — character; "mpio", "depto", "manzana", or "mpio_localidad". 
-# @Arg       : mgn_year           — numeric; 2018 or 2005. 
-# @Arg       : base_url           — string; base URL of DANE geoportal files.
-# @Arg       : municipality_codes — character vector of 5-digit codes (e.g. "11001").
-# @Arg       : download_dir       — character; where to save the ZIP.
-# @Arg       : out_file           — character; where to write the cropped GeoPackage.
-# @Arg       : overwrite_zip      — logical; re-download if ZIP exists.
-# @Arg       : overwrite_gpkg     — logical; overwrite output GeoPackage if exists.
-# @Arg       : quiet              — logical; suppress progress.
+#' @param level                     character; "mpio", "depto", "manzana", or "mpio_localidad".
+#' @param mgn_year                  numeric; 2018 or 2005.
+#' @param base_url                  string; base URL of DANE geoportal files.
+#' @param municipality_codes        character vector of 5-digit codes (e.g. "11001").
+#' @param download_dir              character; where to save the ZIP.
+#' @param out_file                  character; where to write the cropped GeoPackage.
+#' @param overwrite_zip             logical; re-download if ZIP exists.
+#' @param overwrite_gpkg            logical; overwrite output GeoPackage if exists.
+#' @param quiet                     logical; suppress progress.
 # 
-# @Output    : Writes a GeoPackage; returns sf object invisibly.
-# @Purpose   : Download admin boundaries and crop to Bogota metro.
+#' @return     Writes a GeoPackage; returns sf object invisibly.
+#' @Purpose   : Download admin boundaries and crop to Bogota metro.
 #              "mpio_localidad" replaces Bogota with a clipped
 #              version of the official Localities GPKG.
-# @Details   : The layer keeps whatever CRS DANE shipped, so data/raw/ stays faithful
+#' @details    The layer keeps whatever CRS DANE shipped, so data/raw/ stays faithful
 #              to the source: MGN 2005 is EPSG:4326, MGN 2018 is EPSG:4686. Both are
 #              ITRF-aligned (sub-metre apart) and every consumer reprojects, so the
 #              split is harmless. The 2005 tracts carry 3 ring self-intersections,
 #              repaired at the point of use.
-# @Written_on: 20/08/2025
-# @Written_by: Marcos Paulo
+#' @Written_on: 20/08/2025
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 bogota_download_metro_area <- function(
     level              = c("mpio", "depto", "manzana", "mpio_localidad"),
@@ -361,28 +361,28 @@ bogota_download_metro_area <- function(
 
 # --------------------------------------------------------------------------------------------
 # Function: bogota_scrape_rmcab_station_table
-# @Arg       : page_url        — string; the url of the page to scrape
-# @Arg       : parse_coords    — logical; parse DMS lat/lon to decimal degrees
+#' @param page_url               string; the url of the page to scrape
+#' @param parse_coords           logical; parse DMS lat/lon to decimal degrees
 #                                (default TRUE)
-# @Arg       : harmonize_map   — named chr vec (optional) to rename station display names
-# @Arg       : dedupe          — logical; drop duplicate rows across repeated tables
+#' @param harmonize_map          named chr vec (optional) to rename station display names
+#' @param dedupe                 logical; drop duplicate rows across repeated tables
 #                                (default TRUE)
-# @Arg       : verbose         — logical; print progress
+#' @param verbose                logical; print progress
 #                                (default TRUE)
-# @Arg       : out_dir         — string; directory to write outputs (created if missing)
-# @Arg       : out_name        — string; base filename *without* extension
-# @Arg       : write_rds       — logical; write .rds (default FALSE)
-# @Arg       : write_parquet   — logical; write .parquet via {arrow} (default TRUE)
-# @Arg       : write_csv       — logical; write .csv (default FALSE)
+#' @param out_dir                string; directory to write outputs (created if missing)
+#' @param out_name               string; base filename *without* extension
+#' @param write_rds              logical; write .rds (default FALSE)
+#' @param write_parquet          logical; write .parquet via {arrow} (default TRUE)
+#' @param write_csv              logical; write .csv (default FALSE)
 # 
-# @Output    : tibble with columns:
+#' @return     tibble with columns:
 #                station, code, latitude_dms, longitude_dms, lat, lon,
 #                altitude_m, height_m, locality, zone_type, station_type, address
-# @Purpose   : Scrape RMCAB station directory robustly (nested tables, repeated headers),
+#' @Purpose   : Scrape RMCAB station directory robustly (nested tables, repeated headers),
 #              and return clean metadata with decimal coords. Also save the table in the
 #              required formats and location.
-# @Written_on: 29/08/2025
-# @Written_by: Marcos Paulo
+#' @Written_on: 29/08/2025
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 bogota_scrape_rmcab_station_table <- function(
     page_url,
@@ -563,17 +563,17 @@ bogota_scrape_rmcab_station_table <- function(
 
 # --------------------------------------------------------------------------------------------
 # Function: bogota_get_station_info
-# @Arg       : base_url      — string; URL of the station‐report form page
+#' @param base_url             string; URL of the station‐report form page
 # 
-# @Output    : tibble with columns:
+#' @return     tibble with columns:
 #                 • stationId   (chr)
 #                 • DisplayName (chr)
 #                 • monitors    (list‐col; each entry a list of monitor‐objects)
-# @Purpose   : scrape the page’s <script> blocks, extract *every*
+#' @Purpose   : scrape the page’s <script> blocks, extract *every*
 #              `all_stations = […]` assignment, take the *last* (full) JSON,
 #              parse it, and return station metadata.
-# @Written_on: 20/05/2025
-# @Written_by: Marcos Paulo
+#' @Written_on: 20/05/2025
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 bogota_get_station_info <- function(base_url) {
   # 1) grab all the embedded script text
@@ -613,19 +613,19 @@ bogota_get_station_info <- function(base_url) {
 
 # ----------------------------------------------------------------------------------------
 # Function: sisaire_download_department_metadata
-# @Arg      : base_url      — string; main SISAIRE URL
-# @Arg      : target_depts  — character vector; list of departments (e.g. "Cundinamarca")
-# @Arg      : container     — logical; TRUE if running inside Docker (default TRUE)
-# @Arg      : subdir        — string; subfolder in downloads to store files
-# @Arg      : timeout_page  — integer; max wait for page load (default 50)
-# @Arg      : timeout_dl    — integer; max wait for download (default 120)
+#' @param base_url            string; main SISAIRE URL
+#' @param target_depts        character vector; list of departments (e.g. "Cundinamarca")
+#' @param container           logical; TRUE if running inside Docker (default TRUE)
+#' @param subdir              string; subfolder in downloads to store files
+#' @param timeout_page        integer; max wait for page load (default 50)
+#' @param timeout_dl          integer; max wait for download (default 120)
 # 
-# @Output   : tibble; log of actions (department, status, file_path)
-# @Purpose  : Navigates SISAIRE -> Calidad del aire -> Por Departamento.
+#' @return    tibble; log of actions (department, status, file_path)
+#' @Purpose  : Navigates SISAIRE -> Calidad del aire -> Por Departamento.
 #             Features robust "Google bounce" navigation to prevent cold-start errors,
 #             case-insensitive matching for "BOGOTÁ", and per-department retries.
-# @Written_on: 09/12/2025
-# @Written_by: Marcos Paulo
+#' @Written_on: 09/12/2025
+#' @Written_by: Marcos Paulo
 # ----------------------------------------------------------------------------------------
 sisaire_download_department_metadata <- function(
     base_url = bogota_cfg$base_url_sisaire,
@@ -816,24 +816,24 @@ sisaire_download_department_metadata <- function(
 
 # ----------------------------------------------------------------------------------------
 # Function: sisaire_download_hourly_data
-# @Arg      : base_url      — string; The base URL for the SISAIRE query page.
-# @Arg      : target_depts  — character vector; List of departments (e.g., "Bogotá D.C.").
-# @Arg      : target_params — character vector|NULL; Pollutants (e.g., "PM10", "O3").
+#' @param base_url            string; The base URL for the SISAIRE query page.
+#' @param target_depts        character vector; List of departments (e.g., "Bogotá D.C.").
+#' @param target_params       character vector|NULL; Pollutants (e.g., "PM10", "O3").
 #                             If NULL, defaults to a standard list of 11 parameters.
-# @Arg      : years_range   — integer vector; Range of years to query (e.g., 2000:2024).
-# @Arg      : container     — logical; TRUE if running inside a Docker Selenium container.
-# @Arg      : subdir        — string; Subdirectory within downloads to save files.
-# @Arg      : timeout       — integer; Timeout in seconds for page loads (default 180).
+#' @param years_range         integer vector; Range of years to query (e.g., 2000:2024).
+#' @param container           logical; TRUE if running inside a Docker Selenium container.
+#' @param subdir              string; Subdirectory within downloads to save files.
+#' @param timeout             integer; Timeout in seconds for page loads (default 180).
 #
-# @Output   : tibble; A log containing: dept, param, start, end, status, file.
-# @Purpose  : Robustly scrape hourly air quality data from the SISAIRE/IDEAM legacy app.
+#' @return    tibble; A log containing: dept, param, start, end, status, file.
+#' @Purpose  : Robustly scrape hourly air quality data from the SISAIRE/IDEAM legacy app.
 #             Uses advanced Selenium strategies to bypass PrimeFaces/JSF limitations:
 #             1. "Direct Injection": Manipulates hidden <select> via JS.
 #             2. "Adaptive Retry": Increases wait times dynamically if the server lags.
 #             3. "Session Recovery": Forces a browser refresh if a specific date chunk
 #                fails, preventing "zombie" sessions.
-# @Written_on: 09/10/2025
-# @Written_by: Marcos Paulo
+#' @Written_on: 09/10/2025
+#' @Written_by: Marcos Paulo
 # ----------------------------------------------------------------------------------------
 sisaire_download_hourly_data <- function(
     base_url      = bogota_cfg$base_url_sisaire,
@@ -1255,25 +1255,25 @@ sisaire_download_hourly_data <- function(
 
 # --------------------------------------------------------------------------------------------
 # Function: bogota_download_station_data
-# @Arg       : base_url       — string; URL of the station‐report form page
-# @Arg       : start_year     — integer; first year to download (e.g. 2000)
-# @Arg       : end_year       — integer; last year to download (e.g. 2023)
-# @Arg       : container      — logical; TRUE if running inside Docker/Selenium compose
-# @Arg       : stations_idx   — integer vector|NULL; which <li> indices to download (NULL=all)
-# @Arg       : max_attempts   — integer; retries per (station, year) (default 3)
-# @Arg       : timeout_page   — integer; seconds to wait page ready (default 30)
-# @Arg       : timeout_btn    — integer; seconds to wait buttons visible (default 30)
-# @Arg       : timeout_dl     — integer; seconds to wait per download (default 240)
-# @Arg       : subdir         — string|NULL; if provided, move each finished file into this
+#' @param base_url              string; URL of the station‐report form page
+#' @param start_year            integer; first year to download (e.g. 2000)
+#' @param end_year              integer; last year to download (e.g. 2023)
+#' @param container             logical; TRUE if running inside Docker/Selenium compose
+#' @param stations_idx          integer vector|NULL; which <li> indices to download (NULL=all)
+#' @param max_attempts          integer; retries per (station, year) (default 3)
+#' @param timeout_page          integer; seconds to wait page ready (default 30)
+#' @param timeout_btn           integer; seconds to wait buttons visible (default 30)
+#' @param timeout_dl            integer; seconds to wait per download (default 240)
+#' @param subdir                string|NULL; if provided, move each finished file into this
 #                                subfolder under downloads_folder ("Ground_stations/Bogota")
 # 
-# @Output    : writes XLSX files using the site’s random filenames; returns (invisibly)
+#' @return     writes XLSX files using the site’s random filenames; returns (invisibly)
 #              a log tibble with columns: station, year, part, status, file
-# @Purpose   : Same as before; also optionally moves finished files into a city-specific folder.
+#' @Purpose  : Same as before; also optionally moves finished files into a city-specific folder.
 #              For each year it also downloads the missing last day:
 #              31-12-yr 00:00 → 01-01-(yr+1) 00:00.
-# @Written_on: 05/08/2025
-# @Written_by: Marcos Paulo
+#' @Written_on: 05/08/2025
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 bogota_download_station_data <- function(base_url,
                                          start_year,
@@ -1568,16 +1568,16 @@ bogota_download_station_data <- function(base_url,
 
 # --------------------------------------------------------------------------------------------
 # Function: bogota_find_resource_census
-# @Arg       : url    — string; DANE catalog page. Works with either:
+#' @param url           string; DANE catalog page. Works with either:
 #                        "https://microdatos.dane.gov.co/index.php/catalog/421/get-microdata"
 #                        or "https://microdatos.dane.gov.co/index.php/catalog/421"
-# @Arg       : type   — "BASICO" or "AMPLIADO"
+#' @param type          "BASICO" or "AMPLIADO"
 # 
-# @Output    : list(label, filename, href) for the requested resource
-# @Purpose   : Extract the 'mostrarModal("FILE.zip","https://.../download/ID")' link.
+#' @return     list(label, filename, href) for the requested resource
+#' @Purpose   : Extract the 'mostrarModal("FILE.zip","https://.../download/ID")' link.
 #              We resolve relative → absolute URLs and trim whitespace.
-# @Written_on: 21/08/2025
-# @Written_by: Marcos Paulo
+#' @Written_on: 21/08/2025
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 bogota_find_resource_census <- function(url, type = c("BASICO","AMPLIADO")) {
   type <- match.arg(toupper(type), c("BASICO","AMPLIADO"))
@@ -1644,22 +1644,22 @@ bogota_find_resource_census <- function(url, type = c("BASICO","AMPLIADO")) {
 
 # --------------------------------------------------------------------------------------------
 # Function: bogota_download_census_data
-# @Arg        : year            — numeric; 2005 or 2018.
-# @Arg        : type            — character; [2005 Only] "BASICO" or "AMPLIADO".
-# @Arg        : regions         — character; [2018 Only] Regions to fetch (e.g. Bogota).
-# @Arg        : url             — character: character; Catalog URL. 
+#' @param year                    numeric; 2005 or 2018.
+#' @param type                    character; [2005 Only] "BASICO" or "AMPLIADO".
+#' @param regions                 character; [2018 Only] Regions to fetch (e.g. Bogota).
+#' @param url                     character: character; Catalog URL.
 #                                 Defaults based on year if NULL.
-# @Arg        : download_folder — character; Where to save ZIPs.
-# @Arg        : overwrite       — logical; re-download if file exists.
-# @Arg        : retries         — numeric; max HTTP retries.
-# @Arg        : quiet           — logical; suppress progress.
+#' @param download_folder         character; Where to save ZIPs.
+#' @param overwrite               logical; re-download if file exists.
+#' @param retries                 numeric; max HTTP retries.
+#' @param quiet                   logical; suppress progress.
 #
-# @Output     : Tibble with cols: year, target, file_path, bytes.
-# @Purpose    : Download Census microdata.
+#' @return      Tibble with cols: year, target, file_path, bytes.
+#' @Purpose    : Download Census microdata.
 #               - 2005: Single national ZIP via helper.
 #               - 2018: Scrapes download links for specific regions.
-# @Written_on: 21/08/2025 (Updated 08/02/2026)
-# @Written_by: Marcos Paulo
+#' @Written_on: 21/08/2025 (Updated 08/02/2026)
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 bogota_download_census_data <- function(
     year            = 2018,
@@ -1837,13 +1837,13 @@ bogota_download_census_data <- function(
 
 # --------------------------------------------------------------------------------------------
 # Function: .bogota_normalize_varname
-# @Arg       : x           — character; original column name
+#' @param x                  character; original column name
 # 
-# @Output    : character; normalized (ASCII, snake_case) variable name
-# @Purpose   : Standardize column names from Bogotá XLSX exports; handles accents,
+#' @return     character; normalized (ASCII, snake_case) variable name
+#' @Purpose   : Standardize column names from Bogotá XLSX exports; handles accents,
 #              spaces/punct, and common Spanish labels (PM2.5/PM10, Ozono, etc.).
-# @Written_on: 05/08/2025
-# @Written_by: Marcos Paulo
+#' @Written_on: 05/08/2025
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 .bogota_normalize_varname <- function(x) {
   x <- iconv(x, to = "ASCII//TRANSLIT")
@@ -1864,13 +1864,13 @@ bogota_download_census_data <- function(
 
 # --------------------------------------------------------------------------------------------
 # .bogota_standardize_name
-# @Arg       : x        — list; contains names of stations to be changed
+#' @param x               list; contains names of stations to be changed
 # 
-# @Output    : list with standardized values/names
-# @Purpose   : make names in Uppercase, strip accents, remove stray quotes.
+#' @return     list with standardized values/names
+#' @Purpose   : make names in Uppercase, strip accents, remove stray quotes.
 #              Mirrors the same helper in compute_distance_matrices().
-# @Written_on: 05/08/2025
-# @Written_by: Marcos Paulo
+#' @Written_on: 05/08/2025
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 .bogota_standardize_name <- function(x) {
   x <- toupper(trimws(x))
@@ -1880,15 +1880,15 @@ bogota_download_census_data <- function(
 
 # --------------------------------------------------------------------------------------------
 # # Function: .bogota_apply_mappings
-# @Arg       : x        — list; contains names of stations to be mapped
+#' @param x               list; contains names of stations to be mapped
 # 
-# @Output    : list with either changed values in the mapped cases or the unchanged value
-# @Purpose   : Resolves known name discrepancies across RMCAB CSV (geolocation),
+#' @return     list with either changed values in the mapped cases or the unchanged value
+#' @Purpose   : Resolves known name discrepancies across RMCAB CSV (geolocation),
 #              RMCAB XLSX (pollution data), and SISAIRE sources. The canonical name is 
 #              whatever the RMCAB XLSX pollution files use, since that is the primary 
 #              data source.
-# @Written_on: 05/08/2025
-# @Written_by: Marcos Paulo
+#' @Written_on: 05/08/2025
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 .bogota_apply_mappings <- function(x) {
   dplyr::case_when(
@@ -1911,22 +1911,22 @@ bogota_download_census_data <- function(
 
 # --------------------------------------------------------------------------------------------
 # Function: ,bogota_read_one_xlsx
-# @Arg       : path        — string; full path to a single STATION_YEAR.xlsx
-# @Arg       : tz          — string; Olson timezone for datetime parsing 
+#' @param path               string; full path to a single STATION_YEAR.xlsx
+#' @param tz                 string; Olson timezone for datetime parsing
 #                            (default "UTC")
-# @Arg       : verbose     — logical; TRUE prints a brief parsing summary (default FALSE)
+#' @param verbose            logical; TRUE prints a brief parsing summary (default FALSE)
 # 
-# @Output    : tibble with columns:
+#' @return     tibble with columns:
 #                 • datetime (POSIXct, tz)
 #                 • <pollutant/meteorological variables> (dbl)
 #                 • station  (chr)
 #                 • year     (int)
-# @Purpose   : Read one Bogotá XLSX export that uses a 4-row header:
+#' @Purpose   : Read one Bogotá XLSX export that uses a 4-row header:
 #              row1 = metadata; row2 = "DateTime" + station in [2,2];
 #              row3 = variable names; row4 = units; data start at row5; "----" are NA.
 #              Robust to '24:00' (converted to '00:00' + 1 day) and skips non-datetime rows.
-# @Written_on: 05/08/2025
-# @Written_by: Marcos Paulo
+#' @Written_on: 05/08/2025
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 .bogota_read_one_xlsx <- function(path, tz = "UTC", verbose = FALSE) {
   # 1) read raw (no names); treat "----" / empty as NA
@@ -2012,22 +2012,26 @@ bogota_download_census_data <- function(
 
 # --------------------------------------------------------------------------------------------
 # Function: bogota_filter_stations_in_metro
-# @Arg       : rmcab_df         — Pre-loaded dataframe (RMCAB - Source I)
-# @Arg       : metadata_dir     — Folder with Excel files (SISAIRE)
-# @Arg       : metro_area       — sf polygon of the metropolitan area
-# @Arg       : radius_km        — numeric; max distance to keep (default 20)
-# @Arg       : stations_epsg    — EPSG for lon/lat (default 4326)
-# @Arg       : out_file         — output GeoPackage path
-# @Arg       : overwrite_gpkg   — logical; overwrite if exists
-# @Arg       : dissolve         — logical; TRUE unions metro polygons
+#' @param rmcab_df                Pre-loaded dataframe (RMCAB - Source I)
+#' @param metadata_dir            Folder with Excel files (SISAIRE)
+#' @param metro_area              sf polygon of the metropolitan area
+#' @param radius_km               numeric; max distance to keep (default 20)
+#' @param stations_epsg           EPSG for lon/lat (default 4326)
+#' @param out_file                output GeoPackage path
+#' @param overwrite_gpkg          logical; overwrite if exists
+#' @param dissolve                logical; TRUE unions metro polygons
 # 
-# @Output    : sf POINT data.frame. station_name is normalised to the
+#' @return     sf POINT data.frame. station_name is normalised to the
 #              all-uppercase RMCAB canonical form for all stations.
-# @Purpose   : Merges RMCAB (Master) with SISAIRE (Dates), handles name
+#' @Purpose   : Merges RMCAB (Master) with SISAIRE (Dates), handles name
 #              mismatches via .bogota_apply_mappings(), and spatially
 #              filters to the metro area + buffer.
-# @Written_on: 25/10/2025
-# @Written_by: Marcos Paulo
+#' @details    station_name is forced to the all-uppercase RMCAB canonical form so it
+#              matches the name used in the RMCAB xlsx pollution files ("JAZMIN" not
+#              "El Jazmín", "MOVIL FONTIBON" not "Móvil Fontibón"). The station-matching
+#              in bogota_process_stations_data_to_parquet() depends on that form.
+#' @Written_on: 25/10/2025
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 bogota_filter_stations_in_metro <- function(
     rmcab_df,
@@ -2187,11 +2191,7 @@ bogota_filter_stations_in_metro <- function(
   }
   
   # Normalise station_name to the all-uppercase RMCAB canonical form.
-  # This ensures every row in the output sf uses the same name that
-  # appears in the RMCAB xlsx pollution files (e.g. "JAZMIN" not
-  # "El Jazmín", "MOVIL FONTIBON" not "Móvil Fontibón"), which is
-  # required for the station-matching logic in
-  # bogota_process_stations_data_to_parquet().
+  # See @details: why the pollution files require exactly that form.
   all_stations <- all_stations |>
     dplyr::mutate(
       station_name = .bogota_apply_mappings(
@@ -2252,20 +2252,20 @@ bogota_filter_stations_in_metro <- function(
 
 # ----------------------------------------------------------------------------------------
 # Function: bogota_process_stations_data_to_parquet
-# @Arg       : rmcab_folder   — character; folder with RMCAB .xlsx files.
-# @Arg       : sisaire_folder — string; folder with SISAIRE .csv files.
-# @Arg       : stations_sf    — sf object; spatial registry of stations to keep.
+#' @param rmcab_folder          character; folder with RMCAB .xlsx files.
+#' @param sisaire_folder        string; folder with SISAIRE .csv files.
+#' @param stations_sf           sf object; spatial registry of stations to keep.
 #                               Must have a 'station_name' column.
-# @Arg       : out_dir        — string; base output directory.
-# @Arg       : out_name       — string; dataset name prefix.
-# @Arg       : years          — integer vector; years to retain.
-# @Arg       : tz             — string; Olson timezone of the raw source data.
+#' @param out_dir               string; base output directory.
+#' @param out_name              string; dataset name prefix.
+#' @param years                 integer vector; years to retain.
+#' @param tz                    string; Olson timezone of the raw source data.
 #                               Pass "UTC" (the default) to store raw hours without
 #                               any timezone shift — see @Details.
-# @Arg       : verbose        — logical; print progress messages.
+#' @param verbose               logical; print progress messages.
 #
-# @Output    : Arrow Dataset connection to the written Parquet folder.
-# @Details   :
+#' @return     Arrow Dataset connection to the written Parquet folder.
+#' @details
 #   SOURCE PRIORITY:
 #     RMCAB is primary. For any station x year x param it covers, only RMCAB
 #     values are used (NA hours stay NA, not filled from SISAIRE). SISAIRE is
@@ -2281,8 +2281,8 @@ bogota_filter_stations_in_metro <- function(
 #     Datetimes enter DuckDB as VARCHAR (via to_iso()) to avoid a DuckDB
 #     R-driver bug that shifts hours from POSIXct tzone attributes. STRPTIME()
 #     converts them back to plain TIMESTAMP, so no timezone conversion occurs.
-# @Written_on: 29/10/2025
-# @Written_by: Marcos Paulo
+#' @Written_on: 29/10/2025
+#' @Written_by: Marcos Paulo
 # ----------------------------------------------------------------------------------------
 bogota_process_stations_data_to_parquet <- function(
     rmcab_folder,
@@ -2681,16 +2681,16 @@ bogota_process_stations_data_to_parquet <- function(
 
 # --------------------------------------------------------------------------------------------
 # Function: bogota_merge_downloads
-# @Arg       : downloads_folder — string; directory containing *.xlsx exports
-# @Arg       : cleanup          — logical; TRUE deletes the .xlsx after merging (default TRUE)
-# @Arg       : tz               — string; Olson timezone for datetime parsing 
+#' @param downloads_folder        string; directory containing *.xlsx exports
+#' @param cleanup                 logical; TRUE deletes the .xlsx after merging (default TRUE)
+#' @param tz                      string; Olson timezone for datetime parsing
 #                                 (default: "America/Bogota")
 # 
-# @Output    : tibble; all files row-bound, sorted and de-duplicated by (station, datetime).
-# @Purpose   : Read every XLSX via bogota_read_one_xlsx(), stack, sort, de-dup, and return the
+#' @return     tibble; all files row-bound, sorted and de-duplicated by (station, datetime).
+#' @Purpose  : Read every XLSX via bogota_read_one_xlsx(), stack, sort, de-dup, and return the
 #              combined table. Side-effect (optional): deletes the source .xlsx files.
-# @Written_on: 27/08/2025
-# @Written_by: Marcos Paulo
+#' @Written_on: 27/08/2025
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 bogota_merge_stations_downloads <- function(downloads_folder,
                                             cleanup = TRUE,
@@ -2725,15 +2725,15 @@ bogota_merge_stations_downloads <- function(downloads_folder,
 
 # --------------------------------------------------------------------------------------------
 # Function: bogota_missing_matrix
-# @Arg       : merged_tbl  — tibble; result from bogota_merge_downloads() or similar
-# @Arg       : years       — integer vector; target coverage, e.g., 2000:2023
-# @Arg       : station_set — character vector; canonical list of station names (optional)
+#' @param merged_tbl         tibble; result from bogota_merge_downloads() or similar
+#' @param years              integer vector; target coverage, e.g., 2000:2023
+#' @param station_set        character vector; canonical list of station names (optional)
 # 
-# @Output    : tibble with columns (station, year) indicating missing combinations
-# @Purpose   : compute gaps in coverage by comparing the merged table vs. the full grid
+#' @return     tibble with columns (station, year) indicating missing combinations
+#' @Purpose   : compute gaps in coverage by comparing the merged table vs. the full grid
 #              of (station, year); useful to drive a re-download step.
-# @Written_on: 05/08/2025
-# @Written_by: Marcos Paulo
+#' @Written_on: 05/08/2025
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 bogota_missing_matrix <- function(merged_tbl,
                                   years = 2000:2023,
@@ -2766,19 +2766,19 @@ bogota_missing_matrix <- function(merged_tbl,
 
 # --------------------------------------------------------------------------------------------
 # Function: bogota_filter_census_2005
-# @Arg       : census_zip   — path to CG2005_AMPLIADO.zip
-# @Arg       : out_dir      — where to write selected dept folders with CSVs
-# @Arg       : overwrite    — re-extract if output exists (default FALSE)
-# @Arg       : quiet        — suppress messages (default FALSE)
+#' @param census_zip          path to CG2005_AMPLIADO.zip
+#' @param out_dir             where to write selected dept folders with CSVs
+#' @param overwrite           re-extract if output exists (default FALSE)
+#' @param quiet               suppress messages (default FALSE)
 # 
-# @Output    : list with $bogota and $cundinamarca
+#' @return     list with $bogota and $cundinamarca
 #              - dir_extracted (folder containing only CSV files)
 #              - files_index   (tibble with file, size, type)
-# @Purpose   : Fast extract master ZIP, fix mojibake, unpack dept 11 & 25,
+#' @Purpose   : Fast extract master ZIP, fix mojibake, unpack dept 11 & 25,
 #              unpack *CSV.zip* inside, and FLATTEN structure (CSVs to root).
 #              Fixed to handle re-runs gracefully without "copy to self" errors.
-# @Written_on: 22/10/2025
-# @Written_by: Marcos Paulo
+#' @Written_on: 22/10/2025
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 bogota_filter_census_2005 <- function(
     census_zip = here::here(bogota_cfg$dl_dir, "census", "CG2005_AMPLIADO.zip"),
@@ -2983,20 +2983,20 @@ bogota_filter_census_2005 <- function(
 
 # --------------------------------------------------------------------------------------------
 # Function: bogota_harmonize_census_2005_data
-# @Arg       : extract_list — List output from bogota_filter_harmonize_census
-# @Arg       : is_extended — Logical; True (Default) if the census data is the extended version
-# @Arg       : metro_codes —  Vector of municipality codes for Cundinamarca filtering
-# @Arg       : out_dir — Where to save the processed individual and collapsed data
-# @Arg       : quiet — Suppress progress messages
+#' @param extract_list        List output from bogota_filter_harmonize_census
+#' @param is_extended        Logical; True (Default) if the census data is the extended version
+#' @param metro_codes         Vector of municipality codes for Cundinamarca filtering
+#' @param out_dir        Where to save the processed individual and collapsed data
+#' @param quiet        Suppress progress messages
 #
-# @Output    : list(individual, collapsed); returns the processed dataframes. Also writes
+#' @return     list(individual, collapsed); returns the processed dataframes. Also writes
 #              census_metro_individual_<prefix>.parquet and
 #              collapse_metro_area_<prefix>.parquet, where prefix is basic or extended.
 #              Parquet keeps GEO_ID character; a CSV roundtrip drops its leading zeros.
-# @Purpose   : Replicates Stata logic: Harmonizes education, creates labor/demographic
+#' @Purpose   : Replicates Stata logic: Harmonizes education, creates labor/demographic
 #              dummies, filters adults (25+), and collapses to geographic level.
-# @Written_on: 21/01/2026
-# @Written_by: Marcos Paulo
+#' @Written_on: 21/01/2026
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 bogota_harmonize_census_2005_data <- function(
     extract_list,
@@ -3270,19 +3270,19 @@ bogota_harmonize_census_2005_data <- function(
 
 # --------------------------------------------------------------------------------------------
 # Function: bogota_filter_census_2018
-# @Arg      : census_folder  — Path to folder containing "2018_Bogota.zip", etc.
-# @Arg      : out_dir        — Where to write selected CSVs
-# @Arg      : overwrite      — Re-extract if output exists (default FALSE)
-# @Arg      : quiet          — Suppress messages (default FALSE)
+#' @param census_folder        Path to folder containing "2018_Bogota.zip", etc.
+#' @param out_dir              Where to write selected CSVs
+#' @param overwrite            Re-extract if output exists (default FALSE)
+#' @param quiet                Suppress messages (default FALSE)
 # 
-# @Output   : list with $bogota and $cundinamarca paths
-# @Purpose  : Handles the specific nested structure of DANE 2018:
+#' @return    list with $bogota and $cundinamarca paths
+#' @Purpose  : Handles the specific nested structure of DANE 2018:
 #             1. 2018_Bogota.zip (Outer)
 #             2. Unpacks to folder
 #             3. Finds *CSV.zip (Inner)
 #             4. Extracts *5PER* (Persons) and *MGN* (Geo) CSVs.
-# @Written_on: 01/02/2026
-# @Written_by: Marcos Paulo
+#' @Written_on: 01/02/2026
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 bogota_filter_census_2018 <- function(
     census_folder = here::here(bogota_cfg$dl_dir, "census_2018"),
@@ -3384,22 +3384,22 @@ bogota_filter_census_2018 <- function(
 # --------------------------------------------------------------------------------------------
 # Function: bogota_harmonize_census_2018_data
 #
-# @Arg extract_paths : list; output from bogota_filter_census_2018.
-# @Arg metro_codes   : character; municipality codes to filter.
-# @Arg out_dir       : string; output folder for processed data.
-# @Arg quiet         : logical; suppress progress messages. Default FALSE.
+#' @param extract_paths list; output from bogota_filter_census_2018.
+#' @param metro_codes  character; municipality codes to filter.
+#' @param out_dir      string; output folder for processed data.
+#' @param quiet        logical; suppress progress messages. Default FALSE.
 #
-# @Output : list(individual, collapsed); processed census data. Also writes
+#' @return  list(individual, collapsed); processed census data. Also writes
 #           census_2018_metro_individual.parquet and census_2018_metro_collapsed.parquet.
 #           Parquet keeps GEO_ID character; a CSV roundtrip drops its leading zeros.
 #
-# @Purpose:
+#' @Purpose:
 #   Merges person and geographic files, filters the Bogota metro area,
 #   harmonizes education and demographic variables, and collapses adults
 #   aged 25+ to the block level.
 #
-# @Written_on : 01/02/2026
-# @Written_by : Marcos Paulo
+#' @Written_on : 01/02/2026
+#' @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 bogota_harmonize_census_2018_data <- function(
     extract_paths,
@@ -3596,22 +3596,22 @@ bogota_harmonize_census_2018_data <- function(
 
 # --------------------------------------------------------------------------------------------
 # Function: bogota_download
-# @Arg    : cfg          — bogota_cfg list. Default: bogota_cfg.
-# @Arg    : steps        — character vector; which steps to run. Default: all.
+#' @param cfg              bogota_cfg list. Default: bogota_cfg.
+#' @param steps            character vector; which steps to run. Default: all.
 #                          Options: "metro_area", "stations_geo", "station_data",
 #                                   "metro_station_data", "census"
-# @Arg    : years        — integer vector; override cfg$years if provided.
-# @Arg    : timeout_page — numeric; Selenium page timeout in seconds.
-# @Arg    : timeout_btn  — numeric; Selenium button timeout in seconds.
-# @Arg    : timeout_dl   — numeric; Selenium download timeout in seconds.
-# @Arg    : quiet        — logical; suppress step banners. Default FALSE.
+#' @param years            integer vector; override cfg$years if provided.
+#' @param timeout_page     numeric; Selenium page timeout in seconds.
+#' @param timeout_btn      numeric; Selenium button timeout in seconds.
+#' @param timeout_dl       numeric; Selenium download timeout in seconds.
+#' @param quiet            logical; suppress step banners. Default FALSE.
 #
-# @Purpose   : Run every download step for Bogotá in the correct order.
+#' @Purpose   : Run every download step for Bogotá in the correct order.
 #              Steps mirror scripts/download_data/download_bogota_data.R.
-# @Output    : named list; one entry per step with the function return
+#' @return     named list; one entry per step with the function return
 #              value, or a condition object if the step failed.
-# @Written_on: 01/02/2026
-# @Written_by: Marcos Paulo
+#' @Written_on: 01/02/2026
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 bogota_download <- function(
     cfg          = bogota_cfg,
@@ -3745,16 +3745,16 @@ bogota_download <- function(
 
 # --------------------------------------------------------------------------------------------
 # Function: bogota_process
-# @Arg       : cfg      — bogota_cfg list. Default: bogota_cfg.
-# @Arg       : steps    — character vector; which steps to run. Default: all.
+#' @param cfg             bogota_cfg list. Default: bogota_cfg.
+#' @param steps           character vector; which steps to run. Default: all.
 #              Options: "stations_filter", "pollution_parquet", "census_2005", "census_2018"
-# @Arg       : quiet    — logical; suppress step banners. Default FALSE.
+#' @param quiet           logical; suppress step banners. Default FALSE.
 #
-# @Purpose   : Run every processing step for Bogotá in the correct order.
+#' @Purpose   : Run every processing step for Bogotá in the correct order.
 #              Steps mirror scripts/process_data/process_bogota_data.R.
-# @Output    : named list; one entry per step.
-# @Written_on: 01/02/2026
-# @Written_by: Marcos Paulo
+#' @return     named list; one entry per step.
+#' @Written_on: 01/02/2026
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 bogota_process <- function(
     cfg   = bogota_cfg,

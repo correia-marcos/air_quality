@@ -1,9 +1,9 @@
 # ============================================================================================
 # IDB: Air monitoring — Ciudad De México (CDMX) module
 # ============================================================================================
-# @Goal   : CDMX-specific parameters, download/process wrappers, and any site-specific code
-# @Date   : Aug 2025
-# @Author : Marcos Paulo
+#' @Goal  : CDMX-specific parameters, download/process wrappers, and any site-specific code
+#' @Date   : Aug 2025
+#' @Author : Marcos Paulo
 # Obs: Expect the caller to have already sourced:
 #   - src/config_utils_download_data.R  (selenium helpers, waits, clicking helpers, etc.)
 #   - src/config_utils_process_data.R   (merge, tidy, QA, parquet writing, etc.)
@@ -52,22 +52,22 @@ cdmx_cfg <- list(
 # ============================================================================================
 # ------------------------------------------------------------------------------------------
 # Function: .http_retry_get_robust
-# @Arg       : url                 — target URL
-# @Arg       : ua                  — httr::user_agent(...) object
-# @Arg       : timeout_sec         — per-attempt timeout
-# @Arg       : verbose             — print progress (TRUE/FALSE)
-# @Arg       : allow_insecure_fallback — one last attempt with verify OFF if SSL chain fails
+#' @param url                        target URL
+#' @param ua                         httr::user_agent(...) object
+#' @param timeout_sec                per-attempt timeout
+#' @param verbose                    print progress (TRUE/FALSE)
+#' @param allow_insecure_fallback        one last attempt with verify OFF if SSL chain fails
 # 
-# @Output    : httr response (status 200) or stop() with a helpful message
-# @Purpose   : Robust GET for Docker + OpenSSL 3:
+#' @return     httr response (status 200) or stop() with a helpful message
+#' @Purpose   : Robust GET for Docker + OpenSSL 3:
 #              - strict TLS over IPv4
 #              - retry with OpenSSL security level 1 (verification ON)
 #              - optional insecure try
 #              - http:// fallback
 # Notes      : The curl/httr option name is **ssl_cipher_list** (not 'ciphers').
 #              The OpenSSL string is "DEFAULT@SECLEVEL=1".
-# @Written_on: 13/10/2025
-# @Written_by: Marcos Paulo
+#' @Written_on: 13/10/2025
+#' @Written_by: Marcos Paulo
 # ------------------------------------------------------------------------------------------
 .http_retry_get_robust <- function(url, ua, timeout_sec = 30,
                                    verbose = TRUE,
@@ -166,14 +166,14 @@ cdmx_cfg <- list(
 }
 # ------------------------------------------------------------------------------------------
 # Function: selenium_start_session_flat_first
-# @Arg       : container             — logical; TRUE when using docker-compose service
-# @Arg       : wd_request_timeout_ms — integer; per-request HTTP timeout to the driver
+#' @param container                    logical; TRUE when using docker-compose service
+#' @param wd_request_timeout_ms        integer; per-request HTTP timeout to the driver
 # 
-# @Output    : selenium::SeleniumSession
-# @Purpose   : Start Selenium with flat (W3C) capabilities only — avoids the
+#' @return     selenium::SeleniumSession
+#' @Purpose   : Start Selenium with flat (W3C) capabilities only — avoids the
 #              "Illegal key values seen in w3c capabilities" 500 error.
-# @Written_on: 13/10/2025
-# @Written_by: Marcos Paulo
+#' @Written_on: 13/10/2025
+#' @Written_by: Marcos Paulo
 # ------------------------------------------------------------------------------------------
 selenium_start_session_flat_first <- function(container = TRUE,
                                               wd_request_timeout_ms = 60000L) {
@@ -205,13 +205,13 @@ selenium_start_session_flat_first <- function(container = TRUE,
 }
 # --------------------------------------------------------------------------------------------
 # Function: sinaica_scroll_into_view_sel
-# @Arg       : session — SeleniumSession
-# @Arg       : sel     — CSS selector to bring into view
+#' @param session        SeleniumSession
+#' @param sel            CSS selector to bring into view
 # 
-# @Output    : invisible(TRUE)
-# @Purpose   : Scroll the first match of `sel` into view (best-effort).
-# @Written_on: 13/10/2025
-# @Written_by: Marcos Paulo
+#' @return     invisible(TRUE)
+#' @Purpose   : Scroll the first match of `sel` into view (best-effort).
+#' @Written_on: 13/10/2025
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 sinaica_scroll_into_view_sel <- function(session, sel) {
   js <- paste0(
@@ -226,15 +226,15 @@ sinaica_scroll_into_view_sel <- function(session, sel) {
 }
 # --------------------------------------------------------------------------------------------
 # Function: sinaica_wait_state_table
-# @Arg       : session  — SeleniumSession
-# @Arg       : timeout  — seconds to wait (default 30)
-# @Arg       : min_rows — minimal station rows required (default 1)
+#' @param session         SeleniumSession
+#' @param timeout         seconds to wait (default 30)
+#' @param min_rows        minimal station rows required (default 1)
 # 
-# @Output    : TRUE if table rows are present; FALSE otherwise
-# @Purpose   : After picking a state, wait until the stations table exists. The table can be
+#' @return     TRUE if table rows are present; FALSE otherwise
+#' @Purpose  : After picking a state, wait until the stations table exists. The table can be
 #              lazy-rendered near the bottom, so we close overlays, scroll, and re-check.
-# @Written_on: 13/10/2025
-# @Written_by: Marcos Paulo
+#' @Written_on: 13/10/2025
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 sinaica_wait_state_table <- function(session, timeout = 30, min_rows = 1) {
   t0 <- Sys.time()
@@ -276,11 +276,11 @@ sinaica_wait_state_table <- function(session, timeout = 30, min_rows = 1) {
 }
 # ------------------------------------------------------------------------------------------
 # Function: sinaica_clean_text
-# @Arg       : x — character
-# @Output    : trimmed UTF-8 string with collapsed whitespace
-# @Purpose   : Normalize text captured from pages for stable comparisons.
-# @Written_on: 13/10/2025
-# @Written_by: Marcos Paulo
+#' @param x        character
+#' @return     trimmed UTF-8 string with collapsed whitespace
+#' @Purpose   : Normalize text captured from pages for stable comparisons.
+#' @Written_on: 13/10/2025
+#' @Written_by: Marcos Paulo
 # ------------------------------------------------------------------------------------------
 sinaica_clean_text <- function(x) {
   x <- iconv(x %||% "", from = "", to = "UTF-8")
@@ -290,11 +290,11 @@ sinaica_clean_text <- function(x) {
 }
 # ------------------------------------------------------------------------------------------
 # Function: sinaica_parse_coords
-# @Arg       : txt — like "20.06 N, 99.22 O"
-# @Output    : c(lat=..., lon=...)
-# @Purpose   : Parse N/S/E/O coordinates to signed decimal degrees.
-# @Written_on: 13/10/2025
-# @Written_by: Marcos Paulo
+#' @param txt        like "20.06 N, 99.22 O"
+#' @return     c(lat=..., lon=...)
+#' @Purpose   : Parse N/S/E/O coordinates to signed decimal degrees.
+#' @Written_on: 13/10/2025
+#' @Written_by: Marcos Paulo
 # ------------------------------------------------------------------------------------------
 sinaica_parse_coords <- function(txt) {
   txt <- tolower(sinaica_clean_text(txt))
@@ -312,11 +312,11 @@ sinaica_parse_coords <- function(txt) {
 }
 # ------------------------------------------------------------------------------------------
 # Function: sinaica_parse_alt
-# @Arg       : txt — like "2240 msnm"
-# @Output    : numeric altitude (meters) or NA
-# @Purpose   : Extract altitude number from free text.
-# @Written_on: 13/10/2025
-# @Written_by: Marcos Paulo
+#' @param txt        like "2240 msnm"
+#' @return     numeric altitude (meters) or NA
+#' @Purpose   : Extract altitude number from free text.
+#' @Written_on: 13/10/2025
+#' @Written_by: Marcos Paulo
 # ------------------------------------------------------------------------------------------
 sinaica_parse_alt <- function(txt) {
   x <- gsub("[^0-9\\.,-]", "", tolower(txt %||% ""))
@@ -325,12 +325,12 @@ sinaica_parse_alt <- function(txt) {
 }
 # --------------------------------------------------------------------------------------------
 # Function: sinaica_open_state_dropdown
-# @Arg       : session  — SeleniumSession
-# @Arg       : timeout  — integer; max seconds to wait for items (default 10)
-# @Output    : TRUE if the menu is open and items are present; error on timeout
-# @Purpose   : Open the “Seleccionar estado” dropdown and wait until <p.selSMCA> items exist.
-# @Written_on: 13/10/2025
-# @Written_by: Marcos Paulo
+#' @param session         SeleniumSession
+#' @param timeout         integer; max seconds to wait for items (default 10)
+#' @return     TRUE if the menu is open and items are present; error on timeout
+#' @Purpose  : Open the “Seleccionar estado” dropdown and wait until <p.selSMCA> items exist.
+#' @Written_on: 13/10/2025
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 sinaica_open_state_dropdown <- function(session, timeout = 10) {
   btn <- wait_for(
@@ -360,12 +360,12 @@ sinaica_open_state_dropdown <- function(session, timeout = 10) {
 }
 # --------------------------------------------------------------------------------------------
 # Function: sinaica_select_state
-# @Arg       : session     — SeleniumSession
-# @Arg       : state_name  — visible text ("Hidalgo", "México", …)
-# @Output    : TRUE if clicked; FALSE otherwise
-# @Purpose   : Click a state row inside the dropdown (accent/space-insensitive; robust).
-# @Written_on: 14/09/2025
-# @Written_by: Marcos Paulo
+#' @param session            SeleniumSession
+#' @param state_name         visible text ("Hidalgo", "México", …)
+#' @return     TRUE if clicked; FALSE otherwise
+#' @Purpose   : Click a state row inside the dropdown (accent/space-insensitive; robust).
+#' @Written_on: 14/09/2025
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 sinaica_select_state <- function(session, state_name) {
   js <- paste0(
@@ -407,9 +407,9 @@ sinaica_select_state <- function(session, state_name) {
 }
 # ------------------------------------------------------------------------------------------
 # Function: sinaica_read_state_table
-# @Arg       : session — SeleniumSession
-# @Output    : data.frame(est_id, station, red)
-# @Purpose   : Read the “Red / Estación” table into a compact data frame.
+#' @param session        SeleniumSession
+#' @return     data.frame(est_id, station, red)
+#' @Purpose   : Read the “Red / Estación” table into a compact data frame.
 # ------------------------------------------------------------------------------------------
 sinaica_read_state_table <- function(session) {
   js <- "
@@ -438,10 +438,10 @@ sinaica_read_state_table <- function(session) {
 }
 # ------------------------------------------------------------------------------------------
 # Function: sinaica_read_station_detail
-# @Arg       : session — SeleniumSession
-# @Output    : list with elements kv (named list), url (string), h3 (string)
-# @Purpose   : Pull key/value rows, current URL, and the <h3> title from a station page.
-# @Notes     : 
+#' @param session        SeleniumSession
+#' @return     list with elements kv (named list), url (string), h3 (string)
+#' @Purpose   : Pull key/value rows, current URL, and the <h3> title from a station page.
+#' @Notes     : 
 # - Restrict to 'table.tbl-est' (ignores the "Red/Estación" list table).
 # - Normalize keys: trim, collapse spaces, remove diacritics, lowercase,
 #   strip trailing colons. Return JSON to avoid Selenium's object coercion.
@@ -490,10 +490,10 @@ sinaica_read_station_detail <- function(session) {
 }
 # ------------------------------------------------------------------------------------------
 # Function: sinaica_wait_station_detail
-# @Arg       : session — SeleniumSession
-# @Arg       : timeout — integer; max seconds to wait for items (default 25)
-# @Output    : FALSE
-# @Purpose   : Stronger wait for the station detail panel
+#' @param session        SeleniumSession
+#' @param timeout        integer; max seconds to wait for items (default 25)
+#' @return     FALSE
+#' @Purpose   : Stronger wait for the station detail panel
 # - Waits for the specific details table to be present and visible.
 # - Also checks that at least one of 'coordenadas' or 'altitud' exists.
 # ------------------------------------------------------------------------------------------
@@ -540,9 +540,9 @@ sinaica_wait_station_detail <- function(session, timeout = 25) {
 }
 # ------------------------------------------------------------------------------------------
 # Function: sinaica_extract_name_code_from_h3
-# @Arg       : h3_txt — e.g., "Estación: Centro de Salud (ATI)"
-# @Output    : list(name=<station name>, code=<3–6 letters> or NA)
-# @Purpose   : Extract final station display name and CODE from the title.
+#' @param h3_txt        e.g., "Estación: Centro de Salud (ATI)"
+#' @return     list(name=<station name>, code=<3–6 letters> or NA)
+#' @Purpose   : Extract final station display name and CODE from the title.
 # ------------------------------------------------------------------------------------------
 sinaica_extract_name_code_from_h3 <- function(h3_txt) {
   x <- sinaica_clean_text(h3_txt)
@@ -556,9 +556,9 @@ sinaica_extract_name_code_from_h3 <- function(h3_txt) {
 }
 # --------------------------------------------------------------------------------------------
 # Function : sinaica_slugify
-# @Arg     : x — character; any label to convert to a safe file-friendly slug
-# @Output  : slug (lowercase, ASCII, underscores, no dup underscores)
-# @Purpose : Build safe filenames from SMCA/red/param names.
+#' @param x      character; any label to convert to a safe file-friendly slug
+#' @return   slug (lowercase, ASCII, underscores, no dup underscores)
+#' @Purpose : Build safe filenames from SMCA/red/param names.
 # --------------------------------------------------------------------------------------------
 sinaica_slugify <- function(x) {
   x <- iconv(x, from = "", to = "ASCII//TRANSLIT")
@@ -568,9 +568,9 @@ sinaica_slugify <- function(x) {
 }
 # --------------------------------------------------------------------------------------------
 # Function : sinaica_next_nonconflicting
-# @Arg     : path — full path to a file that may already exist
-# @Output  : path itself if free, otherwise "name_02.ext", "name_03.ext", ...
-# @Purpose : Prevent accidental overwrites on repeated downloads.
+#' @param path      full path to a file that may already exist
+#' @return   path itself if free, otherwise "name_02.ext", "name_03.ext", ...
+#' @Purpose : Prevent accidental overwrites on repeated downloads.
 # --------------------------------------------------------------------------------------------
 sinaica_next_nonconflicting <- function(path) {
   if (!file.exists(path)) return(path)
@@ -586,12 +586,12 @@ sinaica_next_nonconflicting <- function(path) {
 }
 # --------------------------------------------------------------------------------------------
 # Function : sinaica_open_descargas
-# @Arg     : session      — SeleniumSession
-# @Arg     : base_url     — SINAICA base
-# @Arg     : timeout_page — seconds to wait for on-load readiness
-# @Arg     : timeout_ctrl — seconds to wait for the Descargas tab controls
-# @Output  : TRUE (or error)
-# @Purpose : Navigate to page and activate the "Descargas" tab.
+#' @param session           SeleniumSession
+#' @param base_url          SINAICA base
+#' @param timeout_page      seconds to wait for on-load readiness
+#' @param timeout_ctrl      seconds to wait for the Descargas tab controls
+#' @return   TRUE (or error)
+#' @Purpose : Navigate to page and activate the "Descargas" tab.
 # Note     : Relies on your existing wait_ready() and wait_for() utilities.
 # --------------------------------------------------------------------------------------------
 sinaica_open_descargas <- function(session, base_url, timeout_page, timeout_ctrl) {
@@ -612,12 +612,12 @@ sinaica_open_descargas <- function(session, base_url, timeout_page, timeout_ctrl
 }
 # --------------------------------------------------------------------------------------------
 # Function : sinaica_js_set_select
-# @Arg     : session — SeleniumSession
-# @Arg     : id      — select id
-# @Arg     : value   — exact option value to set (preferred)
-# @Arg     : text    — fallback exact visible text to match
-# @Output  : "ok" | "not-found" | "no-sel"
-# @Purpose : Robustly set a <select> value and fire change event.
+#' @param session      SeleniumSession
+#' @param id           select id
+#' @param value        exact option value to set (preferred)
+#' @param text         fallback exact visible text to match
+#' @return   "ok" | "not-found" | "no-sel"
+#' @Purpose : Robustly set a <select> value and fire change event.
 # --------------------------------------------------------------------------------------------
 sinaica_js_set_select <- function(session, id, value = NULL, text = NULL) {
   val <- if (is.null(value)) "null" else sprintf("'%s'", value)
@@ -647,10 +647,10 @@ sinaica_js_set_select <- function(session, id, value = NULL, text = NULL) {
 }
 # --------------------------------------------------------------------------------------------
 # Function : sinaica_js_click_text
-# @Arg     : session — SeleniumSession
-# @Arg     : xpath   — xpath expression to locate element
-# @Output  : TRUE if clicked; FALSE otherwise
-# @Purpose : Click an element found by XPath (scrolls into view first).
+#' @param session      SeleniumSession
+#' @param xpath        xpath expression to locate element
+#' @return   TRUE if clicked; FALSE otherwise
+#' @Purpose : Click an element found by XPath (scrolls into view first).
 # --------------------------------------------------------------------------------------------
 sinaica_js_click_text <- function(session, xpath) {
   sc <- sprintf(
@@ -667,10 +667,10 @@ sinaica_js_click_text <- function(session, xpath) {
 }
 # --------------------------------------------------------------------------------------------
 # Function : sinaica_read_select_df_by_id
-# @Arg     : session — SeleniumSession
-# @Arg     : id      — select id
-# @Output  : data.frame(text, value)
-# @Purpose : Read <select> options (skip the dashed placeholder).
+#' @param session      SeleniumSession
+#' @param id           select id
+#' @return   data.frame(text, value)
+#' @Purpose : Read <select> options (skip the dashed placeholder).
 # --------------------------------------------------------------------------------------------
 sinaica_read_select_df_by_id <- function(session, id) {
   js <- paste0(
@@ -695,12 +695,12 @@ sinaica_read_select_df_by_id <- function(session, id) {
 }
 # --------------------------------------------------------------------------------------------
 # Function : sinaica_wait_options
-# @Arg     : session — SeleniumSession
-# @Arg     : id      — select id
-# @Arg     : min_n   — minimum options needed (excludes placeholder)
-# @Arg     : timeout — seconds to wait
-# @Output  : data.frame(text, value)
-# @Purpose : Wait until a <select> has at least min_n options, then return them.
+#' @param session      SeleniumSession
+#' @param id           select id
+#' @param min_n        minimum options needed (excludes placeholder)
+#' @param timeout      seconds to wait
+#' @return   data.frame(text, value)
+#' @Purpose : Wait until a <select> has at least min_n options, then return them.
 # --------------------------------------------------------------------------------------------
 sinaica_wait_options <- function(session, id, min_n = 1, timeout = 20) {
   t0 <- Sys.time()
@@ -722,12 +722,12 @@ sinaica_wait_options <- function(session, id, min_n = 1, timeout = 20) {
 }
 # --------------------------------------------------------------------------------------------
 # Function : sinaica_wait_years_ready
-# @Arg     : session  — SeleniumSession
-# @Arg     : par_val  — value selected in parámetro <select>
-# @Arg     : timeout  — seconds to wait for the year list to appear
-# @Arg     : poke_every — re-select parámetro every k tries
-# @Output  : data.frame(text, value) of years (possibly empty)
-# @Purpose : Wait until "Elige un año:" is populated; gently poke parámetro if stuck.
+#' @param session       SeleniumSession
+#' @param par_val       value selected in parámetro <select>
+#' @param timeout       seconds to wait for the year list to appear
+#' @param poke_every      re-select parámetro every k tries
+#' @return   data.frame(text, value) of years (possibly empty)
+#' @Purpose : Wait until "Elige un año:" is populated; gently poke parámetro if stuck.
 # --------------------------------------------------------------------------------------------
 sinaica_wait_years_ready <- function(session, par_val,
                                      timeout = 180, poke_every = 8) {
@@ -748,10 +748,10 @@ sinaica_wait_years_ready <- function(session, par_val,
 }
 # --------------------------------------------------------------------------------------------
 # Function : sinaica_click_el
-# @Arg     : session     — SeleniumSession
-# @Arg     : el          — element to click
-# @Output  : TRUE or error on timeout
-# @Purpose : Tries a native click. It doesn't work, make a click in a real object
+#' @param session          SeleniumSession
+#' @param el               element to click
+#' @return   TRUE or error on timeout
+#' @Purpose : Tries a native click. It doesn't work, make a click in a real object
 # --------------------------------------------------------------------------------------------
 sinaica_click_el <- function(session, el) {
   # Tries native click, then JS click using the real element object.
@@ -767,10 +767,10 @@ sinaica_click_el <- function(session, el) {
 }
 # --------------------------------------------------------------------------------------------
 # Function : sinaica_get_select_value
-# @Arg     : session — SeleniumSession
-# @Arg     : id      — select id
-# @Output  : list(value, text) for the current selection (or NULLs)
-# @Purpose : Read back which option is selected now.
+#' @param session      SeleniumSession
+#' @param id           select id
+#' @return   list(value, text) for the current selection (or NULLs)
+#' @Purpose : Read back which option is selected now.
 # --------------------------------------------------------------------------------------------
 sinaica_get_select_value <- function(session, id) {
   sc <- paste0(
@@ -786,11 +786,11 @@ sinaica_get_select_value <- function(session, id) {
 }
 # --------------------------------------------------------------------------------------------
 # Function : sinaica_force_select_value
-# @Arg     : session — SeleniumSession
-# @Arg     : id      — select id
-# @Arg     : value   — target value (string)
-# @Output  : "ok" | "not-found" | "no-sel"
-# @Purpose : If target is already selected, flip to a different option first to
+#' @param session      SeleniumSession
+#' @param id           select id
+#' @param value        target value (string)
+#' @return   "ok" | "not-found" | "no-sel"
+#' @Purpose : If target is already selected, flip to a different option first to
 #            ensure the change event fires, then set back to target.
 # --------------------------------------------------------------------------------------------
 sinaica_force_select_value <- function(session, id, value) {
@@ -823,12 +823,12 @@ sinaica_force_select_value <- function(session, id, value) {
 }
 # --------------------------------------------------------------------------------------------
 # Function : sinaica_set_year_robust
-# @Arg     : session  — SeleniumSession
-# @Arg     : yr       — numeric/integer year to select
-# @Arg     : par_val  — parámetro value (used when re-poking the list)
-# @Arg     : timeout_year_ready — seconds to wait for the year list to load
-# @Output  : TRUE (or error)
-# @Purpose : Reliable "Elige un año:" selection with verification.
+#' @param session       SeleniumSession
+#' @param yr            numeric/integer year to select
+#' @param par_val       parámetro value (used when re-poking the list)
+#' @param timeout_year_ready      seconds to wait for the year list to load
+#' @return   TRUE (or error)
+#' @Purpose : Reliable "Elige un año:" selection with verification.
 # --------------------------------------------------------------------------------------------
 sinaica_set_year_robust <- function(session, yr, par_val, timeout_year_ready = 180) {
   years_df <- sinaica_wait_years_ready(
@@ -867,9 +867,9 @@ sinaica_set_year_robust <- function(session, yr, par_val, timeout_year_ready = 1
 }
 # --------------------------------------------------------------------------------------------
 # Function : sinaica_find_btns
-# @Arg     : session — SeleniumSession
-# @Output  : list(buscar = el, csv = el or NULL)
-# @Purpose : Locate "Buscar" button and any visible CSV download button(s).
+#' @param session      SeleniumSession
+#' @return   list(buscar = el, csv = el or NULL)
+#' @Purpose : Locate "Buscar" button and any visible CSV download button(s).
 # --------------------------------------------------------------------------------------------
 sinaica_find_btns <- function(session) {
   # Buscar: try id first, then generic <input value="Buscar">, both guarded.
@@ -918,9 +918,9 @@ sinaica_find_btns <- function(session) {
 }
 # --------------------------------------------------------------------------------------------
 # Function : sinaica_accept_modal_if_any
-# @Arg     : session — SeleniumSession
-# @Output  : TRUE
-# @Purpose : Click the "Aceptar" modal button if it is present right now.
+#' @param session      SeleniumSession
+#' @return   TRUE
+#' @Purpose : Click the "Aceptar" modal button if it is present right now.
 # --------------------------------------------------------------------------------------------
 sinaica_accept_modal_if_any <- function(session) {
   try({
@@ -939,10 +939,10 @@ sinaica_accept_modal_if_any <- function(session) {
 }
 # --------------------------------------------------------------------------------------------
 # Function : sinaica_wait_results_or_modal
-# @Arg     : session — SeleniumSession
-# @Arg     : timeout — seconds to wait for CSV controls after Buscar
-# @Output  : WebElement of the CSV button (or error on timeout)
-# @Purpose : Wait for results; auto-accept modal if it appears.
+#' @param session      SeleniumSession
+#' @param timeout      seconds to wait for CSV controls after Buscar
+#' @return   WebElement of the CSV button (or error on timeout)
+#' @Purpose : Wait for results; auto-accept modal if it appears.
 # --------------------------------------------------------------------------------------------
 sinaica_wait_results_or_modal <- function(session, timeout = 5) {
   t0 <- Sys.time()
@@ -958,10 +958,10 @@ sinaica_wait_results_or_modal <- function(session, timeout = 5) {
 }
 # --------------------------------------------------------------------------------------------
 # Function : sinaica_wait_csv_or_nodata
-# @Arg     : session  — SeleniumSession
-# @Arg     : timeout  — seconds to wait overall (modal or CSV)
-# @Output  : list(type = "csv"/"nodata", btn = <WebElement or NULL>)
-# @Purpose : After "Buscar", wait until either the CSV button is visible or a definitive
+#' @param session       SeleniumSession
+#' @param timeout       seconds to wait overall (modal or CSV)
+#' @return   list(type = "csv"/"nodata", btn = <WebElement or NULL>)
+#' @Purpose : After "Buscar", wait until either the CSV button is visible or a definitive
 #            "No hay datos" modal shows up. Uses only selector-based JS (no :visible, no
 #            element handles passed into JS) to avoid stale-element and style() errors.
 # --------------------------------------------------------------------------------------------
@@ -1087,13 +1087,13 @@ sinaica_wait_csv_or_nodata <- function(session, timeout = 30) {
 }
 # --------------------------------------------------------------------------------------------
 # Function : sinaica_quick_csv_download
-# @Arg     : session     — SeleniumSession
-# @Arg     : downloads_root — path to watch for new .csv
-# @Arg     : before      — vector of files that existed before
-# @Arg     : settle_sec  — small pause before clicking CSV (default 2s)
-# @Arg     : timeout_dl  — seconds to wait for the actual download
-# @Output  : path to the downloaded file, or NULL if not available quickly
-# @Purpose : If a retry left results visible, finish immediately without full
+#' @param session          SeleniumSession
+#' @param downloads_root      path to watch for new .csv
+#' @param before           vector of files that existed before
+#' @param settle_sec       small pause before clicking CSV (default 2s)
+#' @param timeout_dl       seconds to wait for the actual download
+#' @return   path to the downloaded file, or NULL if not available quickly
+#' @Purpose : If a retry left results visible, finish immediately without full
 #            re-hydration. Non-blocking probe with a short wait budget.
 # --------------------------------------------------------------------------------------------
 sinaica_quick_csv_download <- function(session, downloads_root, before,
@@ -1121,17 +1121,17 @@ sinaica_quick_csv_download <- function(session, downloads_root, before,
 }
 # --------------------------------------------------------------------------------------------
 # Function : sinaica_rehydrate_form
-# @Arg     : session        — SeleniumSession
-# @Arg     : base_url       — SINAICA base
-# @Arg     : smca           — list(value, text) for the SMCA select
-# @Arg     : red_val        — selected red value (may be "")
-# @Arg     : par_val        — parámetro value
-# @Arg     : timeout_page   — seconds for page ready
-# @Arg     : timeout_ctrl   — seconds for controls visible
-# @Arg     : timeout_est    — seconds for stations list to populate
-# @Arg     : long_pause     — if TRUE add a long settle pause at the end
-# @Output  : TRUE if stations exist and parámetro set; FALSE if no stations
-# @Purpose : Open Descargas, set SMCA/red, add all stations, set parámetro.
+#' @param session             SeleniumSession
+#' @param base_url            SINAICA base
+#' @param smca                list(value, text) for the SMCA select
+#' @param red_val             selected red value (may be "")
+#' @param par_val             parámetro value
+#' @param timeout_page        seconds for page ready
+#' @param timeout_ctrl        seconds for controls visible
+#' @param timeout_est         seconds for stations list to populate
+#' @param long_pause          if TRUE add a long settle pause at the end
+#' @return   TRUE if stations exist and parámetro set; FALSE if no stations
+#' @Purpose : Open Descargas, set SMCA/red, add all stations, set parámetro.
 # --------------------------------------------------------------------------------------------
 sinaica_rehydrate_form <- function(session, base_url,
                                    smca, red_val, par_val,
@@ -1170,10 +1170,10 @@ sinaica_rehydrate_form <- function(session, base_url,
 }
 # --------------------------------------------------------------------------------------------
 # Function : sinaica_download_via_btn
-# @Arg     : session         — SeleniumSession
-# @Arg     : btn         — Button to click on the url
-# @Output  : TRUE if succeeded - None otherwise
-# @Purpose : Download data through the href if present; otherwise click the element.
+#' @param session              SeleniumSession
+#' @param btn              Button to click on the url
+#' @return   TRUE if succeeded - None otherwise
+#' @Purpose : Download data through the href if present; otherwise click the element.
 # --------------------------------------------------------------------------------------------
 sinaica_download_via_btn <- function(session, btn) {
   href <- NULL
@@ -1196,13 +1196,13 @@ sinaica_download_via_btn <- function(session, btn) {
 }
 # --------------------------------------------------------------------------------------------
 # Function : sinaica_download_with_reclick
-# @Arg     : session        — SeleniumSession
-# @Arg     : downloads_root — directory we are watching for the CSV
-# @Arg     : before         — vector of files that existed before clicking
-# @Arg     : timeout_total  — hard cap in seconds (e.g., 60–90)
-# @Arg     : click_every    — seconds between retries
-# @Output  : path to the downloaded file (string)
-# @Purpose : Keep (re)clicking the CSV button until a new file appears, or time out.
+#' @param session             SeleniumSession
+#' @param downloads_root      directory we are watching for the CSV
+#' @param before              vector of files that existed before clicking
+#' @param timeout_total       hard cap in seconds (e.g., 60–90)
+#' @param click_every         seconds between retries
+#' @return   path to the downloaded file (string)
+#' @Purpose : Keep (re)clicking the CSV button until a new file appears, or time out.
 # --------------------------------------------------------------------------------------------
 sinaica_download_with_reclick <- function(session, downloads_root, before,
                                           timeout_total = 75, click_every = 4) {
@@ -1252,11 +1252,11 @@ sinaica_download_with_reclick <- function(session, downloads_root, before,
 }
 # --------------------------------------------------------------------------------------------
 # Function : sinaica_cleanup_downloads
-# @Arg     : dir       — directory to tidy (e.g., downloads_root)
-# @Arg     : grace_sec — only delete files older than this many seconds
-# @Arg     : patterns  — filename regex patterns to remove
-# @Output  : integer number of files deleted
-# @Purpose : Remove stale CSVs and temporary browser artifacts left by failed clicks.
+#' @param dir            directory to tidy (e.g., downloads_root)
+#' @param grace_sec      only delete files older than this many seconds
+#' @param patterns       filename regex patterns to remove
+#' @return   integer number of files deleted
+#' @Purpose : Remove stale CSVs and temporary browser artifacts left by failed clicks.
 # Note     : Non-recursive on purpose: we do NOT touch subdirectories (e.g., your subdir).
 # --------------------------------------------------------------------------------------------
 sinaica_cleanup_downloads <- function(
@@ -1287,12 +1287,12 @@ sinaica_cleanup_downloads <- function(
 # ============================================================================================
 # --------------------------------------------------------------------------------------------
 # Function : sinaica_raw_open_datos_crudos
-# @Arg     : session      — SeleniumSession
-# @Arg     : base_url     — SINAICA base (e.g., "https://sinaica.inecc.gob.mx/scica/")
-# @Arg     : timeout_page — seconds to wait for on-load readiness
-# @Arg     : timeout_ctrl — seconds to wait for first control on raw page
-# @Output  : invisible(TRUE) or error
-# @Purpose : Navigate to base URL, open “Módulos ▸ Datos crudos”, and wait controls.
+#' @param session           SeleniumSession
+#' @param base_url          SINAICA base (e.g., "https://sinaica.inecc.gob.mx/scica/")
+#' @param timeout_page      seconds to wait for on-load readiness
+#' @param timeout_ctrl      seconds to wait for first control on raw page
+#' @return   invisible(TRUE) or error
+#' @Purpose : Navigate to base URL, open “Módulos ▸ Datos crudos”, and wait controls.
 # --------------------------------------------------------------------------------------------
 sinaica_raw_open_datos_crudos <- function(session, base_url,
                                           timeout_page = 10, timeout_ctrl = 10) {
@@ -1329,11 +1329,11 @@ sinaica_raw_open_datos_crudos <- function(session, base_url,
 }
 # --------------------------------------------------------------------------------------------
 # Function : sinaica_raw_open_dropdown
-# @Arg     : session  — SeleniumSession
-# @Arg     : data_id  — one of "estacion" or "parametro"
-# @Arg     : timeout  — seconds to wait for the opened menu
-# @Output  : invisible(TRUE) or error
-# @Purpose : Open a Bootstrap-select dropdown (by data-id) and ensure items are visible.
+#' @param session       SeleniumSession
+#' @param data_id       one of "estacion" or "parametro"
+#' @param timeout       seconds to wait for the opened menu
+#' @return   invisible(TRUE) or error
+#' @Purpose : Open a Bootstrap-select dropdown (by data-id) and ensure items are visible.
 # --------------------------------------------------------------------------------------------
 sinaica_raw_open_dropdown <- function(session, data_id = c("estacion","parametro"),
                                       timeout = 8) {
@@ -1369,9 +1369,9 @@ sinaica_raw_open_dropdown <- function(session, data_id = c("estacion","parametro
 }
 # --------------------------------------------------------------------------------------------
 # Function : sinaica_raw_list_networks_and_stations
-# @Arg     : session — SeleniumSession
-# @Output  : data.frame(red_text, red_slug, station_text, station_slug)
-# @Purpose : Read the “Estación” dropdown content as pairs (Red, Estación). Red slug is the
+#' @param session      SeleniumSession
+#' @return   data.frame(red_text, red_slug, station_text, station_slug)
+#' @Purpose : Read the “Estación” dropdown content as pairs (Red, Estación). Red slug is the
 #            site header after “Red: ”, normalized via sinaica_slugify().
 # --------------------------------------------------------------------------------------------
 sinaica_raw_list_networks_and_stations <- function(session) {
@@ -1430,12 +1430,12 @@ sinaica_raw_list_networks_and_stations <- function(session) {
 }
 # --------------------------------------------------------------------------------------------
 # Function : sinaica_raw_select_station
-# @Arg     : session      — SeleniumSession
-# @Arg     : red_slug     — network slug (e.g., 'atitalaquia'); see list helper
-# @Arg     : station_text — exact visible station name inside that red
-# @Arg     : timeout      — seconds to wait after click
-# @Output  : TRUE if clicked; FALSE otherwise
-# @Purpose : Click a station option under the specified Red header. Matching for the Red
+#' @param session           SeleniumSession
+#' @param red_slug          network slug (e.g., 'atitalaquia'); see list helper
+#' @param station_text      exact visible station name inside that red
+#' @param timeout           seconds to wait after click
+#' @return   TRUE if clicked; FALSE otherwise
+#' @Purpose : Click a station option under the specified Red header. Matching for the Red
 #            is by slug; station is by exact visible text.
 # --------------------------------------------------------------------------------------------
 sinaica_raw_select_station <- function(session, red_slug, station_text, timeout = 5) {
@@ -1488,9 +1488,9 @@ sinaica_raw_select_station <- function(session, red_slug, station_text, timeout 
 }
 # --------------------------------------------------------------------------------------------
 # Function : sinaica_raw_list_parametros
-# @Arg     : session — SeleniumSession
-# @Output  : character vector of parameter names (visible text)
-# @Purpose : Open and read the “Parámetro” dropdown options.
+#' @param session      SeleniumSession
+#' @return   character vector of parameter names (visible text)
+#' @Purpose : Open and read the “Parámetro” dropdown options.
 # --------------------------------------------------------------------------------------------
 sinaica_raw_list_parametros <- function(session) {
   try(sinaica_raw_open_dropdown(session, "parametro", timeout = 8), silent = TRUE)
@@ -1518,10 +1518,10 @@ sinaica_raw_list_parametros <- function(session) {
 }
 # --------------------------------------------------------------------------------------------
 # Function : sinaica_raw_select_parametro
-# @Arg     : session  — SeleniumSession
-# @Arg     : name     — visible text (e.g., "Ozono")
-# @Output  : TRUE if clicked; FALSE otherwise
-# @Purpose : Select a parameter by its visible name in the dropdown.
+#' @param session       SeleniumSession
+#' @param name          visible text (e.g., "Ozono")
+#' @return   TRUE if clicked; FALSE otherwise
+#' @Purpose : Select a parameter by its visible name in the dropdown.
 # --------------------------------------------------------------------------------------------
 sinaica_raw_select_parametro <- function(session, name) {
   sinaica_raw_open_dropdown(session, "parametro", timeout = 8)
@@ -1545,9 +1545,9 @@ sinaica_raw_select_parametro <- function(session, name) {
 }
 # --------------------------------------------------------------------------------------------
 # Function : sinaica_raw_set_datobase_hourly
-# @Arg     : session — SeleniumSession
-# @Output  : "ok" if set to hourly; "none" if only dashed placeholder; "absent" if no select
-# @Purpose : If #slcDatoBase exists and offers options, pick “Concentraciones horarias”.
+#' @param session      SeleniumSession
+#' @return   "ok" if set to hourly; "none" if only dashed placeholder; "absent" if no select
+#' @Purpose : If #slcDatoBase exists and offers options, pick “Concentraciones horarias”.
 # --------------------------------------------------------------------------------------------
 sinaica_raw_set_datobase_hourly <- function(session) {
   raw <- try(
@@ -1579,10 +1579,10 @@ sinaica_raw_set_datobase_hourly <- function(session) {
 }
 # --------------------------------------------------------------------------------------------
 # Function : sinaica_raw_set_fecha_inicio
-# @Arg     : session   — SeleniumSession
-# @Arg     : start_iso — "YYYY-MM-DD" (default "2023-01-01")
-# @Output  : invisible(TRUE)
-# @Purpose : Set #fechaIni directly (datepicker-friendly) and fire change/input events.
+#' @param session        SeleniumSession
+#' @param start_iso      "YYYY-MM-DD" (default "2023-01-01")
+#' @return   invisible(TRUE)
+#' @Purpose : Set #fechaIni directly (datepicker-friendly) and fire change/input events.
 # --------------------------------------------------------------------------------------------
 sinaica_raw_set_fecha_inicio <- function(session, start_iso = "2023-01-01") {
   session$execute_script(
@@ -1597,9 +1597,9 @@ sinaica_raw_set_fecha_inicio <- function(session, start_iso = "2023-01-01") {
 }
 # --------------------------------------------------------------------------------------------
 # Function : sinaica_raw_set_rango_best
-# @Arg     : session — SeleniumSession
-# @Output  : character selected label (e.g., "1 año") or NA if control absent
-# @Purpose : Prefer “1 año” in #rango; otherwise pick the largest available span.
+#' @param session      SeleniumSession
+#' @return   character selected label (e.g., "1 año") or NA if control absent
+#' @Purpose : Prefer “1 año” in #rango; otherwise pick the largest available span.
 # --------------------------------------------------------------------------------------------
 sinaica_raw_set_rango_best <- function(session) {
   raw <- try(
@@ -1630,9 +1630,9 @@ sinaica_raw_set_rango_best <- function(session) {
 }
 # --------------------------------------------------------------------------------------------
 # Function : sinaica_raw_click_actualizar
-# @Arg     : session — SeleniumSession
-# @Output  : invisible(TRUE) or error
-# @Purpose : Click the “Actualizar” button (#actualiza).
+#' @param session      SeleniumSession
+#' @return   invisible(TRUE) or error
+#' @Purpose : Click the “Actualizar” button (#actualiza).
 # --------------------------------------------------------------------------------------------
 sinaica_raw_click_actualizar <- function(session) {
   btn <- wait_for(session, "css selector", "#actualiza", timeout = 10)
@@ -1641,10 +1641,10 @@ sinaica_raw_click_actualizar <- function(session) {
 }
 # --------------------------------------------------------------------------------------------
 # Function : sinaica_raw_wait_descarga_ready
-# @Arg     : session — SeleniumSession
-# @Arg     : timeout — seconds to wait for the “Descarga Datos” button
-# @Output  : TRUE if visible; FALSE otherwise
-# @Purpose : Wait until #descDatos appears (or becomes visible) after Actualizar.
+#' @param session      SeleniumSession
+#' @param timeout      seconds to wait for the “Descarga Datos” button
+#' @return   TRUE if visible; FALSE otherwise
+#' @Purpose : Wait until #descDatos appears (or becomes visible) after Actualizar.
 # --------------------------------------------------------------------------------------------
 sinaica_raw_wait_descarga_ready <- function(session, timeout = 45) {
   t0 <- Sys.time()
@@ -1667,9 +1667,9 @@ sinaica_raw_wait_descarga_ready <- function(session, timeout = 45) {
 }
 # --------------------------------------------------------------------------------------------
 # Function : sinaica_raw_click_descarga
-# @Arg     : session — SeleniumSession
-# @Output  : TRUE if click attempted; FALSE if #descDatos not found
-# @Purpose : Click the “Descarga Datos” button (span#descDatos). The caller should then use
+#' @param session      SeleniumSession
+#' @return   TRUE if click attempted; FALSE if #descDatos not found
+#' @Purpose : Click the “Descarga Datos” button (span#descDatos). The caller should then use
 #            wait_for_new_download(...) as in your SINAICA CSV flow.
 # --------------------------------------------------------------------------------------------
 sinaica_raw_click_descarga <- function(session) {
@@ -1680,8 +1680,8 @@ sinaica_raw_click_descarga <- function(session) {
 }
 # --------------------------------------------------------------------------------------------
 # Function: inegi_census_2020_ampliado_links
-# @Output    : tibble(area, slug, filename, href) for the 3 requested areas
-# @Purpose   : Hardcode the official CSV ZIP paths (relative → absolute).
+#' @return     tibble(area, slug, filename, href) for the 3 requested areas
+#' @Purpose   : Hardcode the official CSV ZIP paths (relative → absolute).
 # --------------------------------------------------------------------------------------------
 inegi_census_2020_ampliado_links <- function() {
   base <- "https://www.inegi.org.mx"
@@ -1703,9 +1703,9 @@ inegi_census_2020_ampliado_links <- function() {
 }
 # --------------------------------------------------------------------------------------------
 # Function: .http_retry_get_zip
-# @Arg       : url, dest, retries, quiet, referer
-# @Output    : list(code=<http code>, bytes=<file size or NA>)
-# @Purpose   : Robust GET with retries and disk write (httr::RETRY).
+#' @param      url, dest, retries, quiet, referer
+#' @return     list(code=<http code>, bytes=<file size or NA>)
+#' @Purpose   : Robust GET with retries and disk write (httr::RETRY).
 # --------------------------------------------------------------------------------------------
 .http_retry_get_zip <- function(url, dest, retries = 5, quiet = FALSE,
                                 referer = NULL) {
@@ -1738,25 +1738,25 @@ inegi_census_2020_ampliado_links <- function() {
 
 # --------------------------------------------------------------------------------------------
 # Function: cdmx_download_metro_area
-# @Arg       : base_url          - ficha URL (with ?upc=...) OR direct .zip URL
-# @Arg       : level             - "municipality" (default) or "ageb"
-# @Arg       : keep_municipality - vector of municipality CVEGEO keys to keep
-# @Arg       : download_dir      - where to save the ZIP
-# @Arg       : out_file          - where to write the cropped GeoPackage
-# @Arg       : overwrite_zip     - logical; re-download if ZIP exists
-# @Arg       : overwrite_gpkg    - logical; overwrite output GeoPackage if any
-# @Arg       : quiet             - logical; suppress progress
-# @Output    : Writes a GeoPackage with CDMX metro units; returns the sf.
-# @Purpose   : Download INEGI MGI 2024, read the requested layer (municipal or
+#' @param base_url                 ficha URL (with ?upc=...) OR direct .zip URL
+#' @param level                    "municipality" (default) or "ageb"
+#' @param keep_municipality        vector of municipality CVEGEO keys to keep
+#' @param download_dir             where to save the ZIP
+#' @param out_file                 where to write the cropped GeoPackage
+#' @param overwrite_zip            logical; re-download if ZIP exists
+#' @param overwrite_gpkg           logical; overwrite output GeoPackage if any
+#' @param quiet                    logical; suppress progress
+#' @return     Writes a GeoPackage with CDMX metro units; returns the sf.
+#' @Purpose   : Download INEGI MGI 2024, read the requested layer (municipal or
 #              AGEB), filter by municipality CVEGEO (ENT+MUN), and save it.
-# @Details   : The layer keeps INEGI's own CRS, EPSG:6372 (Mexico ITRF2008 / LCC) —
+#' @details    The layer keeps INEGI's own CRS, EPSG:6372 (Mexico ITRF2008 / LCC) —
 #              the only projected metro layer in the project, so data/raw/ stays
 #              faithful to the source. Nothing downstream may reuse it as a metric
 #              CRS: its scale factor is 0.99712 at 19.4N, which would stretch a
 #              20 km ring to 20 058 m. The AGEB layer carries 1 ring
 #              self-intersection, repaired at the point of use.
-# @Written_on: 02/09/2025
-# @Written_by: Marcos Paulo
+#' @Written_on: 02/09/2025
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 cdmx_download_metro_area <- function(
     base_url          = cdmx_cfg$base_url_shp,
@@ -1993,19 +1993,19 @@ cdmx_download_metro_area <- function(
 
 # --------------------------------------------------------------------------------------------
 # Function: cdmx_scrape_station_catalog
-# @Arg       : page_url      — string; page that contains the "Catálogo estaciones" link
-# @Arg       : harmonize_map — named chr vec (optional) to rename station display names
-# @Arg       : verbose       — logical; print progress (default TRUE)
-# @Arg       : out_dir       — string; directory to write outputs (created if missing)
-# @Arg       : out_name      — string; base filename *without* extension
-# @Arg       : write_rds     — logical; write .rds (default FALSE)
-# @Arg       : write_parquet — logical; write .parquet via {arrow} (default TRUE)
-# @Arg       : write_csv     — logical; write .csv (default FALSE)
-# @Output    : tibble with columns:
+#' @param page_url             string; page that contains the "Catálogo estaciones" link
+#' @param harmonize_map        named chr vec (optional) to rename station display names
+#' @param verbose              logical; print progress (default TRUE)
+#' @param out_dir              string; directory to write outputs (created if missing)
+#' @param out_name             string; base filename *without* extension
+#' @param write_rds            logical; write .rds (default FALSE)
+#' @param write_parquet        logical; write .parquet via {arrow} (default TRUE)
+#' @param write_csv            logical; write .csv (default FALSE)
+#' @return     tibble with columns:
 #              entity, station, code, lon, lat, altitude_m, notes, id_station, source_url
-# @Purpose   : Scrape the "Catálogo estaciones" for CDMX, read the CSV safely (Latin-1 → UTF-8),
+#' @Purpose  : Scrape the "Catálogo estaciones" for CDMX, read the CSV safely (Latin-1 → UTF-8),
 #              and return a clean tibble with station metadata (code, name, lat/lon, etc.).
-# @Written_on: 2025-09-04
+#' @Written_on: 2025-09-04
 # --------------------------------------------------------------------------------------------
 cdmx_scrape_station_catalog <- function(
     page_url,
@@ -2271,24 +2271,24 @@ cdmx_scrape_station_catalog <- function(
 
 # --------------------------------------------------------------------------------------------
 # Function: cdmx_scrape_states_merge
-# @Arg       : station_in_cdmx — tibble; pre-scraped CDMX stations
-# @Arg       : base_url        — string; landing with the state dropdown
-# @Arg       : states          — character; state names to scrape
-# @Arg       : container       — TRUE if using docker-compose Selenium service
-# @Arg       : session         — optional SeleniumSession (reuse if provided)
-# @Arg       : timeout_page    — seconds to wait for page load
-# @Arg       : timeout_ctrl    — seconds to wait for controls/table
-# @Arg       : wd_request_timeout_ms — per-request driver timeout
-# @Arg       : out_dir         — string; directory to write outputs (created if missing)
-# @Arg       : out_name        — string; base filename *without* extension
-# @Arg       : write_rds       — logical; write .rds (default FALSE)
-# @Arg       : write_parquet   — logical; write .parquet via {arrow} (default TRUE)
-# @Arg       : write_csv       — logical; write .csv (default FALSE)
-# @Arg       : verbose         — logical; print progress (default TRUE)
-# @Output    : tibble merged (CDMX + selected states)
-# @Purpose   : Open dropdown → click state → wait table (scroll-aware) → iterate stations.
-# @Written_on: 20/08/2025
-# @Written_by: Marcos Paulo
+#' @param station_in_cdmx        tibble; pre-scraped CDMX stations
+#' @param base_url               string; landing with the state dropdown
+#' @param states                 character; state names to scrape
+#' @param container              TRUE if using docker-compose Selenium service
+#' @param session                optional SeleniumSession (reuse if provided)
+#' @param timeout_page           seconds to wait for page load
+#' @param timeout_ctrl           seconds to wait for controls/table
+#' @param wd_request_timeout_ms        per-request driver timeout
+#' @param out_dir                string; directory to write outputs (created if missing)
+#' @param out_name               string; base filename *without* extension
+#' @param write_rds              logical; write .rds (default FALSE)
+#' @param write_parquet          logical; write .parquet via {arrow} (default TRUE)
+#' @param write_csv              logical; write .csv (default FALSE)
+#' @param verbose                logical; print progress (default TRUE)
+#' @return     tibble merged (CDMX + selected states)
+#' @Purpose  : Open dropdown → click state → wait table (scroll-aware) → iterate stations.
+#' @Written_on: 20/08/2025
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 cdmx_scrape_states_merge <- function(
     station_in_cdmx,
@@ -2588,28 +2588,28 @@ cdmx_scrape_states_merge <- function(
 
 # --------------------------------------------------------------------------------------------
 # Function : cdmx_download_sinaica_data
-# @Arg     : base_url      — SINAICA form URL ("https://sinaica.inecc.gob.mx/scica/")
-# @Arg     : years         — integer vector (e.g., 2000:2023)
-# @Arg     : container     — TRUE if using docker-compose Selenium service
-# @Arg     : session       — optional SeleniumSession (reuse if provided)
-# @Arg     : max_attempts  — retries per (smca, red, parámetro, year)
-# @Arg     : timeout_page  — seconds for page load readiness
-# @Arg     : timeout_ctrl  — seconds for controls to appear
-# @Arg     : timeout_modal — seconds to see the first "Aceptar" modal
-# @Arg     : timeout_csv   — seconds to wait results → CSV after Buscar
-# @Arg     : timeout_dl    — seconds to wait for each CSV file to download
-# @Arg     : timeout_param_ready — seconds to wait parámetro list
-# @Arg     : timeout_year_ready  — seconds to wait year list
-# @Arg     : timeout_est_ready   — seconds to wait station list
-# @Arg     : wd_request_timeout_ms — per-request driver timeout (if supported)
-# @Arg     : settle_first_year_sec — pause before first year of a parámetro
-# @Arg     : settle_before_csv_click_sec — pause after results before CSV click
-# @Arg     : subdir        — folder under DOWNLOADS_DIR to move files to
-# @Output  : invisible tibble log: smca, red, parametro, year, status, file
-# @Purpose : Drive SINAICA "Descargas" reliably. Same as before, but with adaptive waits
+#' @param base_url           SINAICA form URL ("https://sinaica.inecc.gob.mx/scica/")
+#' @param years              integer vector (e.g., 2000:2023)
+#' @param container          TRUE if using docker-compose Selenium service
+#' @param session            optional SeleniumSession (reuse if provided)
+#' @param max_attempts       retries per (smca, red, parámetro, year)
+#' @param timeout_page       seconds for page load readiness
+#' @param timeout_ctrl       seconds for controls to appear
+#' @param timeout_modal      seconds to see the first "Aceptar" modal
+#' @param timeout_csv        seconds to wait results → CSV after Buscar
+#' @param timeout_dl         seconds to wait for each CSV file to download
+#' @param timeout_param_ready      seconds to wait parámetro list
+#' @param timeout_year_ready       seconds to wait year list
+#' @param timeout_est_ready        seconds to wait station list
+#' @param wd_request_timeout_ms      per-request driver timeout (if supported)
+#' @param settle_first_year_sec      pause before first year of a parámetro
+#' @param settle_before_csv_click_sec      pause after results before CSV click
+#' @param subdir             folder under DOWNLOADS_DIR to move files to
+#' @return   invisible tibble log: smca, red, parametro, year, status, file
+#' @Purpose : Drive SINAICA "Descargas" reliably. Same as before, but with adaptive waits
 #            for the slow CDMX group and a safer Buscar lookup.
-# @Written_on: 05/09/2025
-# @Written_by: Marcos Paulo
+#' @Written_on: 05/09/2025
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 cdmx_download_sinaica_data <- function(
     base_url      = cdmx_cfg$base_url_sinaica,
@@ -3120,25 +3120,25 @@ cdmx_download_sinaica_data <- function(
 
 # ============================================================================================
 # Function: cdmx_download_remaining_raw_sinaica
-# @Arg  : base_url         — SINAICA base URL (e.g., cdmx_cfg$base_url_sinaica)
-# @Arg  : subdir_existing  — dir with existing validated CSVs (to check missing 2023)
-# @Arg  : out_subdir_raw   — dir to save new raw downloads (separate from validated)
-# @Arg  : container        — TRUE if using docker-compose Selenium service
-# @Arg  : session          — optional SeleniumSession (reuse if provided)
-# @Arg  : year_check       — integer year to pull as raw (default 2023)
-# @Arg  : max_attempts     — retries per (station, parameter)
-# @Arg  : timeout_page     — seconds for base page ready
-# @Arg  : timeout_ctrl     — seconds for controls to appear
-# @Arg  : timeout_descarga — seconds to wait “Descarga Datos” after “Actualizar”
-# @Arg  : timeout_dl       — seconds to wait for each file to land in downloads
-# @Arg  : wd_request_timeout_ms — per-request driver timeout (if supported)
-# @Arg  : settle_after_station_sec — pause after picking a station
-# @Arg  : settle_after_param_sec   — pause after picking a parameter
-# @Output: invisible tibble log: smca, red, station, parametro, year, status, file
-# @Purpose: (1) Detect which SMCA/state slugs lack `year_check` in validated folder.
+#' @param base_url           SINAICA base URL (e.g., cdmx_cfg$base_url_sinaica)
+#' @param subdir_existing    dir with existing validated CSVs (to check missing 2023)
+#' @param out_subdir_raw     dir to save new raw downloads (separate from validated)
+#' @param container          TRUE if using docker-compose Selenium service
+#' @param session            optional SeleniumSession (reuse if provided)
+#' @param year_check         integer year to pull as raw (default 2023)
+#' @param max_attempts       retries per (station, parameter)
+#' @param timeout_page       seconds for base page ready
+#' @param timeout_ctrl       seconds for controls to appear
+#' @param timeout_descarga   seconds to wait “Descarga Datos” after “Actualizar”
+#' @param timeout_dl         seconds to wait for each file to land in downloads
+#' @param wd_request_timeout_ms   per-request driver timeout (if supported)
+#' @param settle_after_station_sec   pause after picking a station
+#' @param settle_after_param_sec     pause after picking a parameter
+#' @return invisible tibble log: smca, red, station, parametro, year, status, file
+#' @Purpose: (1) Detect which SMCA/state slugs lack `year_check` in validated folder.
 #           (2) On “Módulos ▸ Datos crudos”, loop networks/stations in those states and
 #               download hourly raw files for every available parameter in 2023.
-# @Notes : Requires the raw helpers:
+#' @Notes : Requires the raw helpers:
 #          - sinaica_raw_open_datos_crudos(), sinaica_raw_list_networks_and_stations(),
 #            sinaica_raw_select_station(), sinaica_raw_list_parametros(),
 #            sinaica_raw_select_parametro(), sinaica_raw_set_datobase_hourly(),
@@ -3147,8 +3147,8 @@ cdmx_download_sinaica_data <- function(
 #            sinaica_raw_click_descarga()
 #          Also uses: wait_ready(), wait_for(), wait_for_new_download(),
 #                      sinaica_slugify(), sinaica_next_nonconflicting()
-# @Written_on: 12/10/2025
-# @Written_by: Marcos Paulo
+#' @Written_on: 12/10/2025
+#' @Written_by: Marcos Paulo
 # ============================================================================================
 cdmx_download_remaining_raw_sinaica <- function(
     base_url        = cdmx_cfg$base_url_sinaica,
@@ -3585,16 +3585,16 @@ cdmx_download_remaining_raw_sinaica <- function(
 
 # --------------------------------------------------------------------------------------------
 # Function: cdmx_download_inegi_census_2020_ampliado
-# @Arg       : areas          — character; which areas to fetch
-# @Arg       : base_url       — catalog page (for Referer header/log only)
-# @Arg       : out_dir        — directory to save ZIPs
-# @Arg       : overwrite      — re-download if file exists (default FALSE)
-# @Arg       : retries        — max HTTP retries (default 5)
-# @Arg       : quiet          — suppress progress messages (default FALSE)
-# @Output    : tibble(area, file_path, bytes, status)
-# @Purpose   : Download the CSV ZIPs for CA (cuestionario ampliado) directly.
-# @Written_on: 08/07/2025
-# @Written_by: Marcos Paulo
+#' @param areas                 character; which areas to fetch
+#' @param base_url              catalog page (for Referer header/log only)
+#' @param out_dir               directory to save ZIPs
+#' @param overwrite             re-download if file exists (default FALSE)
+#' @param retries               max HTTP retries (default 5)
+#' @param quiet                 suppress progress messages (default FALSE)
+#' @return     tibble(area, file_path, bytes, status)
+#' @Purpose   : Download the CSV ZIPs for CA (cuestionario ampliado) directly.
+#' @Written_on: 08/07/2025
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 cdmx_download_census_data <- function(
     areas     = c("Ciudad de México", "Hidalgo", "México"),
@@ -3763,21 +3763,21 @@ cdmx_download_census_data <- function(
 
 # --------------------------------------------------------------------------------------------
 # Helper: MEMORY engine (RAM-path; writes per-year partitioned Parquet)
-# @Arg  : csvs             — character vector of CSV paths (Type 1 structure)
-# @Arg  : new_source_files — character vector of XLSX/XLS paths (Type 2)
-# @Arg  : station_lookup   — data.frame (lookup_key, code, official_name).
-# @Arg  : years            — integer vector of years to keep
-# @Arg  : tz               — Olson tz; kept for signature symmetry. Datetimes are
+#' @param csvs               character vector of CSV paths (Type 1 structure)
+#' @param new_source_files   character vector of XLSX/XLS paths (Type 2)
+#' @param station_lookup     data.frame (lookup_key, code, official_name).
+#' @param years              integer vector of years to keep
+#' @param tz                 Olson tz; kept for signature symmetry. Datetimes are
 #                            stored as the source wall clock with no tz attribute
 #                            (see DATETIME CONVENTION), so a non-UTC tz no longer
 #                            shifts or relabels the output.
-# @Arg  : out_dir, out_name— output; dataset -> out_dir/<out_name>_dataset/
-# @Arg  : write_parquet    — logical; write partitioned dataset if TRUE
-# @Arg  : write_rds, write_csv — optional single-file artifacts
-# @Arg  : cleanup          — logical; remove source files after success
-# @Arg  : verbose          — logical; print progress
-# @Arg  : stations_keep_codes — vector of codes to keep (legacy filter)
-# @Return: Arrow Dataset handle (if write_parquet) or tibble.
+#' @param out_dir, out_name— output; dataset -> out_dir/<out_name>_dataset/
+#' @param write_parquet      logical; write partitioned dataset if TRUE
+#' @param write_rds, write_csv — optional single-file artifacts
+#' @param cleanup            logical; remove source files after success
+#' @param verbose            logical; print progress
+#' @param stations_keep_codes   vector of codes to keep (legacy filter)
+#' @Return: Arrow Dataset handle (if write_parquet) or tibble.
 #
 # DATETIME CONVENTION (gold standard, shared with the Bogota reader):
 #   Source timestamps are the station's local wall clock. We build them as naive
@@ -4126,18 +4126,18 @@ cdmx_download_census_data <- function(
 
 # --------------------------------------------------------------------------------------------
 # Helper: DUCKDB engine (disk-backed; partitioned Parquet dataset)
-# @Arg  : csvs             — character vector of CSV paths (Type 1 structure)
-# @Arg  : new_source_files — character vector of XLSX/XLS paths (Type 2)
-# @Arg  : station_lookup   — data.frame (lookup_key, code, official_name).
-# @Arg  : years            — integer vector of years to keep
-# @Arg  : tz               — Olson tz; kept for signature symmetry only. Datetimes
+#' @param csvs               character vector of CSV paths (Type 1 structure)
+#' @param new_source_files   character vector of XLSX/XLS paths (Type 2)
+#' @param station_lookup     data.frame (lookup_key, code, official_name).
+#' @param years              integer vector of years to keep
+#' @param tz                 Olson tz; kept for signature symmetry only. Datetimes
 #                            are stored as the source wall clock with no tz shift
 #                            (see DATETIME CONVENTION).
-# @Arg  : out_dir, out_name— output location
-# @Arg  : cleanup          — logical; remove source files after success
-# @Arg  : run_parallel     — logical; enable DuckDB multi-threading
-# @Arg  : verbose          — logical; print progress
-# @Return: Arrow Dataset handle to the dataset folder.
+#' @param out_dir, out_name— output location
+#' @param cleanup            logical; remove source files after success
+#' @param run_parallel       logical; enable DuckDB multi-threading
+#' @param verbose            logical; print progress
+#' @Return: Arrow Dataset handle to the dataset folder.
 #
 # DATETIME CONVENTION (gold standard, shared with the Bogota reader):
 #   datetime is staged as VARCHAR ('YYYY-MM-DD HH:MM:SS') and converted back with
@@ -4503,26 +4503,26 @@ cdmx_download_census_data <- function(
 
 # --------------------------------------------------------------------------------------------
 # Function: cdmx_merge_pollution_data
-# @Arg  : primary_data_dir   — folder with .csv files 
-# @Arg  : secondary_data_dir — folder with .xls/xlsx files
-# @Arg  : stations_sf        — sf dataframe containing stations' info
-# @Arg  : tz                 — Olson tz for final relabel (default "America/Mexico_City")
-# @Arg  : years              — integer vector of years to keep (UTC/local)
-# @Arg  : cleanup            — remove source CSVs after success (default FALSE)
-# @Arg  : out_dir, out_name  — output location (dataset goes to "<name>_dataset/")
-# @Arg  : write_parquet      — TRUE → write Parquet artifacts
+#' @param primary_data_dir     folder with .csv files
+#' @param secondary_data_dir   folder with .xls/xlsx files
+#' @param stations_sf          sf dataframe containing stations' info
+#' @param tz                   Olson tz for final relabel (default "America/Mexico_City")
+#' @param years                integer vector of years to keep (UTC/local)
+#' @param cleanup              remove source CSVs after success (default FALSE)
+#' @param out_dir, out_name  — output location (dataset goes to "<name>_dataset/")
+#' @param write_parquet        TRUE → write Parquet artifacts
 #                             • memory: per-year partitioned dataset via {arrow}
 #                             • duckdb: per-year partitioned dataset via COPY
-# @Arg  : write_rds, write_csv — optional single-file extras (memory engine)
-# @Arg  : verbose           — print progress (default TRUE)
-# @Arg  : engine            — "auto" | "duckdb" | "memory"
+#' @param write_rds, write_csv — optional single-file extras (memory engine)
+#' @param verbose             print progress (default TRUE)
+#' @param engine              "auto" | "duckdb" | "memory"
 #                             Auto: if RAM > 64 GB → "memory", else "duckdb"
-# @Arg  : stations_keep_codes — NULL or character vector of station codes to keep
-# @Return: Arrow Dataset handle (if Parquet written) else tibble.
-# @Steps : (1) discover CSVs, (2) RAM detect + engine pick,
+#' @param stations_keep_codes   NULL or character vector of station codes to keep
+#' @Return: Arrow Dataset handle (if Parquet written) else tibble.
+#' @Steps : (1) discover CSVs, (2) RAM detect + engine pick,
 #          (3A) memory engine, (3B) duckdb engine.
-# @Written_on: 20/08/2025
-# @Written_by: Marcos Paulo
+#' @Written_on: 20/08/2025
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 cdmx_merge_pollution_data <- function(
     primary_data_dir,        
@@ -4593,23 +4593,23 @@ cdmx_merge_pollution_data <- function(
 
 # --------------------------------------------------------------------------------------------
 # Function: cdmx_filter_stations_in_metro
-# @Arg       : station_location — data.frame/tibble with lon/lat columns
-# @Arg       : metro_area       — sf (MULTI)POLYGON of the metropolitan area
-# @Arg       : radius_km        — numeric; max distance to keep (default 20)
-# @Arg       : lon_col          — name of longitude column (default "lon")
-# @Arg       : lat_col          — name of latitude column  (default "lat")
-# @Arg       : stations_epsg    — EPSG for lon/lat (default 4326 WGS84)
-# @Arg       : out_file          — where to write the cropped GeoPackage
-# @Arg       : overwrite_gpkg    — logical; overwrite output GeoPackage if exists
-# @Arg       : dissolve         — logical; TRUE unions metro polygons (default TRUE)
-# @Arg       : verbose          — logical; TRUE prints summary (default TRUE)
-# @Output    : sf POINT data.frame of stations filtered to inside/near metro_area
-# @Purpose   : Keep stations that lie inside or within 'radius_km' km from the
+#' @param station_location        data.frame/tibble with lon/lat columns
+#' @param metro_area              sf (MULTI)POLYGON of the metropolitan area
+#' @param radius_km               numeric; max distance to keep (default 20)
+#' @param lon_col                 name of longitude column (default "lon")
+#' @param lat_col                 name of latitude column  (default "lat")
+#' @param stations_epsg           EPSG for lon/lat (default 4326 WGS84)
+#' @param out_file                 where to write the cropped GeoPackage
+#' @param overwrite_gpkg           logical; overwrite output GeoPackage if exists
+#' @param dissolve                logical; TRUE unions metro polygons (default TRUE)
+#' @param verbose                 logical; TRUE prints summary (default TRUE)
+#' @return     sf POINT data.frame of stations filtered to inside/near metro_area
+#' @Purpose   : Keep stations that lie inside or within 'radius_km' km from the
 #              metropolitan area polygon. Builds geometry from lon/lat, aligns
 #              CRS for accurate distance, and filters using geodesic-safe
 #              distances (projects to meters when needed).
-# @Written_on: 15/09/2025
-# @Written_by: Marcos Paulo
+#' @Written_on: 15/09/2025
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 cdmx_filter_stations_in_metro <- function(
     station_location,
@@ -4696,16 +4696,16 @@ cdmx_filter_stations_in_metro <- function(
 
 # --------------------------------------------------------------------------------------------
 # Function: mexico_filter_census
-# @Arg       : census_dir  — folder containing Censo2020_CA_*.zip files
-# @Arg       : out_dir     — where to write the extracted PersonasXX.csv files
-# @Arg       : overwrite   — re-extract if output file exists (default FALSE)
-# @Arg       : quiet       — suppress messages (default FALSE)
-# @Output    : tibble with columns: file, size, type, state_zip
-# @Purpose   : Scan folder for Mexico Census 2020 Zips (CSV format), locate 
+#' @param census_dir         folder containing Censo2020_CA_*.zip files
+#' @param out_dir            where to write the extracted PersonasXX.csv files
+#' @param overwrite          re-extract if output file exists (default FALSE)
+#' @param quiet              suppress messages (default FALSE)
+#' @return     tibble with columns: file, size, type, state_zip
+#' @Purpose   : Scan folder for Mexico Census 2020 Zips (CSV format), locate 
 #              the "Personas" file inside each, and extract it directly to
 #              out_dir (flattening structure).
-# @Written_on: 05/09/2025
-# @Written_by: Marcos Paulo
+#' @Written_on: 05/09/2025
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 mexico_filter_census <- function(
     census_dir = here::here("data", "downloads", "census_mx"),
@@ -4825,26 +4825,26 @@ mexico_filter_census <- function(
 # --------------------------------------------------------------------------------------------
 # Function: mexico_harmonize_census_data
 #
-# @Arg extract_index : data.frame; output from mexico_filter_census.
-# @Arg metro_codes   : vector; municipality codes to keep. If NULL, keeps all.
-# @Arg out_dir       : string; output folder for processed data.
-# @Arg quiet         : logical; suppress progress messages. Default FALSE.
+#' @param extract_index data.frame; output from mexico_filter_census.
+#' @param metro_codes  vector; municipality codes to keep. If NULL, keeps all.
+#' @param out_dir      string; output folder for processed data.
+#' @param quiet        logical; suppress progress messages. Default FALSE.
 #
-# @Output : list(individual, collapsed); processed census data. Also writes
+#' @return  list(individual, collapsed); processed census data. Also writes
 #           census_metro_individual_2020.parquet and collapse_metro_area_2020.parquet.
 #           Parquet stores the column types instead of leaving them to a CSV reader's
 #           guess. CVE_MUN is deliberately numeric here, matching cfg$cities_in_metro;
 #           the gpkg side is the padded "09002" string, so joins against spatial data
 #           pad the census side with canonical_geo_id(width = 5) at the join.
 #
-# @Purpose:
+#' @Purpose:
 #   Replicates the Stata schooling logic, harmonizes demographic and labor
 #   variables, filters adults aged 25+, and collapses to municipality level.
 #   Income (INGTRMEN) is harmonized and winsorized so the IDW estimator can
 #   build income deciles downstream.
 #
-# @Written_on : 05/02/2026
-# @Written_by : Marcos Paulo
+#' @Written_on : 05/02/2026
+#' @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 mexico_harmonize_census_data <- function(
     extract_index,

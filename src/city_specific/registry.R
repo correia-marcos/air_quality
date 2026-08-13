@@ -1,9 +1,9 @@
 # ============================================================================================
 # IDB: Air monitoring — Registry module
 # ============================================================================================
-# @Goal   : register + retrieve city modules (cfg + functions)
-# @Date   : Aug 2025
-# @Author : Marcos Paulo
+#' @Goal   : register + retrieve city modules (cfg + functions)
+#' @Date   : Aug 2025
+#' @Author : Marcos Paulo
 # ============================================================================================
 
 .city_registry <- new.env(parent = emptyenv())

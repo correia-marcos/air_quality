@@ -1,9 +1,9 @@
 # ============================================================================================
 # IDB: Air monitoring — Santiago module
 # ============================================================================================
-# @Goal   : Santiago-specific parameters, download/process wrappers, and any site-specific code
-# @Date   : Out 2025
-# @Author : Marcos Paulo
+#' @Goal  : Santiago-specific parameters, download/process wrappers, and any site-specific code
+#' @Date   : Out 2025
+#' @Author : Marcos Paulo
 # Obs: Expect the caller to have already sourced:
 #   - src/config_utils_download_data.R  (selenium helpers, waits, clicking helpers, etc.)
 #   - src/config_utils_process_data.R   (merge, tidy, QA, parquet writing, etc.)
@@ -48,21 +48,21 @@ santiago_cfg <- list(
 # --------------------------------------------------------------------------------------------
 # Function: santiago_download_metro_area_2024
 #
-# @Arg type              : string; "metro_santiago" or "gran_santiago".
-# @Arg level             : string; "mpio" or "manzana".
-# @Arg base_url          : string; INE Census 2024 results URL.
-# @Arg keep_municipality : character vector; municipalities to keep.
-# @Arg download_dir      : string; local path to save the raw ZIP file.
-# @Arg out_file          : string; local path to save the processed GeoPackage.
-# @Arg dissolve_by       : string or NULL; id column whose repeated values are
+#' @param type             string; "metro_santiago" or "gran_santiago".
+#' @param level            string; "mpio" or "manzana".
+#' @param base_url         string; INE Census 2024 results URL.
+#' @param keep_municipality character vector; municipalities to keep.
+#' @param download_dir     string; local path to save the raw ZIP file.
+#' @param out_file         string; local path to save the processed GeoPackage.
+#' @param dissolve_by      string or NULL; id column whose repeated values are
 #                          merged into one polygon. Default NULL (no merging).
-# @Arg overwrite_zip     : logical; re-download ZIP if it exists. Default FALSE.
-# @Arg overwrite_gpkg    : logical; overwrite output GeoPackage. Default TRUE.
-# @Arg container         : logical; TRUE if running with Docker Selenium.
-# @Arg quiet             : logical; suppress messages. Default FALSE.
+#' @param overwrite_zip    logical; re-download ZIP if it exists. Default FALSE.
+#' @param overwrite_gpkg   logical; overwrite output GeoPackage. Default TRUE.
+#' @param container        logical; TRUE if running with Docker Selenium.
+#' @param quiet            logical; suppress messages. Default FALSE.
 #
-# @Output : sf object containing the filtered spatial data.
-# @Details:
+#' @return  sf object containing the filtered spatial data.
+#' @details
 #   Downloads the INE 2024 census cartography, filters the requested Santiago
 #   spatial definition, linearizes curved geometries, repairs validity, and
 #   saves the result as a GeoPackage. Linearization is required because the INE
@@ -81,8 +81,8 @@ santiago_cfg <- list(
 #   faithful to the source. The 2017 zonas arrive in EPSG:4326 instead; both are
 #   ITRF-aligned and every consumer reprojects, so the split is harmless.
 #
-# @Written_on : 25/10/2025
-# @Written_by : Marcos Paulo
+#' @Written_on : 25/10/2025
+#' @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 santiago_download_metro_area_2024 <- function(
     type              = c("metro_santiago", "gran_santiago"),
@@ -630,28 +630,28 @@ santiago_download_metro_area_2024 <- function(
 # ----------------------------------------------------------------------------------------
 # Function: santiago_download_pollution
 #
-# @Arg       : states          — character vector; List of states (Regiones) to scrape.
+#' @param states                 character vector; List of states (Regiones) to scrape.
 #                                Defaults to santiago_cfg$which_states.
-# @Arg       : base_url        — string; Base URL for SINCA historical data.
-# @Arg       : parameters      — character vector; Pollutants to download.
+#' @param base_url               string; Base URL for SINCA historical data.
+#' @param parameters             character vector; Pollutants to download.
 #                                (PM10, PM2.5, NO2, CO, O3, SO2)
-# @Arg       : years_range     — numeric vector; Years to include in the date range.
-# @Arg       : subdir          — string; Sub-path relative to root for saving files.
-# @Arg       : container       — logical; TRUE if running inside Docker Selenium.
-# @Arg       : quiet           — logical; If TRUE, suppresses progress messages.
+#' @param years_range            numeric vector; Years to include in the date range.
+#' @param subdir                 string; Sub-path relative to root for saving files.
+#' @param container              logical; TRUE if running inside Docker Selenium.
+#' @param quiet                  logical; If TRUE, suppresses progress messages.
 #
-# @Output    : tibble; A log of all downloaded files, including status, station name,
+#' @return     tibble; A log of all downloaded files, including status, station name,
 #              parameter, and local file path.
 #              Side effect: Saves CSV files to the specified 'subdir'.
 #
-# @Purpose   : Scrapes SINCA data handling the Legacy Frameset Architecture.
+#' @Purpose   : Scrapes SINCA data handling the Legacy Frameset Architecture.
 #              1. Maps all station URLs.
 #              2. Navigates to the station page.
 #              3. Switches context to the 'left' frame for changing parameters.
 #              4. Switches context to the 'left' frame for downloading txt file.
 #
-# @Written_by: Marcos Paulo
-# @Written_on: 10/11/2025
+#' @Written_by: Marcos Paulo
+#' @Written_on: 10/11/2025
 # ----------------------------------------------------------------------------------------
 santiago_download_pollution <- function(
     states       = santiago_cfg$which_states,
@@ -996,25 +996,25 @@ santiago_download_pollution <- function(
 # --------------------------------------------------------------------------------------------
 # Function: santiago_download_station_info
 #
-# @Arg       : states          — character vector; List of states to scrape.
+#' @param states                 character vector; List of states to scrape.
 #                                Defaults to santiago_cfg$which_states.
-# @Arg       : base_url        — string; Base URL for SINCA historical data.
-# @Arg       : subdir          — string; Sub-path relative to root for saving.
+#' @param base_url               string; Base URL for SINCA historical data.
+#' @param subdir                 string; Sub-path relative to root for saving.
 #                                Defaults to "santiago/station_metadata".
-# @Arg       : container       — logical; TRUE if running inside Docker Selenium.
-# @Arg       : quiet           — logical; If TRUE, suppresses progress messages.
+#' @param container              logical; TRUE if running inside Docker Selenium.
+#' @param quiet                  logical; If TRUE, suppresses progress messages.
 #
-# @Output    : tibble; Returns the metadata dataframe invisibly.
+#' @return     tibble; Returns the metadata dataframe invisibly.
 #              Side Effect: Saves a CSV file to the specified 'subdir'.
 #
-# @Purpose   : Scrapes the "Ficha" (General Information) for air quality stations.
+#' @Purpose   : Scrapes the "Ficha" (General Information) for air quality stations.
 #              1. Navigates the SINCA table to find the "Ficha" icon link.
 #              2. Visits each station's metadata page.
 #              3. Extracts key-value pairs from the "Información general" table.
 #              4. Cleans, structures, and SAVES the data to CSV.
 #
-# @Written_by: Marcos Paulo
-# @Written_on: 13/12/2025
+#' @Written_by: Marcos Paulo
+#' @Written_on: 13/12/2025
 # --------------------------------------------------------------------------------------------
 santiago_download_station_info <- function(
     states       = santiago_cfg$which_states,
@@ -1228,22 +1228,22 @@ santiago_download_station_info <- function(
 # --------------------------------------------------------------------------------------------
 # Function: santiago_download_census_data
 #
-# @Arg       : type            — string; The dataset to download.
+#' @param type                   string; The dataset to download.
 #                                Options: "people", "homes", "households",
 #                                "geo_location".
-# @Arg       : year            — integer; Census year (2017 or 2024).
+#' @param year                   integer; Census year (2017 or 2024).
 #                                Defaults to 2017.
-# @Arg       : url             — string; OPTIONAL. Direct URL to download.
+#' @param url                    string; OPTIONAL. Direct URL to download.
 #                                If provided, it overrides 'type'/'year'.
 #                                Useful if INE changes their links.
-# @Arg       : download_folder — string; Root path to save the ZIP file.
+#' @param download_folder        string; Root path to save the ZIP file.
 #                                Defaults to "data/downloads/santiago/census".
-# @Arg       : overwrite       — logical; Re-download if file exists?
-# @Arg       : quiet           — logical; Suppress progress bars?
+#' @param overwrite              logical; Re-download if file exists?
+#' @param quiet                  logical; Suppress progress bars?
 #
-# @Output    : tibble; Log containing type, file_path, bytes, and status.
+#' @return     tibble; Log containing type, file_path, bytes, and status.
 #
-# @Purpose   : Downloads Chilean Census microdata.
+#' @Purpose   : Downloads Chilean Census microdata.
 #              1. Checks for a direct URL override.
 #              2. Looks up stable defaults for 2017 (INE Archive) and
 #                 2024 (Google Storage Buckets).
@@ -1252,8 +1252,8 @@ santiago_download_station_info <- function(
 # IMPORTANT: For 2017 Tabular data (people/homes/households),
 #              this function now blocks the download and redirects the user
 #              to use the 'censo2017' R package due to unstable URLs.
-# @Written_by: Marcos Paulo
-# @Written_on: 16/01/2026
+#' @Written_by: Marcos Paulo
+#' @Written_on: 16/01/2026
 # --------------------------------------------------------------------------------------------
 santiago_download_census_data <- function(
     type            = "people",
@@ -1442,24 +1442,24 @@ santiago_download_census_data <- function(
 # --------------------------------------------------------------------------------------------
 # Function: santiago_filter_stations_in_metro
 #
-# @Arg stations_df    : data.frame; raw SINCA station-location data.
-# @Arg metro_area     : sf POLYGON/MULTIPOLYGON; metropolitan area boundary.
-# @Arg radius_km      : numeric; max distance from metro area to keep. Default 20.
-# @Arg out_file       : string; output GeoPackage path.
-# @Arg overwrite_gpkg : logical; overwrite output GeoPackage if exists. Default TRUE.
-# @Arg dissolve       : logical; union metro polygons before filtering. Default TRUE.
-# @Arg correct_sinca  : logical; apply documented SINCA metadata corrections.
-# @Arg quiet          : logical; suppress messages. Default FALSE.
+#' @param stations_df   data.frame; raw SINCA station-location data.
+#' @param metro_area    sf POLYGON/MULTIPOLYGON; metropolitan area boundary.
+#' @param radius_km     numeric; max distance from metro area to keep. Default 20.
+#' @param out_file      string; output GeoPackage path.
+#' @param overwrite_gpkg logical; overwrite output GeoPackage if exists. Default TRUE.
+#' @param dissolve      logical; union metro polygons before filtering. Default TRUE.
+#' @param correct_sinca logical; apply documented SINCA metadata corrections.
+#' @param quiet         logical; suppress messages. Default FALSE.
 #
-# @Output : sf POINT data.frame of unique stations inside/near metro_area.
-# @Details:
+#' @return  sf POINT data.frame of unique stations inside/near metro_area.
+#' @details
 #   Parses SINCA text UTM coordinates, converts stations to EPSG:32719, applies
 #   documented metadata corrections, validates plausible UTM coordinates, and
 #   spatially filters stations within radius_km of the metropolitan boundary.
 #   Manual corrections are keyed by SINCA station id and based on map locations
 #   checked from the station pages.
 #
-# @Written_by : Marcos Paulo
+#' @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 santiago_filter_stations_in_metro <- function(
     stations_df,
@@ -1753,21 +1753,21 @@ santiago_filter_stations_in_metro <- function(
 # --------------------------------------------------------------------------------------------
 # Function: santiago_download_metro_area_2017
 #
-# @Arg       : base_url       — string; INE 2017 DPA ArcGIS services root.
-# @Arg       : conurbacion    — string; conurbation name delimiting the metro area.
-# @Arg       : region_prefix  — string; CUT prefix of the region holding it.
-# @Arg       : out_file       — string; GeoPackage to write.
-# @Arg       : overwrite_gpkg — logical; overwrite output GeoPackage. Default TRUE.
-# @Arg       : quiet          — logical; suppress messages. Default FALSE.
+#' @param base_url              string; INE 2017 DPA ArcGIS services root.
+#' @param conurbacion           string; conurbation name delimiting the metro area.
+#' @param region_prefix         string; CUT prefix of the region holding it.
+#' @param out_file              string; GeoPackage to write.
+#' @param overwrite_gpkg        logical; overwrite output GeoPackage. Default TRUE.
+#' @param quiet                 logical; suppress messages. Default FALSE.
 #
-# @Output    : sf object of zona censal polygons, one row per `zona_id`.
+#' @return     sf object of zona censal polygons, one row per `zona_id`.
 #
-# @Purpose   : Downloads the 2017 metropolitan area of Santiago at census-zone level,
+#' @Purpose   : Downloads the 2017 metropolitan area of Santiago at census-zone level,
 #              which is the geography the 2017 census microdata identifies. Two REST
 #              calls: the conurbation polygon that delimits the area, and the census
 #              zones of the region, keeping the zones that fall inside it.
 #
-# @Details   : `zona_id` is CUT(5) + distrito(2) + area(1) + zona(3), the same
+#' @details    `zona_id` is CUT(5) + distrito(2) + area(1) + zona(3), the same
 #              11-character code the census reports as `geocodigo`, so this layer and
 #              santiago_process_census_2017() join exactly. The area digit is 1
 #              because Zona_Censal holds urban zones only; rural residents live
@@ -1783,8 +1783,8 @@ santiago_filter_stations_in_metro <- function(
 #              lon/lat collapses them into duplicate vertices and aborts. Consumers
 #              must repair it on a projected CRS: see santiago_filter_stations_in_metro().
 #
-# @Written_on: July 2026
-# @Written_by: Marcos Paulo
+#' @Written_on: July 2026
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 santiago_download_metro_area_2017 <- function(
     base_url       = santiago_cfg$base_url_dpa_17,
@@ -1886,20 +1886,20 @@ santiago_download_metro_area_2017 <- function(
 # --------------------------------------------------------------------------------------------
 # Function: santiago_process_stations_data_to_parquet
 #
-# @Arg       : data_folder   — string; folder with the station .txt files.
-# @Arg       : stations_sf   — sf object; spatial registry of stations to keep.
-# @Arg       : out_dir       — string; base output directory.
-# @Arg       : out_name      — string; dataset name (default "santiago_metro_air").
-# @Arg       : years         — int vector; years to filter.
-# @Arg       : tz            — string; Olson tz. Default "UTC". Datetimes are stored
+#' @param data_folder          string; folder with the station .txt files.
+#' @param stations_sf          sf object; spatial registry of stations to keep.
+#' @param out_dir              string; base output directory.
+#' @param out_name             string; dataset name (default "santiago_metro_air").
+#' @param years                int vector; years to filter.
+#' @param tz                   string; Olson tz. Default "UTC". Datetimes are stored
 #                              as the source wall clock with no tz shift (see
 #                              DATETIME CONVENTION).
-# @Arg       : verbose       — logical; print progress messages?
+#' @param verbose              logical; print progress messages?
 #
-# @Output    : Arrow Dataset connection. One row per (station, datetime) per year,
+#' @return     Arrow Dataset connection. One row per (station, datetime) per year,
 #              wide (one column per pollutant); datetime is a naive hourly TIMESTAMP.
 #
-# @Purpose   : Ingests raw .txt files from SINCA/Chile.
+#' @Purpose   : Ingests raw .txt files from SINCA/Chile.
 #              1. Parses filenames to identify station and pollutant.
 #              2. Matches filenames to the spatial registry (fuzzy normalization).
 #              3. Reads the custom text format (skipping header/footer).
@@ -1911,8 +1911,8 @@ santiago_download_metro_area_2017 <- function(
 #   the 2-digit-year century correctly: 97->1997, 00->2000; data span 1997-2026),
 #   serialize the result to a naive ISO string, stage it as VARCHAR, and STRPTIME
 #   it back to a plain TIMESTAMP.
-# @Written_on: 18/02/2026
-# @Written_by: Marcos Paulo
+#' @Written_on: 18/02/2026
+#' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
 santiago_process_stations_data_to_parquet <- function(
     data_folder,
@@ -2148,17 +2148,17 @@ dt <- tryCatch(
 # --------------------------------------------------------------------------------------------
 # Function: santiago_process_census_2017
 #
-# @Arg       : sf_data    — sf object; metro-area census zones, from
+#' @param sf_data           sf object; metro-area census zones, from
 #                           santiago_download_metro_area_2017().
-# @Arg       : match_col  — string; zone-id column in sf_data (default "zona_id").
-# @Arg       : out_dir    — string; Directory for the two output Parquet files.
-# @Arg       : quiet      — logical; Suppress progress messages?
+#' @param match_col         string; zone-id column in sf_data (default "zona_id").
+#' @param out_dir           string; Directory for the two output Parquet files.
+#' @param quiet             logical; Suppress progress messages?
 #
-# @Output    : list(individual, collapsed); Returns tibbles of the data. Also writes
+#' @return     list(individual, collapsed); Returns tibbles of the data. Also writes
 #              census_individual_2017.parquet and census_collapsed_2017.parquet.
 #              Parquet keeps zona_id character; a CSV roundtrip would not.
 #
-# @Purpose   : Harmonizes 2017 Census data using a spatial filter.
+#' @Purpose   : Harmonizes 2017 Census data using a spatial filter.
 #              1. Takes the census zones of the metro area from the sf object.
 #              2. Connects to local 'censo2017' DuckDB and resolves each person's
 #                 place of RESIDENCE by joining personas -> hogares -> viviendas
@@ -2166,15 +2166,15 @@ dt <- tryCatch(
 #              3. Harmonizes 'escolaridad' and injects fe=1 for schema parity.
 #              4. Collapses data to the zona censal level.
 #
-# @Details   : `geocodigo` is CUT(5) + distrito(2) + area(1) + zona(3), e.g.
+#' @details    `geocodigo` is CUT(5) + distrito(2) + area(1) + zona(3), e.g.
 #              "13101211002", and equals `zona_id` in the metro-area layer, so the
 #              sample is exactly the population of the mapped zones and every zone
 #              in the output has a polygon. Filtering by commune instead would add
 #              everyone living in a commune the urban area merely clips, including
 #              the whole Andean territory of San Jose de Maipo.
 #
-# @Written_by: Marcos Paulo
-# @Updated_on: July 2026
+#' @Written_by: Marcos Paulo
+#' @Updated_on: July 2026
 # --------------------------------------------------------------------------------------------
 santiago_process_census_2017 <- function(
     sf_data,
@@ -2338,24 +2338,24 @@ santiago_process_census_2017 <- function(
 # --------------------------------------------------------------------------------------------
 # Function: santiago_process_census_2024
 #
-# @Arg census_dir : string; folder containing chile_census_2024_people.zip.
-# @Arg sf_data    : sf object; spatial data used to filter communes.
-# @Arg match_col  : string; column in sf_data with commune codes.
-# @Arg out_dir    : string; output folder for the two processed Parquet files.
-# @Arg overwrite  : logical; re-extract ZIP if file exists. Default FALSE.
-# @Arg quiet      : logical; suppress messages. Default FALSE.
+#' @param census_dir string; folder containing chile_census_2024_people.zip.
+#' @param sf_data   sf object; spatial data used to filter communes.
+#' @param match_col string; column in sf_data with commune codes.
+#' @param out_dir   string; output folder for the two processed Parquet files.
+#' @param overwrite logical; re-extract ZIP if file exists. Default FALSE.
+#' @param quiet     logical; suppress messages. Default FALSE.
 #
-# @Output : list(individual, collapsed); processed census data. Also writes
+#' @return  list(individual, collapsed); processed census data. Also writes
 #           census_santiago_individual_2024.parquet and
 #           census_santiago_collapsed_2024.parquet. Parquet keeps CUT character;
 #           a CSV roundtrip drops the leading zero on region-1 communes.
 #
-# @Purpose:
+#' @Purpose:
 #   Extracts the 2024 Census CSV, filters communes, harmonizes variables,
 #   adds unit weights, and collapses adults aged 25+ to commune level.
 #
-# @Written_by : Marcos Paulo
-# @Updated_on : April 2026
+#' @Written_by : Marcos Paulo
+#' @Updated_on : April 2026
 # --------------------------------------------------------------------------------------------
 santiago_process_census_2024 <- function(
     census_dir = here::here("data", "downloads", "santiago", "census", "2024"),

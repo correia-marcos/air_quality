@@ -1,9 +1,9 @@
 # ============================================================================================
 # IDB: Air monitoring — São Paulo module
 # ============================================================================================
-# @Goal   : São Paulo-specific parameters, download/process wrappers, and any site-specific code
-# @Date   : Dec 2025
-# @Author : Marcos Paulo
+#' @Goal  : São Paulo-specific parameters, download/process wrappers, and any site-specific code
+#' @Date   : Dec 2025
+#' @Author : Marcos Paulo
 # Obs: Expect the caller to have already sourced:
 #   - src/config_utils_download_data.R  (selenium helpers, waits, clicking helpers, etc.)
 #   - src/config_utils_process_data.R   (merge, tidy, QA, parquet writing, etc.)
@@ -44,22 +44,22 @@ sao_paulo_cfg <- list(
 # --------------------------------------------------------------------------------------------
 # Function: download_qualar_year
 #
-# @Arg       : station_id      — string; ID value of the station (from dropdown).
-# @Arg       : station_name    — string; Name of the station (for filename).
-# @Arg       : year            — integer; The specific year to download.
-# @Arg       : pollutant_ids   — character vector; IDs of pollutants to check.
-# @Arg       : pollutant_names — character vector; Names of pollutants (for filename).
-# @Arg       : base_url        — string; Login URL.
-# @Arg       : search_url      — string; Advanced Search URL.
-# @Arg       : login           — string; Username.
-# @Arg       : password        — string; Password.
-# @Arg       : download_dir    — string; Local path to save the CSV.
-# @Arg       : container       — logical; TRUE if running inside Docker Selenium.
-# @Arg       : quiet           — logical; Suppress messages?
+#' @param station_id             string; ID value of the station (from dropdown).
+#' @param station_name           string; Name of the station (for filename).
+#' @param year                   integer; The specific year to download.
+#' @param pollutant_ids          character vector; IDs of pollutants to check.
+#' @param pollutant_names        character vector; Names of pollutants (for filename).
+#' @param base_url               string; Login URL.
+#' @param search_url             string; Advanced Search URL.
+#' @param login                  string; Username.
+#' @param password               string; Password.
+#' @param download_dir           string; Local path to save the CSV.
+#' @param container              logical; TRUE if running inside Docker Selenium.
+#' @param quiet                  logical; Suppress messages?
 #
-# @Output    : logical; TRUE if successful (or skipped), FALSE if failed.
+#' @return     logical; TRUE if successful (or skipped), FALSE if failed.
 #
-# @Purpose   : Starts a FRESH Selenium session to download ONE year of data
+#' @Purpose   : Starts a FRESH Selenium session to download ONE year of data
 #              for ONE station. This prevents session rot and crashes.
 #              1. Launches fresh browser.
 #              2. Logs in & Navigates to search.
@@ -67,8 +67,8 @@ sao_paulo_cfg <- list(
 #              4. Downloads and moves file to final destination.
 #              5. Closes browser immediately.
 #
-# @Written_by: Marcos Paulo
-# @Updated_on: 17/02/2026
+#' @Written_by: Marcos Paulo
+#' @Updated_on: 17/02/2026
 # --------------------------------------------------------------------------------------------
 download_qualar_year <- function(
     station_id,
@@ -257,20 +257,20 @@ download_qualar_year <- function(
 # --------------------------------------------------------------------------------------------
 # Function: map_qualar_metadata
 #
-# @Arg       : base_url   — string; Login URL.
-# @Arg       : search_url — string; Search page URL.
-# @Arg       : login      — string; Username.
-# @Arg       : password   — string; Password.
-# @Arg       : container  — logical; TRUE if Docker.
+#' @param base_url          string; Login URL.
+#' @param search_url        string; Search page URL.
+#' @param login             string; Username.
+#' @param password          string; Password.
+#' @param container         logical; TRUE if Docker.
 #
-# @Output    : list(stations = list(...), pollutants = list(...))
+#' @return     list(stations = list(...), pollutants = list(...))
 #
-# @Purpose   : Performs a quick login to scrape the available Stations and
+#' @Purpose   : Performs a quick login to scrape the available Stations and
 #              Pollutant parameters (checkboxes). 
 #              Required by the Manager to generate the task list.
 #
-# @Written_by: Marcos Paulo
-# @Updated_on: 17/02/2026
+#' @Written_by: Marcos Paulo
+#' @Updated_on: 17/02/2026
 # --------------------------------------------------------------------------------------------
 map_qualar_metadata <- function(base_url, search_url, login, password, container) {
   
@@ -371,34 +371,34 @@ map_qualar_metadata <- function(base_url, search_url, login, password, container
 # --------------------------------------------------------------------------------------------
 # Function: sao_paulo_download_metro_area
 #
-# @Arg       : level             — string; "mpio" (Municipality) or 
+#' @param level                    string; "mpio" (Municipality) or
 #                                  "setor_censitario" (Census Tract).
-# @Arg       : base_url          — string; IBGE Downloads page URL.
-# @Arg       : keep_municipality — character vector; List of municipality codes (CD_GEOCODM)
+#' @param base_url                 string; IBGE Downloads page URL.
+#' @param keep_municipality        character vector; List of municipality codes (CD_GEOCODM)
 #                                  to filter. Defaults to sao_paulo_cfg$cities_in_metro.
-# @Arg       : download_dir      — string; Local path to save the raw ZIP file.
-# @Arg       : out_file          — string; Local path to save the processed GeoPackage.
-# @Arg       : overwrite_zip     — logical; If TRUE, re-downloads ZIP even if it exists.
-# @Arg       : overwrite_gpkg    — logical; If TRUE, overwrites the output .gpkg file.
-# @Arg       : container         — logical; TRUE if running inside Docker Selenium.
-# @Arg       : quiet             — logical; If TRUE, suppresses progress messages.
+#' @param download_dir             string; Local path to save the raw ZIP file.
+#' @param out_file                 string; Local path to save the processed GeoPackage.
+#' @param overwrite_zip            logical; If TRUE, re-downloads ZIP even if it exists.
+#' @param overwrite_gpkg           logical; If TRUE, overwrites the output .gpkg file.
+#' @param container                logical; TRUE if running inside Docker Selenium.
+#' @param quiet                    logical; If TRUE, suppresses progress messages.
 #
-# @Output    : An sf object (invisible) containing the filtered spatial data.
+#' @return     An sf object (invisible) containing the filtered spatial data.
 #              Side effect: Writes a .gpkg file to disk.
 #
-# @Purpose   : - Scrapes the IBGE Geociências website for Census 2010 Shapefiles.
+#' @Purpose   : - Scrapes the IBGE Geociências website for Census 2010 Shapefiles.
 #              - "mpio": Downloads sp_municipio.zip (Municipal Boundaries 2010).
 #              - "setor_censitario": Downloads sp_setores_censitarios.zip (Tracts 2010).
 #              - Filters for the metro area of São Paulo.
 #              - Fixes encoding (LATIN1) and saves as .gpkg.
 #
-# @Details   : The layer keeps IBGE's own CRS, EPSG:4674 (SIRGAS 2000), so data/raw/
+#' @details    The layer keeps IBGE's own CRS, EPSG:4674 (SIRGAS 2000), so data/raw/
 #              stays faithful to the source. The 2010 tracts carry 25 ring
 #              self-intersections and 29 duplicate vertices, repaired at the point
 #              of use — see sp_filter_stations_in_metro().
 #
-# @Written_by: Marcos Paulo
-# @Updated_on: 05/12/2025
+#' @Written_by: Marcos Paulo
+#' @Updated_on: 05/12/2025
 # --------------------------------------------------------------------------------------------
 sao_paulo_download_metro_area <- function(
     level             = c("mpio", "setor_censitario"),
@@ -634,15 +634,15 @@ sao_paulo_download_metro_area <- function(
 # --------------------------------------------------------------------------------------------
 # Function: sao_paulo_download_weighting_areas
 #
-# @Arg       : keep_municipality — vector; IBGE municipality codes to keep.
-# @Arg       : year              — numeric; Census year (default 2010).
-# @Arg       : out_file          — string; Output GeoPackage path.
-# @Arg       : overwrite_gpkg    — logical; Overwrite if exists?
-# @Arg       : quiet             — logical; Suppress console messages?
+#' @param keep_municipality        vector; IBGE municipality codes to keep.
+#' @param year                     numeric; Census year (default 2010).
+#' @param out_file                 string; Output GeoPackage path.
+#' @param overwrite_gpkg           logical; Overwrite if exists?
+#' @param quiet                    logical; Suppress console messages?
 #
-# @Output    : sf dataframe
+#' @return     sf dataframe
 #
-# @Purpose   : Downloads Census Weighting Areas (Áreas de Ponderação) via geobr.
+#' @Purpose   : Downloads Census Weighting Areas (Áreas de Ponderação) via geobr.
 #              Filters for specific municipalities and saves to disk.
 # --------------------------------------------------------------------------------------------
 sao_paulo_download_weighting_areas <- function(
@@ -715,25 +715,25 @@ sao_paulo_download_weighting_areas <- function(
 # --------------------------------------------------------------------------------------------
 # Function: sao_paulo_download_pollution
 #
-# @Arg       : base_url   — string; Login URL for QUALAR.
-# @Arg       : search_url — string; Advanced Search URL.
-# @Arg       : login      — string; User login (default: env var QUALAR_USER).
-# @Arg       : password   — string; User password (default: env var QUALAR_PASS).
-# @Arg       : years      — numeric vector; Years to download (e.g., 2000:2023).
-# @Arg       : subdir     — string; Sub-path relative to root for saving files.
-# @Arg       : container  — logical; TRUE if running inside Docker Selenium.
-# @Arg       : quiet      — logical; If TRUE, suppresses progress messages.
+#' @param base_url          string; Login URL for QUALAR.
+#' @param search_url        string; Advanced Search URL.
+#' @param login             string; User login (default: env var QUALAR_USER).
+#' @param password          string; User password (default: env var QUALAR_PASS).
+#' @param years             numeric vector; Years to download (e.g., 2000:2023).
+#' @param subdir            string; Sub-path relative to root for saving files.
+#' @param container         logical; TRUE if running inside Docker Selenium.
+#' @param quiet             logical; If TRUE, suppresses progress messages.
 #
-# @Output    : NULL (Actions are side-effects: file downloads).
+#' @return     NULL (Actions are side-effects: file downloads).
 #
-# @Purpose   : Scrapes the CETESB QUALAR system.
+#' @Purpose   : Scrapes the CETESB QUALAR system.
 #              1. Maps stations and pollutants via `map_qualar_metadata`.
 #              2. Generates a to-do list (Stations x Pollutants x Years).
 #              3. Calls `download_qualar_year` (The Worker) for each task.
 #              4. Retries failed tasks up to 3 times before moving on.
 #
-# @Written_by: Marcos Paulo
-# @Updated_on: 17/02/2026
+#' @Written_by: Marcos Paulo
+#' @Updated_on: 17/02/2026
 # --------------------------------------------------------------------------------------------
 sao_paulo_download_pollution <- function(
     base_url   = sao_paulo_cfg$base_url_qualar,
@@ -820,17 +820,17 @@ sao_paulo_download_pollution <- function(
 # --------------------------------------------------------------------------------------------
 # Function: sao_paulo_download_metadata
 #
-# @Arg       : base_url   — string; Login URL for QUALAR.
-# @Arg       : search_url — string; URL for "Station Configuration" page.
-# @Arg       : login      — string; User login.
-# @Arg       : password   — string; User password.
-# @Arg       : out_file   — string; Path to save the resulting CSV.
-# @Arg       : container  — logical; TRUE if running inside Docker Selenium.
-# @Arg       : quiet      — logical; If TRUE, suppresses progress messages.
+#' @param base_url          string; Login URL for QUALAR.
+#' @param search_url        string; URL for "Station Configuration" page.
+#' @param login             string; User login.
+#' @param password          string; User password.
+#' @param out_file          string; Path to save the resulting CSV.
+#' @param container         logical; TRUE if running inside Docker Selenium.
+#' @param quiet             logical; If TRUE, suppresses progress messages.
 #
-# @Output    : tibble; The scraped metadata (invisibly).
+#' @return     tibble; The scraped metadata (invisibly).
 #
-# @Purpose   : Scrapes station metadata from CETESB QUALAR.
+#' @Purpose   : Scrapes station metadata from CETESB QUALAR.
 #              1. Logs in.
 #              2. Navigates to "Configuração das Estações".
 #              3. Clicks "Gerar" to open the pop-up report.
@@ -840,8 +840,8 @@ sao_paulo_download_pollution <- function(
 #                 - UTM Coordinates (North/East/Zone)
 #                 - Monitoring Parameters (Active/Inactive)
 #
-# @Written_by: Marcos Paulo
-# @Updated_on: 17/02/2026
+#' @Written_by: Marcos Paulo
+#' @Updated_on: 17/02/2026
 # --------------------------------------------------------------------------------------------
 sao_paulo_download_metadata <- function(
     base_url   = sao_paulo_cfg$base_url_qualar,
@@ -1049,17 +1049,17 @@ sao_paulo_download_metadata <- function(
 
 # --------------------------------------------------------------------------------------------
 # Function: sp_filter_stations_in_metro
-# @Arg       : stations_sp    — Pre-loaded dataframe (São Paulo Stations)
-# @Arg       : metro_area     — sf polygon of the metropolitan area
-# @Arg       : radius_km      — numeric; max distance to keep (default 20)
-# @Arg       : stations_esri  — ESRI for UTM Zone 23S (default 103213 for UTM 23S)
-# @Arg       : out_file       — output GeoPackage path
-# @Arg       : overwrite_gpkg — logical; overwrite if exists
-# @Arg       : dissolve       — logical; TRUE unions metro polygons
-# @Output    : sf POINT data.frame
-# @Purpose   : Cleans shifted UTM columns, limits to necessary fields, and spatially filters.
-# @Written_on: 19/02/2026
-# @Written_by: Marcos
+#' @param stations_sp           Pre-loaded dataframe (São Paulo Stations)
+#' @param metro_area            sf polygon of the metropolitan area
+#' @param radius_km             numeric; max distance to keep (default 20)
+#' @param stations_esri         ESRI for UTM Zone 23S (default 103213 for UTM 23S)
+#' @param out_file              output GeoPackage path
+#' @param overwrite_gpkg        logical; overwrite if exists
+#' @param dissolve              logical; TRUE unions metro polygons
+#' @return     sf POINT data.frame
+#' @Purpose  : Cleans shifted UTM columns, limits to necessary fields, and spatially filters.
+#' @Written_on: 19/02/2026
+#' @Written_by: Marcos
 # --------------------------------------------------------------------------------------------
 sp_filter_stations_in_metro <- function(
     stations_sp,
@@ -1172,20 +1172,20 @@ sp_filter_stations_in_metro <- function(
 # --------------------------------------------------------------------------------------------
 # Function: sp_process_stations_data_to_parquet
 #
-# @Arg       : data_folder   — string; folder with .csv/.txt files.
-# @Arg       : stations_sf   — sf object; Spatial registry to keep.
-# @Arg       : out_dir       — string; base output directory.
-# @Arg       : out_name      — string; name of dataset (default "sp_metro_air").
-# @Arg       : years         — int vector; years to filter.
-# @Arg       : tz            — string; Olson tz. Default "UTC". Datetimes are stored
+#' @param data_folder          string; folder with .csv/.txt files.
+#' @param stations_sf          sf object; Spatial registry to keep.
+#' @param out_dir              string; base output directory.
+#' @param out_name             string; name of dataset (default "sp_metro_air").
+#' @param years                int vector; years to filter.
+#' @param tz                   string; Olson tz. Default "UTC". Datetimes are stored
 #                              as the source wall clock with no tz shift (see
 #                              DATETIME CONVENTION); a civil zone is not needed.
-# @Arg       : verbose       — logical; print progress messages?
+#' @param verbose              logical; print progress messages?
 #
-# @Output    : Arrow Dataset connection. One row per (station, datetime) per year,
+#' @return     Arrow Dataset connection. One row per (station, datetime) per year,
 #              wide (one column per pollutant); datetime is a naive hourly TIMESTAMP.
 #
-# @Purpose   : Ingests raw files from QUALAR/CETESB (São Paulo).
+#' @Purpose   : Ingests raw files from QUALAR/CETESB (São Paulo).
 #              1. Surgical header extraction for Name and Code.
 #              2. Enforces column sizes by anchoring to the parameter line.
 #              3. Safely pivots data, handling Brazilian commas and types.
@@ -1207,7 +1207,7 @@ sp_filter_stations_in_metro <- function(
 #   tzone attributes and avoids DST gaps/folds from civil time zones. The stored
 #   clock equals the source clock for any tz argument.
 #
-# @Written_on: 19/12/2025
+#' @Written_on: 19/12/2025
 # --------------------------------------------------------------------------------------------
 sp_process_stations_data_to_parquet <- function(
     data_folder,
@@ -1510,24 +1510,24 @@ sp_process_stations_data_to_parquet <- function(
 # --------------------------------------------------------------------------------------------
 # Function: sp_process_census_2010
 #
-# @Arg sf_data   : sf object; spatial weighting areas.
-# @Arg match_col : string; column with weighting area codes.
-# @Arg out_dir   : string; output folder for the two processed Parquet files.
-# @Arg quiet     : logical; suppress messages. Default FALSE.
+#' @param sf_data  sf object; spatial weighting areas.
+#' @param match_col string; column with weighting area codes.
+#' @param out_dir  string; output folder for the two processed Parquet files.
+#' @param quiet    logical; suppress messages. Default FALSE.
 #
-# @Output : list(individual, collapsed); processed census data. Also writes
+#' @return  list(individual, collapsed); processed census data. Also writes
 #           census_sp_individual_2010.parquet and census_sp_collapsed_2010.parquet.
 #           Parquet stores whatever type censobr returned for code_weighting instead
 #           of leaving it to a CSV reader's guess, which is what turned the 13-digit
 #           code into a double that as.character() renders in scientific notation.
-# @Purpose:
+#' @Purpose:
 #   Connects to the 2010 Census through censobr, filters weighting areas,
 #   harmonizes education and demographic variables, and collapses adults
 #   aged 25+ using expansion weights. Income (V6525) is harmonized and
 #   winsorized so the IDW estimator can build income deciles downstream.
 #
-# @Written_on : 19/02/2026
-# @Written_by : Marcos Paulo
+#' @Written_on : 19/02/2026
+#' @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------------
 sp_process_census_2010 <- function(
     sf_data,
