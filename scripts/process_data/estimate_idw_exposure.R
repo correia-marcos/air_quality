@@ -1,18 +1,22 @@
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-# @Goal: Compute air pollution exposure at the geographic and individual level using IDW.
+#' @Goal: Compute air pollution exposure at the geographic and individual level using IDW.
 #
-# @Description: This script processes cleaned Arrow datasets of ground station data,
-# pre-computed distance matrices, and census data. It applies IDW interpolation
-# within 3km and 5km buffers using DuckDB for out-of-core aggregation. Education
-# quintiles are produced for all four cities. Income groups are produced only for the
-# two cities whose census carries income: deciles for Sao Paulo, but quintiles for
-# CDMX, whose 63 municipalities leave too few clusters to identify 10 coefficients.
+#' @Description: This script estimates the Inverse Distance Weights (IDW) used in the paper. 
+# It uses the outlier cleaned Arrow datasets of air quality (from detect_outliers.R), the 
+# distance matrices (from generate_distances_matrices.R), and census data (from 
+# process_{city}_data.R). The exposure estimation applies IDW interpolation within 3km and 
+# 5km buffers using DuckDB for out-of-core aggregation. Education quintiles are produced for
+# all four cities. Income groups are produced only for the two cities whose census carries 
+# income: deciles for Sao Paulo, but quintiles for CDMX, whose 63 municipalities leave too few 
+# clusters to identify 10 coefficients.
 #
-# @Summary:
+#' @Summary:
 #   I.   Import data: Define paths for Arrow datasets, matrices, and census files.
 #   II.  Process: Apply IDW interpolation for each city, grouping, and buffer.
+#   III. Save: Export the IDW estimates in two different files: one for individuals and other
+#        for geographic levels. Separate files for memory efficiency.
 #
 # @Date: April 2026
 # @Author: Marcos
@@ -72,8 +76,7 @@ geo_santiago_rob_pq <- here::here(dir_census, "santiago_2024",
 geo_sp_pq           <- here::here(dir_census, "sao_paulo_2010",
                                   "census_sp_collapsed_2010.parquet")
 
-# Read census microdata. Parquet carries its own schema, so the geographic keys
-# arrive as character without a colClasses argument.
+# Read census microdata
 mi_bogota       <- data.table::as.data.table(arrow::read_parquet(micro_bogota_pq))
 mi_cdmx         <- data.table::as.data.table(arrow::read_parquet(micro_cdmx_pq))
 mi_santiago     <- data.table::as.data.table(arrow::read_parquet(micro_santiago_pq))
@@ -200,8 +203,7 @@ for (buffer in buffers_km) {
     distance_power  = distance_power)
   
   # ----------------------------------------------------------------------------------------
-  # Income: ONLY CDMX and SP, whose census carries it. CDMX gets quintiles, not deciles,
-  # because its ~10 surviving municipalities cannot identify 10 coefficients.
+  # Income: ONLY CDMX and SP census carries it. CDMX uses 5 quintiles due to # of clusters
   # 5. CDMX -- income quintiles
   res_cdmx_income <- run_idw_city(
     city_label      = "CDMX",
