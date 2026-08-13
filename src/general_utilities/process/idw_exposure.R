@@ -42,10 +42,8 @@
 assign_socio_group <- function(dt, var, wcol, n, out_col) {
 
   # Ascending sort so that group 1 corresponds to the lowest values.
-  # The sort must be fully specified. Years of schooling is coarse, so a
-  # group edge falls inside a large tie group; who lands in group k versus
-  # k+1 would otherwise depend on how the census file happened to be
-  # ordered. Value, then geographic unit, then original row order.
+  # The sort must be fully specified because years of schooling is a coarse value (group 
+  # edge falls inside a large tie group) - problem of landing o group k or k + 1.
   dt[, .row_id := .I]
   data.table::setorderv(dt, c(var, "geo_id", ".row_id"))
 
