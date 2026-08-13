@@ -56,7 +56,7 @@ build_bogota_progression_specs <- function(cfg, buffer_km = 5L) {
   step4_arrow_dir   <- if (dir.exists(step4_arrow_clean)) step4_arrow_clean
   else if (dir.exists(step4_arrow_raw)) step4_arrow_raw
   else NULL
-  # Same nested layout generate_distances_matrices.R writes: <city>/matrix_*.parquet.
+  # Same nested layout generate_distance_matrices.R writes: <city>/matrix_*.parquet.
   step4_geo_dist_path <- file.path(dist_root, "bogota_2018",
                                    "matrix_geo_station_distances.parquet")
   has_step4_geo_dist  <- file.exists(step4_geo_dist_path)
@@ -66,7 +66,7 @@ build_bogota_progression_specs <- function(cfg, buffer_km = 5L) {
   # disappear. Say so out loud rather than dropping them unannounced.
   if (!has_step4_geo_dist) {
     warning("[progression] Step 4 day-level metrics disabled — missing ",
-            step4_geo_dist_path, " (run generate_distances_matrices.R).",
+            step4_geo_dist_path, " (run generate_distance_matrices.R).",
             call. = FALSE)
   }
   
@@ -90,7 +90,7 @@ build_bogota_progression_specs <- function(cfg, buffer_km = 5L) {
   has_new_2005_dist <- file.exists(new_2005_geo_dist)
   
   # Legacy stations × new 2018 manzana (44,979) — produced by
-  # generate_distances_matrices.R (see the bogota_2018_legacy_stations block).
+  # generate_distance_matrices.R (see the bogota_2018_legacy_stations block).
   legacy_sta_2018_dist <- file.path(dist_root,
                                     "bogota_2018_legacy_stations_geo_station_distances.parquet")
   has_legacy_sta_2018_dist <- file.exists(legacy_sta_2018_dist)
@@ -181,7 +181,7 @@ build_bogota_progression_specs <- function(cfg, buffer_km = 5L) {
       mode  = "compute",
       enabled = has_legacy_census && has_new_2005_dist && dir.exists(legacy_mock_clean),
       reason  = if (!has_legacy_census)              "missing legacy census CSV"
-      else if (!has_new_2005_dist)         "missing bogota_2005_geo_station_distances.parquet (run generate_distances_matrices.R)"
+      else if (!has_new_2005_dist)         "missing bogota_2005_geo_station_distances.parquet (run generate_distance_matrices.R)"
       else if (!dir.exists(legacy_mock_clean)) "run compare_outlier_procedure() first"
       else NULL,
       args    = list(
@@ -206,7 +206,7 @@ build_bogota_progression_specs <- function(cfg, buffer_km = 5L) {
           "missing 2018 manzana-level census Parquet"
         else if (!has_legacy_sta_2018_dist)
           paste("missing bogota_2018_legacy_stations_geo_station_distances.parquet",
-                "(run generate_distances_matrices.R)")
+                "(run generate_distance_matrices.R)")
         else if (!dir.exists(legacy_mock_clean))
           "run compare_outlier_procedure() first"
         else NULL,

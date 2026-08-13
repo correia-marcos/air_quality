@@ -54,7 +54,7 @@ source(here::here("scripts", "process_data", "process_sao_paulo_data.R"))
 # Calculates distances between census tracts and monitoring stations.
 # Depends entirely on the outputs generated in Step 1.
 
-source(here::here("scripts", "process_data", "generate_distances_matrices.R"))
+source(here::here("scripts", "process_data", "generate_distance_matrices.R"))
 
 # ============================================================================================
 # Step 3: Outlier Detection

@@ -241,7 +241,7 @@ flowchart TD
   GP["process_data/generate_panel_air_quality.R"]
   MP["process_data/process_merra2_panels.R"]
   PC["process_data/process_&lt;city&gt;_data.R"]
-  GD["process_data/generate_distances_matrices.R"]
+  GD["process_data/generate_distance_matrices.R"]
   DO["process_data/detect_outliers.R"]
   IDW["process_data/estimate_idw.R"]
   REG["process_data/estimate_exposure.R"]

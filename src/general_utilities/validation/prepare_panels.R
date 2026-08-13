@@ -85,7 +85,7 @@ build_compare_cfg <- function(city_id) {
       legacy_census_collapsed = here::here("data", "_legacy", "census",
                                            "collapse_bogota_metro.csv"),
       census_join_key         = "GEO_ID",
-      # generate_distances_matrices.R writes <city>/<out_name>_*.parquet, so the
+      # generate_distance_matrices.R writes <city>/<out_name>_*.parquet, so the
       # new-pipeline matrices live one directory down with the "matrix" prefix.
       new_station_dist        = here::here("data", "processed", "distances_matrices",
                                            "bogota_2018",

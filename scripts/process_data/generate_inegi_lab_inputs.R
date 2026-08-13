@@ -97,7 +97,7 @@ stopifnot(all(nchar(agebs_metro$CVEGEO) == 13),
           !anyDuplicated(agebs_metro$CVEGEO))
 cat("Urban AGEBs in metro area:", nrow(agebs_metro), "\n")
 
-# Same machinery and settings as generate_distances_matrices.R, at AGEB level.
+# Same machinery and settings as generate_distance_matrices.R, at AGEB level.
 station_sf <- sf::st_read(gpkg_stations, quiet = TRUE)
 ageb_distances <- compute_distance_matrices(
   stations_sf          = station_sf,

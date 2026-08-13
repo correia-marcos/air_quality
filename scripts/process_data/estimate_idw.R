@@ -5,7 +5,7 @@
 #
 #' @Description: This script estimates the Inverse Distance Weights (IDW) used in the paper. 
 # It uses the outlier cleaned Arrow datasets of air quality (from detect_outliers.R), the 
-# distance matrices (from generate_distances_matrices.R), and census data (from 
+# distance matrices (from generate_distance_matrices.R), and census data (from 
 # process_{city}_data.R). The exposure estimation applies IDW interpolation within 3km and 
 # 5km buffers using DuckDB for out-of-core aggregation. Education quintiles are produced for
 # all four cities. Income groups are produced only for the two cities whose census carries 

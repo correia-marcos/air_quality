@@ -58,8 +58,8 @@ $(STAMP)/process.stamp: scripts/process_data/process_bogota_data.R \
 
 # 2. Distance matrices (census tracts <-> stations); needs processed data.
 distances: $(STAMP)/distances.stamp
-$(STAMP)/distances.stamp: scripts/process_data/generate_distances_matrices.R $(STAMP)/process.stamp
-	$(RUN) scripts/process_data/generate_distances_matrices.R
+$(STAMP)/distances.stamp: scripts/process_data/generate_distance_matrices.R $(STAMP)/process.stamp
+	$(RUN) scripts/process_data/generate_distance_matrices.R
 	touch $@
 
 # 3. Outlier detection.

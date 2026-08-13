@@ -6,7 +6,7 @@
 # @Description: This script processes applies the outlier detection procedure explained in 
 # detail in our appendix. It uses hive-partitioned Arrow datasets of raw ground station 
 # data (from process_{city}_data.R) alongside the spatial distance matrices (from 
-# generate_distances_matrices.R). It applies temporal and spatial checks to detect and flag 
+# generate_distance_matrices.R). It applies temporal and spatial checks to detect and flag 
 # outlier observations without loading the entire datasets into active memory.
 # 
 # @Summary: 
@@ -36,7 +36,7 @@ arrow_cdmx_dir     <- here::here(dir_pollution, "cdmx_metro_dataset")
 arrow_santiago_dir <- here::here(dir_pollution, "santiago_metro_dataset")
 arrow_sp_dir       <- here::here(dir_pollution, "sao_paulo_metro_dataset")
 
-# Station-to-station distance Parquets produced by generate_distances_matrices.R
+# Station-to-station distance Parquets produced by generate_distance_matrices.R
 dist_bogota   <- here::here(outdir_distances, "bogota_2018",
                             "matrix_station_distances.parquet")
 dist_cdmx     <- here::here(outdir_distances, "cdmx_2020",
