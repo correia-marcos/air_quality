@@ -1,9 +1,9 @@
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-# @Goal: Process all downloaded data from the metro area of Santiago ground stations. 
-# The idea here is to transform the downloaded Santiago's metro area data - with all theirs 
-# specificities into a format that is standard for all cities we assess in the project.
+# @Goal: Process and standardize air quality and census data for Santiago.
+# The goal here is to transform Santiago's raw data into a common format shared across all four
+# cities. Raw data for each city has its own peculiarities and quirks.
 # 
 # @Description: This script transforms raw monitoring, geospatial, and census data into a 
 #   project-standard format. It includes: (1) Spatial filtering of ground stations within a 

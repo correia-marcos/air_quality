@@ -2,12 +2,15 @@
 # IDB: Air monitoring
 # ============================================================================================
 # @Goal: Process and standardize air quality and census data for Bogota.
+# The goal here is to transform Bogota's raw data into a common format shared across all four
+# cities. Raw data for each city has its own peculiarities and quirks.
 # 
 # @Description: This script transforms raw monitoring, geospatial, and census data into a 
 #   project-standard format. It includes: (1) Spatial filtering of ground stations within a 
 #   20km metropolitan buffer; (2) Consolidation of RMCAB and SISAIRE raw measurements into 
-#   Parquet format; (3) Extraction and harmonization of 2005 Colombian Census microdata (Basic 
-#   and Extended) to integrate socio-economic indicators into the analysis.
+#   Parquet format; (3) Extraction and harmonization of both Basic and Extended 2005 Colombian 
+#   Census microdata as well as the 2018 CNPV census to integrate socio-economic 
+#   indicators into the analysis.
 # 
 # @Summary: 
 #   I.   Setup: Load dependencies, utility functions, and city-specific config.

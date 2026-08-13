@@ -1,9 +1,9 @@
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-# @Goal: Process all downloaded data from the metro area of Ciudad de México ground stations. 
-# The idea here is to transform the initial data CMDX's metro area - with all theirs specifics
-# into a format that is standard for all cities we assess in the project.
+# @Goal: Process and standardize air quality and census data for Mexico City (CDMX).
+# The goal here is to transform CDMX's raw data into a common format shared across all four
+# cities. Raw data for each city has its own peculiarities and quirks.
 # 
 # @Description: This script transforms raw monitoring, geospatial, and census data into a 
 #   project-standard format. It includes: (1) Spatial filtering of ground stations within a 

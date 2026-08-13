@@ -1,7 +1,9 @@
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-# @Goal: Process and standardize air quality and census data for São Paulo
+# @Goal: Process and standardize air quality and census data for São Paulo (SP).
+# The goal here is to transform SP's raw data into a common format shared across all four
+# cities. Raw data for each city has its own peculiarities and quirks.
 # 
 # @Description: This script transforms raw monitoring, geospatial, and census data into a 
 #   project-standard format. It includes: (1) Spatial filtering of ground stations within a 
