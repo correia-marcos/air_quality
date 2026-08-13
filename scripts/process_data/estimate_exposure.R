@@ -1,11 +1,11 @@
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-# @Goal: Compute raw exposure summaries, exposure-regression coefficients with confidence
-#   intervals, and the geographic coverage behind them, for the four metropolitan areas.
+#' @Goal: Estimate raw exposure levels, normalized exposure regressions and the geographic 
+# coverage behind them.
 #
 # @Description: This script reads the geo-level IDW exposure and the geo-by-group
-# population eagerly into memory, so each table can be inspected in RStudio. For every
+# population. For every
 # city it calls run_city_exposure(), which returns weighted exposure summaries by group,
 # regression gaps relative to the top group with clustered confidence intervals, and a
 # coverage table recording how many geographic units survive to estimation. Results are
