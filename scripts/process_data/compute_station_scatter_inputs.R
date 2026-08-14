@@ -82,9 +82,8 @@ census_cdmx     <- data.table::as.data.table(arrow::read_parquet(census_cdmx_pq)
 census_santiago <- data.table::as.data.table(arrow::read_parquet(census_santiago_pq))
 census_sp       <- data.table::as.data.table(arrow::read_parquet(census_sp_pq))
 
-# CDMX geo key: the gpkg stores CVE_MUN as the full 5-digit code ("09012"), so pad
-# the census side to match before joining.
-census_cdmx[, CVE_MUN := canonical_geo_id(CVE_MUN, width = 5)]
+# CDMX geo key: the gpkg stores CVE_MUN as the full 5-digit code ("09012"). The census
+# side is already padded to width 5 by apply_canonical_names(), so no repair is needed.
 
 # ============================================================================================
 # II: Process station-level socioeconomic exposure data
@@ -106,8 +105,7 @@ station_bogota <- build_station_scatter_inputs(
   geo_sf            = geo_bogota,
   census_col        = census_bogota,
   station_id_col    = "station_name",
-  geo_id_col        = "GEO_ID",
-  pop_col           = "weight",
+  geo_sf_id_col     = "GEO_ID",
   socio_vars        = c("education_mean"),
   year_filter       = 2023L,
   context_method    = "buffer",
@@ -132,8 +130,7 @@ station_cdmx <- build_station_scatter_inputs(
   geo_sf            = geo_cdmx,
   census_col        = census_cdmx,
   station_id_col    = "station",
-  geo_id_col        = "CVE_MUN",
-  pop_col           = "weight",
+  geo_sf_id_col     = "CVE_MUN",
   socio_vars        = c("education_mean", "income_mean"),
   year_filter       = 2023L,
   context_method    = "containing_geo",
@@ -156,8 +153,7 @@ station_santiago <- build_station_scatter_inputs(
   geo_sf            = geo_santiago,
   census_col        = census_santiago,
   station_id_col    = "station_name",
-  geo_id_col        = "CUT",
-  pop_col           = "weight",
+  geo_sf_id_col     = "CUT",
   socio_vars        = c("education_mean"),
   year_filter       = 2023L,
   context_method    = "containing_geo",
@@ -180,8 +176,7 @@ station_sp <- build_station_scatter_inputs(
   geo_sf            = geo_sp,
   census_col        = census_sp,
   station_id_col    = "station_name",
-  geo_id_col        = "code_weighting",
-  pop_col           = "weight",
+  geo_sf_id_col     = "code_weighting",
   socio_vars        = c("education_mean", "income_mean"),
   year_filter       = 2023L,
   context_method    = "containing_geo",

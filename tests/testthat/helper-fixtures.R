@@ -49,7 +49,7 @@ make_toy_fixture <- function(root) {
   # Collapsed census for geo-level grouping; values only feed group labels.
   census <- data.table::data.table(
     geo_id         = c("g1", "g2", "g3"),
-    n              = c(100, 200, 50),
+    pop_total      = c(100, 200, 50),
     education_mean = c(5, 15, 10)
   )
 

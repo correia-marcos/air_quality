@@ -2,17 +2,17 @@
 # IDB: Air monitoring
 # ============================================================================================
 #' @Goal: Visualize inequality and pollution monitoring distribution for the 4 metro areas.
-# 
-#' @Description: Creates high-resolution maps of Latin American metro areas highlighting census 
-#               education quintiles, active monitoring stations, and their respective spatial 
+#
+#' @Description: Creates high-resolution maps of Latin American metro areas highlighting census
+#               education quintiles, active monitoring stations, and their respective spatial
 #               buffers.
-# 
-#' @Summary: 
+#
+#' @Summary:
 #   I.   Import shapefiles, census collapsed microdata and pollution information for Bogotá
 #   II.  Process the data to exclude unnecessary regions and combine shapefiles
-#   III. Create and export a map of the metro areas with the quintiles of education and 
+#   III. Create and export a map of the metro areas with the quintiles of education and
 # stations buffers
-# 
+#
 #' @Date: January 2026
 #' @Author: Marcos
 # ============================================================================================
@@ -70,11 +70,11 @@ map_bogota_5km_basic_census_2005 <- plot_inequality_pollution(
   stations_sf = bogota_stations_2005_sf,
   arrow_dir   = arrow_bogota_dir,
   census_df   = bogota_census_basic_2005,
-  join_sf_col = "GEO_ID",          # <-- Fixed the underscore here
-  join_df_col = "GEO_ID",          # <-- Fixed the underscore here
+  join_sf_col = "GEO_ID",
+  join_df_col = "GEO_ID",
   station_col = "station_name",
-  ed_col      = "escolaridad_avg", 
-  pop_col     = "n",               
+  ed_col      = "escolaridad_avg",
+  pop_col     = "n",
   pollutants  = c("pm25", "pm10"),
   year_filter = 2023,
   buffer_km   = 5,
@@ -89,11 +89,11 @@ map_bogota_3km_basic_census_2005 <- plot_inequality_pollution(
   stations_sf = bogota_stations_2005_sf,
   arrow_dir   = arrow_bogota_dir,
   census_df   = bogota_census_basic_2005,
-  join_sf_col = "GEO_ID",          # <-- Fixed the underscore here
-  join_df_col = "GEO_ID",          # <-- Fixed the underscore here
-  station_col = "station_name",    # Ensure this matches the column in bogota_stations_sf
-  ed_col      = "escolaridad_avg", 
-  pop_col     = "n",               
+  join_sf_col = "GEO_ID",
+  join_df_col = "GEO_ID",
+  station_col = "station_name",
+  ed_col      = "escolaridad_avg",
+  pop_col     = "n",
   pollutants  = c("pm25", "pm10"),
   year_filter = 2023,
   buffer_km   = 3,
@@ -108,11 +108,11 @@ map_bogota_5km_extended_census_2005 <- plot_inequality_pollution(
   stations_sf = bogota_stations_2005_sf,
   arrow_dir   = arrow_bogota_dir,
   census_df   = bogota_census_extend_2005,
-  join_sf_col = "GEO_ID",          # <-- Fixed the underscore here
-  join_df_col = "GEO_ID",          # <-- Fixed the underscore here
-  station_col = "station_name",    # Ensure this matches the column in bogota_stations_sf
-  ed_col      = "escolaridad_avg", 
-  pop_col     = "n",               
+  join_sf_col = "GEO_ID",
+  join_df_col = "GEO_ID",
+  station_col = "station_name",
+  ed_col      = "escolaridad_avg",
+  pop_col     = "n",
   pollutants  = c("pm25", "pm10"),
   year_filter = 2023,
   buffer_km   = 5,
@@ -127,11 +127,11 @@ map_bogota_3km_extended_census_2005 <- plot_inequality_pollution(
   stations_sf = bogota_stations_2005_sf,
   arrow_dir   = arrow_bogota_dir,
   census_df   = bogota_census_extend_2005,
-  join_sf_col = "GEO_ID",          # <-- Fixed the underscore here
-  join_df_col = "GEO_ID",          # <-- Fixed the underscore here
-  station_col = "station_name",    # Ensure this matches the column in bogota_stations_sf
-  ed_col      = "escolaridad_avg", 
-  pop_col     = "n",               
+  join_sf_col = "GEO_ID",
+  join_df_col = "GEO_ID",
+  station_col = "station_name",
+  ed_col      = "escolaridad_avg",
+  pop_col     = "n",
   pollutants  = c("pm25", "pm10"),
   year_filter = 2023,
   buffer_km   = 3,
@@ -146,11 +146,11 @@ map_bogota_5km_extended_census_2018 <- plot_inequality_pollution(
   stations_sf = bogota_stations_2018_sf,
   arrow_dir   = arrow_bogota_dir,
   census_df   = bogota_cnpv_2018,
-  join_sf_col = "GEO_ID",          # <-- Fixed the underscore here
-  join_df_col = "GEO_ID",          # <-- Fixed the underscore here
-  station_col = "station_name",    # Ensure this matches the column in bogota_stations_sf
-  ed_col      = "escolaridad_avg", 
-  pop_col     = "n",               
+  join_sf_col = "GEO_ID",
+  join_df_col = "GEO_ID",
+  station_col = "station_name",
+  ed_col      = "escolaridad_avg",
+  pop_col     = "n",
   pollutants  = c("pm25", "pm10"),
   year_filter = 2023,
   buffer_km   = 5,
@@ -165,11 +165,11 @@ map_bogota_3km_extended_census_2018 <- plot_inequality_pollution(
   stations_sf = bogota_stations_2018_sf,
   arrow_dir   = arrow_bogota_dir,
   census_df   = bogota_cnpv_2018,
-  join_sf_col = "GEO_ID",          # <-- Fixed the underscore here
-  join_df_col = "GEO_ID",          # <-- Fixed the underscore here
-  station_col = "station_name",    # Ensure this matches the column in bogota_stations_sf
-  ed_col      = "escolaridad_avg", 
-  pop_col     = "n",               
+  join_sf_col = "GEO_ID",
+  join_df_col = "GEO_ID",
+  station_col = "station_name",
+  ed_col      = "escolaridad_avg",
+  pop_col     = "n",
   pollutants  = c("pm25", "pm10"),
   year_filter = 2023,
   buffer_km   = 3,
@@ -187,29 +187,29 @@ dir.create(outdir_figures, recursive = TRUE, showWarnings = FALSE)
 cat("Saving maps to", outdir_figures, "\n")
 
 # Save Bogotá
-ggsave(filename = here::here(outdir_figures, "map_bogota_5km_basic_2005.pdf"), 
+ggsave(filename = here::here(outdir_figures, "map_bogota_5km_basic_2005.pdf"),
        plot     = map_bogota_5km_basic_census_2005,
        device   = cairo_pdf,
        width    = 12, height = 8, dpi = 300, bg = "white")
-ggsave(filename = here::here(outdir_figures, "map_bogota_3km_basic_2005.pdf"), 
+ggsave(filename = here::here(outdir_figures, "map_bogota_3km_basic_2005.pdf"),
        plot     = map_bogota_3km_basic_census_2005,
        device   = cairo_pdf,
        width    = 12, height = 8, dpi = 300, bg = "white")
 
-ggsave(filename = here::here(outdir_figures, "map_bogota_5km_extended_2005.pdf"), 
+ggsave(filename = here::here(outdir_figures, "map_bogota_5km_extended_2005.pdf"),
        plot     = map_bogota_5km_extended_census_2005,
        device   = cairo_pdf,
        width    = 12, height = 8, dpi = 300, bg = "white")
-ggsave(filename = here::here(outdir_figures, "map_bogota_3km_extended_2005.pdf"), 
+ggsave(filename = here::here(outdir_figures, "map_bogota_3km_extended_2005.pdf"),
        plot     = map_bogota_3km_extended_census_2005,
        device   = cairo_pdf,
        width    = 12, height = 8, dpi = 300, bg = "white")
 
-ggsave(filename = here::here(outdir_figures, "map_bogota_5km_2018.pdf"), 
+ggsave(filename = here::here(outdir_figures, "map_bogota_5km_2018.pdf"),
        plot     = map_bogota_5km_extended_census_2018,
        device   = cairo_pdf,
        width    = 12, height = 8, dpi = 300, bg = "white")
-ggsave(filename = here::here(outdir_figures, "map_bogota_3km_2018.pdf"), 
+ggsave(filename = here::here(outdir_figures, "map_bogota_3km_2018.pdf"),
        plot     = map_bogota_3km_extended_census_2018,
        device   = cairo_pdf,
        width    = 12, height = 8, dpi = 300, bg = "white")

@@ -194,8 +194,8 @@ compute_station_pollution_summary <- function(
 #' @param geo_sf            sf POLYGON object; geographic units.
 #' @param census_col        data.frame; collapsed census data by geographic unit.
 #' @param station_id_col    string; station ID/name column in stations_sf.
-#' @param geo_id_col        string; geographic unit ID column.
-#' @param pop_col           string; population or expansion-weight column.
+#' @param geo_sf_id_col     string; ID column in geo_sf, the raw geopackage. The
+#                          census side must already carry the canonical geo_id.
 #' @param socio_vars        character vector; socioeconomic variables to attach.
 #' @param context_method    string; "containing_geo" or "buffer".
 #' @param buffer_km         numeric; buffer radius when context_method = "buffer".
@@ -228,8 +228,7 @@ compute_station_socio_context <- function(
     geo_sf,
     census_col,
     station_id_col,
-    geo_id_col,
-    pop_col,
+    geo_sf_id_col,
     socio_vars,
     context_method    = c("containing_geo", "buffer"),
     buffer_km         = 3,
@@ -265,11 +264,11 @@ compute_station_socio_context <- function(
     stop("Column '", station_id_col, "' not found in stations_sf.")
   }
   
-  if (!geo_id_col %in% names(geo_sf)) {
-    stop("Column '", geo_id_col, "' not found in geo_sf.")
+  if (!geo_sf_id_col %in% names(geo_sf)) {
+    stop("Column '", geo_sf_id_col, "' not found in geo_sf.")
   }
   
-  req_census_cols <- c(geo_id_col, pop_col, socio_vars)
+  req_census_cols <- c("geo_id", "pop_total", socio_vars)
   miss_census <- setdiff(req_census_cols, names(census_col))
   
   if (length(miss_census) > 0L) {
@@ -361,13 +360,17 @@ compute_station_socio_context <- function(
   geo_wgs <- sf::st_transform(geo_utm, crs = 4326)
   
   stations_wgs$station_id <- normalize_station(stations_wgs[[station_id_col]])
-  geo_wgs[[geo_id_col]] <- safe_chr(geo_wgs[[geo_id_col]])
-  
+
+  # geo_sf is a raw geopackage, so its native ID is renamed to geo_id here; the
+  # census arrives canonical already.
+  names(geo_wgs)[names(geo_wgs) == geo_sf_id_col] <- "geo_id"
+  geo_wgs$geo_id <- safe_chr(geo_wgs$geo_id)
+
   census_dt <- data.table::copy(data.table::as.data.table(census_col))
-  census_dt[, (geo_id_col) := safe_chr(get(geo_id_col))]
-  
+  census_dt[, geo_id := safe_chr(geo_id)]
+
   # Keep only variables needed for this step.
-  census_keep <- unique(c(geo_id_col, pop_col, socio_vars))
+  census_keep <- unique(c("geo_id", "pop_total", socio_vars))
   census_dt <- census_dt[, ..census_keep]
   
   # 4. Repair geographic IDs before merging census attributes
@@ -382,8 +385,8 @@ compute_station_socio_context <- function(
     }
     
     id_xwalk <- repair_bogota_geo_ids(
-      geo_ids = geo_wgs[[geo_id_col]],
-      census_ids = census_dt[[geo_id_col]],
+      geo_ids = geo_wgs$geo_id,
+      census_ids = census_dt$geo_id,
       max_zero_suffix = bogota_max_suffix,
       allow_broad_ids = bogota_broad_ids
     )
@@ -397,7 +400,7 @@ compute_station_socio_context <- function(
     
     id_xwalk <- id_xwalk[, ..repair_cols]
     
-    geo_wgs$geo_id_original <- geo_wgs[[geo_id_col]]
+    geo_wgs$geo_id_original <- geo_wgs$geo_id
     geo_dt <- data.table::as.data.table(sf::st_drop_geometry(geo_wgs))
     
     geo_dt <- merge(
@@ -408,7 +411,7 @@ compute_station_socio_context <- function(
       all.x = TRUE
     )
     
-    geo_wgs[[geo_id_col]] <- geo_dt$geo_id_repaired
+    geo_wgs$geo_id <- geo_dt$geo_id_repaired
     
     if (!quiet) {
       msg <- id_xwalk[
@@ -425,11 +428,11 @@ compute_station_socio_context <- function(
   if (geo_id_repair == "suffix") {
     
     id_xwalk <- .repair_suffix_ids(
-      geo_ids = geo_wgs[[geo_id_col]],
-      census_ids = census_dt[[geo_id_col]]
+      geo_ids = geo_wgs$geo_id,
+      census_ids = census_dt$geo_id
     )
     
-    geo_wgs$geo_id_original <- geo_wgs[[geo_id_col]]
+    geo_wgs$geo_id_original <- geo_wgs$geo_id
     geo_dt <- data.table::as.data.table(sf::st_drop_geometry(geo_wgs))
     
     geo_dt <- merge(
@@ -440,7 +443,7 @@ compute_station_socio_context <- function(
       all.x = TRUE
     )
     
-    geo_wgs[[geo_id_col]] <- geo_dt$geo_id_repaired
+    geo_wgs$geo_id <- geo_dt$geo_id_repaired
     
     if (!quiet) {
       msg <- id_xwalk[
@@ -459,7 +462,7 @@ compute_station_socio_context <- function(
   geo_wgs <- merge(
     geo_wgs,
     census_dt,
-    by = geo_id_col,
+    by = "geo_id",
     all.x = TRUE
   )
   
@@ -474,7 +477,7 @@ compute_station_socio_context <- function(
     joined <- suppressWarnings(
       sf::st_join(
         stations_wgs[, c("station_id", station_id_col)],
-        geo_wgs[, c(geo_id_col, pop_col, socio_vars)],
+        geo_wgs[, c("geo_id", "pop_total", socio_vars)],
         join = sf::st_intersects,
         left = TRUE
       )
@@ -496,8 +499,8 @@ compute_station_socio_context <- function(
       )
     }
     
-    data.table::setnames(out, geo_id_col, "station_geo_id")
-    data.table::setnames(out, pop_col, "context_population")
+    data.table::setnames(out, "geo_id", "station_geo_id")
+    data.table::setnames(out, "pop_total", "context_population")
     
     out[, context_method := "containing_geo"]
     out[, context_buffer_km := NA_real_]
@@ -568,7 +571,7 @@ compute_station_socio_context <- function(
       sf::st_drop_geometry(geo_pts[geo_idx_i, ])
     )
     
-    w <- geo_i[[pop_col]]
+    w <- geo_i$pop_total
     base[, context_population := sum(w, na.rm = TRUE)]
     
     for (v in socio_vars) {
@@ -592,8 +595,8 @@ compute_station_socio_context <- function(
 #' @param geo_sf          sf POLYGON object; geographic units.
 #' @param census_col      data.frame; collapsed census data by geographic unit.
 #' @param station_id_col  string; station ID/name column in stations_sf.
-#' @param geo_id_col      string; geographic unit ID column.
-#' @param pop_col         string; population or expansion-weight column.
+#' @param geo_sf_id_col   string; ID column in geo_sf, the raw geopackage. The
+#                        census side must already carry the canonical geo_id.
 #' @param socio_vars      character vector; socioeconomic variables to attach.
 #' @param year_filter     integer; year to process. Default 2023.
 #' @param context_method  string; "containing_geo" or "buffer".
@@ -627,8 +630,7 @@ build_station_scatter_inputs <- function(
     geo_sf,
     census_col,
     station_id_col,
-    geo_id_col,
-    pop_col,
+    geo_sf_id_col,
     socio_vars,
     year_filter       = 2023L,
     context_method    = c("containing_geo", "buffer"),
@@ -700,8 +702,7 @@ build_station_scatter_inputs <- function(
     geo_sf            = geo_sf,
     census_col        = census_col,
     station_id_col    = station_id_col,
-    geo_id_col        = geo_id_col,
-    pop_col           = pop_col,
+    geo_sf_id_col     = geo_sf_id_col,
     socio_vars        = socio_vars,
     context_method    = context_method,
     buffer_km         = context_buffer_km,

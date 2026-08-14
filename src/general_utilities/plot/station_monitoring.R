@@ -149,8 +149,6 @@ get_active_station_ids <- function(station_dt, pollutant = c("pm10", "pm25")) {
 #' @param dist_pq     string; geo-to-station distance matrix Parquet.
 #' @param census_dt   data.table; collapsed census data by geographic unit.
 #' @param active_ids  character vector; active station IDs for one pollutant.
-#' @param geo_id_col  string; geographic unit ID column in census_dt.
-#' @param edu_col     string; average education column in census_dt.
 #' @param radius_km   numeric; radius used to count nearby stations.
 #
 #' @return  data.table with geographic-unit trend inputs.
@@ -159,8 +157,6 @@ build_station_distance_trend_data <- function(
     dist_pq,
     census_dt,
     active_ids,
-    geo_id_col,
-    edu_col,
     radius_km = 3
 ) {
   
@@ -198,11 +194,10 @@ build_station_distance_trend_data <- function(
   
   # Prepare census data.
   census_use <- data.table::copy(census_dt)
-  data.table::setnames(census_use, geo_id_col, "geo_id")
   census_use[, geo_id := as.character(geo_id)]
-  
+
   # Keep only the education variable needed for ranking.
-  census_use <- census_use[, .(geo_id, education_mean = get(edu_col))]
+  census_use <- census_use[, .(geo_id, education_mean)]
   
   # Merge coverage measures with census education.
   out <- merge(coverage_dt, census_use, by = "geo_id", all.x = TRUE)
@@ -605,8 +600,6 @@ plot_dual_pollutant_station_scatter <- function(
 #' @param dist_pq    string; distance matrix path.
 #' @param census_dt  data.table; collapsed census data.
 #' @param station_dt data.table; station-socioeconomic data.
-#' @param geo_id_col string; geographic ID column in census_dt.
-#' @param edu_col    string; average education column in census_dt.
 #' @param radius_km  numeric; radius used in coverage figure.
 #' @param outdir_fig string; output folder.
 #
@@ -618,8 +611,6 @@ save_city_monitoring_figures <- function(
     dist_pq,
     census_dt,
     station_dt,
-    geo_id_col,
-    edu_col,
     radius_km = 3,
     outdir_fig,
     adaptive_y_axis = TRUE
@@ -642,8 +633,6 @@ save_city_monitoring_figures <- function(
     dist_pq = dist_pq,
     census_dt = census_dt,
     active_ids = active_pm10,
-    geo_id_col = geo_id_col,
-    edu_col = edu_col,
     radius_km = radius_km
   )
   
@@ -666,8 +655,6 @@ save_city_monitoring_figures <- function(
     dist_pq = dist_pq,
     census_dt = census_dt,
     active_ids = active_pm25,
-    geo_id_col = geo_id_col,
-    edu_col = edu_col,
     radius_km = radius_km
   )
   

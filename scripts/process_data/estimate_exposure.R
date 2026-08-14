@@ -71,12 +71,6 @@ dist_santiago_com <- here::here(dir_dist, "santiago_2024",
 dist_sp           <- here::here(dir_dist, "sao_paulo_2010",
                                 "matrix_geo_station_distances.parquet")
 
-# Each city's population/expansion-weight column (differs by census source)
-pop_bogota   <- "fe"
-pop_cdmx     <- "FACTOR"
-pop_santiago <- "fe"
-pop_sp       <- "weight"
-
 # ============================================================================================
 # II and III: Process and save
 # ============================================================================================
@@ -129,7 +123,6 @@ for (buffer_km in buffers_km) {
     exposure_dt     = exposure_bogota,
     individual_dt   = individual_bogota,
     geo_station_pq  = dist_bogota,
-    pop_col         = pop_bogota,
     socio_var       = "education",
     group_col       = group_col,
     group_values    = group_values,
@@ -152,7 +145,6 @@ for (buffer_km in buffers_km) {
     exposure_dt     = exposure_cdmx,
     individual_dt   = individual_cdmx,
     geo_station_pq  = dist_cdmx,
-    pop_col         = pop_cdmx,
     socio_var       = "education",
     group_col       = group_col,
     group_values    = group_values,
@@ -175,7 +167,6 @@ for (buffer_km in buffers_km) {
     exposure_dt     = exposure_santiago,
     individual_dt   = individual_santiago,
     geo_station_pq  = dist_santiago,
-    pop_col         = pop_santiago,
     socio_var       = "education",
     group_col       = group_col,
     group_values    = group_values,
@@ -198,7 +189,6 @@ for (buffer_km in buffers_km) {
     exposure_dt     = exposure_santiago_com,
     individual_dt   = individual_santiago_com,
     geo_station_pq  = dist_santiago_com,
-    pop_col         = pop_santiago,
     socio_var       = "education",
     group_col       = group_col,
     group_values    = group_values,
@@ -221,7 +211,6 @@ for (buffer_km in buffers_km) {
     exposure_dt     = exposure_sp,
     individual_dt   = individual_sp,
     geo_station_pq  = dist_sp,
-    pop_col         = pop_sp,
     socio_var       = "education",
     group_col       = group_col,
     group_values    = group_values,
@@ -246,7 +235,6 @@ for (buffer_km in buffers_km) {
     exposure_dt     = exposure_cdmx_inc,
     individual_dt   = individual_cdmx_inc,
     geo_station_pq  = dist_cdmx,
-    pop_col         = pop_cdmx,
     socio_var       = "income",
     group_col       = inc_group_col_cdmx,
     group_values    = inc_group_values_cdmx,
@@ -269,7 +257,6 @@ for (buffer_km in buffers_km) {
     exposure_dt     = exposure_sp_inc,
     individual_dt   = individual_sp_inc,
     geo_station_pq  = dist_sp,
-    pop_col         = pop_sp,
     socio_var       = "income",
     group_col       = inc_group_col_sp,
     group_values    = inc_group_values_sp,

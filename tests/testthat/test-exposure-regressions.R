@@ -26,9 +26,9 @@ make_reg_toy <- function() {
     hrs_d_pm10_it1 = c(1, 2, 4, 0.5)
   )
   individual <- data.table::data.table(
-    geo_id       = rep(paste0("g", 1:4), each = 2),
-    edu_quintile = rep(1:2, times = 4),
-    n            = c(10, 20, 30, 10, 20, 10, 40, 60)
+    geo_id        = rep(paste0("g", 1:4), each = 2),
+    edu_quintile  = rep(1:2, times = 4),
+    person_weight = c(10, 20, 30, 10, 20, 10, 40, 60)
   )
   list(exposure = exposure, individual = individual)
 }
@@ -85,9 +85,9 @@ test_that("G <= k clusters refuses clustered SEs with a warning", {
     geo_id = paste0("g", 1:5), year = 2023L, hrs_d_pm10_it1 = 1:5 + 0.5
   )
   individual <- data.table::data.table(
-    geo_id       = rep(paste0("g", 1:5), each = 5),
-    edu_quintile = rep(1:5, times = 5),
-    n            = 10 * 1:25
+    geo_id        = rep(paste0("g", 1:5), each = 5),
+    edu_quintile  = rep(1:5, times = 5),
+    person_weight = 10 * 1:25
   )
 
   expect_warning(
@@ -116,9 +116,9 @@ test_that("clustered intervals use the t(G-1) critical value", {
     hrs_d_pm10_it1 = 1:6 + 0.25
   )
   individual <- data.table::data.table(
-    geo_id       = rep(paste0("g", 1:6), each = 5),
-    edu_quintile = rep(1:5, times = 6),
-    n            = 5 + (1:30) %% 7 * 11
+    geo_id        = rep(paste0("g", 1:6), each = 5),
+    edu_quintile  = rep(1:5, times = 6),
+    person_weight = 5 + (1:30) %% 7 * 11
   )
 
   res <- compute_exposure_regressions(

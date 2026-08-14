@@ -75,10 +75,12 @@ assign_socio_group <- function(dt, var, wcol, n, out_col) {
 #' @param arrow_dir          string; path to partitioned Arrow/Parquet hourly data.
 #' @param geo_sta_pq         string; path to geo-station distance Parquet file.
 #' @param census_col         data.frame; census data used for group assignment.
-#' @param geo_id_col         string; geographic ID column in census_col.
-#' @param pop_col            string; population or expansion-weight column.
+#' @param geo_id_col         string; geographic ID column in census_col. Defaults to
+#                            the canonical "geo_id"; override only for legacy inputs.
+#' @param pop_col            string; population or expansion-weight column. Defaults to
+#                            the canonical "person_weight"; override only for legacy.
 #' @param group_var          string; continuous variable used to define groups
-#                            (e.g. "escolaridad_avg" or "income").
+#                            (e.g. "educ_years" or "income").
 #' @param n_groups           integer; number of equal-population groups (5 or 10).
 #' @param group_name         string; output group column name
 #                            (e.g. "edu_quintile" or "income_decile").
@@ -99,8 +101,6 @@ assign_socio_group <- function(dt, var, wcol, n, out_col) {
 #' @param return_data        logical; return data.tables in memory. Default FALSE.
 #' @param fail_on_query_error logical; stop if a SQL query fails. Default TRUE.
 #' @param chunk_by_month     logical; process each year-pollutant by month.
-#' @param edu_col            string; deprecated alias for group_var, kept so old
-#                            calls still run. Used only if group_var is NULL.
 #
 #' @return  Named list with saved file paths and, optionally, data.tables.
 #
@@ -113,6 +113,13 @@ assign_socio_group <- function(dt, var, wcol, n, out_col) {
 #   same code path serves education quintiles and income deciles. One grouping is
 #   produced per call (run separately for edu_quintile and income_decile).
 #
+#   geo_id_col and pop_col default to the canonical individual schema, which is the
+#   path run_idw_city() takes, so the paper pipeline passes neither. They remain for
+#   the two callers that cannot use those defaults: quintile_level = "geo" reads a
+#   collapsed census and needs pop_col = "pop_total", and the validation track points
+#   this function at data/_legacy/, whose names are an input of record and cannot be
+#   renamed (see the three calls in validation/progression.R).
+#
 #' @Written_on : 02/02/2026
 #' @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------------
@@ -120,9 +127,9 @@ aggregate_idw_exposure <- function(
     arrow_dir,
     geo_sta_pq,
     census_col,
-    geo_id_col          = "GEO_ID",
-    pop_col             = "n",
-    group_var           = NULL,
+    geo_id_col          = "geo_id",
+    pop_col             = "person_weight",
+    group_var,
     n_groups            = 5L,
     group_name          = "edu_quintile",
     quintile_level      = c("geo", "individual"),
@@ -144,8 +151,7 @@ aggregate_idw_exposure <- function(
     quiet               = FALSE,
     return_data         = FALSE,
     fail_on_query_error = TRUE,
-    chunk_by_month      = TRUE,
-    edu_col             = "escolaridad_avg"
+    chunk_by_month      = TRUE
 ) {
   
   # 0. Dependencies and argument matching
@@ -162,13 +168,7 @@ aggregate_idw_exposure <- function(
   }
   
   quintile_level <- match.arg(quintile_level)
-  
-  # Resolve the grouping variable: prefer group_var, fall back to edu_col so
-  # that older education-only calls keep working unchanged.
-  if (is.null(group_var)) {
-    group_var <- edu_col
-  }
-  
+
   n_groups <- as.integer(n_groups)
   
   if (is.na(n_groups) || n_groups < 2L) {
@@ -707,6 +707,8 @@ aggregate_idw_exposure <- function(
   # 8. Census processing and group assignment
   # -----------------------------------------------------------------------
   census_dt <- data.table::copy(data.table::as.data.table(census_col))
+
+  # No-op for canonical input; the rename exists for the legacy vocabulary only.
   data.table::setnames(census_dt, geo_id_col, "geo_id")
   census_dt[, geo_id := safe_chr(geo_id)]
   
@@ -806,14 +808,7 @@ aggregate_idw_exposure <- function(
 #' @param geo_sta_pq    string; path to geo-station distance Parquet file.
 #' @param geo_census    data.frame; collapsed geographic-unit census data.
 #' @param micro_census  data.frame; individual-level census microdata.
-#' @param geo_id_col    string; geographic ID column in collapsed census data.
-#' @param geo_pop_col   string; population column in collapsed census data.
-#' @param geo_group_var string; group variable in collapsed census data
-#                       (e.g. "education_mean" or "income").
-#' @param micro_id_col  string; geographic ID column in individual census data.
-#' @param micro_pop_col string; weight column in individual census data.
-#' @param micro_group_var string; group variable in individual census data
-#                       (e.g. "escolaridad" or "income").
+#' @param socio_var     string; grouping dimension, "education" or "income".
 #' @param n_groups      integer; number of equal-population groups (5 or 10).
 #' @param group_name    string; output group column name
 #                       (e.g. "edu_quintile" or "income_decile").
@@ -835,6 +830,20 @@ aggregate_idw_exposure <- function(
 #   One grouping is produced per call; call once for edu_quintile and once for
 #   income_decile to obtain separate files.
 #
+#   The caller names the grouping *dimension*, not the columns. Both censuses
+#   follow the canonical schema of doc/data_dictionary.md, so the four column
+#   names this function needs are fixed: geo_id and person_weight in the
+#   microdata, geo_id and pop_total in the collapsed file. The grouping variable
+#   is the only one that varies, and it varies with socio_var alone:
+#
+#     socio_var    individual census    collapsed census
+#     "education"  educ_years           education_mean
+#     "income"     income               income_mean
+#
+#   Only the two exposure quintiles built here differ in what they rank: the
+#   individual file ranks people, the geo file ranks units. estimate_exposure.R
+#   reads the individual one -- see the audit in doc/audits/census_processing/.
+#
 #' @Written_on : April 2026
 #' @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------------
@@ -846,12 +855,7 @@ run_idw_city <- function(
     geo_sta_pq,
     geo_census,
     micro_census,
-    geo_id_col,
-    geo_pop_col,
-    geo_group_var,
-    micro_id_col,
-    micro_pop_col,
-    micro_group_var,
+    socio_var      = c("education", "income"),
     n_groups       = 5L,
     group_name     = "edu_quintile",
     buffer_km,
@@ -862,12 +866,19 @@ run_idw_city <- function(
     overwrite   = TRUE,
     return_data = FALSE
 ) {
-  
+
+  socio_var <- match.arg(socio_var)
+
   message("\n--- Processing ", city_label, " | ", buffer_km, " km | ",
           group_name, " ---")
-  
+
   n_groups <- as.integer(n_groups)
-  
+
+  # The grouping dimension picks the column at each level; see @details.
+  micro_group_var <- switch(socio_var, education = "educ_years", income = "income")
+  geo_group_var   <- switch(socio_var, education = "education_mean",
+                            income = "income_mean")
+
   # Define output folder and common output prefix.
   city_out_dir <- here::here(outdir_exp, city_id)
   dir.create(city_out_dir, recursive = TRUE, showWarnings = FALSE)
@@ -884,8 +895,6 @@ run_idw_city <- function(
     arrow_dir      = arrow_dir,
     geo_sta_pq     = geo_sta_pq,
     census_col     = micro_census,
-    geo_id_col     = micro_id_col,
-    pop_col        = micro_pop_col,
     group_var      = micro_group_var,
     n_groups       = n_groups,
     group_name     = group_name,
@@ -910,12 +919,10 @@ run_idw_city <- function(
   
   # Prepare collapsed census data for geo-level groups.
   geo_dt <- data.table::copy(data.table::as.data.table(geo_census))
-  
-  data.table::setnames(geo_dt, geo_id_col, "geo_id")
   geo_dt[, geo_id := as.character(geo_id)]
-  
+
   # Assign population-weighted groups to geographic units.
-  assign_socio_group(geo_dt, geo_group_var, geo_pop_col, n_groups, group_name)
+  assign_socio_group(geo_dt, geo_group_var, "pop_total", n_groups, group_name)
 
   # Repair spelling differences between the spatial and census ID conventions
   # before judging the match. Every repair is verified against the census.

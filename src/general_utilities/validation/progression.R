@@ -171,7 +171,7 @@ build_bogota_progression_specs <- function(cfg, buffer_km = 5L) {
         census_col     = legacy_census_raw,
         geo_id_col     = "LocCodigo",
         pop_col        = "n",
-        edu_col        = "escolaridad",
+        group_var      = "escolaridad",
         quintile_level = "geo",
         buffer_km      = buffer_km
       )
@@ -191,7 +191,7 @@ build_bogota_progression_specs <- function(cfg, buffer_km = 5L) {
         census_col     = legacy_census_for_2005,  # LocCodigo → 11001XX
         geo_id_col     = "GEO_ID",
         pop_col        = "n",
-        edu_col        = "escolaridad",
+        group_var      = "escolaridad",
         quintile_level = "geo",
         buffer_km      = buffer_km
       )
@@ -216,9 +216,10 @@ build_bogota_progression_specs <- function(cfg, buffer_km = 5L) {
         geo_sta_pq     = legacy_sta_2018_dist,
         census_col     = if (has_new_census_indiv)
           arrow::read_parquet(new_census_indiv_pq) else NULL,
-        geo_id_col     = "GEO_ID",
-        pop_col        = "fe",
-        edu_col        = "escolaridad",
+        # Step 3 reads the new 2018 census, so its columns are canonical.
+        geo_id_col     = "geo_id",
+        pop_col        = "person_weight",
+        group_var      = "educ_years",
         quintile_level = "individual",
         buffer_km      = buffer_km
       )

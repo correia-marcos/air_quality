@@ -27,9 +27,8 @@
 # Function: compute_exposure_summaries
 #
 #' @param exposure_dt  data.table; geo-level IDW exposure (one row per geo unit-year).
-#' @param individual_dt data.table; geo-by-group population/expansion weights.
-#' @param geo_id_col   string; geographic identifier column. Default "geo_id".
-#' @param pop_col      string; population or expansion-weight column. Default "n".
+#' @param individual_dt data.table; individual census rows carrying geo_id,
+#                       person_weight and the group column.
 #' @param group_col    string; socioeconomic group column. Default "edu_quintile".
 #' @param group_values integer vector; valid groups, e.g. 1:5.
 #' @param pollutants   character vector; pollutants to keep, e.g. pm10/pm25.
@@ -51,8 +50,6 @@
 # --------------------------------------------------------------------------------------------
 compute_exposure_summaries <- function(exposure_dt,
                                        individual_dt,
-                                       geo_id_col      = "geo_id",
-                                       pop_col         = "n",
                                        group_col       = "edu_quintile",
                                        group_values    = 1:5,
                                        pollutants      = c("pm10", "pm25"),
@@ -69,26 +66,24 @@ compute_exposure_summaries <- function(exposure_dt,
   dt <- .exposure_merge_geo_group(
     exposure_dt   = exposure_dt,
     individual_dt = individual_dt,
-    geo_id_col    = geo_id_col,
     group_col     = group_col,
-    pop_col       = pop_col,
     group_values  = group_values,
     year_filter   = year_filter,
     quiet         = quiet
   )
-  
+
   # 2. Pick outcome columns that match the pattern and the pollutants
   # -----------------------------------------------------------------------
   out_cols <- .exposure_outcome_cols(dt, outcome_pattern, pollutants)
-  by_cols  <- c(geo_id_col, group_col)
-  
+  by_cols  <- c("geo_id", group_col)
+
   # 3. Collapse to geo-by-group cells (exposure is constant within a geo unit)
   # -----------------------------------------------------------------------
   geo_group <- dt[
     ,
     c(
-      list(group_pop = sum(get(pop_col), na.rm = TRUE)),
-      lapply(.SD, function(x) stats::weighted.mean(x, get(pop_col), na.rm = TRUE))
+      list(group_pop = sum(person_weight, na.rm = TRUE)),
+      lapply(.SD, function(x) stats::weighted.mean(x, person_weight, na.rm = TRUE))
     ),
     by = by_cols,
     .SDcols = out_cols
@@ -109,7 +104,7 @@ compute_exposure_summaries <- function(exposure_dt,
           weighted_median     = .exposure_weighted_median(get(col), group_pop),
           weighted_population = sum(group_pop, na.rm = TRUE),
           n_geo_group_cells   = .N,
-          n_geo_units         = data.table::uniqueN(get(geo_id_col))
+          n_geo_units         = data.table::uniqueN(geo_id)
         ),
         by = group_col
       ]
@@ -137,11 +132,10 @@ compute_exposure_summaries <- function(exposure_dt,
 # Function: compute_exposure_coverage
 #
 #' @param exposure_dt   data.table; geo-level IDW exposure (one row per geo unit-year).
-#' @param individual_dt data.table; geo-by-group population/expansion weights.
+#' @param individual_dt data.table; individual census rows carrying geo_id,
+#                       person_weight and the group column.
 #' @param geo_station_pq string; path to the matrix_geo_station_distances.parquet used
 #                       to build this city's exposure.
-#' @param geo_id_col    string; geographic identifier column. Default "geo_id".
-#' @param pop_col       string; population or expansion-weight column. Default "n".
 #' @param group_col     string; socioeconomic group column. Default "edu_quintile".
 #' @param group_values  integer vector; valid groups, e.g. 1:5.
 #' @param pollutants    character vector; pollutants to report.
@@ -165,8 +159,6 @@ compute_exposure_summaries <- function(exposure_dt,
 compute_exposure_coverage <- function(exposure_dt,
                                       individual_dt,
                                       geo_station_pq,
-                                      geo_id_col   = "geo_id",
-                                      pop_col      = "n",
                                       group_col    = "edu_quintile",
                                       group_values = 1:5,
                                       pollutants   = c("pm10", "pm25"),
@@ -190,16 +182,14 @@ compute_exposure_coverage <- function(exposure_dt,
     exp_dt <- exp_dt[year == year_filter]
   }
 
-  exp_dt[, (geo_id_col) := as.character(get(geo_id_col))]
+  exp_dt[, geo_id := as.character(geo_id)]
 
   # 3. Estimation stage: run the regressions' own merge so the counts cannot drift
   # -----------------------------------------------------------------------
   merged <- .exposure_merge_geo_group(
     exposure_dt   = exp_dt,
     individual_dt = individual_dt,
-    geo_id_col    = geo_id_col,
     group_col     = group_col,
-    pop_col       = pop_col,
     group_values  = group_values,
     year_filter   = NULL,
     quiet         = TRUE
@@ -207,7 +197,7 @@ compute_exposure_coverage <- function(exposure_dt,
 
   # Total metro population, taken from the census side before any exposure filter.
   ind_dt   <- data.table::as.data.table(individual_dt)
-  pop_all  <- sum(ind_dt[[pop_col]], na.rm = TRUE)
+  pop_all  <- sum(ind_dt$person_weight, na.rm = TRUE)
 
   # 4. One row per pollutant, since coverage differs by what each station measures
   # -----------------------------------------------------------------------
@@ -215,9 +205,9 @@ compute_exposure_coverage <- function(exposure_dt,
     avg_col <- paste0("avg_", poll)
 
     # Geo units holding a value for this pollutant, before and after the census merge.
-    geo_poll <- exp_dt[!is.na(get(avg_col)), unique(get(geo_id_col))]
+    geo_poll <- exp_dt[!is.na(get(avg_col)), unique(geo_id)]
     est_rows <- merged[!is.na(get(avg_col))]
-    pop_est  <- est_rows[, sum(get(pop_col), na.rm = TRUE)]
+    pop_est  <- est_rows[, sum(person_weight, na.rm = TRUE)]
 
     # buffer_km is deliberately not returned: the caller stamps it alongside the other
     # run labels, and two columns of the same name would silently overwrite each other.
@@ -227,9 +217,9 @@ compute_exposure_coverage <- function(exposure_dt,
       n_station_metro     = data.table::uniqueN(dist_dt$station_id),
       n_geo_in_buffer     = data.table::uniqueN(in_buffer$geo_id),
       n_station_in_buffer = data.table::uniqueN(in_buffer$station_id),
-      n_geo_exposure      = data.table::uniqueN(exp_dt[[geo_id_col]]),
+      n_geo_exposure      = data.table::uniqueN(exp_dt$geo_id),
       n_geo_pollutant     = length(geo_poll),
-      n_geo_estimation    = data.table::uniqueN(est_rows[[geo_id_col]]),
+      n_geo_estimation    = data.table::uniqueN(est_rows$geo_id),
       pop_metro           = pop_all,
       pop_estimation      = pop_est,
       share_pop_estimation = pop_est / pop_all
@@ -244,9 +234,8 @@ compute_exposure_coverage <- function(exposure_dt,
 # Function: compute_exposure_regressions
 #
 #' @param exposure_dt  data.table; geo-level IDW exposure (one row per geo unit-year).
-#' @param individual_dt data.table or NULL; geo-by-group population/expansion weights.
-#' @param geo_id_col   string; geographic identifier column. Default "geo_id".
-#' @param pop_col      string; population or expansion-weight column. Default "n".
+#' @param individual_dt data.table or NULL; individual census rows carrying geo_id,
+#                       person_weight and the group column.
 #' @param group_col    string; socioeconomic group column. Default "edu_quintile".
 #' @param group_values integer vector; valid groups, e.g. 1:5.
 #' @param base_group   integer; omitted reference group. Default max(group_values).
@@ -279,8 +268,6 @@ compute_exposure_coverage <- function(exposure_dt,
 # --------------------------------------------------------------------------------------------
 compute_exposure_regressions <- function(exposure_dt,
                                          individual_dt   = NULL,
-                                         geo_id_col      = "geo_id",
-                                         pop_col         = "n",
                                          group_col       = "edu_quintile",
                                          group_values    = 1:5,
                                          base_group      = max(group_values),
@@ -316,9 +303,7 @@ compute_exposure_regressions <- function(exposure_dt,
   dt <- .exposure_merge_geo_group(
     exposure_dt      = exposure_dt,
     individual_dt    = individual_dt,
-    geo_id_col       = geo_id_col,
     group_col        = group_col,
-    pop_col          = pop_col,
     group_values     = group_values,
     year_filter      = year_filter,
     merge_individual = regression_unit != "geo",
@@ -334,9 +319,7 @@ compute_exposure_regressions <- function(exposure_dt,
       out_cols,
       .exposure_fit_one,
       dt              = dt,
-      geo_id_col      = geo_id_col,
       group_col       = group_col,
-      pop_col         = pop_col,
       group_values    = group_values,
       base_group      = base_group,
       pollutants      = pollutants,
@@ -382,8 +365,8 @@ compute_exposure_regressions <- function(exposure_dt,
 
 # Merge geo-level exposure with the geo-by-group population table.
 # Returns a filtered data.table ready for collapsing or fitting.
-.exposure_merge_geo_group <- function(exposure_dt, individual_dt, geo_id_col,
-                                      group_col, pop_col, group_values,
+.exposure_merge_geo_group <- function(exposure_dt, individual_dt,
+                                      group_col, group_values,
                                       year_filter = NULL, merge_individual = TRUE,
                                       quiet = FALSE) {
 
@@ -395,19 +378,19 @@ compute_exposure_regressions <- function(exposure_dt,
     dt <- dt[year == year_filter]
   }
 
-  dt[, (geo_id_col) := as.character(get(geo_id_col))]
+  dt[, geo_id := as.character(geo_id)]
 
   # Attach group population unless this is the geo-only unit.
   if (isTRUE(merge_individual)) {
     ind <- data.table::copy(data.table::as.data.table(individual_dt))
-    ind[, (geo_id_col) := as.character(get(geo_id_col))]
+    ind[, geo_id := as.character(geo_id)]
 
     # Keep valid groups with positive weight only.
     ind <- ind[
       get(group_col) %in% group_values &
-        !is.na(get(pop_col)) & get(pop_col) > 0,
+        !is.na(person_weight) & person_weight > 0,
       .SD,
-      .SDcols = c(geo_id_col, group_col, pop_col)
+      .SDcols = c("geo_id", group_col, "person_weight")
     ]
 
     # Drop any pre-existing group column in exposure before the merge.
@@ -418,8 +401,8 @@ compute_exposure_regressions <- function(exposure_dt,
     # This is an inner join: an exposure unit with no census row leaves the
     # sample here. Report the match rate so a silent ID mismatch (zero padding,
     # width) shows up as a number rather than as quietly smaller regressions.
-    exp_ids   <- unique(dt[[geo_id_col]])
-    n_matched <- length(intersect(exp_ids, unique(ind[[geo_id_col]])))
+    exp_ids   <- unique(dt$geo_id)
+    n_matched <- length(intersect(exp_ids, unique(ind$geo_id)))
 
     if (!quiet) {
       message("[merge] Census match: ", n_matched, " of ", length(exp_ids),
@@ -427,13 +410,13 @@ compute_exposure_regressions <- function(exposure_dt,
               " unmatched).")
     }
 
-    dt <- merge(dt, ind, by = geo_id_col, allow.cartesian = TRUE)
+    dt <- merge(dt, ind, by = "geo_id", allow.cartesian = TRUE)
   }
 
   # Final filter to valid groups with positive weight.
   dt <- dt[
     get(group_col) %in% group_values &
-      !is.na(get(pop_col)) & get(pop_col) > 0
+      !is.na(person_weight) & person_weight > 0
   ]
   
   return(dt)
@@ -542,7 +525,7 @@ compute_exposure_regressions <- function(exposure_dt,
 
 
 # Fit one outcome and return tidy rows (base group plus each comparison group).
-.exposure_fit_one <- function(outcome_col, dt, geo_id_col, group_col, pop_col,
+.exposure_fit_one <- function(outcome_col, dt, group_col,
                               group_values, base_group, pollutants,
                               regression_unit, se_type, conf_level, normalized) {
   
@@ -556,7 +539,7 @@ compute_exposure_regressions <- function(exposure_dt,
   if (isTRUE(normalized)) {
     base_mean <- d0[
       get(group_col) == base_group,
-      stats::weighted.mean(get(outcome_col), get(pop_col), na.rm = TRUE)
+      stats::weighted.mean(get(outcome_col), person_weight, na.rm = TRUE)
     ]
     
     if (is.na(base_mean) || base_mean == 0) {
@@ -577,9 +560,9 @@ compute_exposure_regressions <- function(exposure_dt,
     # outcome's regression, so the weights sum to one within each group.
     model_dt <- d0[
       ,
-      .(geo_population = sum(get(pop_col), na.rm = TRUE),
-        y = stats::weighted.mean(y_model, get(pop_col), na.rm = TRUE)),
-      by = c(geo_id_col, group_col)
+      .(geo_population = sum(person_weight, na.rm = TRUE),
+        y = stats::weighted.mean(y_model, person_weight, na.rm = TRUE)),
+      by = c("geo_id", group_col)
     ]
 
     model_dt <- model_dt[!is.na(y) & !is.na(geo_population) & geo_population > 0]
@@ -587,16 +570,16 @@ compute_exposure_regressions <- function(exposure_dt,
     model_dt[, w := geo_population / total_population_g]
     model_dt <- model_dt[w > 0]
 
-    model_dt[, .cluster_geo := get(geo_id_col)]
+    model_dt[, .cluster_geo := geo_id]
 
   } else {
 
     # individual/geo: one row per observation, weighted by population. The
-    # cluster key is carried here because geo_id_col itself is not kept.
+    # cluster key is carried here because geo_id itself is not kept.
     model_dt <- d0[
       ,
-      .(y = y_model, w = get(pop_col),
-        .cluster_geo = get(geo_id_col), group_value = get(group_col))
+      .(y = y_model, w = person_weight,
+        .cluster_geo = geo_id, group_value = get(group_col))
     ]
     data.table::setnames(model_dt, "group_value", group_col)
     model_dt <- model_dt[!is.na(w) & w > 0]
@@ -712,9 +695,9 @@ read_idw_artifact <- function(dir_idw, city_id, what, buffer_km, suffix = "") {
 #' @param city          string; display label stamped on every output row.
 #' @param city_id       string; machine id stamped on every output row.
 #' @param exposure_dt   data.table; geo-level IDW exposure for this city.
-#' @param individual_dt data.table; geo-by-group population weights.
+#' @param individual_dt data.table; individual census rows carrying geo_id,
+#                       person_weight and the group column.
 #' @param geo_station_pq string; path to this city's geo-to-station distance matrix.
-#' @param pop_col       string; population or expansion-weight column.
 #' @param socio_var     string; "education" or "income", stamped on every row.
 #' @param group_col     string; socioeconomic group column.
 #' @param group_values  integer vector; valid groups, e.g. 1:5.
@@ -747,7 +730,7 @@ read_idw_artifact <- function(dir_idw, city_id, what, buffer_km, suffix = "") {
 #' @Updated_on : August 2026
 # --------------------------------------------------------------------------------------------
 run_city_exposure <- function(city, city_id, exposure_dt, individual_dt, geo_station_pq,
-                              pop_col, socio_var, group_col, group_values, base_group,
+                              socio_var, group_col, group_values, base_group,
                               group_type, year, buffer_km, pollutants, summary_pattern,
                               ci_pattern, conf_level, normalized, regression_unit,
                               se_type) {
@@ -761,12 +744,12 @@ run_city_exposure <- function(city, city_id, exposure_dt, individual_dt, geo_sta
 
   list(
     summary = label(compute_exposure_summaries(
-      exposure_dt = exposure_dt, individual_dt = individual_dt, pop_col = pop_col,
+      exposure_dt = exposure_dt, individual_dt = individual_dt,
       group_col = group_col, group_values = group_values, pollutants = pollutants,
       outcome_pattern = summary_pattern, year_filter = year)),
 
     ci = label(compute_exposure_regressions(
-      exposure_dt = exposure_dt, individual_dt = individual_dt, pop_col = pop_col,
+      exposure_dt = exposure_dt, individual_dt = individual_dt,
       group_col = group_col, group_values = group_values, base_group = base_group,
       pollutants = pollutants, outcome_pattern = ci_pattern, year_filter = year,
       conf_level = conf_level, normalized = normalized,
@@ -774,7 +757,7 @@ run_city_exposure <- function(city, city_id, exposure_dt, individual_dt, geo_sta
 
     coverage = label(compute_exposure_coverage(
       exposure_dt = exposure_dt, individual_dt = individual_dt,
-      geo_station_pq = geo_station_pq, pop_col = pop_col, group_col = group_col,
+      geo_station_pq = geo_station_pq, group_col = group_col,
       group_values = group_values, pollutants = pollutants, buffer_km = buffer_km,
       year_filter = year)))
 }

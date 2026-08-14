@@ -121,8 +121,6 @@ plots_bogota <- save_city_monitoring_figures(
   dist_pq = dist_bogota,
   census_dt = census_bogota,
   station_dt = station_bogota,
-  geo_id_col = "GEO_ID",
-  edu_col = "education_mean",
   radius_km = 3,
   outdir_fig = outdir_fig
 )
@@ -134,8 +132,6 @@ plots_cdmx <- save_city_monitoring_figures(
   dist_pq = dist_cdmx,
   census_dt = census_cdmx,
   station_dt = station_cdmx,
-  geo_id_col = "CVE_MUN",
-  edu_col = "education_mean",
   radius_km = 3,
   outdir_fig = outdir_fig
 )
@@ -147,8 +143,6 @@ plots_santiago <- save_city_monitoring_figures(
   dist_pq = dist_santiago,
   census_dt = census_santiago,
   station_dt = station_santiago,
-  geo_id_col = "CUT",
-  edu_col = "education_mean",
   radius_km = 3,
   outdir_fig = outdir_fig
 )
@@ -160,8 +154,6 @@ plots_sp <- save_city_monitoring_figures(
   dist_pq = dist_sp,
   census_dt = census_sp,
   station_dt = station_sp,
-  geo_id_col = "code_weighting",
-  edu_col = "education_mean",
   radius_km = 3,
   outdir_fig = outdir_fig
 )
