@@ -296,7 +296,7 @@ compare_idw <- function(
   if (!file.exists(legacy_station_dist))
     stop("[", cfg$id, "] Legacy station dist file not found: ", legacy_station_dist)
   
-  out_dir <- file.path(out_root, cfg$id, "distance_comparison")
+  out_dir <- file.path(out_root, "distance_comparison")
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
   
   if (!quiet) message("[", cfg$id, "] Comparing distance matrices ...")

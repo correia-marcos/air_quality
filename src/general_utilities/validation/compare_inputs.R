@@ -524,16 +524,10 @@ compare_ground_stations <- function(
   #     All artefacts go into one subfolder so they are easy to find and
   #     read together in the Quarto report. No CSV or RDS files are written.
   # -----------------------------------------------------------------------
-  cmp_dir <- file.path(out_dir, "ground_station_comparison")
+  # out_dir already ends in ground_station_comparison/ (see section above).
+  cmp_dir <- out_dir
   dir.create(cmp_dir, recursive = TRUE, showWarnings = FALSE)
-  
-  # Helper: write one Parquet with zstd compression (good ratio + fast reads)
-    arrow::write_parquet(
-      dplyr::as_tibble(df),
-      file.path(cmp_dir, paste0(name, ".parquet")),
-      compression = "zstd"
-    )
-  
+
   write_pq(res$diff_summary, cmp_dir, "diff_summary")
   write_pq(res$diffs_long, cmp_dir,   "diffs_long")
   write_pq(res$only_old, cmp_dir,     "only_legacy")
@@ -635,7 +629,7 @@ compare_metro_area <- function(
   if (!dir.exists(cmp$legacy_shp_dir))
     stop("[", cfg$id, "] Legacy shapefile dir not found: ", cmp$legacy_shp_dir)
   
-  out_dir <- file.path(out_root, cfg$id, "metro_area_comparison")
+  out_dir <- file.path(out_root, "metro_area_comparison")
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
   
   if (!quiet) message("[", cfg$id, "] Comparing metro area definitions ...")
@@ -889,7 +883,7 @@ compare_census <- function(
   if (!file.exists(leg_col_path))
     stop("[", cfg$id, "] Legacy collapsed census not found: ", leg_col_path)
   
-  out_dir <- file.path(out_root, cfg$id, "census_comparison")
+  out_dir <- file.path(out_root, "census_comparison")
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
   
   if (!quiet) message("[", cfg$id, "] Comparing census data (Extended 2005) ...")
