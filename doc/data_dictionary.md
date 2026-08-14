@@ -157,16 +157,60 @@ counterpart by a *transformation* a referee can check. Twins are deleted; `raw_*
 
 ## 7. Known gaps
 
-- **São Paulo `college_incomplete` is structurally zero.** The `years_schooling` recode
-  (`sao_paulo.R:1621-1651`) can only produce the values {0, 2, 4, 4.5, 5, 9, 12, 17, 19, 23}, but
-  `col_incomplete` is defined as `years_schooling >= 13 & years_schooling <= 16`
-  (`sao_paulo.R:1659-1661`) — a range the recode never emits. Respondents with incomplete tertiary
-  education (`V0633 == "11" & V0634 == "2"`) are mapped to 12 years and therefore counted as
-  *high-school complete*. `count_col_inc` is 0 for all 633 units and `col_incomplete` is 0 for all
-  1,216,611 records, while the other three cities populate the category. **Not fixed here** —
-  changing it moves published numbers and is a definitional decision, not a naming one.
-- **Bogotá 2018 has no `high_school_incomplete` / `college_incomplete` indicators at all**
-  (`bogota.R:3502-3505` builds four education dummies, the other cities build six).
+### The education-category indicators do not partition the population
+
+`education_mean` — the variable that defines the exposure quintiles and therefore every published
+result — is a weighted mean over *all* `educ_years` values and is unaffected by everything below.
+The `count_*` / `share_*` education columns are a different matter. They are also, as of this
+writing, **written by the four city modules and read by nothing else in the repo.**
+
+The harmonised `educ_years` scale is anchored at 12 = secondary complete, 17 = bachelor's complete,
+19 = master's complete, 23 = doctorate (`doc/paper/old_appendix.tex:83-86`, stated identically for
+all four cities). The indicator bands were written against a source that records the *last year
+approved within a level*; they misfire on sources that record only *level + completed?*.
+
+**Bogotá 2018 — fixed.** `map_education_2018()` (`bogota.R:3439-3453`) emits
+{0, 5, 9, 11, 13, 14, 17, 19} from the recoded DANE variable `P_NIVEL_ANOSR`, but only four
+indicators were built: `no_education` (= 0), `high_school_complete` (11:12), `college_complete`
+(17), `graduate_educ` (≥ 18). Nothing covered 5, 9, 13 or 14, leaving **2,366,636 of 5,575,652
+adults (42.4%) in no category** and the four `share_*` columns summing to 0.576:
+
+| `escolaridad` | DANE level | Adults | Share | Was | Now |
+|---|---|---|---|---|---|
+| 0 | Ninguno / Preescolar | 129,187 | 2.3% | `no_education` | `no_education` |
+| 5 | Básica primaria | 1,052,612 | 18.9% | *none* | `high_school_incomplete` |
+| 9 | Básica secundaria | 574,567 | 10.3% | *none* | `high_school_incomplete` |
+| 11 | Media académica / técnica | 1,576,962 | 28.3% | `high_school_complete` | `high_school_complete` |
+| 13 | Normalista | 26,064 | 0.5% | *none* | `college_incomplete` |
+| 14 | Técnica profesional / Tecnológica | 713,393 | 12.8% | *none* | `college_incomplete` |
+| 17 | Universitario | 1,050,158 | 18.8% | `college_complete` | `college_complete` |
+| 19 | Especialización / maestría / doctorado | 452,709 | 8.1% | `graduate_educ` | `graduate_educ` |
+
+`high_school_incomplete` (1–10) and `college_incomplete` (13–16) were added, together with the
+matching `count_hs_inc` / `count_col_inc` and `share_hs_inc_pop` / `share_col_inc_pop`. Verified on
+the current micro file: every one of the 5,575,652 adults now falls in exactly one band and the six
+shares sum to 1. Note the `high_school_complete` band is `11:12` for Bogotá, not `12` alone —
+*media académica* and *media técnica* both map to 11 in the 2018 recode. The 2005 Bogotá function
+(`bogota.R:3184-3193`) already carried all six.
+
+**São Paulo `college_incomplete` is always zero — and this is correct, not a defect.** The recode
+(`sao_paulo.R:1621-1651`) reproduces `doc/paper/old_appendix.tex:372-398` row for row: *Superior de
+graduação incompleto* (`V0633 == "11" & V0634 == "2"`) maps to **12** by design, so a person who
+started but did not finish a degree is credited with completed secondary. The observed values are
+{0, 2, 4.5, 5, 9, 12, 17, 19, 23}, so the `[13, 16]` band the indicator tests is unreachable — the
+Brazilian source records only level plus a completion flag, and the harmonisation deliberately
+collapses partial levels onto the anchors. The same is true of `[20, 22]`: *Doutorado incompleto*
+maps to 19. The band works for **Bogotá 2005**, whose variable does carry within-level detail
+(`Profesional 1…4` → 13, 14, 15, 16; `old_appendix.tex:97-154`) — which is where the definition
+came from.
+
+The code additions beyond the appendix are two blank-handling branches, `V0633 == "05" &
+is.na(V0634) ~ 2` and `V0633 == "06" & is.na(V0634) ~ 4.5`; 4.5 is the only non-integer the scale
+produces.
+
+**Not changed here.** Whether to add Bogotá's two missing indicators, and whether
+`college_incomplete` should exist at all for sources that cannot express it, are definitional
+decisions rather than naming ones.
 - **The 2005 Bogotá vintages** (`bogota_basic_2005`, `bogota_extended_2005`) are validation-track
   inputs whose structure deliberately mirrors the legacy pipeline. They are **not** converted to
   this schema.

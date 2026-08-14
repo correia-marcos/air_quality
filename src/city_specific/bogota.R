@@ -3411,6 +3411,18 @@ bogota_filter_census_2018 <- function(
 #   harmonizes education and demographic variables, and collapses adults
 #   aged 25+ to the block level.
 #
+#' @details    Education bands. The 2018 CNPV ships P_NIVEL_ANOSR, a level-only recode
+#              with no completion flag, so map_education_2018() assigns one year value
+#              per level and emits exactly {0, 5, 9, 11, 13, 14, 17, 19}. The six
+#              indicators partition that set: 0 no_education; 1-10 high_school_incomplete
+#              (basica primaria 5, basica secundaria 9); 11-12 high_school_complete
+#              (media academica and media tecnica both map to 11, which is why the band
+#              is 11:12 here and 12 alone elsewhere); 13-16 college_incomplete
+#              (normalista 13, tecnica profesional/tecnologica 14); 17 college_complete;
+#              >=18 graduate_educ. Every share therefore sums to 1. Before the two
+#              "incomplete" bands were added, 42.4% of adults fell into no category at
+#              all -- see doc/data_dictionary.md.
+#
 #' @Written_on : 01/02/2026
 #' @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------------
@@ -3512,10 +3524,14 @@ bogota_harmonize_census_2018_data <- function(
         
         escolaridad = map_education_2018(as.numeric(P_NIVEL_ANOSR)),
         
-        no_education         = as.numeric(escolaridad == 0),
-        high_school_complete = as.numeric(escolaridad %in% 11:12),
-        college_complete     = as.numeric(escolaridad == 17),
-        graduate_educ        = as.numeric(escolaridad >= 18),
+        # Six bands that partition the eight values map_education_2018() emits, so the
+        # shares sum to 1. See @details: education bands.
+        no_education           = as.numeric(escolaridad == 0),
+        high_school_incomplete = as.numeric(escolaridad >= 1 & escolaridad <= 10),
+        high_school_complete   = as.numeric(escolaridad %in% 11:12),
+        college_incomplete     = as.numeric(escolaridad >= 13 & escolaridad <= 16),
+        college_complete       = as.numeric(escolaridad == 17),
+        graduate_educ          = as.numeric(escolaridad >= 18),
         
         employed = ifelse(
           adult == 1,
@@ -3560,7 +3576,9 @@ bogota_harmonize_census_2018_data <- function(
       escolaridad_avg = education_mean,
       
       count_no_ed   = sum(no_education * fe, na.rm = TRUE),
+      count_hs_inc  = sum(high_school_incomplete * fe, na.rm = TRUE),
       count_hs_com  = sum(high_school_complete * fe, na.rm = TRUE),
+      count_col_inc = sum(college_incomplete * fe, na.rm = TRUE),
       count_col_com = sum(college_complete * fe, na.rm = TRUE),
       count_grad    = sum(graduate_educ * fe, na.rm = TRUE),
       
@@ -3571,7 +3589,9 @@ bogota_harmonize_census_2018_data <- function(
     ) %>%
     dplyr::mutate(
       share_no_ed_pop   = count_no_ed / weight,
+      share_hs_inc_pop  = count_hs_inc / weight,
       share_hs_com_pop  = count_hs_com / weight,
+      share_col_inc_pop = count_col_inc / weight,
       share_col_com_pop = count_col_com / weight,
       share_grad_pop    = count_grad / weight,
       
