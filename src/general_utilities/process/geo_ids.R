@@ -3,14 +3,16 @@
 # ============================================================================================
 #' @Goal: Functions for geographic identifier repair.
 #
-#' @Description: Reconciles the geographic keys the census and the spatial layers ship, which differ in
-#   zero padding and width between providers.
+#' @Description: Reconciles the geographic keys the census and the spatial layers ship,
+#   which differ in zero padding and width between providers, and renames each provider's
+#   columns to the project's canonical schema.
 #   Sourced by config_utils_process_data.R; never sourced directly by a script.
 #
 #' @Summary:
 #   1. repair_bogota_geo_ids
 #   2. canonical_geo_id
 #   3. reconcile_geo_ids
+#   4. apply_canonical_names
 #
 #' @Date: August 2026
 #' @Author: Marcos Paulo
@@ -297,4 +299,80 @@ reconcile_geo_ids <- function(geo_ids, census_ids, label = "", quiet = FALSE) {
   }
 
   out
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: apply_canonical_names
+#
+#' @param dt        data.table or data.frame; one processed census or station table.
+#' @param map       named character vector from cfg$schema; names are the provider's
+#                   columns, values are the canonical names.
+#' @param geo_level string or NULL; unit type to stamp on every row, e.g. "municipio".
+#' @param raw_keep  character vector; provider columns to keep, prefixed with "raw_".
+#                   Default NULL keeps every unmapped column, prefixed.
+#' @param quiet     logical; suppress the mapping message. Default FALSE.
+#
+#' @return  data.table with canonical names, geo_id as character, and geo_level added.
+#
+#' @details
+#   The one place a provider's vocabulary meets the project's. Everything downstream reads
+#   the canonical names in doc/data_dictionary.md, so this is the only step that has to
+#   know that CDMX calls the municipality key CVE_MUN and Sao Paulo calls its unit code
+#   code_weighting.
+#
+#   Columns not named in `map` survive with a "raw_" prefix. That keeps the derivation of
+#   every canonical variable checkable against its source, while making the boundary
+#   between the two visible in the file itself. Columns already carrying a canonical name,
+#   or already prefixed, are left alone.
+#
+#   geo_id goes through canonical_geo_id() so it is always character: a numeric key loses
+#   its leading zero (CDMX 9002 for "09002") and a 13-digit one renders in scientific
+#   notation.
+#
+#   The mapping is printed on every run, so a script's console output records the
+#   provenance of the table it just wrote.
+#
+#' @Written_on : August 2026
+#' @Written_by : Marcos Paulo
+# --------------------------------------------------------------------------------------------
+apply_canonical_names <- function(dt, map, geo_level = NULL, raw_keep = NULL,
+                                  quiet = FALSE) {
+
+  dt <- data.table::as.data.table(dt)
+
+  # A promised provider column that is absent means the mapping and the data disagree.
+  missing <- setdiff(names(map), names(dt))
+  if (length(missing))
+    stop("apply_canonical_names(): column(s) not found: ",
+         paste(missing, collapse = ", "))
+
+  data.table::setnames(dt, names(map), unname(map))
+
+  # Everything the map did not claim is provider-native; mark it as such.
+  passthrough <- setdiff(names(dt), unname(map))
+  if (!is.null(raw_keep)) passthrough <- intersect(passthrough, raw_keep)
+  passthrough <- passthrough[!startsWith(passthrough, "raw_")]
+  if (length(passthrough))
+    data.table::setnames(dt, passthrough, paste0("raw_", passthrough))
+
+  if (!is.null(raw_keep)) {
+    drop <- setdiff(names(dt), c(unname(map), paste0("raw_", raw_keep), "geo_level"))
+    if (length(drop)) dt[, (drop) := NULL]
+  }
+
+  # Character identifiers only: see @details on leading zeros.
+  if ("geo_id" %in% names(dt))    dt[, geo_id := canonical_geo_id(geo_id)]
+  if ("comuna_id" %in% names(dt)) dt[, comuna_id := canonical_geo_id(comuna_id)]
+
+  if (!is.null(geo_level)) dt[, geo_level := geo_level]
+
+  if (!quiet) {
+    message("  canonical names: ",
+            paste(paste0(names(map), " -> ", unname(map)), collapse = ", "))
+    if (length(passthrough))
+      message("  kept as raw_*  : ", paste(passthrough, collapse = ", "))
+  }
+
+  dt[]
 }
