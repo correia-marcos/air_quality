@@ -38,7 +38,36 @@ santiago_cfg <- list(
                        "Pirque", "Providencia", "Pudahuel", "Puente Alto", "Quilicura",
                        "Quinta Normal", "Recoleta", "Renca", "San Bernardo", "San Joaquín", 
                        "San José de Maipo", "San Miguel", "San Ramón", "Santiago", "Talagante",
-                       "Tiltil", "Vitacura", "Peñaflor")
+                       "Tiltil", "Vitacura", "Peñaflor"),
+
+  # INE names -> the canonical schema of doc/data_dictionary.md. Two vintages with
+  # different units of analysis, so each carries its own mapping. Applied by
+  # apply_canonical_names(); see that function's @details.
+  schema = list(
+    # 2017: the analysis unit is the zona censal, and `comuna` is a COARSER unit that
+    # must not be confused with it, so it is kept under a distinct name.
+    zona_2017 = list(
+      geo_level    = "zona_censal",
+      census_micro = c(
+        zona_id     = "geo_id",           # geocodigo: CUT(5)+distrito(2)+area(1)+zona(3)
+        comuna      = "comuna_id",        # coarser than geo_id -- see @details
+        fe          = "person_weight",    # injected as 1
+        escolaridad = "raw_escolaridad"), # raw code; differs from educ_years
+      census_geo   = c(
+        zona_id = "geo_id",
+        weight  = "pop_total",
+        n       = "n_records")),          # the one file where n is a genuine count
+    # 2024: the analysis unit is the comuna itself, spelled `comuna` in the individual
+    # file and `CUT` in the collapsed one. Both become geo_id.
+    comuna_2024 = list(
+      geo_level    = "comuna",
+      census_micro = c(
+        comuna = "geo_id",
+        fe     = "person_weight"),
+      census_geo   = c(
+        CUT    = "geo_id",
+        weight = "pop_total")),
+    stations = c(station = "station_id"))
 )
 
 # ============================================================================================

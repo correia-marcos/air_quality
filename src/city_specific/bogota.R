@@ -46,7 +46,20 @@ bogota_cfg <- list(
     "25290"),
   station_nme_map = c("Centro de alto rendimiento" = "Centro de Alto Rendimiento",
                       "Las Ferias"                 = "Las Ferias",
-                      "Carvajal-Sevillana"         = "Carvajal-Sevillana")
+                      "Carvajal-Sevillana"         = "Carvajal-Sevillana"),
+
+  # DANE names -> the canonical schema of doc/data_dictionary.md. Applied by
+  # apply_canonical_names() at the end of processing; see that function's @details.
+  schema = list(
+    geo_level    = "manzana_censal",
+    census_micro = c(
+      GEO_ID      = "geo_id",        # DANE MGN area/manzana censal code, 22 characters
+      fe          = "person_weight", # injected as 1: the 2018 CNPV is a full enumeration
+      escolaridad = "educ_years"),   # already years of schooling, not a raw code
+    census_geo   = c(
+      GEO_ID = "geo_id",
+      weight = "pop_total"),
+    stations     = c(station = "station_id"))
   )
 
 # ============================================================================================

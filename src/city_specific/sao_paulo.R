@@ -33,8 +33,23 @@ sao_paulo_cfg <- list(
                        3548708, 3548807, 3549953, 3550308, 3552502, 3552809, 3556453),
   advanced_url_qualar = 
     "https://qualar.cetesb.sp.gov.br/qualar/exportaDadosAvanc.do?method=pesquisarInit",
-  metadata_url_qualar = 
-    "https://qualar.cetesb.sp.gov.br/qualar/relConfiguracaoEstacao.do?method=pesquisarInit"
+  metadata_url_qualar =
+    "https://qualar.cetesb.sp.gov.br/qualar/relConfiguracaoEstacao.do?method=pesquisarInit",
+
+  # IBGE names -> the canonical schema of doc/data_dictionary.md. Note `weight` plays
+  # both roles here: a person's factor in the micro file, the unit total in the geo
+  # file. Applied by apply_canonical_names(); see that function's @details.
+  schema = list(
+    geo_level    = "area_ponderacao",
+    census_micro = c(
+      code_weighting  = "geo_id",        # IBGE Area de Ponderacao, census V0011
+      weight          = "person_weight", # IBGE person expansion factor
+      years_schooling = "educ_years",
+      V6525           = "income_raw"),
+    census_geo   = c(
+      code_weighting = "geo_id",
+      weight         = "pop_total"),
+    stations     = c(station = "station_id"))
 )
 
 # ============================================================================================

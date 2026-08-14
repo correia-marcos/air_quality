@@ -44,7 +44,22 @@ cdmx_cfg <- list(
   station_nme_map = c(
     "Mguel Hidalgo"             = "Miguel Hidalgo",
     "San Juan Aragón"           = "San Juan de Aragón",
-    "Investigaciones Nucleares" = "Instituto Nacional de Investigaciones Nucleares")
+    "Investigaciones Nucleares" = "Instituto Nacional de Investigaciones Nucleares"),
+
+  # INEGI names -> the canonical schema of doc/data_dictionary.md. Applied by
+  # apply_canonical_names() at the end of processing; see that function's @details.
+  schema = list(
+    geo_level    = "municipio",
+    census_micro = c(
+      CVE_MUN     = "geo_id",        # INEGI key: 2-digit state + 3-digit municipality
+      FACTOR      = "person_weight", # INEGI expansion factor; a real sample weight
+      escolaridad = "educ_years",
+      ingtrmen    = "income_raw"),   # income before winsorising
+    census_geo   = c(
+      CVE_MUN  = "geo_id",
+      weight   = "pop_total",
+      ingtrmen = "income_raw"),
+    stations     = c(station = "station_id"))
   )
 
 # ============================================================================================
