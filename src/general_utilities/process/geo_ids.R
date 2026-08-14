@@ -311,7 +311,7 @@ reconcile_geo_ids <- function(geo_ids, census_ids, label = "", quiet = FALSE) {
   "person_weight", "pop_total", "n_records",
   # census variables
   "educ_years", "income", "income_raw", "education_mean", "income_mean",
-  "adult", "women", "employed", "indigena", "hh_head", "hh_head_women",
+  "age", "adult", "women", "employed", "indigena", "hh_head", "hh_head_women",
   "no_education", "high_school_incomplete", "high_school_complete",
   "college_incomplete", "college_complete", "graduate_educ",
   # panels and distances
@@ -326,8 +326,10 @@ reconcile_geo_ids <- function(geo_ids, census_ids, label = "", quiet = FALSE) {
 #' @param map       named character vector from cfg$schema; names are the provider's
 #                   columns, values are the canonical names.
 #' @param geo_level string or NULL; unit type to stamp on every row, e.g. "municipio".
-#' @param raw_keep  character vector; provider columns to keep, prefixed with "raw_".
-#                   Default NULL keeps every unmapped column, prefixed.
+#' @param raw_cols  character vector from cfg$schema$raw; provider-native columns to keep
+#                   under a "raw_" prefix. Default NULL prefixes nothing.
+#' @param geo_id_width integer or NULL from cfg$schema$geo_id_width; zero-pad geo_id to
+#                   this many characters. Default NULL leaves the width alone.
 #' @param quiet     logical; suppress the mapping message. Default FALSE.
 #
 #' @return  data.table with canonical names, geo_id as character, and geo_level added.
@@ -338,10 +340,13 @@ reconcile_geo_ids <- function(geo_ids, census_ids, label = "", quiet = FALSE) {
 #   know that CDMX calls the municipality key CVE_MUN and Sao Paulo calls its unit code
 #   code_weighting.
 #
-#   Columns not named in `map` survive with a "raw_" prefix. That keeps the derivation of
-#   every canonical variable checkable against its source, while making the boundary
-#   between the two visible in the file itself. Columns already carrying a canonical name,
-#   or already prefixed, are left alone.
+#   Why the raw list is explicit. Only the columns a city names in cfg$schema$raw take the
+#   "raw_" prefix. Prefixing everything the map did not claim would be wrong: a processed
+#   census also carries derived project columns that are neither provider-native nor part
+#   of the shared schema (Sao Paulo's `white` and `formal_emp`, Santiago's `indigena`),
+#   and calling those raw would misdescribe them. Keeping the provider's own variables
+#   makes the derivation of each canonical variable checkable against its source; the
+#   prefix is what makes that boundary visible in the file itself.
 #
 #   geo_id goes through canonical_geo_id() so it is always character: a numeric key loses
 #   its leading zero (CDMX 9002 for "09002") and a 13-digit one renders in scientific
@@ -353,8 +358,8 @@ reconcile_geo_ids <- function(geo_ids, census_ids, label = "", quiet = FALSE) {
 #' @Written_on : August 2026
 #' @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------------
-apply_canonical_names <- function(dt, map, geo_level = NULL, raw_keep = NULL,
-                                  quiet = FALSE) {
+apply_canonical_names <- function(dt, map, geo_level = NULL, raw_cols = NULL,
+                                  geo_id_width = NULL, quiet = FALSE) {
 
   dt <- data.table::as.data.table(dt)
 
@@ -366,22 +371,16 @@ apply_canonical_names <- function(dt, map, geo_level = NULL, raw_keep = NULL,
 
   data.table::setnames(dt, names(map), unname(map))
 
-  # Everything the map did not claim, and that is not already canonical, is provider-native.
-  passthrough <- setdiff(names(dt), unname(map))
-  if (!is.null(raw_keep)) passthrough <- intersect(passthrough, raw_keep)
+  # Only the columns the city declares as provider-native get the raw_ prefix; derived
+  # project columns are left alone. See @details: why the list is explicit.
+  passthrough <- as.character(intersect(raw_cols, names(dt)))
   passthrough <- passthrough[!startsWith(passthrough, "raw_")]
-  passthrough <- passthrough[!passthrough %in% .CANONICAL_COLS]
-  passthrough <- passthrough[!grepl("^(count|share)_", passthrough)]
   if (length(passthrough))
     data.table::setnames(dt, passthrough, paste0("raw_", passthrough))
 
-  if (!is.null(raw_keep)) {
-    drop <- setdiff(names(dt), c(unname(map), paste0("raw_", raw_keep), "geo_level"))
-    if (length(drop)) dt[, (drop) := NULL]
-  }
-
   # Character identifiers only: see @details on leading zeros.
-  if ("geo_id" %in% names(dt))    dt[, geo_id := canonical_geo_id(geo_id)]
+  if ("geo_id" %in% names(dt))
+    dt[, geo_id := canonical_geo_id(geo_id, width = geo_id_width)]
   if ("comuna_id" %in% names(dt)) dt[, comuna_id := canonical_geo_id(comuna_id)]
 
   if (!is.null(geo_level)) dt[, geo_level := geo_level]

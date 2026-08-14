@@ -50,15 +50,21 @@ cdmx_cfg <- list(
   # apply_canonical_names() at the end of processing; see that function's @details.
   schema = list(
     geo_level    = "municipio",
+    # INEGI keys lose their leading zero when read as numbers ("09002" -> 9002), and the
+    # spatial layers ship the padded form, so pad here rather than at every join.
+    geo_id_width = 5L,
     census_micro = c(
       CVE_MUN     = "geo_id",        # INEGI key: 2-digit state + 3-digit municipality
       FACTOR      = "person_weight", # INEGI expansion factor; a real sample weight
       escolaridad = "educ_years",
-      ingtrmen    = "income_raw"),   # income before winsorising
+      ingtrmen    = "income_raw",    # income before winsorising
+      edad        = "age"),
     census_geo   = c(
       CVE_MUN  = "geo_id",
       weight   = "pop_total",
       ingtrmen = "income_raw"),
+    # INEGI's ENT/MUN source columns are consumed when CVE_MUN is built, so none survive.
+    raw          = character(0),
     stations     = c(station = "station_id"))
   )
 
@@ -5072,18 +5078,16 @@ mexico_harmonize_census_data <- function(
     dplyr::filter(adult == 1) %>%
     dplyr::group_by(CVE_MUN) %>%
     dplyr::summarise(
-      weight = sum(FACTOR, na.rm = TRUE),
-      n      = weight,
-      
+      weight    = sum(FACTOR, na.rm = TRUE),
+      n_records = dplyr::n(),
+
       education_mean = sum(escolaridad * FACTOR, na.rm = TRUE) / weight,
-      escolaridad    = education_mean,
-      
+
       # Keep the legacy raw-income mean and add a winsorized income mean.
       ingtrmen = sum(ingtrmen * FACTOR, na.rm = TRUE) / weight,
       income_mean = sum(income * FACTOR, na.rm = TRUE) /
         sum(FACTOR * (!is.na(income)), na.rm = TRUE),
-      income = income_mean,
-      
+
       count_no_ed   = sum(no_education * FACTOR, na.rm = TRUE),
       count_hs_inc  = sum(high_school_incomplete * FACTOR, na.rm = TRUE),
       count_hs_com  = sum(high_school_complete * FACTOR, na.rm = TRUE),
@@ -5107,16 +5111,21 @@ mexico_harmonize_census_data <- function(
       
       share_employed_pop = count_employed / weight,
       share_women_pop    = count_women / weight,
-      share_indigena_pop = count_indigena / weight,
-      
-      share_grad_educ_pop = share_grad_pop
+      share_indigena_pop = count_indigena / weight
     )
-  
+
+  # INEGI names -> canonical schema; the mapping lives in cdmx_cfg$schema.
+  sch <- cdmx_cfg$schema
+  all_census    <- apply_canonical_names(all_census, sch$census_micro, sch$geo_level,
+                                         sch$raw, sch$geo_id_width, quiet = quiet)
+  collapse_data <- apply_canonical_names(collapse_data, sch$census_geo, sch$geo_level,
+                                         geo_id_width = sch$geo_id_width, quiet = quiet)
+
   # Save outputs
   if (!quiet) {
     message("Saving processed Mexico census files.")
   }
-  
+
   arrow::write_parquet(
     all_census,
     file.path(out_dir, "census_metro_individual_2020.parquet")

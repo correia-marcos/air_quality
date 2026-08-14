@@ -56,7 +56,8 @@ santiago_cfg <- list(
       census_geo   = c(
         zona_id = "geo_id",
         weight  = "pop_total",
-        n       = "n_records")),          # the one file where n is a genuine count
+        n       = "n_records"),           # the one file where n is a genuine count
+      raw          = c("hogar_ref_id", "p07", "p08", "p09", "p14", "p15", "p16", "p17")),
     # 2024: the analysis unit is the comuna itself, spelled `comuna` in the individual
     # file and `CUT` in the collapsed one. Both become geo_id.
     comuna_2024 = list(
@@ -66,7 +67,8 @@ santiago_cfg <- list(
         fe     = "person_weight"),
       census_geo   = c(
         CUT    = "geo_id",
-        weight = "pop_total")),
+        weight = "pop_total"),
+      raw          = c("parentesco", "sexo", "sit_fuerza_trabajo", "p28_autoid_pueblo")),
     stations = c(station = "station_id"))
 )
 
@@ -2321,26 +2323,30 @@ santiago_process_census_2017 <- function(
   collapsed_df <- individual_df %>%
     dplyr::filter(adult == 1) %>%
     dplyr::group_by(zona_id) %>%
+    # Population-weighted, matching the other three cities. `fe` is 1 here (the 2017
+    # census is a full enumeration), so these give the same numbers an unweighted mean
+    # would -- but they stay correct if a sampled census is ever substituted.
     dplyr::summarise(
       n                   = dplyr::n(),
       weight              = sum(fe, na.rm = TRUE),
-      education_mean      = mean(educ_years, na.rm = TRUE),
-      avg_escolaridad     = mean(educ_years, na.rm = TRUE),
-      count_no_ed         = sum(no_education, na.rm = TRUE),
-      count_hs_inc        = sum(high_school_incomplete, na.rm = TRUE),
-      count_hs_com        = sum(high_school_complete, na.rm = TRUE),
-      count_col_inc       = sum(college_incomplete, na.rm = TRUE),
-      count_col_com       = sum(college_complete, na.rm = TRUE),
-      count_grad          = sum(graduate_educ, na.rm = TRUE),
-      count_employed      = sum(employed, na.rm = TRUE),
-      share_no_ed_pop     = mean(no_education, na.rm = TRUE),
-      share_hs_inc_pop    = mean(high_school_incomplete, na.rm = TRUE),
-      share_hs_com_pop    = mean(high_school_complete, na.rm = TRUE),
-      share_col_inc_pop   = mean(college_incomplete, na.rm = TRUE),
-      share_col_com_pop   = mean(college_complete, na.rm = TRUE),
-      share_grad_educ_pop = mean(graduate_educ, na.rm = TRUE),
-      share_employed_pop  = mean(employed, na.rm = TRUE),
+      education_mean      = sum(educ_years * fe, na.rm = TRUE) / weight,
+      count_no_ed         = sum(no_education * fe, na.rm = TRUE),
+      count_hs_inc        = sum(high_school_incomplete * fe, na.rm = TRUE),
+      count_hs_com        = sum(high_school_complete * fe, na.rm = TRUE),
+      count_col_inc       = sum(college_incomplete * fe, na.rm = TRUE),
+      count_col_com       = sum(college_complete * fe, na.rm = TRUE),
+      count_grad          = sum(graduate_educ * fe, na.rm = TRUE),
+      count_employed      = sum(employed * fe, na.rm = TRUE),
       .groups             = "drop"
+    ) %>%
+    dplyr::mutate(
+      share_no_ed_pop     = count_no_ed / weight,
+      share_hs_inc_pop    = count_hs_inc / weight,
+      share_hs_com_pop    = count_hs_com / weight,
+      share_col_inc_pop   = count_col_inc / weight,
+      share_col_com_pop   = count_col_com / weight,
+      share_grad_educ_pop = count_grad / weight,
+      share_employed_pop  = count_employed / weight
     )
 
   # Zones with adults must not exceed the mapped ones; any shortfall is zones the
@@ -2350,10 +2356,17 @@ santiago_process_census_2017 <- function(
             nrow(collapsed_df), " of ", length(keep_zonas), " zonas censales.")
   }
 
+  # INE names -> canonical schema; the mapping lives in santiago_cfg$schema$zona_2017.
+  sch <- santiago_cfg$schema$zona_2017
+  individual_df <- apply_canonical_names(individual_df, sch$census_micro,
+                                         sch$geo_level, sch$raw, quiet = quiet)
+  collapsed_df  <- apply_canonical_names(collapsed_df, sch$census_geo,
+                                         sch$geo_level, quiet = quiet)
+
   if (!quiet) message("[santiago_2017] Saving outputs to: ", out_dir)
-  
+
   # Write final analytical files
-  # Parquet: zona_id is an 11-digit code that must stay character. A CSV saves badly.
+  # Parquet: geo_id is an 11-digit code that must stay character. A CSV saves badly.
   arrow::write_parquet(individual_df,
                        file.path(out_dir, "census_individual_2017.parquet"))
   arrow::write_parquet(collapsed_df,
@@ -2520,13 +2533,11 @@ santiago_process_census_2024 <- function(
     dplyr::filter(adult == 1) %>%
     dplyr::group_by(comuna) %>%
     dplyr::summarise(
-      weight = sum(fe, na.rm = TRUE),
-      n      = weight,
-      
+      weight    = sum(fe, na.rm = TRUE),
+      n_records = dplyr::n(),
+
       education_mean = sum(educ_years * fe, na.rm = TRUE) / weight,
-      educ_years      = education_mean,
-      avg_escolaridad = education_mean,
-      
+
       count_no_ed   = sum(no_education * fe, na.rm = TRUE),
       count_hs_inc  = sum(high_school_incomplete * fe, na.rm = TRUE),
       count_hs_com  = sum(high_school_complete * fe, na.rm = TRUE),
@@ -2550,17 +2561,24 @@ santiago_process_census_2024 <- function(
       
       share_employed_pop = count_employed / weight,
       share_women_pop    = count_women / weight,
-      share_indigena_pop = count_indigena / weight,
-      
-      share_grad_educ_pop = share_grad_pop
+      share_indigena_pop = count_indigena / weight
     ) %>%
     dplyr::rename(CUT = comuna)
-  
+
+  # INE names -> canonical schema; the mapping lives in santiago_cfg$schema$comuna_2024.
+  # `escolaridad` is dropped: it is a verified duplicate of educ_years at this vintage.
+  sch <- santiago_cfg$schema$comuna_2024
+  df_harm <- df_harm[, setdiff(names(df_harm), "escolaridad"), drop = FALSE]
+  df_harm     <- apply_canonical_names(df_harm, sch$census_micro,
+                                       sch$geo_level, sch$raw, quiet = quiet)
+  df_collapse <- apply_canonical_names(df_collapse, sch$census_geo,
+                                       sch$geo_level, quiet = quiet)
+
   # Save outputs
   if (!quiet) {
     message("[santiago_2024] Saving outputs to: ", out_dir)
   }
-  
+
   arrow::write_parquet(
     df_harm,
     file.path(out_dir, "census_santiago_individual_2024.parquet")

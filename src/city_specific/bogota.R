@@ -55,10 +55,14 @@ bogota_cfg <- list(
     census_micro = c(
       GEO_ID      = "geo_id",        # DANE MGN area/manzana censal code, 22 characters
       fe          = "person_weight", # injected as 1: the 2018 CNPV is a full enumeration
-      escolaridad = "educ_years"),   # already years of schooling, not a raw code
+      escolaridad = "educ_years",    # already years of schooling, not a raw code
+      edad        = "age"),
     census_geo   = c(
       GEO_ID = "geo_id",
       weight = "pop_total"),
+    # DANE's own variables, kept so each derived column can be checked against its source.
+    raw          = c("COD_ENCUESTAS", "P_SEXO", "P_EDADR", "P_NIVEL_ANOSR", "P_TRABAJO",
+                     "COD_DANE_ANM"),
     stations     = c(station = "station_id"))
   )
 
@@ -3568,23 +3572,21 @@ bogota_harmonize_census_2018_data <- function(
     dplyr::filter(adult == 1) %>%
     dplyr::group_by(GEO_ID) %>%
     dplyr::summarise(
-      weight = sum(fe, na.rm = TRUE),
-      n      = weight,
-      
+      weight    = sum(fe, na.rm = TRUE),
+      n_records = dplyr::n(),
+
       education_mean = sum(escolaridad * fe, na.rm = TRUE) / weight,
-      escolaridad     = education_mean,
-      escolaridad_avg = education_mean,
-      
+
       count_no_ed   = sum(no_education * fe, na.rm = TRUE),
       count_hs_inc  = sum(high_school_incomplete * fe, na.rm = TRUE),
       count_hs_com  = sum(high_school_complete * fe, na.rm = TRUE),
       count_col_inc = sum(college_incomplete * fe, na.rm = TRUE),
       count_col_com = sum(college_complete * fe, na.rm = TRUE),
       count_grad    = sum(graduate_educ * fe, na.rm = TRUE),
-      
+
       count_employed = sum(employed * fe, na.rm = TRUE),
       count_women    = sum(women * fe, na.rm = TRUE),
-      
+
       .groups = "drop"
     ) %>%
     dplyr::mutate(
@@ -3594,19 +3596,23 @@ bogota_harmonize_census_2018_data <- function(
       share_col_inc_pop = count_col_inc / weight,
       share_col_com_pop = count_col_com / weight,
       share_grad_pop    = count_grad / weight,
-      
+
       share_employed_pop = count_employed / weight,
-      share_women_pop    = count_women / weight,
-      
-      share_graduate_educ_pop = share_grad_pop,
-      share_employed          = share_employed_pop
+      share_women_pop    = count_women / weight
     )
-  
+
+  # DANE names -> canonical schema; the mapping lives in bogota_cfg$schema.
+  all_census    <- apply_canonical_names(all_census, bogota_cfg$schema$census_micro,
+                                         bogota_cfg$schema$geo_level,
+                                         bogota_cfg$schema$raw, quiet = quiet)
+  collapse_data <- apply_canonical_names(collapse_data, bogota_cfg$schema$census_geo,
+                                         bogota_cfg$schema$geo_level, quiet = quiet)
+
   # Save outputs
   if (!quiet) {
     message("Saving processed Bogota census files.")
   }
-  
+
   arrow::write_parquet(
     all_census,
     file.path(out_dir, "census_2018_metro_individual.parquet")
@@ -3616,7 +3622,7 @@ bogota_harmonize_census_2018_data <- function(
     collapse_data,
     file.path(out_dir, "census_2018_metro_collapsed.parquet")
   )
-  
+
   return(list(individual = all_census, collapsed = collapse_data))
 }
 

@@ -45,10 +45,18 @@ sao_paulo_cfg <- list(
       code_weighting  = "geo_id",        # IBGE Area de Ponderacao, census V0011
       weight          = "person_weight", # IBGE person expansion factor
       years_schooling = "educ_years",
-      V6525           = "income_raw"),
+      V6525           = "income_raw",
+      # Sao Paulo abbreviates the education indicators the other three spell out.
+      hs_incomplete   = "high_school_incomplete",
+      hs_complete     = "high_school_complete",
+      col_incomplete  = "college_incomplete",
+      col_complete    = "college_complete"),
     census_geo   = c(
       code_weighting = "geo_id",
       weight         = "pop_total"),
+    # IBGE's own variables, kept so each derived column can be checked against its source.
+    raw          = c("V0010", "V1004", "V0601", "V0606", "V0633", "V0634", "V0648",
+                     "V6036", "V6400"),
     stations     = c(station = "station_id"))
 )
 
@@ -1700,13 +1708,11 @@ sp_process_census_2010 <- function(
     dplyr::filter(adult == 1) |>
     dplyr::group_by(code_weighting) |>
     dplyr::summarise(
-      weight = sum(weight, na.rm = TRUE),
-      n      = weight,
-      
+      weight    = sum(weight, na.rm = TRUE),
+      n_records = dplyr::n(),
+
       education_mean = sum(years_schooling * weight, na.rm = TRUE) / weight,
-      years_schooling = education_mean,
-      avg_escolaridad = education_mean,
-      
+
       # Population-weighted mean income among adults with reported income.
       income_mean = sum(income * weight, na.rm = TRUE) /
         sum(weight * (!is.na(income)), na.rm = TRUE),
@@ -1742,19 +1748,21 @@ sp_process_census_2010 <- function(
       share_informal_pop = count_informal / weight,
       share_women_pop    = count_women / weight,
       share_white_pop    = count_white / weight,
-      share_black_pop    = count_black_pardo / weight,
-      
-      total_adult_pop = weight,
-      share_employed  = share_employed_pop,
-      share_female    = share_women_pop,
-      share_black     = share_black_pop
+      share_black_pop    = count_black_pardo / weight
     )
-  
+
+  # IBGE names -> canonical schema; the mapping lives in sao_paulo_cfg$schema.
+  indiv_df    <- apply_canonical_names(indiv_df, sao_paulo_cfg$schema$census_micro,
+                                       sao_paulo_cfg$schema$geo_level,
+                                       sao_paulo_cfg$schema$raw, quiet = quiet)
+  collapse_df <- apply_canonical_names(collapse_df, sao_paulo_cfg$schema$census_geo,
+                                       sao_paulo_cfg$schema$geo_level, quiet = quiet)
+
   # Save outputs
   if (!quiet) {
     message("Saving processed Sao Paulo census files.")
   }
-  
+
   arrow::write_parquet(
     indiv_df,
     file.path(out_dir, "census_sp_individual_2010.parquet")
