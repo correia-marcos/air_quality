@@ -36,9 +36,8 @@ sao_paulo_cfg <- list(
   metadata_url_qualar =
     "https://qualar.cetesb.sp.gov.br/qualar/relConfiguracaoEstacao.do?method=pesquisarInit",
 
-  # IBGE names -> the canonical schema of doc/data_dictionary.md. Note `weight` plays
-  # both roles here: a person's factor in the micro file, the unit total in the geo
-  # file. Applied by apply_canonical_names(); see that function's @details.
+  # IBGE names -> the canonical schema of doc/data_dictionary.md, applied by
+  # apply_canonical_names(); see that function's @details.
   schema = list(
     geo_level    = "area_ponderacao",
     census_micro = c(
@@ -51,9 +50,8 @@ sao_paulo_cfg <- list(
       hs_complete     = "high_school_complete",
       col_incomplete  = "college_incomplete",
       col_complete    = "college_complete"),
-    census_geo   = c(
-      code_weighting = "geo_id",
-      weight         = "pop_total"),
+    # The collapse already emits pop_total and n_records, so only the id needs renaming.
+    census_geo   = c(code_weighting = "geo_id"),
     # IBGE's own variables, kept so each derived column can be checked against its source.
     raw          = c("V0010", "V1004", "V0601", "V0606", "V0633", "V0634", "V0648",
                      "V6036", "V6400"),
@@ -1549,6 +1547,14 @@ sp_process_stations_data_to_parquet <- function(
 #   aged 25+ using expansion weights. Income (V6525) is harmonized and
 #   winsorized so the IDW estimator can build income deciles downstream.
 #
+#' @details    The collapse aggregates adults 25+ with the IBGE person weight. Every
+#              education statistic is taken over pop_educ_known, the weight of adults who
+#              reported schooling, so the six shares sum to 1; income_mean uses the same
+#              rule for reported income. 15.4% of Sao Paulo adults have no education
+#              recorded, and we removed them from the harmonized variable. The unit 
+#              total is named pop_total and the per-person factor stays `weight`, 
+#              two names that cannot collide inside one summarise().
+#
 #' @Written_on : 19/02/2026
 #' @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------------
@@ -1707,48 +1713,52 @@ sp_process_census_2010 <- function(
   collapse_df <- indiv_df |>
     dplyr::filter(adult == 1) |>
     dplyr::group_by(code_weighting) |>
+    # Person rows -> one row per weighting area, weighted by the IBGE factor `weight`.
     dplyr::summarise(
-      weight    = sum(weight, na.rm = TRUE),
+      pop_total = sum(weight, na.rm = TRUE),
       n_records = dplyr::n(),
 
-      education_mean = sum(years_schooling * weight, na.rm = TRUE) / weight,
+      # Adults who reported education; every education measure is over this population.
+      pop_educ_known = sum(weight * !is.na(years_schooling), na.rm = TRUE),
+
+      education_mean = sum(years_schooling * weight, na.rm = TRUE) / pop_educ_known,
 
       # Population-weighted mean income among adults with reported income.
       income_mean = sum(income * weight, na.rm = TRUE) /
         sum(weight * (!is.na(income)), na.rm = TRUE),
-      income = income_mean,
-      
+
       count_no_ed   = sum(no_education * weight, na.rm = TRUE),
       count_hs_inc  = sum(hs_incomplete * weight, na.rm = TRUE),
       count_hs_com  = sum(hs_complete * weight, na.rm = TRUE),
       count_col_inc = sum(col_incomplete * weight, na.rm = TRUE),
       count_col_com = sum(col_complete * weight, na.rm = TRUE),
       count_grad    = sum(graduate_educ * weight, na.rm = TRUE),
-      
+
       count_employed = sum(employed * weight, na.rm = TRUE),
       count_formal   = sum(formal_emp * weight, na.rm = TRUE),
       count_informal = sum(informal_emp * weight, na.rm = TRUE),
-      
+
       count_women       = sum(women * weight, na.rm = TRUE),
       count_white       = sum(white * weight, na.rm = TRUE),
       count_black_pardo = sum(black_pardo * weight, na.rm = TRUE),
-      
+
       .groups = "drop"
     ) |>
     dplyr::mutate(
-      share_no_ed_pop   = count_no_ed / weight,
-      share_hs_inc_pop  = count_hs_inc / weight,
-      share_hs_com_pop  = count_hs_com / weight,
-      share_col_inc_pop = count_col_inc / weight,
-      share_col_com_pop = count_col_com / weight,
-      share_grad_pop    = count_grad / weight,
-      
-      share_employed_pop = count_employed / weight,
-      share_formal_pop   = count_formal / weight,
-      share_informal_pop = count_informal / weight,
-      share_women_pop    = count_women / weight,
-      share_white_pop    = count_white / weight,
-      share_black_pop    = count_black_pardo / weight
+      # Education shares are over the reporting population, so the six sum to 1.
+      share_no_ed_pop   = count_no_ed / pop_educ_known,
+      share_hs_inc_pop  = count_hs_inc / pop_educ_known,
+      share_hs_com_pop  = count_hs_com / pop_educ_known,
+      share_col_inc_pop = count_col_inc / pop_educ_known,
+      share_col_com_pop = count_col_com / pop_educ_known,
+      share_grad_pop    = count_grad / pop_educ_known,
+
+      share_employed_pop = count_employed / pop_total,
+      share_formal_pop   = count_formal / pop_total,
+      share_informal_pop = count_informal / pop_total,
+      share_women_pop    = count_women / pop_total,
+      share_white_pop    = count_white / pop_total,
+      share_black_pop    = count_black_pardo / pop_total
     )
 
   # IBGE names -> canonical schema; the mapping lives in sao_paulo_cfg$schema.

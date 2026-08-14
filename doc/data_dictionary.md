@@ -42,11 +42,13 @@ One row per geographic unit. Path: `data/interim/census/<city_id>/*collapse*.par
 |---|---|---|
 | `geo_id`, `geo_level` | | as above |
 | `pop_total` | double | Σ `person_weight` over adults in the unit. **This is the population weight every downstream stage uses.** |
+| `pop_educ_known` | double | Σ `person_weight` over adults who *reported* education. The denominator of every education statistic. `pop_total − pop_educ_known` is the non-responding population. |
 | `n_records` | integer | Count of census records behind the unit. Equals `pop_total` wherever `person_weight ≡ 1`. |
-| `education_mean` | double | Population-weighted mean `educ_years` among adults: `Σ(educ_years · person_weight) / pop_total`. |
+| `education_mean` | double | Population-weighted mean `educ_years` among adults **reporting education**: `Σ(educ_years · person_weight) / pop_educ_known`. `NaN` where nobody reported. |
 | `income_mean` | double | Population-weighted mean income among adults reporting income. |
 | `count_no_ed`, `count_hs_inc`, `count_hs_com`, `count_col_inc`, `count_col_com`, `count_grad`, `count_employed`, `count_women`, … | double | Population-weighted counts: `Σ(indicator · person_weight)`. |
-| `share_no_ed_pop`, `share_hs_inc_pop`, `share_hs_com_pop`, `share_col_inc_pop`, `share_col_com_pop`, `share_grad_pop`, `share_employed_pop`, `share_women_pop`, … | double | The matching `count_* / pop_total`. |
+| `share_no_ed_pop`, `share_hs_inc_pop`, `share_hs_com_pop`, `share_col_inc_pop`, `share_col_com_pop`, `share_grad_pop` | double | `count_* / pop_educ_known`. The six sum to 1. |
+| `share_employed_pop`, `share_women_pop`, `share_indigena_pop`, … | double | `count_* / pop_total` — these are not conditional on reporting education. |
 
 `n_records` and `pop_total` are separate columns because they answer different questions: how many
 records support this cell, versus how many people it represents. Before this schema they were both
@@ -157,12 +159,33 @@ counterpart by a *transformation* a referee can check. Twins are deleted; `raw_*
 
 ## 7. Known gaps
 
+### Education non-response is 15% in São Paulo and under 3% everywhere else
+
+Every education statistic is conditional on reporting (§2), following `old_appendix.tex:154`:
+values such as *"No informa"* **"are excluded from the harmonized variable."** How much population
+that excludes varies by more than an order of magnitude across the four cities, which matters when
+comparing `education_mean` between them:
+
+| City | Adults with no education recorded |
+|---|---:|
+| São Paulo | 15.39% |
+| Bogotá | 2.07% |
+| Santiago 2024 | 0.87% |
+| CDMX | 0.37% |
+| Santiago 2017 | 0.00% |
+
+Where a unit has no reporting adult at all, `education_mean` is `NaN` — 51 Bogotá units, 423 people,
+0.0074% of the metro population. `assign_socio_group()` filters `!is.na(var)`, so those units are
+left out of the education grouping rather than being counted as least-educated.
+
+How this denominator came to be settled, what it changed in each city, and how the legacy code
+handles the same question are in
+[`audits/census_processing/education_mean_weight_shadowing.md`](audits/census_processing/education_mean_weight_shadowing.md).
+
 ### The education-category indicators do not partition the population
 
-`education_mean` — the variable that defines the exposure quintiles and therefore every published
-result — is a weighted mean over *all* `educ_years` values and is unaffected by everything below.
-The `count_*` / `share_*` education columns are a different matter. They are also, as of this
-writing, **written by the four city modules and read by nothing else in the repo.**
+The `count_*` / `share_*` education columns are, as of this writing, **written by the four city
+modules and read by nothing else in the repo.**
 
 The harmonised `educ_years` scale is anchored at 12 = secondary complete, 17 = bachelor's complete,
 19 = master's complete, 23 = doctorate (`doc/paper/old_appendix.tex:83-86`, stated identically for

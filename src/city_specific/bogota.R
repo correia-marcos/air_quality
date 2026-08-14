@@ -3575,7 +3575,11 @@ bogota_harmonize_census_2018_data <- function(
       weight    = sum(fe, na.rm = TRUE),
       n_records = dplyr::n(),
 
-      education_mean = sum(escolaridad * fe, na.rm = TRUE) / weight,
+      # Adults who reported education. Everything education-related is measured over
+      # this population, not over all adults -- see @details: missing education.
+      pop_educ_known = sum(fe * !is.na(escolaridad), na.rm = TRUE),
+
+      education_mean = sum(escolaridad * fe, na.rm = TRUE) / pop_educ_known,
 
       count_no_ed   = sum(no_education * fe, na.rm = TRUE),
       count_hs_inc  = sum(high_school_incomplete * fe, na.rm = TRUE),
@@ -3590,12 +3594,13 @@ bogota_harmonize_census_2018_data <- function(
       .groups = "drop"
     ) %>%
     dplyr::mutate(
-      share_no_ed_pop   = count_no_ed / weight,
-      share_hs_inc_pop  = count_hs_inc / weight,
-      share_hs_com_pop  = count_hs_com / weight,
-      share_col_inc_pop = count_col_inc / weight,
-      share_col_com_pop = count_col_com / weight,
-      share_grad_pop    = count_grad / weight,
+      # Education shares are over the reporting population, so the six sum to 1.
+      share_no_ed_pop   = count_no_ed / pop_educ_known,
+      share_hs_inc_pop  = count_hs_inc / pop_educ_known,
+      share_hs_com_pop  = count_hs_com / pop_educ_known,
+      share_col_inc_pop = count_col_inc / pop_educ_known,
+      share_col_com_pop = count_col_com / pop_educ_known,
+      share_grad_pop    = count_grad / pop_educ_known,
 
       share_employed_pop = count_employed / weight,
       share_women_pop    = count_women / weight

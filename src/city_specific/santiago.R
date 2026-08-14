@@ -2329,7 +2329,10 @@ santiago_process_census_2017 <- function(
     dplyr::summarise(
       n                   = dplyr::n(),
       weight              = sum(fe, na.rm = TRUE),
-      education_mean      = sum(educ_years * fe, na.rm = TRUE) / weight,
+      # Adults who reported education; every education measure below is over this
+      # population, not over all adults.
+      pop_educ_known      = sum(fe * !is.na(educ_years), na.rm = TRUE),
+      education_mean      = sum(educ_years * fe, na.rm = TRUE) / pop_educ_known,
       count_no_ed         = sum(no_education * fe, na.rm = TRUE),
       count_hs_inc        = sum(high_school_incomplete * fe, na.rm = TRUE),
       count_hs_com        = sum(high_school_complete * fe, na.rm = TRUE),
@@ -2340,12 +2343,13 @@ santiago_process_census_2017 <- function(
       .groups             = "drop"
     ) %>%
     dplyr::mutate(
-      share_no_ed_pop     = count_no_ed / weight,
-      share_hs_inc_pop    = count_hs_inc / weight,
-      share_hs_com_pop    = count_hs_com / weight,
-      share_col_inc_pop   = count_col_inc / weight,
-      share_col_com_pop   = count_col_com / weight,
-      share_grad_educ_pop = count_grad / weight,
+      # Education shares are over the reporting population, so the six sum to 1.
+      share_no_ed_pop     = count_no_ed / pop_educ_known,
+      share_hs_inc_pop    = count_hs_inc / pop_educ_known,
+      share_hs_com_pop    = count_hs_com / pop_educ_known,
+      share_col_inc_pop   = count_col_inc / pop_educ_known,
+      share_col_com_pop   = count_col_com / pop_educ_known,
+      share_grad_educ_pop = count_grad / pop_educ_known,
       share_employed_pop  = count_employed / weight
     )
 
@@ -2536,7 +2540,11 @@ santiago_process_census_2024 <- function(
       weight    = sum(fe, na.rm = TRUE),
       n_records = dplyr::n(),
 
-      education_mean = sum(educ_years * fe, na.rm = TRUE) / weight,
+      # Adults who reported education; every education measure below is over this
+      # population, not over all adults.
+      pop_educ_known = sum(fe * !is.na(educ_years), na.rm = TRUE),
+
+      education_mean = sum(educ_years * fe, na.rm = TRUE) / pop_educ_known,
 
       count_no_ed   = sum(no_education * fe, na.rm = TRUE),
       count_hs_inc  = sum(high_school_incomplete * fe, na.rm = TRUE),
@@ -2552,13 +2560,14 @@ santiago_process_census_2024 <- function(
       .groups = "drop"
     ) %>%
     dplyr::mutate(
-      share_no_ed_pop   = count_no_ed / weight,
-      share_hs_inc_pop  = count_hs_inc / weight,
-      share_hs_com_pop  = count_hs_com / weight,
-      share_col_inc_pop = count_col_inc / weight,
-      share_col_com_pop = count_col_com / weight,
-      share_grad_pop    = count_grad / weight,
-      
+      # Education shares are over the reporting population, so the six sum to 1.
+      share_no_ed_pop   = count_no_ed / pop_educ_known,
+      share_hs_inc_pop  = count_hs_inc / pop_educ_known,
+      share_hs_com_pop  = count_hs_com / pop_educ_known,
+      share_col_inc_pop = count_col_inc / pop_educ_known,
+      share_col_com_pop = count_col_com / pop_educ_known,
+      share_grad_pop    = count_grad / pop_educ_known,
+
       share_employed_pop = count_employed / weight,
       share_women_pop    = count_women / weight,
       share_indigena_pop = count_indigena / weight
