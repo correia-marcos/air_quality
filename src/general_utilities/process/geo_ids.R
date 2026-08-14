@@ -302,6 +302,23 @@ reconcile_geo_ids <- function(geo_ids, census_ids, label = "", quiet = FALSE) {
 }
 
 
+# The canonical vocabulary of doc/data_dictionary.md, in machine-readable form. A column
+# already carrying one of these names is canonical wherever it came from, so it is never
+# treated as provider-native. `count_*` and `share_*` are matched by pattern below.
+.CANONICAL_COLS <- c(
+  # identifiers and weights
+  "geo_id", "geo_level", "comuna_id", "station_id", "station_name",
+  "person_weight", "pop_total", "n_records",
+  # census variables
+  "educ_years", "income", "income_raw", "education_mean", "income_mean",
+  "adult", "women", "employed", "indigena", "hh_head", "hh_head_women",
+  "no_education", "high_school_incomplete", "high_school_complete",
+  "college_incomplete", "college_complete", "graduate_educ",
+  # panels and distances
+  "datetime", "year", "month", "day", "hour",
+  "pm10", "pm25", "ozone", "no2", "co", "so2", "distance_km"
+)
+
 # --------------------------------------------------------------------------------------------
 # Function: apply_canonical_names
 #
@@ -349,10 +366,12 @@ apply_canonical_names <- function(dt, map, geo_level = NULL, raw_keep = NULL,
 
   data.table::setnames(dt, names(map), unname(map))
 
-  # Everything the map did not claim is provider-native; mark it as such.
+  # Everything the map did not claim, and that is not already canonical, is provider-native.
   passthrough <- setdiff(names(dt), unname(map))
   if (!is.null(raw_keep)) passthrough <- intersect(passthrough, raw_keep)
   passthrough <- passthrough[!startsWith(passthrough, "raw_")]
+  passthrough <- passthrough[!passthrough %in% .CANONICAL_COLS]
+  passthrough <- passthrough[!grepl("^(count|share)_", passthrough)]
   if (length(passthrough))
     data.table::setnames(dt, passthrough, paste0("raw_", passthrough))
 

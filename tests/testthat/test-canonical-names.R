@@ -42,8 +42,11 @@ test_that("mapped columns are renamed and unmapped ones get a raw_ prefix", {
   expect_true(all(c("geo_id", "person_weight", "educ_years", "income_raw") %in% names(out)))
   expect_false(any(c("CVE_MUN", "FACTOR", "escolaridad", "ingtrmen") %in% names(out)))
 
-  # edad and adult were not in the map, so they survive as provider-native columns
-  expect_true(all(c("raw_edad", "raw_adult") %in% names(out)))
+  # `edad` is provider-native and gets prefixed; `adult` is already a canonical name
+  # (see .CANONICAL_COLS) so it is left alone even though the map does not mention it.
+  expect_true("raw_edad" %in% names(out))
+  expect_true("adult" %in% names(out))
+  expect_false("raw_adult" %in% names(out))
 
   # values travel with the name, they are not reordered or recomputed
   expect_equal(out$person_weight, c(142.7, 98.3, 51.0))
@@ -98,8 +101,9 @@ test_that("already-canonical and already-prefixed columns are left alone", {
 })
 
 test_that("raw_keep restricts which provider columns survive", {
-  out <- apply_canonical_names(cdmx_micro(), cdmx_map, raw_keep = "adult", quiet = TRUE)
+  dt  <- cdmx_micro()[, sexo := 1]
+  out <- apply_canonical_names(dt, cdmx_map, raw_keep = "edad", quiet = TRUE)
 
-  expect_true("raw_adult" %in% names(out))
-  expect_false("raw_edad" %in% names(out))
+  expect_true("raw_edad" %in% names(out))
+  expect_false("raw_sexo" %in% names(out))
 })
