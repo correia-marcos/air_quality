@@ -13,6 +13,7 @@
 #   2. canonical_geo_id
 #   3. reconcile_geo_ids
 #   4. apply_canonical_names
+#   5. write_canonical_parquet
 #
 #' @Date: August 2026
 #' @Author: Marcos Paulo
@@ -393,4 +394,40 @@ apply_canonical_names <- function(dt, map, geo_level = NULL, raw_cols = NULL,
   }
 
   dt[]
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: write_canonical_parquet
+#
+#' @param dt   data frame; the canonical table to write.
+#' @param path string; full destination path, ending in .parquet.
+#' @param meta named list; provenance stamped into the file's key-value metadata.
+#
+#' @return  the path, invisibly. Writes the Parquet file.
+#
+#' @details
+#   Writes a processed census table and stamps its provenance into the Parquet
+#   file-level key-value metadata, so a reader who opens the file alone can still
+#   tell which city, vintage and native identifier produced it. Canonical column
+#   names are uniform by design, which is exactly what makes a file ambiguous once
+#   it is separated from the script that wrote it; the metadata is where the
+#   provider-specific facts now live. Read it back with
+#   arrow::read_parquet(path, as_data_frame = FALSE)$metadata -- reading the file as
+#   a data frame is unaffected.
+#
+#   Every value is coerced to character because Parquet key-value metadata is a
+#   string map. Use doc/data_dictionary.md for the meaning of each key.
+#
+#' @Written_on : August 2026
+#' @Written_by : Marcos Paulo
+# --------------------------------------------------------------------------------------------
+write_canonical_parquet <- function(dt, path, meta) {
+
+  # Provenance rides along as file-level key-value metadata, not as columns.
+  tbl <- arrow::as_arrow_table(dt)
+  tbl$metadata <- c(tbl$metadata, lapply(meta, as.character))
+
+  arrow::write_parquet(tbl, path)
+  invisible(path)
 }
