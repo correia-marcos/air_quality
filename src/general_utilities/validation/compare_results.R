@@ -149,9 +149,12 @@ aggregate_idw_exposure_legacy <- function(
       total_hrs    = .N
     ), by = geo_id]
     
-    data.table::setnames(yr, c("avg", "hrs_d_it1", "hrs_d_it2", "total_hrs"),
-                         paste0(c("avg_", "hrs_d_it1_", "hrs_d_it2_",
-                                  "total_hrs_"), pol))
+    # Outcome columns take the repo-wide hrs_d_<pollutant>_it<k> order, so legacy
+    # and current exposure tables stack without renaming.
+    data.table::setnames(
+      yr, c("avg", "hrs_d_it1", "hrs_d_it2", "total_hrs"),
+      c(paste0("avg_", pol), paste0("hrs_d_", pol, "_it1"),
+        paste0("hrs_d_", pol, "_it2"), paste0("total_hrs_", pol)))
     yearly[[pol]] <- yr
   }
   
@@ -422,9 +425,10 @@ compare_idw <- function(
       data.table::as.data.table(readRDS(legacy_geo_dist))
     } else data.table::fread(legacy_geo_dist)
     
-    geo_id_col <- intersect(c("locality", "geo_id", "LocCodigo"), names(leg_geo))[1]
-    sta_id_col <- intersect(c("station_code", "station_id"), names(leg_geo))[1]
-    dist_col   <- intersect(c("distance", "distance_km"), names(leg_geo))[1]
+    # Canonical name first, legacy vocabularies after; only one ever matches.
+    geo_id_col <- intersect(c("geo_id", "locality", "LocCodigo"), names(leg_geo))[1]
+    sta_id_col <- intersect(c("station_id", "station_code"), names(leg_geo))[1]
+    dist_col   <- intersect(c("distance_km", "distance"), names(leg_geo))[1]
     
     leg_geo_clean <- leg_geo |>
       dplyr::as_tibble() |>

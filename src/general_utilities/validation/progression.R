@@ -467,7 +467,9 @@ compare_results_progression <- function(
         next
       }
       indiv_dt[, geo_id := as.character(geo_id)]
-      weight_col <- intersect(c("fe", "FACTOR", "weight", "n"), names(indiv_dt))[1]
+      # Canonical name first; the rest are legacy vocabularies, kept as fallbacks.
+      weight_col <- intersect(c("person_weight", "fe", "FACTOR", "weight", "n"),
+                              names(indiv_dt))[1]
       if (is.na(weight_col)) {
         indiv_dt[, fe := 1L]
         weight_col <- "fe"
@@ -482,7 +484,8 @@ compare_results_progression <- function(
       exp_dt <- merge(exp_dt, q_geo,   by = "geo_id", all.x = TRUE)
       exp_dt <- merge(exp_dt, pop_geo, by = "geo_id", all.x = TRUE)
     } else {
-      pop_candidates <- intersect(c("n", "pop", "fe", "FACTOR", "weight"), names(exp_dt))
+      pop_candidates <- intersect(c("pop_total", "pop", "fe", "FACTOR", "weight", "n"),
+                                  names(exp_dt))
       if (length(pop_candidates) && !"pop_w" %in% names(exp_dt))
         exp_dt[, pop_w := as.numeric(get(pop_candidates[1]))]
       if (!"pop_w" %in% names(exp_dt)) exp_dt[, pop_w := 1]
