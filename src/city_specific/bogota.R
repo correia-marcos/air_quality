@@ -3618,15 +3618,18 @@ bogota_harmonize_census_2018_data <- function(
     message("Saving processed Bogota census files.")
   }
 
-  arrow::write_parquet(
-    all_census,
-    file.path(out_dir, "census_2018_metro_individual.parquet")
-  )
+  # Provenance rides in the Parquet key-value metadata; see write_canonical_parquet().
+  bog_meta <- list(city_id = "bogota_2018", census_year = 2018L,
+                   geo_level = bogota_cfg$schema$geo_level,
+                   geo_id_source = "GEO_ID")
 
-  arrow::write_parquet(
-    collapse_data,
-    file.path(out_dir, "census_2018_metro_collapsed.parquet")
-  )
+  write_canonical_parquet(
+    all_census, file.path(out_dir, "census_2018_metro_individual.parquet"),
+    c(bog_meta, list(table_level = "micro")))
+
+  write_canonical_parquet(
+    collapse_data, file.path(out_dir, "census_2018_metro_collapsed.parquet"),
+    c(bog_meta, list(table_level = "geo")))
 
   return(list(individual = all_census, collapsed = collapse_data))
 }

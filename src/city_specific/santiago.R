@@ -2371,10 +2371,18 @@ santiago_process_census_2017 <- function(
 
   # Write final analytical files
   # Parquet: geo_id is an 11-digit code that must stay character. A CSV saves badly.
-  arrow::write_parquet(individual_df,
-                       file.path(out_dir, "census_individual_2017.parquet"))
-  arrow::write_parquet(collapsed_df,
-                       file.path(out_dir, "census_collapsed_2017.parquet"))
+  # Provenance rides in the Parquet key-value metadata; see write_canonical_parquet().
+  s17_meta <- list(city_id = "santiago_2017", census_year = 2017L,
+                   geo_level = santiago_cfg$schema$zona_2017$geo_level,
+                   geo_id_source = "zona_id")
+
+  write_canonical_parquet(
+    individual_df, file.path(out_dir, "census_individual_2017.parquet"),
+    c(s17_meta, list(table_level = "micro")))
+
+  write_canonical_parquet(
+    collapsed_df, file.path(out_dir, "census_collapsed_2017.parquet"),
+    c(s17_meta, list(table_level = "geo")))
   
   censo2017::censo_desconectar()
   return(list(individual = individual_df, collapsed = collapsed_df))
@@ -2588,15 +2596,18 @@ santiago_process_census_2024 <- function(
     message("[santiago_2024] Saving outputs to: ", out_dir)
   }
 
-  arrow::write_parquet(
-    df_harm,
-    file.path(out_dir, "census_santiago_individual_2024.parquet")
-  )
+  # Provenance rides in the Parquet key-value metadata; see write_canonical_parquet().
+  s24_meta <- list(city_id = "santiago_2024", census_year = 2024L,
+                   geo_level = santiago_cfg$schema$comuna_2024$geo_level,
+                   geo_id_source = match_col)
 
-  arrow::write_parquet(
-    df_collapse,
-    file.path(out_dir, "census_santiago_collapsed_2024.parquet")
-  )
+  write_canonical_parquet(
+    df_harm, file.path(out_dir, "census_santiago_individual_2024.parquet"),
+    c(s24_meta, list(table_level = "micro")))
+
+  write_canonical_parquet(
+    df_collapse, file.path(out_dir, "census_santiago_collapsed_2024.parquet"),
+    c(s24_meta, list(table_level = "geo")))
   
   return(list(individual = df_harm, collapsed = df_collapse))
 }

@@ -5131,15 +5131,18 @@ mexico_harmonize_census_data <- function(
     message("Saving processed Mexico census files.")
   }
 
-  arrow::write_parquet(
-    all_census,
-    file.path(out_dir, "census_metro_individual_2020.parquet")
-  )
+  # Provenance rides in the Parquet key-value metadata; see write_canonical_parquet().
+  cdmx_meta <- list(city_id = "cdmx_2020", census_year = 2020L,
+                    geo_level = cdmx_cfg$schema$geo_level,
+                    geo_id_source = "CVE_MUN")
 
-  arrow::write_parquet(
-    collapse_data,
-    file.path(out_dir, "collapse_metro_area_2020.parquet")
-  )
+  write_canonical_parquet(
+    all_census, file.path(out_dir, "census_metro_individual_2020.parquet"),
+    c(cdmx_meta, list(table_level = "micro")))
+
+  write_canonical_parquet(
+    collapse_data, file.path(out_dir, "collapse_metro_area_2020.parquet"),
+    c(cdmx_meta, list(table_level = "geo")))
   
   return(list(individual = all_census, collapsed = collapse_data))
 }

@@ -1773,15 +1773,18 @@ sp_process_census_2010 <- function(
     message("Saving processed Sao Paulo census files.")
   }
 
-  arrow::write_parquet(
-    indiv_df,
-    file.path(out_dir, "census_sp_individual_2010.parquet")
-  )
+  # Provenance rides in the Parquet key-value metadata; see write_canonical_parquet().
+  sp_meta <- list(city_id = "sao_paulo_2010", census_year = 2010L,
+                  geo_level = sao_paulo_cfg$schema$geo_level,
+                  geo_id_source = "code_weighting")
 
-  arrow::write_parquet(
-    collapse_df,
-    file.path(out_dir, "census_sp_collapsed_2010.parquet")
-  )
+  write_canonical_parquet(
+    indiv_df, file.path(out_dir, "census_sp_individual_2010.parquet"),
+    c(sp_meta, list(table_level = "micro")))
+
+  write_canonical_parquet(
+    collapse_df, file.path(out_dir, "census_sp_collapsed_2010.parquet"),
+    c(sp_meta, list(table_level = "geo")))
   
   return(list(individual = indiv_df, collapsed = collapse_df))
 }
