@@ -138,6 +138,29 @@ dictionary stands alone.
 | Santiago | `CUT` / `comuna` | *Código Único Territorial*, the 5-digit commune. The first five characters of `zona_id`. |
 | São Paulo | `code_weighting` | IBGE *Área de Ponderação*, the smallest unit at which the 2010 census sample is representative. |
 
+Canonical column names are uniform by design, which is what makes a file ambiguous once it is
+separated from the script that wrote it. Each processed census Parquet therefore states its own
+provenance in the file's key-value metadata, written by `write_canonical_parquet()`:
+
+| Key | Example | Meaning |
+|---|---|---|
+| `city_id` | `sao_paulo_2010` | City and vintage; matches the output folder |
+| `census_year` | `2010` | Census the table is built from |
+| `geo_level` | `area_ponderacao` | Analysis unit, same value as the `geo_level` column |
+| `geo_id_source` | `code_weighting` | The native column `geo_id` was renamed from |
+| `table_level` | `micro` / `geo` | One row per person, or per geographic unit |
+
+Read it without loading the data:
+
+```r
+arrow::read_parquet(path, as_data_frame = FALSE)$metadata
+```
+
+Reading the file as a data frame is unaffected. `tests/testthat/test-canonical-schema.R` asserts
+both the columns and these five keys on every processed census file, so this table is an enforced
+claim rather than a description. It skips — with a message naming the script to run — when the
+census on disk has not been regenerated since the schema changed.
+
 ## 6. Duplicate columns deleted
 
 Twenty-four columns in the collapsed files held values identical to another column in the same
