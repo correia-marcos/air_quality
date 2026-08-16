@@ -179,6 +179,8 @@ for (buffer in buffers_km) {
   
   # ----------------------------------------------------------------------------------------
   # Income: ONLY CDMX and SP census carries it. CDMX uses 5 quintiles due to # of clusters
+  # reuse_exposure = TRUE: reuse the education run's interpolation for this city and
+  # buffer; see run_idw_city @details.
   # 5. CDMX -- income quintiles
   res_cdmx_income <- run_idw_city(
     city_label      = "CDMX",
@@ -193,6 +195,7 @@ for (buffer in buffers_km) {
     buffer_km       = buffer,
     outdir_exp      = outdir_exp,
     out_suffix      = "income",
+    reuse_exposure  = TRUE,
     distance_power  = distance_power)
 
   # 6. Sao Paulo -- income deciles
@@ -209,6 +212,7 @@ for (buffer in buffers_km) {
     buffer_km       = buffer,
     outdir_exp      = outdir_exp,
     out_suffix      = "income",
+    reuse_exposure  = TRUE,
     distance_power  = distance_power)
 }
 

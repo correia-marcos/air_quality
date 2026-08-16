@@ -39,7 +39,7 @@ test_that("group coefficient equals the difference of lambda-weighted means", {
   raw <- compute_exposure_regressions(
     toy$exposure, toy$individual, group_values = 1:2, base_group = 2L,
     pollutants = "pm10", year_filter = 2023, normalized = FALSE,
-    regression_unit = "geo_group", se_type = "classic", quiet = TRUE
+    se_type = "classic", quiet = TRUE
   )
 
   expect_equal(raw$estimate[raw$group == 1], 1.7 - 1.1, tolerance = 1e-12)
@@ -49,7 +49,7 @@ test_that("group coefficient equals the difference of lambda-weighted means", {
   norm <- compute_exposure_regressions(
     toy$exposure, toy$individual, group_values = 1:2, base_group = 2L,
     pollutants = "pm10", year_filter = 2023, normalized = TRUE,
-    regression_unit = "geo_group", se_type = "classic", quiet = TRUE
+    se_type = "classic", quiet = TRUE
   )
 
   expect_equal(norm$estimate[norm$group == 1], 1.7 / 1.1 - 1, tolerance = 1e-12)
@@ -64,7 +64,7 @@ test_that("base group row is pinned at zero, and releveling moves it", {
   fit2 <- compute_exposure_regressions(
     toy$exposure, toy$individual, group_values = 1:2, base_group = 2L,
     pollutants = "pm10", year_filter = 2023, normalized = TRUE,
-    regression_unit = "geo_group", se_type = "classic", quiet = TRUE
+    se_type = "classic", quiet = TRUE
   )
   base_row <- fit2[group == 2]
   expect_equal(unlist(base_row[, .(estimate, std_error, ci_low, ci_high)]),
@@ -73,7 +73,7 @@ test_that("base group row is pinned at zero, and releveling moves it", {
   fit1 <- compute_exposure_regressions(
     toy$exposure, toy$individual, group_values = 1:2, base_group = 1L,
     pollutants = "pm10", year_filter = 2023, normalized = TRUE,
-    regression_unit = "geo_group", se_type = "classic", quiet = TRUE
+    se_type = "classic", quiet = TRUE
   )
   expect_equal(fit1$estimate[fit1$group == 1], 0)
   expect_equal(fit1$estimate[fit1$group == 2], 1.1 / 1.7 - 1, tolerance = 1e-12)
@@ -94,7 +94,7 @@ test_that("G <= k clusters refuses clustered SEs with a warning", {
     res <- compute_exposure_regressions(
       exposure, individual, group_values = 1:5, base_group = 5L,
       pollutants = "pm10", year_filter = 2023, normalized = TRUE,
-      regression_unit = "geo_group", se_type = "cluster_geo", quiet = TRUE
+      se_type = "cluster_geo", quiet = TRUE
     ),
     "not identified"
   )
@@ -124,7 +124,7 @@ test_that("clustered intervals use the t(G-1) critical value", {
   res <- compute_exposure_regressions(
     exposure, individual, group_values = 1:5, base_group = 5L,
     pollutants = "pm10", year_filter = 2023, normalized = TRUE,
-    regression_unit = "geo_group", se_type = "cluster_geo", quiet = TRUE
+    se_type = "cluster_geo", quiet = TRUE
   )
 
   crit <- stats::qt(0.975, 5)

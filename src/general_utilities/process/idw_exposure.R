@@ -10,7 +10,8 @@
 #' @Summary:
 #   1. assign_socio_group
 #   2. aggregate_idw_exposure
-#   3. run_idw_city
+#   3. .idw_census_and_write
+#   4. run_idw_city
 #
 #' @Date: August 2026
 #' @Author: Marcos Paulo
@@ -43,7 +44,7 @@ assign_socio_group <- function(dt, var, wcol, n, out_col) {
 
   # Ascending sort so that group 1 corresponds to the lowest values.
   # The sort must be fully specified because years of schooling is a coarse value (group 
-  # edge falls inside a large tie group) - problem of landing o group k or k + 1.
+  # edge falls inside a large tie group) - problem of landing in group k or k + 1.
   dt[, .row_id := .I]
   data.table::setorderv(dt, c(var, "geo_id", ".row_id"))
 
@@ -95,8 +96,17 @@ assign_socio_group <- function(dt, var, wcol, n, out_col) {
 #' @param n_threads          integer; DuckDB worker threads. Default 2.
 #' @param duckdb_temp_dir    string or NULL; DuckDB spill directory.
 #' @param out_dir            string; output directory.
-#' @param out_name           string; output file prefix.
-#' @param overwrite          logical; skip computation if outputs exist.
+#' @param out_name           string; output file prefix for the exposure table.
+#' @param indiv_name         string or NULL; prefix for the grouped-census table. NULL
+#                            reuses out_name. run_idw_city() passes a buffer-free name
+#                            because the grouped census does not depend on the buffer.
+#' @param overwrite          logical; skip computation if the outputs this call owns
+#                            already exist.
+#' @param reuse_exposure     logical; if TRUE and the exposure Parquet is already on
+#                            disk, read it back instead of interpolating again, and
+#                            leave that file untouched. Individual mode only. The
+#                            grouped census is still rebuilt on every run, so a second
+#                            grouping can never carry an older vintage than the first.
 #' @param quiet              logical; suppress messages. Default FALSE.
 #' @param return_data        logical; return data.tables in memory. Default FALSE.
 #' @param fail_on_query_error logical; stop if a SQL query fails. Default TRUE.
@@ -147,7 +157,9 @@ aggregate_idw_exposure <- function(
     duckdb_temp_dir     = NULL,
     out_dir             = "data/interim/exposure",
     out_name,
+    indiv_name          = NULL,
     overwrite           = TRUE,
+    reuse_exposure      = FALSE,
     quiet               = FALSE,
     return_data         = FALSE,
     fail_on_query_error = TRUE,
@@ -199,45 +211,84 @@ aggregate_idw_exposure <- function(
   
   # 1. Output paths and early exit
   # -----------------------------------------------------------------------
+  indiv_name <- if (is.null(indiv_name)) out_name else indiv_name
+
   out_path   <- file.path(out_dir, paste0(out_name, "_idw_exposure.parquet"))
-  indiv_path <- file.path(out_dir, paste0(out_name, "_indiv_groups.parquet"))
-  
+  indiv_path <- file.path(out_dir, paste0(indiv_name, "_indiv_groups.parquet"))
+
+  if (!dir.exists(out_dir)) {
+    dir.create(out_dir, recursive = TRUE)
+  }
+
+  # The census half runs from two places -- the reuse branch below and the end of this
+  # function -- so its argument list is bound once here and never drifts between them.
+  finish_census <- function(all_years, write_exposure) {
+    .idw_census_and_write(
+      all_years       = all_years,
+      census_col      = census_col,
+      geo_id_col      = geo_id_col,
+      pop_col         = pop_col,
+      group_var       = group_var,
+      n_groups        = n_groups,
+      group_name      = group_name,
+      quintile_level  = quintile_level,
+      indiv_adult_col = indiv_adult_col,
+      out_path        = out_path,
+      indiv_path      = indiv_path,
+      out_name        = out_name,
+      quiet           = quiet,
+      return_data     = return_data,
+      write_exposure  = write_exposure
+    )
+  }
+
+  # Reuse a sibling grouping's interpolation: same city and buffer, different groups.
+  # The census is still rebuilt every run, so groupings can never go out of vintage.
+  if (isTRUE(reuse_exposure) && quintile_level == "individual" &&
+      file.exists(out_path)) {
+
+    if (!quiet) {
+      message("[", out_name, "] Reusing exposure on disk; grouping census only.")
+    }
+
+    return(finish_census(
+      data.table::as.data.table(arrow::read_parquet(out_path)),
+      write_exposure = FALSE
+    ))
+  }
+
   # Skip computation if all relevant outputs already exist.
   if (!overwrite) {
     geo_done   <- file.exists(out_path)
     indiv_done <- quintile_level == "geo" || file.exists(indiv_path)
-    
+
     if (geo_done && indiv_done) {
       if (!quiet) {
         message("Outputs exist; skipping.")
       }
-      
+
       out <- list(exposure_path = out_path)
-      
+
       if (isTRUE(return_data)) {
         out$exposure_yearly <- data.table::as.data.table(
           arrow::read_parquet(out_path)
         )
       }
-      
+
       if (quintile_level == "individual") {
         out$individual_path <- indiv_path
-        
+
         if (isTRUE(return_data)) {
           out$individual_quintiles <- data.table::as.data.table(
             arrow::read_parquet(indiv_path)
           )
         }
       }
-      
+
       return(invisible(out))
     }
   }
-  
-  if (!dir.exists(out_dir)) {
-    dir.create(out_dir, recursive = TRUE)
-  }
-  
+
   # 2. Helpers
   # -----------------------------------------------------------------------
   .dq_path <- function(p) {
@@ -706,14 +757,50 @@ aggregate_idw_exposure <- function(
   
   # 8. Census processing and group assignment
   # -----------------------------------------------------------------------
+  return(finish_census(all_years, write_exposure = TRUE))
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: .idw_census_and_write
+#
+#' @param all_years      data.table; interpolated exposure, one row per geo unit-year.
+#' @param out_path       string; where the exposure table is written.
+#' @param indiv_path     string; where the grouped census is written.
+#' @param write_exposure logical; FALSE when the caller reused an exposure file it does
+#                        not own, so this function must not write over it.
+#
+#' @return  invisible named list of the written paths, as aggregate_idw_exposure()
+#           itself returns.
+#
+#' @details
+#   The census half of aggregate_idw_exposure(): cut the socioeconomic variable into
+#   equal-population groups, reconcile geo_id spellings against the census, and write.
+#   It lives apart from the interpolation because the two halves depend on different
+#   things -- interpolation on city and buffer, grouping on city and grouping variable --
+#   which is what lets the second grouping of a city reuse the first one's exposure
+#   instead of re-running the DuckDB query. Internal; call aggregate_idw_exposure().
+#
+#   Every argument other than the four above is passed straight through from
+#   aggregate_idw_exposure(), where each is documented; they are bound once in that
+#   function's finish_census() closure so the two call sites cannot disagree.
+#
+#' @Written_on : August 2026
+#' @Written_by : Marcos Paulo
+# --------------------------------------------------------------------------------------------
+.idw_census_and_write <- function(all_years, census_col, geo_id_col, pop_col,
+                                  group_var, n_groups, group_name, quintile_level,
+                                  indiv_adult_col, out_path, indiv_path, out_name,
+                                  quiet, return_data, write_exposure = TRUE) {
+
   census_dt <- data.table::copy(data.table::as.data.table(census_col))
 
   # No-op for canonical input; the rename exists for the legacy vocabulary only.
   data.table::setnames(census_dt, geo_id_col, "geo_id")
   census_dt[, geo_id := safe_chr(geo_id)]
-  
+
   if (quintile_level == "geo") {
-    
+
     # Assign groups from the geo-level group_var using population shares.
     assign_socio_group(census_dt, group_var, pop_col, n_groups, group_name)
 
@@ -739,22 +826,34 @@ aggregate_idw_exposure <- function(
 
     result <- merge(all_years, census_dt, by = "geo_id", all.x = TRUE)
     arrow::write_parquet(result, out_path)
-    
+
     out <- list(exposure_path = out_path)
-    
+
     if (isTRUE(return_data)) {
       out$exposure_yearly <- result
     }
-    
+
     return(invisible(out))
-    
+
   } else {
-    
+
     # Filter to adult individuals only.
+    n_before  <- nrow(census_dt)
     census_dt <- census_dt[get(indiv_adult_col) == 1]
 
     if (nrow(census_dt) == 0L) {
       stop("No adult rows after filtering.")
+    }
+
+    # The individual census keeps every age, so this line is where the 25+ estimation
+    # sample is actually formed. Report its size rather than let it pass silently.
+    if (!quiet) {
+      message(
+        "[", out_name, "] Adult filter (", indiv_adult_col, " == 1): kept ",
+        nrow(census_dt), " of ", n_before, " census row(s) (",
+        round(100 * nrow(census_dt) / n_before, 1),
+        "%); the group cuts and every regression use these rows only."
+      )
     }
 
     # Assign groups from the individual group_var using expansion weights.
@@ -779,20 +878,24 @@ aggregate_idw_exposure <- function(
       )
     }
 
-    # Save datasets independently to avoid a huge year-individual matrix.
-    arrow::write_parquet(all_years, out_path)
+    # Save datasets independently to avoid a huge year-individual matrix. A reused
+    # exposure belongs to the call that interpolated it, so it is not rewritten here.
+    if (isTRUE(write_exposure)) {
+      arrow::write_parquet(all_years, out_path)
+    }
+
     arrow::write_parquet(census_dt, indiv_path)
-    
+
     out <- list(
       exposure_path   = out_path,
       individual_path = indiv_path
     )
-    
+
     if (isTRUE(return_data)) {
       out$exposure_yearly <- all_years
       out$individual_quintiles <- census_dt
     }
-    
+
     return(invisible(out))
   }
 }
@@ -819,6 +922,9 @@ aggregate_idw_exposure <- function(
 #' @param mem_gb        numeric; DuckDB memory ceiling in GB. Default 40.
 #' @param n_threads     integer; DuckDB worker threads. Default 2.
 #' @param overwrite     logical; overwrite existing outputs. Default TRUE.
+#' @param reuse_exposure logical; reuse an exposure file already on disk for this city
+#                       and buffer rather than interpolating again. Pass TRUE for the
+#                       second grouping of a city; see @details.
 #' @param return_data   logical; return data objects in memory. Default FALSE.
 #
 #' @return  Named list with geo and individual output paths.
@@ -844,6 +950,20 @@ aggregate_idw_exposure <- function(
 #   individual file ranks people, the geo file ranks units. estimate_exposure.R
 #   reads the individual one -- see the audit in doc/audits/census_processing/.
 #
+#   Each artifact is named for what its content actually depends on, so no two calls
+#   ever write the same numbers to two names:
+#
+#     <city_id>_<buffer>km_idw_exposure.parquet          city x buffer
+#     <city_id>[_suffix]_indiv_groups.parquet            city x grouping
+#     <city_id>_<buffer>km[_suffix]_geo_idw_exposure     city x buffer x grouping
+#
+#   The interpolation never sees a grouping and the grouped census never sees a
+#   buffer; only the geo-level merge depends on both. This is what lets the income
+#   call reuse the exposure the education call already wrote (reuse_exposure = TRUE
+#   in estimate_idw.R) instead of re-running the DuckDB query for identical output.
+#   Reuse skips only the interpolation: the grouped census and the geo-level merge
+#   are rebuilt on every run, so the two groupings cannot drift to different vintages.
+#
 #' @Written_on : April 2026
 #' @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------------
@@ -863,7 +983,8 @@ run_idw_city <- function(
     out_suffix     = NULL,
     mem_gb      = 40,
     n_threads   = 8L,
-    overwrite   = TRUE,
+    overwrite      = TRUE,
+    reuse_exposure = FALSE,
     return_data = FALSE
 ) {
 
@@ -876,20 +997,22 @@ run_idw_city <- function(
 
   # The grouping dimension picks the column at each level; see @details.
   micro_group_var <- switch(socio_var, education = "educ_years", income = "income")
-  geo_group_var   <- switch(socio_var, education = "education_mean",
-                            income = "income_mean")
+  geo_group_var   <- switch(socio_var, education = "education_mean", income = "income_mean")
 
-  # Define output folder and common output prefix.
+  # Define output folder and the three output prefixes; see @details for the naming.
   city_out_dir <- here::here(outdir_exp, city_id)
   dir.create(city_out_dir, recursive = TRUE, showWarnings = FALSE)
-  
-  # Add an optional suffix so income and education outputs do not overwrite.
-  out_base <- sprintf("%s_%dkm", city_id, buffer_km)
-  
-  if (!is.null(out_suffix) && nzchar(out_suffix)) {
-    out_base <- paste0(out_base, "_", out_suffix)
+
+  suffix_tag <- if (!is.null(out_suffix) && nzchar(out_suffix)) {
+    paste0("_", out_suffix)
+  } else {
+    ""
   }
-  
+
+  exposure_base <- sprintf("%s_%dkm", city_id, buffer_km)
+  indiv_base    <- paste0(city_id, suffix_tag)
+  geo_base      <- paste0(exposure_base, suffix_tag)
+
   # Compute IDW exposure once and save individual groups.
   exp_indiv <- aggregate_idw_exposure(
     arrow_dir      = arrow_dir,
@@ -904,8 +1027,10 @@ run_idw_city <- function(
     mem_gb         = mem_gb,
     n_threads      = n_threads,
     out_dir        = city_out_dir,
-    out_name       = out_base,
+    out_name       = exposure_base,
+    indiv_name     = indiv_base,
     overwrite      = overwrite,
+    reuse_exposure = reuse_exposure,
     return_data    = FALSE
   )
   
@@ -941,7 +1066,7 @@ run_idw_city <- function(
   
   geo_path <- file.path(
     city_out_dir,
-    paste0(out_base, "_geo_idw_exposure.parquet")
+    paste0(geo_base, "_geo_idw_exposure.parquet")
   )
   
   arrow::write_parquet(geo_result, geo_path)
