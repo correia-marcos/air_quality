@@ -3,8 +3,8 @@
 # ============================================================================================
 #' @Goal: Functions for geo-to-station distance matrices.
 #
-#' @Description: Builds the station-to-station and geographic-unit-to-station distance matrices every
-#   later stage joins on, on an AEQD metre grid centred on each metro area.
+#' @Description: Builds the station-to-station and geographic-unit-to-station distance matrices
+#   every later stage joins on, on an AEQD metre grid centered on each metro area.
 #   Sourced by config_utils_process_data.R; never sourced directly by a script.
 #
 #' @Summary:
