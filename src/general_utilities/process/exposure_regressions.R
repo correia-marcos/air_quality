@@ -22,8 +22,9 @@
 #   10. idw_artifact_path / read_idw_artifact
 #   11. run_city_exposure
 #   12. stack_city_tables
-#   13. set_meta_cols_first
-#   14. save_table_parquet_csv / save_exposure_tables
+#   13. stack_exposure_runs
+#   14. set_meta_cols_first
+#   15. save_table_parquet_csv / save_exposure_tables
 #
 #' @Date: August 2026
 #' @Author: Marcos Paulo
@@ -62,10 +63,7 @@ compute_exposure_summaries <- function(exposure_dt,
                                        outcome_pattern = "^(avg|hrs_d)_",
                                        year_filter     = NULL,
                                        quiet           = FALSE) {
-  
-  # 0. Dependencies
-  # -----------------------------------------------------------------------
-  
+
   # 1. Merge exposure with the geo-by-group population
   # -----------------------------------------------------------------------
   # Both inputs are in-memory data.tables; copy so we never edit the caller's data.
@@ -292,9 +290,7 @@ compute_exposure_regressions <- function(exposure_dt,
   # -----------------------------------------------------------------------
 
   se_type <- match.arg(se_type)
-  
-  # Clustered SEs need the sandwich package; classic SEs do not.
-  
+
   if (!(conf_level > 0 && conf_level < 1)) {
     stop("`conf_level` must be between 0 and 1.")
   }
@@ -695,12 +691,16 @@ read_idw_artifact <- function(dir_idw, city_id, what, buffer_km = NULL, suffix =
 #' @param n_groups      integer; number of equal-population groups, 5 or 10.
 #' @param year          integer; exposure year to keep.
 #' @param buffer_km     numeric; buffer the exposure was built with.
-#' @param pollutants    character vector; pollutants to keep.
-#' @param summary_pattern string; regex selecting summary outcome columns.
-#' @param ci_pattern    string; regex selecting regression outcome columns.
-#' @param conf_level    numeric; confidence level for intervals.
+#' @param pollutants    character vector; pollutants to keep. Default pm10/pm25.
+#' @param summary_pattern string; regex selecting summary outcome columns. Default
+#                       "^(avg|hrs_d)_" (means and exceedance hours).
+#' @param ci_pattern    string; regex selecting regression outcome columns. Default
+#                       "^hrs_d_.*_it[12]$" (IT1/IT2 exceedance hours only).
+#' @param conf_level    numeric; confidence level for intervals. Default 0.95.
 #' @param normalized    logical; divide each outcome by the base-group mean.
-#' @param se_type       string; "cluster_geo" (preferred) or "classic".
+#                       Default TRUE.
+#' @param se_type       string; "cluster_geo" (preferred) or "classic". Default
+#                       "cluster_geo".
 #
 #' @return  list(summary, ci, coverage); the three tables for this city, each carrying
 #           the same run labels (city, city_id, year, buffer_km, socioeconomic_var,
@@ -713,16 +713,22 @@ read_idw_artifact <- function(dir_idw, city_id, what, buffer_km = NULL, suffix =
 #
 #   Groups are always 1..n_groups and the reference is always the top group, so a single
 #   n_groups fixes group_values, base_group and the "quintile"/"decile" label stamped on
-#   the output. The remaining arguments are the paper's specification and stay required,
-#   without defaults, so a referee reads them in the calling script.
+#   the output. pollutants/summary_pattern/ci_pattern/conf_level/normalized/se_type
+#   default to the paper's specification; this doc block is their one home, so the
+#   calling script states only what actually varies by city -- its data, geography and
+#   grouping -- plus the year and buffer it was built with.
 #
 #' @Written_by : Marcos Paulo
 #' @Updated_on : August 2026
 # --------------------------------------------------------------------------------------------
 run_city_exposure <- function(city, city_id, exposure_dt, individual_dt, geo_station_pq,
                               socio_var, group_col, n_groups, year, buffer_km,
-                              pollutants, summary_pattern, ci_pattern, conf_level,
-                              normalized, se_type) {
+                              pollutants      = c("pm10", "pm25"),
+                              summary_pattern = "^(avg|hrs_d)_",
+                              ci_pattern      = "^hrs_d_.*_it[12]$",
+                              conf_level      = 0.95,
+                              normalized      = TRUE,
+                              se_type         = "cluster_geo") {
 
   # Groups run 1..n_groups with the top group as the omitted reference; see @details.
   n_groups     <- as.integer(n_groups)
@@ -776,6 +782,57 @@ stack_city_tables <- function(runs, what) {
 
 
 # --------------------------------------------------------------------------------------------
+# Function: stack_exposure_runs
+#
+#' @param edu_runs list; run_city_exposure() results for the education-quintile runs.
+#' @param inc_runs list; run_city_exposure() results for the income runs.
+#
+#' @return  named list of five data.tables, ready for save_exposure_tables():
+#           ci_estimates_education, group_summaries_education, ci_estimates_income,
+#           group_summaries_income, coverage.
+#
+#' @details
+#   Education and income stack into separate ci/summary tables because their group
+#   definitions differ (1:5 versus 1:10); coverage stacks across both, since its rows
+#   are one per pollutant regardless of grouping.
+#
+#   Also merges into coverage the cluster count each regression actually used, taken as
+#   the max across its outcomes' n_clusters/n_units/n_coef. n_geo_estimation (from the
+#   coverage merge) and n_clusters (from the fitted models) come from independent
+#   paths, so a disagreement between them is a silent sample loss made visible rather
+#   than hidden. Coverage is returned ordered thinnest-sample-first.
+#
+#' @Written_by : Marcos Paulo
+#' @Updated_on : August 2026
+# --------------------------------------------------------------------------------------------
+stack_exposure_runs <- function(edu_runs, inc_runs) {
+  ci_all             <- stack_city_tables(edu_runs, "ci")
+  summary_all        <- stack_city_tables(edu_runs, "summary")
+  ci_income_all      <- stack_city_tables(inc_runs, "ci")
+  summary_income_all <- stack_city_tables(inc_runs, "summary")
+  coverage_all       <- stack_city_tables(c(edu_runs, inc_runs), "coverage")
+
+  # Cluster count per regression, taken as the max across the IT1/IT2 outcomes.
+  g_used <- data.table::rbindlist(list(ci_all, ci_income_all), fill = TRUE)[
+    , .(n_clusters = max(n_clusters), n_units = max(n_units), n_coef = max(n_coef)),
+    by = .(city_id, socioeconomic_var, pollutant)]
+
+  coverage_all <- merge(coverage_all, g_used,
+                        by = c("city_id", "socioeconomic_var", "pollutant"), all.x = TRUE)
+
+  data.table::setorder(coverage_all, n_clusters)
+
+  list(
+    ci_estimates_education    = ci_all,
+    group_summaries_education = summary_all,
+    ci_estimates_income       = ci_income_all,
+    group_summaries_income    = summary_income_all,
+    coverage                  = coverage_all
+  )
+}
+
+
+# --------------------------------------------------------------------------------------------
 # Function: set_meta_cols_first
 #
 #' @param dt       data.table; modified in place.
@@ -785,8 +842,7 @@ stack_city_tables <- function(runs, what) {
 #
 #' @details
 #   Puts the run labels ahead of the numbers so a reader opening the artifact sees which
-#   city
-#   and specification a row belongs to before its values.
+#   city and specification a row belongs to before its values.
 #
 #' @Written_by : Marcos Paulo
 #' @Updated_on : August 2026
