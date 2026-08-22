@@ -1046,6 +1046,7 @@ exposure_group_axis_label <- function(socio_var, group_type) {
 #' @param out_dir    string; folder for the PDFs.
 #' @param city_labels named character; city -> display label.
 #' @param city_files named character; city -> file-safe name.
+#' @param buffer_km  integer; buffer radius in km, recorded in the file name.
 #
 #' @return  invisible NULL. Writes one PDF per city x outcome.
 #
@@ -1059,7 +1060,8 @@ exposure_group_axis_label <- function(socio_var, group_type) {
 #' @Written_by : Marcos Paulo
 #' @Updated_on : August 2026
 # --------------------------------------------------------------------------------------------
-save_exposure_ci_figures <- function(ci_dt, tag, out_dir, city_labels, city_files) {
+save_exposure_ci_figures <- function(ci_dt, tag, out_dir, city_labels, city_files,
+                                     buffer_km) {
   combos <- unique(ci_dt[!is.na(city) & !is.na(outcome),
                          .(city, outcome, group_type, socioeconomic_var)])
 
@@ -1081,7 +1083,8 @@ save_exposure_ci_figures <- function(ci_dt, tag, out_dir, city_labels, city_file
 
     poll_tag <- if (length(poll_j) > 1L) "pm25_pm10" else poll_j
 
-    fname <- sprintf("%s_%s_%s_%s_ci.pdf", city_files[[city_j]], tag, out_j, poll_tag)
+    fname <- sprintf("%s_%s_%dkm_%s_%s_ci.pdf", city_files[[city_j]], tag,
+                     buffer_km, out_j, poll_tag)
     save_plot_pdf(p, file.path(out_dir, fname))
   }
 
@@ -1097,13 +1100,15 @@ save_exposure_ci_figures <- function(ci_dt, tag, out_dir, city_labels, city_file
 #' @param out_dir    string; folder for the PDFs.
 #' @param city_labels named character; city -> display label.
 #' @param city_files named character; city -> file-safe name.
+#' @param buffer_km  integer; buffer radius in km, recorded in the file name.
 #
 #' @return  invisible NULL. Writes one dual-axis PM10/PM2.5 PDF per city.
 #
 #' @Written_by : Marcos Paulo
 #' @Updated_on : August 2026
 # --------------------------------------------------------------------------------------------
-save_exposure_level_figures <- function(sum_dt, tag, out_dir, city_labels, city_files) {
+save_exposure_level_figures <- function(sum_dt, tag, out_dir, city_labels, city_files,
+                                        buffer_km) {
   for (city_j in unique(sum_dt[!is.na(city), city])) {
     sub <- sum_dt[city == city_j]
 
@@ -1114,8 +1119,8 @@ save_exposure_level_figures <- function(sum_dt, tag, out_dir, city_labels, city_
       city_label    = city_labels[[city_j]],
       year_label    = as.character(sub$year[1]))
 
-    save_plot_pdf(p, file.path(out_dir, sprintf("%s_%s_levels.pdf",
-                                                city_files[[city_j]], tag)))
+    save_plot_pdf(p, file.path(out_dir, sprintf("%s_%s_%dkm_levels.pdf",
+                                                city_files[[city_j]], tag, buffer_km)))
   }
 
   invisible(NULL)
