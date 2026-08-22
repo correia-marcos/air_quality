@@ -4,20 +4,23 @@
 #' @Goal: Generate all exposure figures by socioeconomic group: regression gaps with
 #   confidence intervals, and population-weighted concentration levels.
 #
-#' @Description:
-#   Reads the tidy artifacts written by estimate_exposure.R (the CI
-#   estimates and the raw group summaries, for education and for income) and draws
-#   two figure families: (1) regression gaps vs the base group with 95% CIs, per
-#   city/outcome/pollutant; (2) dual-axis PM10/PM2.5 mean concentration by group,
-#   per city. Plotting consumes the already-computed tables, so figures are always
-#   consistent with the regressions and summary tables. Income figures are produced
-#   only for the cities whose artifacts contain income (CDMX and Sao Paulo).
+#' @Description: Reads the tidy artifacts written by estimate_exposure.R (the CI estimates 
+#   and the raw group summaries, for education and for income) and draws two figure families: 
+#   (1) regression gaps vs the base group with 95% CIs, per city/outcome/pollutant; 
+#   (2) dual-axis PM10/PM2.5 mean concentration by group, per city. Plotting consumes the 
+#   already-computed tables, so figures are always consistent with the regressions and summary
+#   tables. The whole procedure runs once per buffer radius: 3 km is the paper's specification,
+#   5 km is the robustness check, and the buffer appears in every output file name. Income
+#   figures are produced only for the cities whose artifacts contain income (CDMX
+#   and Sao Paulo).
 #
 #' @Summary:
-#   I.  Import data: read the CI and summary artifacts eagerly into memory.
-#   II. Process and save: draw and write both figure families per grouping.
+#   I.  Import data: define paths, the buffer radii and the city labels that do
+#   not depend on the buffer.
+#   II. Process and save: one buffer at a time, read that buffer's artifacts and
+#   draw both figure families per grouping.
 #
-#' @Date: June 2026
+#' @Date: August 2026
 #' @Author: Marcos
 # ============================================================================================
 
@@ -35,39 +38,9 @@ dir_reg    <- here::here("data", "processed", "idw_regressions")
 outdir_ci  <- here::here("results", "figures", "exposure_by_group", "ci")
 outdir_lvl <- here::here("results", "figures", "exposure_by_group", "levels")
 
-# Artifact paths written by estimate_exposure.R. It writes one set per buffer; the paper's
-# figures use 3 km and the 5 km twins are the robustness check.
-ci_edu_pq      <- here::here(dir_reg, "exposure_ci_estimates_education_3km_2023.parquet")
-ci_inc_pq      <- here::here(dir_reg, "exposure_ci_estimates_income_3km_2023.parquet")
-summary_edu_pq <- here::here(dir_reg,
-                             "exposure_group_summaries_education_3km_2023.parquet")
-summary_inc_pq <- here::here(dir_reg,
-                             "exposure_group_summaries_income_3km_2023.parquet")
-
-# Stop early if the required education artifacts are missing
-if (!file.exists(ci_edu_pq)) {
-  stop("CI estimates not found: ", ci_edu_pq)
-}
-if (!file.exists(summary_edu_pq)) {
-  stop("Group summaries not found: ", summary_edu_pq)
-}
-
-# Read education artifacts eagerly for RStudio inspection
-ci_education      <- data.table::as.data.table(arrow::read_parquet(ci_edu_pq))
-summary_education <- data.table::as.data.table(arrow::read_parquet(summary_edu_pq))
-
-# Income artifacts cover only CDMX and Sao Paulo, so they are optional
-has_income     <- file.exists(ci_inc_pq) && file.exists(summary_inc_pq)
-ci_income      <- if (has_income) {
-  data.table::as.data.table(arrow::read_parquet(ci_inc_pq))
-} else {
-  NULL
-}
-summary_income <- if (has_income) {
-  data.table::as.data.table(arrow::read_parquet(summary_inc_pq))
-} else {
-  NULL
-}
+# The buffer radius and analysis year are the only choices that vary run to run
+analysis_year <- 2023L
+buffers_km    <- c(3L, 5L)
 
 # City display labels and file-safe names (city matches the regression artifact)
 city_labels <- c(Bogota = "Bogot\u00e1", CDMX = "Mexico City",
@@ -84,16 +57,59 @@ dir.create(outdir_lvl, recursive = TRUE, showWarnings = FALSE)
 # ============================================================================================
 # II: Build and save figures
 # ============================================================================================
-# Education figures, always produced
-save_exposure_ci_figures(ci_education, "education", outdir_ci, city_labels, city_files)
-save_exposure_level_figures(summary_education, "education", outdir_lvl,
-                            city_labels, city_files)
+# One full pass per buffer. Objects left in the environment hold the last buffer run.
+for (buffer_km in buffers_km) {
 
-# Income figures, only for the cities whose census carries income
-if (has_income) {
-  save_exposure_ci_figures(ci_income, "income", outdir_ci, city_labels, city_files)
-  save_exposure_level_figures(summary_income, "income", outdir_lvl,
-                              city_labels, city_files)
+  cat("\n=== Buffer:", buffer_km, "km ===\n")
+
+  # Artifact paths written by estimate_exposure.R, one set per buffer
+  ci_edu_pq      <- here::here(dir_reg, sprintf(
+    "exposure_ci_estimates_education_%dkm_%d.parquet", buffer_km, analysis_year))
+  ci_inc_pq      <- here::here(dir_reg, sprintf(
+    "exposure_ci_estimates_income_%dkm_%d.parquet", buffer_km, analysis_year))
+  summary_edu_pq <- here::here(dir_reg, sprintf(
+    "exposure_group_summaries_education_%dkm_%d.parquet", buffer_km, analysis_year))
+  summary_inc_pq <- here::here(dir_reg, sprintf(
+    "exposure_group_summaries_income_%dkm_%d.parquet", buffer_km, analysis_year))
+
+  # Stop early if the required education artifacts are missing
+  if (!file.exists(ci_edu_pq)) {
+    stop("CI estimates not found: ", ci_edu_pq)
+  }
+  if (!file.exists(summary_edu_pq)) {
+    stop("Group summaries not found: ", summary_edu_pq)
+  }
+
+  # Read education artifacts eagerly for RStudio inspection
+  ci_education      <- data.table::as.data.table(arrow::read_parquet(ci_edu_pq))
+  summary_education <- data.table::as.data.table(arrow::read_parquet(summary_edu_pq))
+
+  # Income artifacts cover only CDMX and Sao Paulo, so they are optional
+  has_income     <- file.exists(ci_inc_pq) && file.exists(summary_inc_pq)
+  ci_income      <- if (has_income) {
+    data.table::as.data.table(arrow::read_parquet(ci_inc_pq))
+  } else {
+    NULL
+  }
+  summary_income <- if (has_income) {
+    data.table::as.data.table(arrow::read_parquet(summary_inc_pq))
+  } else {
+    NULL
+  }
+
+  # Education figures, always produced
+  save_exposure_ci_figures(ci_education, "education", outdir_ci, city_labels,
+                           city_files, buffer_km = buffer_km)
+  save_exposure_level_figures(summary_education, "education", outdir_lvl,
+                              city_labels, city_files, buffer_km = buffer_km)
+
+  # Income figures, only for the cities whose census carries income
+  if (has_income) {
+    save_exposure_ci_figures(ci_income, "income", outdir_ci, city_labels,
+                             city_files, buffer_km = buffer_km)
+    save_exposure_level_figures(summary_income, "income", outdir_lvl,
+                                city_labels, city_files, buffer_km = buffer_km)
+  }
 }
 
 cat("Saved exposure CI figures to:", outdir_ci, "\n")
