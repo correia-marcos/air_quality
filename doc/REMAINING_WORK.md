@@ -34,17 +34,21 @@ here.
 
 | Manuscript path | Superseded by |
 |---|---|
-| `Final/plot_hours_above_IT{1,2}_<city>_2023_3km_reg1.png` (18) and the 2 `plot_decile_*` | `results/figures/exposure_by_group/ci/*_ci.pdf` (14 files) |
-| `Final/plot_quintiles_<city>_all_mean_2023_3km_imp.png` and the `descriptives/` variants (12) | `results/figures/exposure_by_group/levels/*_levels.pdf` (7 files) |
+| `Final/plot_hours_above_IT{1,2}_<city>_2023_3km_reg1.png` (18) and the 2 `plot_decile_*` | `results/figures/exposure_by_group/ci/*_3km_*_ci.pdf` (14 files) |
+| `Final/plot_quintiles_<city>_all_mean_2023_3km_imp.png` and the `descriptives/` variants (12) | `results/figures/exposure_by_group/levels/*_3km_*_levels.pdf` (7 files) |
 | `descriptives/scatter_plot_<city>_*.png` (28) | `results/figures/station_monitoring/<city>_{avg,hours_it1,hours_it2}_pm10_pm25_vs_education.png` (12 files) |
 
-Two caveats before treating this as purely editorial:
+Three caveats before treating this as purely editorial:
 
 - The `_imp` (imputed) variants of the hours-above figures have **no** counterpart in the new
   pipeline. `impute_missing_hourly.R` produces the imputed panels, but no exposure figure
   consumes them. If the paper keeps the imputed robustness check, that wiring is real work.
 - The counts do not line up one-for-one (18 legacy vs 14 new, 28 vs 12). Confirm the new
   figures cover every cell the paper reports before deleting a reference.
+- The 5 km robustness twins of these two families are produced as well
+  (`*_5km_*_ci.pdf`, `*_5km_*_levels.pdf` in the same folders, by `generate_exposure_plots.R`).
+  The manuscript does not cite them — its robustness footnote speaks of radii from 1 km to
+  20 km — so surfacing them in an appendix is a paper-side decision.
 
 ## D. Cited and produced under the same name — 5 figures
 
