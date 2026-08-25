@@ -1017,6 +1017,30 @@ save_plot_pdf <- function(plot_obj, path, width = 6, height = 4.5) {
 
 
 # --------------------------------------------------------------------------------------------
+# Function: save_exposure_figures
+#
+#' @param plots    named list of ggplot objects; names are the output file names.
+#' @param out_dir  string; folder the PDFs are written to.
+#
+#' @return  invisible NULL. Writes one PDF per element of plots.
+#
+#' @details
+#   Companion to the build_exposure_*_figures() builders: the name of each list
+#   element becomes that figure's file name, so saving is a flat loop over names.
+#
+#' @Written_by : Marcos Paulo
+#' @Updated_on : August 2026
+# --------------------------------------------------------------------------------------------
+save_exposure_figures <- function(plots, out_dir) {
+  for (nm in names(plots)) {
+    save_plot_pdf(plots[[nm]], file.path(out_dir, nm))
+  }
+
+  invisible(NULL)
+}
+
+
+# --------------------------------------------------------------------------------------------
 # Function: exposure_group_axis_label
 #
 #' @param socio_var string; "income" or "education".
@@ -1039,42 +1063,45 @@ exposure_group_axis_label <- function(socio_var, group_type) {
 
 
 # --------------------------------------------------------------------------------------------
-# Function: save_exposure_ci_figures
+# Function: build_exposure_ci_figures
 #
-#' @param ci_dt      data.table; CI estimates from estimate_exposure.R.
+#' @param ci_dt      data.table; CI estimates from estimate_exposure.R, one or more
+#'                   buffers stacked (the buffer_km column tells the rows apart).
 #' @param tag        string; grouping tag used in the file name, e.g. "education".
-#' @param out_dir    string; folder for the PDFs.
 #' @param city_labels named character; city -> display label.
 #' @param city_files named character; city -> file-safe name.
-#' @param buffer_km  integer; buffer radius in km, recorded in the file name.
 #
-#' @return  invisible NULL. Writes one PDF per city x outcome.
+#' @return  named list of ggplot objects; each element's name is its output file name,
+#'          which embeds the buffer radius taken from the data's buffer_km column.
 #
 #' @details
 #   Exceedance-hour outcomes carry both pollutants, so PM2.5 and PM10 are drawn in the
-#   same
-#   figure and the file name records both. Labels and paths are arguments, not captured
-#   from
-#   the calling script, so the function is readable on its own.
+#   same figure and the file name records both. Labels and paths are arguments, not
+#   captured from the calling script, so the function is readable on its own. Plot
+#   builders can return NULL for a city that lacks the columns a figure needs;
+#   assigning NULL to a list element drops it, so such cities are skipped.
 #
 #' @Written_by : Marcos Paulo
 #' @Updated_on : August 2026
 # --------------------------------------------------------------------------------------------
-save_exposure_ci_figures <- function(ci_dt, tag, out_dir, city_labels, city_files,
-                                     buffer_km) {
+build_exposure_ci_figures <- function(ci_dt, tag, city_labels, city_files) {
   combos <- unique(ci_dt[!is.na(city) & !is.na(outcome),
-                         .(city, outcome, group_type, socioeconomic_var)])
+                         .(city, outcome, group_type, socioeconomic_var, buffer_km)])
+
+  plots <- list()
 
   for (j in seq_len(nrow(combos))) {
     city_j <- combos$city[j]
     out_j  <- combos$outcome[j]
+    buf_j  <- combos$buffer_km[j]
     poll_j <- intersect(c("pm25", "pm10"),
-                        ci_dt[city == city_j & outcome == out_j, unique(pollutant)])
+                        ci_dt[city == city_j & buffer_km == buf_j & outcome == out_j,
+                              unique(pollutant)])
 
     if (length(poll_j) == 0L) next
 
     p <- plot_group_ci(
-      ci_table    = ci_dt[city == city_j],
+      ci_table    = ci_dt[city == city_j & buffer_km == buf_j],
       outcome     = out_j,
       pollutant   = poll_j,
       group_label = exposure_group_axis_label(combos$socioeconomic_var[j],
@@ -1084,33 +1111,42 @@ save_exposure_ci_figures <- function(ci_dt, tag, out_dir, city_labels, city_file
     poll_tag <- if (length(poll_j) > 1L) "pm25_pm10" else poll_j
 
     fname <- sprintf("%s_%s_%dkm_%s_%s_ci.pdf", city_files[[city_j]], tag,
-                     buffer_km, out_j, poll_tag)
-    save_plot_pdf(p, file.path(out_dir, fname))
+                     buf_j, out_j, poll_tag)
+    plots[[fname]] <- p
   }
 
-  invisible(NULL)
+  plots
 }
 
 
 # --------------------------------------------------------------------------------------------
-# Function: save_exposure_level_figures
+# Function: build_exposure_level_figures
 #
-#' @param sum_dt     data.table; group summaries from estimate_exposure.R.
+#' @param sum_dt     data.table; group summaries from estimate_exposure.R, one or more
+#'                   buffers stacked (the buffer_km column tells the rows apart).
 #' @param tag        string; grouping tag used in the file name, e.g. "education".
-#' @param out_dir    string; folder for the PDFs.
 #' @param city_labels named character; city -> display label.
 #' @param city_files named character; city -> file-safe name.
-#' @param buffer_km  integer; buffer radius in km, recorded in the file name.
 #
-#' @return  invisible NULL. Writes one dual-axis PM10/PM2.5 PDF per city.
+#' @return  named list of ggplot objects; each element's name is its output file name,
+#'          which embeds the buffer radius taken from the data's buffer_km column.
+#
+#' @details
+#   Plot builders can return NULL for a city that lacks the columns a figure needs;
+#   assigning NULL to a list element drops it, so such cities are skipped.
 #
 #' @Written_by : Marcos Paulo
 #' @Updated_on : August 2026
 # --------------------------------------------------------------------------------------------
-save_exposure_level_figures <- function(sum_dt, tag, out_dir, city_labels, city_files,
-                                        buffer_km) {
-  for (city_j in unique(sum_dt[!is.na(city), city])) {
-    sub <- sum_dt[city == city_j]
+build_exposure_level_figures <- function(sum_dt, tag, city_labels, city_files) {
+  combos <- unique(sum_dt[!is.na(city), .(city, buffer_km)])
+
+  plots <- list()
+
+  for (j in seq_len(nrow(combos))) {
+    city_j <- combos$city[j]
+    buf_j  <- combos$buffer_km[j]
+    sub <- sum_dt[city == city_j & buffer_km == buf_j]
 
     p <- plot_group_levels(
       summary_table = sub,
@@ -1119,9 +1155,9 @@ save_exposure_level_figures <- function(sum_dt, tag, out_dir, city_labels, city_
       city_label    = city_labels[[city_j]],
       year_label    = as.character(sub$year[1]))
 
-    save_plot_pdf(p, file.path(out_dir, sprintf("%s_%s_%dkm_levels.pdf",
-                                                city_files[[city_j]], tag, buffer_km)))
+    fname <- sprintf("%s_%s_%dkm_levels.pdf", city_files[[city_j]], tag, buf_j)
+    plots[[fname]] <- p
   }
 
-  invisible(NULL)
+  plots
 }
