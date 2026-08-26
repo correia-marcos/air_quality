@@ -98,16 +98,28 @@
 #'                        the full data — surviving sentinel values in the far tail can
 #'                        distort the axis, never the curve.
 #' @param pollutant_label string; x-axis label. Default "PM10 (µg/m³)" / "PM2.5 (µg/m³)".
+#' @param city_colours    named character vector or NULL; city -> colour. NULL = the Set1
+#'                        brewer palette. Names must match city_data's names exactly
+#'                        (accents included).
+#' @param city_linetypes  named character vector or NULL; city -> linetype ("solid",
+#'                        "dashed", "dotdash", ...). NULL = every curve solid and no
+#'                        linetype scale.
+#' @param fill_alpha      numeric in [0, 1]; transparency of the density fill. 0 draws
+#'                        line-only curves and line-only legend keys.
+#' @param legend_position string; passed to theme(legend.position = ...).
 #'
-#' @return    A ggplot, invisibly (also printed). Nothing is written to disk.
+#' @return    A ggplot, invisibly; printed when the session is interactive. Nothing is
+#'            written to disk.
 #'
 #' @details   The paper's Figure 1: one density curve per metropolitan area on a shared
 #'            axis with the WHO 24-hour interim targets as dashed lines. The bandwidth
-#'            is ggplot2's default (bw.nrd0, Silverman's rule — the same formula the
-#'            legacy Stata kdensity used), so curves are comparable with the published
-#'            figure but drawn on a finer grid. Each curve is an unweighted station-hour
-#'            density: stations with more valid hours contribute more mass, and every
-#'            city's curve integrates to 1.
+#'            is ggplot2's default (bw.nrd0, Silverman's rule of thumb), the kernel is
+#'            Gaussian, and each curve is an unweighted station-hour density: stations
+#'            with more valid hours contribute more mass, and every city's curve
+#'            integrates to 1. The published figure's look — Santiago red, the other
+#'            three black and told apart by linetype, no fill — is a caller choice,
+#'            set through city_colours / city_linetypes / fill_alpha in
+#'            figure_kernel_distributions.R, not a default of this function.
 #'
 #' @Written_on : August 2026
 #' @Written_by : Marcos Paulo
@@ -118,7 +130,11 @@ plot_kernel_density_by_city <- function(city_data,
                                         it1_value = NULL,
                                         it2_value = NULL,
                                         x_max = NULL,
-                                        pollutant_label = NULL) {
+                                        pollutant_label = NULL,
+                                        city_colours = NULL,
+                                        city_linetypes = NULL,
+                                        fill_alpha = 0.3,
+                                        legend_position = "top") {
   pollutant <- match.arg(pollutant)
   its <- .who_24h_targets(pollutant)
   if (is.null(it1_value)) it1_value <- unname(its["it1"])
@@ -131,8 +147,17 @@ plot_kernel_density_by_city <- function(city_data,
 
   long <- .read_city_values(city_data, pollutant, year)
 
-  p <- ggplot2::ggplot(long, ggplot2::aes(x = value, colour = city, fill = city)) +
-    ggplot2::geom_density(alpha = 0.3, linewidth = 1) +
+  # Linetype joins colour as a discriminator only when the caller differentiates cities
+  # by line format; both aesthetics map to `city`, so one legend entry shows both.
+  city_aes <- if (is.null(city_linetypes)) {
+    ggplot2::aes(x = value, colour = city, fill = city)
+  } else {
+    ggplot2::aes(x = value, colour = city, fill = city, linetype = city)
+  }
+
+  p <- ggplot2::ggplot(long, city_aes) +
+    ggplot2::geom_density(alpha = fill_alpha, linewidth = 1,
+                          key_glyph = if (fill_alpha == 0) "path" else "polygon") +
     ggplot2::geom_vline(xintercept = it1_value, linetype = "dashed",
                         colour = "#B2182B", linewidth = 0.5) +
     ggplot2::geom_vline(xintercept = it2_value, linetype = "dashed",
@@ -141,13 +166,32 @@ plot_kernel_density_by_city <- function(city_data,
                       label = "IT1", colour = "#B2182B", fontface = "bold") +
     ggplot2::annotate("text", x = it2_value, y = Inf, vjust = 1.2, hjust = -0.1,
                       label = "IT2", colour = "#2166AC", fontface = "bold") +
-    ggplot2::labs(x = pollutant_label, y = "Density") +
-    ggplot2::scale_colour_brewer(palette = "Set1") +
-    ggplot2::scale_fill_brewer(palette = "Set1") +
-    ggplot2::theme_minimal(base_family = "Palatino", base_size = 14) +
+    ggplot2::labs(x = pollutant_label, y = "Density")
+
+  # Scales: Set1 by default, the caller's named colours/linetypes otherwise. Named
+  # vectors keep colour assignment fixed while city_data's order sets the legend.
+  if (is.null(city_colours)) {
+    p <- p + ggplot2::scale_colour_brewer(palette = "Set1") +
+      ggplot2::scale_fill_brewer(palette = "Set1")
+  } else {
+    p <- p + ggplot2::scale_colour_manual(values = city_colours) +
+      ggplot2::scale_fill_manual(values = city_colours)
+  }
+  if (!is.null(city_linetypes)) {
+    p <- p + ggplot2::scale_linetype_manual(values = city_linetypes)
+  }
+
+  # A line-only curve needs a line-only key, but draw_key_path() inherits alpha = 0
+  # and would vanish; the guide overrides the key back to opaque.
+  if (fill_alpha == 0) {
+    p <- p + ggplot2::guides(
+      colour = ggplot2::guide_legend(override.aes = list(alpha = 1)))
+  }
+
+  p <- p + ggplot2::theme_minimal(base_family = "Palatino", base_size = 14) +
     ggplot2::theme(
       legend.title = ggplot2::element_blank(),
-      legend.position = "top",
+      legend.position = legend_position,
       axis.title = ggplot2::element_text(face = "bold")
     )
 
@@ -155,7 +199,7 @@ plot_kernel_density_by_city <- function(city_data,
     p <- p + ggplot2::coord_cartesian(xlim = c(0, x_max))
   }
 
-  print(p)
+  if (interactive()) print(p)
   invisible(p)
 }
 
@@ -168,8 +212,12 @@ plot_kernel_density_by_city <- function(city_data,
 #' @param it1_value       numeric; NULL = the WHO 24-hour default for the pollutant.
 #' @param it2_value       numeric; NULL = the WHO 24-hour default.
 #' @param pollutant_label string; panel title. Default "PM10 (µg/m³)" / "PM2.5 (µg/m³)".
+#' @param legend_position string; passed to theme(legend.position = ...). Mirrors
+#'                        plot_kernel_density_by_city()'s knob so the two figures can
+#'                        move their legends together.
 #'
-#' @return    A ggplot, invisibly (also printed). Nothing is written to disk.
+#' @return    A ggplot, invisibly; printed when the session is interactive. Nothing is
+#'            written to disk.
 #'
 #' @details   Companion to the density figure: the share of valid station-hours at or
 #'            above each WHO 24-hour target, which the density tails show only
@@ -186,7 +234,8 @@ plot_exceedance_shares <- function(city_data,
                                    year = NULL,
                                    it1_value = NULL,
                                    it2_value = NULL,
-                                   pollutant_label = NULL) {
+                                   pollutant_label = NULL,
+                                   legend_position = "top") {
   pollutant <- match.arg(pollutant)
   its <- .who_24h_targets(pollutant)
   if (is.null(it1_value)) it1_value <- unname(its["it1"])
@@ -226,12 +275,12 @@ plot_exceedance_shares <- function(city_data,
     ggplot2::theme_minimal(base_family = "Palatino", base_size = 14) +
     ggplot2::theme(
       legend.title = ggplot2::element_blank(),
-      legend.position = "top",
+      legend.position = legend_position,
       axis.title = ggplot2::element_text(face = "bold"),
       axis.title.x = ggplot2::element_blank(),
       plot.title = ggplot2::element_text(face = "bold", hjust = 0.5)
     )
 
-  print(p)
+  if (interactive()) print(p)
   invisible(p)
 }
