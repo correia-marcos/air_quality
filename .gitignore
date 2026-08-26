@@ -6,6 +6,9 @@
 .RData
 .Ruserdata
 *.Rproj
+
+# R's default graphics device, opened by print() under non-interactive Rscript
+Rplots.pdf
  
  
 # ---------------------------------------------------------------------------
@@ -15,7 +18,9 @@
 .netrc
 .env
 .env.*
-!.env.example          # keep the example template tracked
+
+# keep the example template tracked
+!.env.example
  
  
 # ---------------------------------------------------------------------------
