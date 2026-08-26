@@ -74,6 +74,18 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "rm -f \"${CLAUDE_PROJECT_DIR}/Rplots.pdf\"",
+            "timeout": 5
+          }
+        ]
+      }
     ]
   }
 }
