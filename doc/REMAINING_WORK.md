@@ -17,16 +17,15 @@ Hand-maintained. Written August 2026, against
 | `descriptives/model2_<city>[_pm25][_scatter].png` | 16 | Imputation diagnostics: the linear prediction vs the actual hourly series, and the ratio of predicted-missing to observed means by station. **The data exists** — `impute_missing_hourly.R` writes `data/processed/imputed_ols/<city>_imputed` — but no script in `tables_images/` reads that folder. This is the largest single gap and the cheapest to close, because only the plotting is missing. |
 | `Final/maps/<city>_population_density_map.png` | 4 | No producer for the data or the figure. |
 
-## B. Producer exists, coverage is narrower than the paper's — 34 figures
+## B. Producer exists, coverage is narrower than the paper's — 28 figures
 
 | Family | Paper needs | Repo produces | Gap |
 |---|---|---|---|
 | `Final/stations_dis_num_<city>_{3,5,10}km.png` | 12 (4 cities × 3 radii) | 4 (3 km only) | `plot_station_monitoring_figures.R` hardcodes `radius_km = 3` at four call sites. Make it a vector and loop. |
 | `kernel_plots/distribution_3km_<city>_<pol>.png` | 16 | 2 (Bogotá only) | `figure_exposure_by_quintile.R` sets `kernel_specs <- specs[1]`. The other three cities were commented out during development; the spec list is now correct, so widening to `seq_along(specs)` is a one-line change **once someone confirms `mode = "geo"` works for kernel density**. |
-| `kernel_plots/all[_pm25][_2019/_2022].png` | 6 | 0 | Pooled-across-cities variants, and two earlier years. No producer. |
 | `Final/maps/map_<city>_3km.png` | 4 | 1 (Bogotá, as PDF) | `bogota_fig_pollution_quintiles_geo_id.R` is Bogotá-only by construction — the name says so. Generalising it to four cities is the intended fix. |
 
-## C. Producer exists and is current; the manuscript cites legacy filenames — ~64 figures
+## C. Producer exists and is current; the manuscript cites legacy filenames — ~70 figures
 
 **This is a paper-side edit, not a code gap.** The new pipeline's figures are correct and
 newer; the `.tex` still points at the Stata-era `.png` names. Nobody should "fix" working code
@@ -37,6 +36,7 @@ here.
 | `Final/plot_hours_above_IT{1,2}_<city>_2023_3km_reg1.png` (18) and the 2 `plot_decile_*` | `results/figures/exposure_by_group/ci/*_3km_*_ci.pdf` (14 files) |
 | `Final/plot_quintiles_<city>_all_mean_2023_3km_imp.png` and the `descriptives/` variants (12) | `results/figures/exposure_by_group/levels/*_3km_*_levels.pdf` (7 files) |
 | `descriptives/scatter_plot_<city>_*.png` (28) | `results/figures/station_monitoring/<city>_{avg,hours_it1,hours_it2}_pm10_pm25_vs_education.png` (12 files) |
+| `kernel_plots/all[_pm25][_2019/_2022].png` (6) | `results/figures/kernel_plots/all_pm{10,25}[_2019/_2022].pdf` from `figure_kernel_distributions.R` |
 
 Three caveats before treating this as purely editorial:
 
