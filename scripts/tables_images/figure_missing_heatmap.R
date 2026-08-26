@@ -3,10 +3,9 @@
 # ============================================================================================
 #' @Goal: Month × hour heatmaps of the share of missing PM readings per city.
 #
-#' @Description: Rebuild of the missing-pattern diagnostic from legacy
-# 7_missing_analysis.do. For each city we query DuckDB for the exact two-way
-# share of missing observations (month × hour) and render it with
-# `plot_missing_heatmap()`. One PDF per (city × pollutant) in
+#' @Description: Month × hour missing-pattern diagnostic. For each city we query
+# DuckDB for the exact two-way share of missing observations (month × hour) and
+# render it with `plot_missing_heatmap()`. One PDF per (city × pollutant) in
 # results/figures/joint_plots/missing_heatmap/.
 #
 #' @Summary:

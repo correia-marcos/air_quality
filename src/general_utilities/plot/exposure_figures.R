@@ -62,8 +62,7 @@
 #   exposure and individual quintile assignments in two separate files.
 #   This function joins them by geo_id and then computes weighted means
 #   across individuals (using pop_col = "fe") within each quintile ×
-#   geo combination before aggregating to the quintile level. This
-#   replicates the coauthor's individual-level approach exactly.
+#   geo combination before aggregating to the quintile level.
 #
 #   DUAL-AXIS SCALING
 #   The PM10/PM2.5 scaling factor for the dual-axis plot is derived
@@ -380,7 +379,7 @@ plot_exposure_by_quintile <- function(
 #
 #' @return  ggplot2 object. Error bars are 95% CIs (or whatever was used upstream).
 #
-#' @Purpose: Rebuild of the quintile plots in legacy 4_exposure_plots_*_regCI.R.
+#' @Purpose: Quintile plots with regression-based CIs.
 #           Designed to pair 1-to-1 with compute_exposure_ci_regression().
 #
 #' @Written_on : 17/04/2026
@@ -542,7 +541,8 @@ plot_kernel_density_by_quintile <- function(
 #
 #' @return  ggplot2 object (scatter + optional facets + 45° reference).
 #
-#' @Purpose: Rebuild of the scatter plots in legacy 6_scatter_plots.do.
+#' @Purpose: Pollutant-vs-pollutant scatter plots with optional facets and
+#           a 45° reference line.
 #
 #' @Written_on : 17/04/2026
 #' @Written_by : Marcos Paulo
@@ -630,8 +630,7 @@ plot_scatter_pollutants <- function(
 #' @return  ggplot2 object — bar chart of population-weighted mean hours above the
 #           requested WHO interim target, by education quintile.
 #
-#' @Purpose: Complements plot_exposure_by_quintile() with a WHO-target view,
-#           which is the second panel in the legacy 4_exposure_plots_*_PM.R scripts.
+#' @Purpose: Complements plot_exposure_by_quintile() with a WHO-target view.
 #
 #' @Written_on : 17/04/2026
 #' @Written_by : Marcos Paulo

@@ -1589,7 +1589,7 @@ sp_process_census_2010 <- function(
   }
   
   # Winsorize income: cap at 1st/99th percentiles among positive values,
-  # keep zeros intact. Mirrors the legacy decile-construction cleaning.
+  # keep zeros intact.
   .winsorize_income <- function(x) {
     pos <- x[!is.na(x) & x > 0]
     

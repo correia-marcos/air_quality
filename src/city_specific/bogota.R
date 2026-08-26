@@ -3010,8 +3010,8 @@ bogota_filter_census_2005 <- function(
 #              census_metro_individual_<prefix>.parquet and
 #              collapse_metro_area_<prefix>.parquet, where prefix is basic or extended.
 #              Parquet keeps GEO_ID character; a CSV roundtrip drops its leading zeros.
-#' @Purpose   : Replicates Stata logic: Harmonizes education, creates labor/demographic
-#              dummies, filters adults (25+), and collapses to geographic level.
+#' @Purpose   : Harmonizes education, creates labor/demographic dummies, filters
+#              adults (25+), and collapses to geographic level.
 #' @Written_on: 21/01/2026
 #' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------

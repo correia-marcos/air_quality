@@ -199,7 +199,7 @@ table_state_metro_distances <- function(
 #           and exceedance_factor). Optionally writes a booktabs-style LaTeX
 #           table.
 #
-#' @Purpose: LaTeX table for legacy inputs/1_AQG_guidelines.R results.
+#' @Purpose: LaTeX table of the WHO-exceedance results (city × year × pollutant).
 #
 #' @Written_on : 17/04/2026
 #' @Written_by : Marcos Paulo
@@ -346,8 +346,7 @@ table_stations_by_pollutant <- function(
 #' @return  data.table; the selected dimension table plus a city column.
 #           Side effect: a booktabs LaTeX table when requested.
 #
-#' @Purpose: LaTeX rebuild of the missing-proportion tables from legacy
-#           Missing analysis/auxiliar_missings.R and 5_stats_non_missing.R.
+#' @Purpose: LaTeX rebuild of the missing-proportion tables.
 #
 #' @Written_on : 17/04/2026
 #' @Written_by : Marcos Paulo
@@ -503,9 +502,8 @@ write_exposure_summary_table_tex <- function(
 #
 #' @return  ggplot2 heatmap.
 #
-#' @Purpose: Quick visual rebuild of the "missing by month × hour" diagnostic from
-#           legacy 7_missing_analysis.do. Prefer passing `arrow_dir` so the
-#           two-way shares are computed exactly.
+#' @Purpose: Quick visual rebuild of the "missing by month × hour" diagnostic.
+#           Prefer passing `arrow_dir` so the two-way shares are computed exactly.
 #
 #' @Written_on : 17/04/2026
 #' @Written_by : Marcos Paulo

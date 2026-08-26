@@ -34,12 +34,13 @@
 #   `neighbor_eligibility` decides which stations may serve as the neighbor:
 #     "with_data" = the paper's rule: only stations with at least one non-missing
 #                   reading for this pollutant in this year are candidates.
-#     "all"       = the legacy rule: the static distance matrix alone decides, so
-#                   a station that never reported can still be picked as nearest.
+#     "all"       = the static distance matrix alone decides, so a station that
+#                   never reported can still be picked as nearest.
 #                   Its readings are then all NA, the spatial check is infeasible,
 #                   and every flagged hour at that station is dropped unchecked.
 #   Use "all" together with on_missing_temporal = "finish" and
-#   on_missing_neighbor = "finish" to reproduce the legacy procedure exactly.
+#   on_missing_neighbor = "finish" to reproduce the original, more punitive
+#   procedure.
 #
 #   Creates `{pollutant}_outlier_reason` columns:
 #     0 = Valid or not flagged
@@ -454,8 +455,8 @@ detect_pollution_outliers <- function(
       (reason_col) := 4L
     ]
     
-    # Legacy-style behavior: missing temporal benchmark is final.
-    # This reproduces the older, more punitive rule when requested.
+    # Missing temporal benchmark is final: the older, more punitive rule,
+    # applied when requested.
     if (miss_temp == "finish") {
       dt[.t_flag == 1L & .t_cat == 3L, (reason_col) := 1L]
     }

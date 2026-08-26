@@ -3797,7 +3797,7 @@ cdmx_download_census_data <- function(
 #' @param write_rds, write_csv — optional single-file artifacts
 #' @param cleanup            logical; remove source files after success
 #' @param verbose            logical; print progress
-#' @param stations_keep_codes   vector of codes to keep (legacy filter)
+#' @param stations_keep_codes   vector of station codes to keep
 #' @Return: Arrow Dataset handle (if write_parquet) or tibble.
 #
 # DATETIME CONVENTION (gold standard, shared with the Bogota reader):
@@ -4859,8 +4859,8 @@ mexico_filter_census <- function(
 #           pad the census side with canonical_geo_id(width = 5) at the join.
 #
 #' @Purpose:
-#   Replicates the Stata schooling logic, harmonizes demographic and labor
-#   variables, filters adults aged 25+, and collapses to municipality level.
+#   Harmonizes schooling into years of education, harmonizes demographic and
+#   labor variables, filters adults aged 25+, and collapses to municipality level.
 #   Income (INGTRMEN) is harmonized and winsorized so the IDW estimator can
 #   build income deciles downstream.
 #
@@ -4889,7 +4889,7 @@ mexico_harmonize_census_data <- function(
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
   
   # Winsorize income: cap at 1st/99th percentiles among positive values,
-  # keep zeros intact. Mirrors the legacy decile-construction cleaning.
+  # keep zeros intact.
   .winsorize_income <- function(x) {
     pos <- x[!is.na(x) & x > 0]
     
@@ -4905,7 +4905,7 @@ mexico_harmonize_census_data <- function(
     ifelse(!is.na(x) & x > 0, pmin(pmax(x, lo), hi), x)
   }
   
-  # Replicate Stata schooling replacement logic
+  # Harmonize Mexican schooling levels into years of education
   harmonize_education_mx <- function(df) {
     
     # Convert inputs to numeric
@@ -5087,7 +5087,7 @@ mexico_harmonize_census_data <- function(
 
       education_mean = sum(escolaridad * FACTOR, na.rm = TRUE) / pop_educ_known,
 
-      # Keep the legacy raw-income mean and add a winsorized income mean.
+      # Keep the raw (unwinsorized) income mean and add a winsorized one.
       ingtrmen = sum(ingtrmen * FACTOR, na.rm = TRUE) / weight,
       income_mean = sum(income * FACTOR, na.rm = TRUE) /
         sum(FACTOR * (!is.na(income)), na.rm = TRUE),
