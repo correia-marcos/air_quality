@@ -90,6 +90,7 @@ figures: exposure
 	$(RUN) scripts/tables_images/generate_exposure_plots.R
 	$(RUN) scripts/tables_images/figure_exposure_by_quintile.R
 	$(RUN) scripts/tables_images/plot_station_monitoring_figures.R
+	$(RUN) scripts/tables_images/figure_kernel_distributions.R
 
 tables: exposure descriptives
 	$(RUN) scripts/tables_images/render_paper_tables.R
