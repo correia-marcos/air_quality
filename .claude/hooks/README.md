@@ -1,6 +1,7 @@
 # Hooks
 
-One PreToolUse hook, `guard.py`, wired in `.claude/settings.json`.
+Two hooks wired in `.claude/settings.json`: a PreToolUse guard (`guard.py`) and a
+PostToolUse cleanup.
 
 ## What it does
 
@@ -49,3 +50,12 @@ shell `echo` turns `\n` into a real newline, which makes the JSON invalid and th
 fails open) silently allows.
 
 An empty response means "allow"; a JSON `permissionDecision` of `deny`/`ask` is a stop.
+
+## PostToolUse: Rplots.pdf cleanup
+
+After every `Bash` call, `rm -f "${CLAUDE_PROJECT_DIR}/Rplots.pdf"` runs. R opens
+`Rplots.pdf` — its default graphics device — whenever a script calls `print()` on a plot
+under non-interactive `Rscript`, so verification runs used to leave a stray PDF at the
+repo root. The hook removes it the moment it appears; `Rplots.pdf` is also git-ignored,
+and figure functions in `src/` only print when `interactive()`. Figures belong in
+`results/`, never at the root.
