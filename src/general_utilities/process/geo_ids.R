@@ -14,6 +14,7 @@
 #   3. reconcile_geo_ids
 #   4. apply_canonical_names
 #   5. write_canonical_parquet
+#   6. compute_geo_area_km2
 #
 #' @Date: August 2026
 #' @Author: Marcos Paulo
@@ -430,4 +431,36 @@ write_canonical_parquet <- function(dt, path, meta) {
 
   arrow::write_parquet(tbl, path)
   invisible(path)
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: compute_geo_area_km2
+#
+#' @param geo_sf    sf POLYGON object; the geographic units.
+#' @param geo_id_col string; the id column in geo_sf, renamed to geo_id on the way out.
+#
+#' @return  data.table with geo_id and area_km2, one row per unit.
+#
+#' @details
+#   Land area for the population-density rows. Geometries are repaired and projected to
+#   the layer's own UTM zone before measuring, because an area computed on unprojected
+#   degrees is not an area. Units that share an id are summed, so a multi-part unit
+#   stored as several rows contributes its whole footprint once.
+#
+#' @Written_on : August 2026
+#' @Written_by : Marcos Paulo
+# --------------------------------------------------------------------------------------------
+compute_geo_area_km2 <- function(geo_sf, geo_id_col) {
+  if (!geo_id_col %in% names(geo_sf)) {
+    stop("Column '", geo_id_col, "' not found in the geographic layer.")
+  }
+
+  geo_utm <- sf::st_make_valid(sf::st_transform(geo_sf, crs = utm_epsg(geo_sf)))
+
+  out <- data.table::data.table(
+    geo_id  = safe_chr(geo_utm[[geo_id_col]]),
+    area_km2 = as.numeric(sf::st_area(geo_utm)) / 1e6)
+
+  out[!is.na(geo_id), .(area_km2 = sum(area_km2)), by = geo_id]
 }
