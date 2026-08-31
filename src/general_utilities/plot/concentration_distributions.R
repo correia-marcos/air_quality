@@ -93,10 +93,10 @@
 #'                        24-hour default for the pollutant (150 pm10 / 75 pm25).
 #' @param it2_value       numeric; position of the WHO IT2 line in µg/m³. NULL = the WHO
 #'                        24-hour default (100 pm10 / 50 pm25).
-#' @param x_max           numeric or NULL; right edge of the x axis. Display-only zoom
-#'                        through coord_cartesian(), so the density is still estimated on
-#'                        the full data — surviving sentinel values in the far tail can
-#'                        distort the axis, never the curve.
+#' @param x_max           numeric or NULL; right edge of the x axis, and the right edge of
+#'                        the density evaluation grid. The bandwidth still comes from all
+#'                        of a city's values; only the grid is bounded, so the mass beyond
+#'                        x_max is estimated but not drawn. NULL uses the data range.
 #' @param pollutant_label string; x-axis label. Default "PM10 (µg/m³)" / "PM2.5 (µg/m³)".
 #' @param city_colours    named character vector or NULL; city -> colour. NULL = the Set1
 #'                        brewer palette. Names must match city_data's names exactly
@@ -116,7 +116,13 @@
 #'            is ggplot2's default (bw.nrd0, Silverman's rule of thumb), the kernel is
 #'            Gaussian, and each curve is an unweighted station-hour density: stations
 #'            with more valid hours contribute more mass, and every city's curve
-#'            integrates to 1. The published figure's look — Santiago red, the other
+#'            integrates to 1. The curves are evaluated with stats::density() on a grid
+#'            bounded by x_max rather than by geom_density(), which spans the panel-wide
+#'            data range: one 79,999 µg/m³ station-hour makes that range 80,002 wide, and
+#'            at a grid spacing ~150x the bandwidth R's FFT convolution stops
+#'            renormalising and inflates every curve by two orders of magnitude. Bounding
+#'            the grid keeps the spacing near the bandwidth and the y scale correct.
+#'            The published figure's look — Santiago red, the other
 #'            three black and told apart by linetype, no fill — is a caller choice,
 #'            set through city_colours / city_linetypes / fill_alpha in
 #'            figure_kernel_distributions.R, not a default of this function.
@@ -147,17 +153,34 @@ plot_kernel_density_by_city <- function(city_data,
 
   long <- .read_city_values(city_data, pollutant, year)
 
+  # One density per city, evaluated on [0, x_max] instead of the panel-wide data range.
+  # See @details: an unbounded grid inflates the y scale when one far outlier survives.
+  dens <- do.call(rbind, lapply(levels(long$city), function(nm) {
+    v <- long$value[long$city == nm]
+    d <- if (is.null(x_max)) {
+      stats::density(v, n = 512)
+    } else {
+      stats::density(v, from = 0, to = x_max, n = 512)
+    }
+    data.frame(city = nm, x = d$x, y = d$y)
+  }))
+  dens$city <- factor(dens$city, levels = levels(long$city))
+
   # Linetype joins colour as a discriminator only when the caller differentiates cities
   # by line format; both aesthetics map to `city`, so one legend entry shows both.
   city_aes <- if (is.null(city_linetypes)) {
-    ggplot2::aes(x = value, colour = city, fill = city)
+    ggplot2::aes(x = x, y = y, colour = city, fill = city)
   } else {
-    ggplot2::aes(x = value, colour = city, fill = city, linetype = city)
+    ggplot2::aes(x = x, y = y, colour = city, fill = city, linetype = city)
   }
 
-  p <- ggplot2::ggplot(long, city_aes) +
-    ggplot2::geom_density(alpha = fill_alpha, linewidth = 1,
-                          key_glyph = if (fill_alpha == 0) "path" else "polygon") +
+  p <- ggplot2::ggplot(dens, city_aes)
+  if (fill_alpha > 0) {
+    p <- p + ggplot2::geom_area(alpha = fill_alpha, position = "identity",
+                                colour = NA, key_glyph = "polygon")
+  }
+  p <- p +
+    ggplot2::geom_line(linewidth = 1, key_glyph = "path") +
     ggplot2::geom_vline(xintercept = it1_value, linetype = "dashed",
                         colour = "#B2182B", linewidth = 0.5) +
     ggplot2::geom_vline(xintercept = it2_value, linetype = "dashed",
