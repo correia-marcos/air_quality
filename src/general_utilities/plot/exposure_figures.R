@@ -11,7 +11,7 @@
 #' @Summary:
 #   1. plot_exposure_by_quintile
 #   2. plot_exposure_by_quintile_with_ci
-#   3. plot_kernel_density_by_quintile
+#   3. plot_exposure_density_by_quintile
 #   4. plot_scatter_pollutants
 #   5. plot_hours_above_target_by_quintile
 #   6. plot_group_ci
@@ -435,91 +435,95 @@ plot_exposure_by_quintile_with_ci <- function(
 
 
 # --------------------------------------------------------------------------------------------
-# Function: plot_kernel_density_by_quintile
+# Function: plot_exposure_density_by_quintile
 #
-#' @param exposure_dir   string; folder with aggregate_idw_exposure() outputs.
-#' @param out_name       string; prefix (same as in aggregate_idw_exposure()).
-#' @param pollutant      string; one of the columns "avg_<pollutant>" in the file.
-#                         Default "pm25".
-#' @param quintile_level string; "geo" or "individual" (see aggregate_idw_exposure()).
-#' @param pop_col        string; weight column. Default "n".
-#' @param year_filter    integer|NULL; restrict to one year.
-#' @param city_label     string; plot title.
-#' @param bw_adjust      numeric; ggplot2::geom_density(adjust = ...). Default 1.
-#' @param x_trim_q       numeric in (0,1); trim x above this weighted quantile to
-#                         avoid long tails dominating the plot. Default 0.995.
+#' @param dir_idw     string; root folder of the IDW estimates.
+#' @param city_id     string; city folder and file prefix, e.g. "cdmx_2020".
+#' @param buffer_km   numeric; buffer the exposure was interpolated with.
+#' @param pollutant   string; "pm10" or "pm25".
+#' @param city_label  string; plot title.
+#' @param year_filter integer or NULL; restrict to one exposure year.
+#' @param bw_adjust   numeric; passed to geom_density(adjust = ). Default 1.
+#' @param x_trim_q    numeric in (0, 1); drop the tail above this population-weighted
+#                     quantile, so a few extreme units cannot flatten the figure.
+#                     Default 0.995.
 #
-#' @return  ggplot2 object (overlaid weighted kernel densities coloured by
-#           education quintile).
+#' @return  ggplot object; one weighted density curve per education quintile.
 #
-#' @Purpose: Rebuild of inputs/1_kernel_plots_quintiles_3km.R / _20km.R.
+#' @details
+#   The distribution of a metropolitan area's exposure as its residents experience it, cut
+#   by education. Exposure is a property of the geographic unit, but the quintiles are
+#   defined over people, so each unit enters once per quintile, weighted by how many of
+#   that quintile's members live there. That is what makes the curves population weighted
+#   rather than unit weighted, and it is the definition the caption states.
 #
-#' @Written_on : 17/04/2026
+#   The quintiles come from the individual artifact, which the interpolation stage already
+#   restricted to adults and cut into equal-population groups. Reading them here rather
+#   than re-cutting keeps this figure and the regressions on one definition.
+#
+#' @Written_on : April 2026
 #' @Written_by : Marcos Paulo
+#' @Updated_on : August 2026
 # --------------------------------------------------------------------------------------------
-plot_kernel_density_by_quintile <- function(
-    exposure_dir,
-    out_name,
-    pollutant      = "pm25",
-    quintile_level = c("geo", "individual"),
-    pop_col        = "n",
-    year_filter    = NULL,
-    city_label     = "",
-    bw_adjust      = 1,
-    x_trim_q       = 0.995
+plot_exposure_density_by_quintile <- function(
+    dir_idw,
+    city_id,
+    buffer_km,
+    pollutant   = "pm25",
+    city_label  = "",
+    year_filter = NULL,
+    bw_adjust   = 1,
+    x_trim_q    = 0.995
 ) {
-  quintile_level <- match.arg(quintile_level)
-  exp_pq <- file.path(exposure_dir, paste0(out_name, "_idw_exposure.parquet"))
-  ind_pq <- file.path(exposure_dir, paste0(out_name, "_indiv_quintiles.parquet"))
-  if (!file.exists(exp_pq)) stop("Exposure Parquet not found: ", exp_pq)
-  
-  dt <- data.table::as.data.table(arrow::read_parquet(exp_pq))
-  dt[, geo_id := as.character(geo_id)]
-  if (!is.null(year_filter)) dt <- dt[year == year_filter]
-  
-  if (quintile_level == "individual") {
-    if (!file.exists(ind_pq)) stop("Individual file missing: ", ind_pq)
-    ind <- data.table::as.data.table(arrow::read_parquet(ind_pq))
-    ind[, geo_id := as.character(geo_id)]
-    dt <- merge(dt, ind[, .SD, .SDcols = c("geo_id","edu_quintile", pop_col)],
-                by = "geo_id", allow.cartesian = TRUE)
-  }
-  
+
+  exposure <- read_idw_artifact(dir_idw, city_id, "idw_exposure", buffer_km)
+  groups   <- read_idw_artifact(dir_idw, city_id, "indiv_groups")
+
   x_col <- paste0("avg_", pollutant)
-  if (!x_col %in% names(dt)) stop("Column ", x_col, " not found.")
-  dt <- dt[!is.na(get(x_col)) & !is.na(edu_quintile)
-           & !is.na(get(pop_col)) & get(pop_col) > 0]
-  
-  # Trim the upper tail by weighted quantile
-  xs <- dt[[x_col]]
-  ws <- dt[[pop_col]]
-  ord <- order(xs); xs_s <- xs[ord]; ws_s <- ws[ord]
-  cutoff <- xs_s[which(cumsum(ws_s) / sum(ws_s) >= x_trim_q)[1L]]
+  if (!x_col %in% names(exposure)) stop("Column ", x_col, " not found for ", city_id)
+
+  exposure[, geo_id := safe_chr(geo_id)]
+  if (!is.null(year_filter)) exposure <- exposure[year == year_filter]
+
+  # One row per geo unit and quintile, carrying that quintile's population there.
+  groups[, geo_id := safe_chr(geo_id)]
+  weights <- groups[
+    !is.na(edu_quintile) & !is.na(person_weight) & person_weight > 0,
+    .(quintile_population = sum(person_weight)),
+    by = .(geo_id, edu_quintile)
+  ]
+
+  weights[, geo_id := reconcile_geo_ids(geo_id, exposure$geo_id, label = city_id)]
+
+  dt <- merge(exposure[, .SD, .SDcols = c("geo_id", x_col)], weights, by = "geo_id")
+  dt <- dt[!is.na(get(x_col)) & quintile_population > 0]
+
+  if (nrow(dt) == 0L) stop("No exposure rows matched the census for ", city_id)
+
+  # Trim the upper tail at a population-weighted quantile.
+  ord <- order(dt[[x_col]])
+  xs  <- dt[[x_col]][ord]
+  ws  <- dt$quintile_population[ord]
+  cutoff <- xs[which(cumsum(ws) / sum(ws) >= x_trim_q)[1L]]
   if (is.finite(cutoff)) dt <- dt[get(x_col) <= cutoff]
-  
+
   ggplot2::ggplot(
     dt,
-    ggplot2::aes(
-      x      = .data[[x_col]],
-      weight = .data[[pop_col]],
-      colour = factor(edu_quintile),
-      fill   = factor(edu_quintile)
-    )
+    ggplot2::aes(x = .data[[x_col]], weight = quintile_population,
+                 colour = factor(edu_quintile), fill = factor(edu_quintile))
   ) +
     ggplot2::geom_density(alpha = 0.15, adjust = bw_adjust, linewidth = 0.8) +
     ggplot2::scale_colour_viridis_d(name = "Edu. quintile", option = "D") +
     ggplot2::scale_fill_viridis_d(name = "Edu. quintile", option = "D") +
     ggplot2::labs(
-      x     = bquote(.(toupper(pollutant)) ~ "(μg/m³)"),
+      x     = bquote(.(toupper(pollutant)) ~ "(" * mu * "g/m" ^ 3 * ")"),
       y     = "Density",
-      title = city_label
+      title = city_label,
+      subtitle = paste0("Stations within ", buffer_km, " km")
     ) +
-    ggplot2::theme_minimal(base_family = "Palatino", base_size = 13) +
-    ggplot2::theme(
-      legend.position  = "bottom",
-      panel.grid.minor = ggplot2::element_blank(),
-      plot.title       = ggplot2::element_text(face = "bold")
-    )
+    ggplot2::theme(legend.position = "bottom",
+                   panel.grid.minor = ggplot2::element_blank(),
+                   plot.title = ggplot2::element_text(face = "bold"))
 }
 
 
@@ -1159,4 +1163,91 @@ build_exposure_level_figures <- function(sum_dt, tag, city_labels, city_files) {
   }
 
   plots
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: paper_exposure_filename
+#
+#' @param fname       string; a file name produced by build_exposure_ci_figures() or
+#'                    build_exposure_level_figures(), e.g.
+#'                    "bogota_education_3km_hrs_d_it1_pm25_pm10_ci.pdf".
+#' @param paper_files named character; repo city file stem -> the manuscript's spelling,
+#'                    e.g. c(bogota = "bogota", mexico_city = "mexico").
+#' @param year        integer; analysis year the manuscript writes into the name.
+#' @param imputed     logical; name the figure as the imputed robustness variant.
+#
+#' @return  the manuscript's path for that figure, relative to results/figures/, or
+#           NA_character_ when the manuscript does not print it.
+#
+#' @details
+#   The manuscript names these figures by what they show; this repo names them by the run
+#   that produced them. Rather than renaming the pipeline's own outputs, each figure is
+#   written twice, and this function is the single place the two vocabularies meet.
+#   Only the 3 km runs are printed, so every 5 km name maps to NA, as does the Santiago
+#   commune robustness run. The income CI figures keep the manuscript's "decile" wording
+#   even where the pipeline now estimates quintiles -- see doc/REMAINING_WORK.md.
+#
+#   The returned path is relative to results/paper/figures/. Its folders are named for
+#   what the figures show, not for the manuscript's own Final/ and descriptives/, which
+#   said nothing about content.
+#
+#' @Written_on : August 2026
+#' @Written_by : Marcos Paulo
+# --------------------------------------------------------------------------------------------
+paper_exposure_filename <- function(fname, paper_files, year = 2023L,
+                                    imputed = FALSE) {
+  parts <- regmatches(
+    fname,
+    regexec(paste0("^(.*?)_(education|income)_(\\d+)km_",
+                   "(?:(hrs_d_it[12])_.*_ci|levels)\\.pdf$"), fname))[[1]]
+
+  if (length(parts) == 0L) return(NA_character_)
+
+  city_stem <- parts[2]
+  grouping  <- parts[3]
+  buffer_km <- as.integer(parts[4])
+  outcome   <- parts[5]
+
+  if (buffer_km != 3L || !city_stem %in% names(paper_files)) return(NA_character_)
+
+  paper_city <- paper_files[[city_stem]]
+
+  # The imputed specification is education only, and is kept in its own folder so the
+  # robustness figures are never mistaken for the main ones.
+  if (isTRUE(imputed)) {
+    if (grouping != "education") return(NA_character_)
+
+    if (!nzchar(outcome)) {
+      return(file.path("exposure_imputed",
+                       sprintf("plot_quintiles_%s_all_mean_%d_3km_imp.pdf",
+                               paper_city, year)))
+    }
+
+    return(file.path("exposure_imputed",
+                     sprintf("plot_hours_above_%s_%s_%d_3km_imp.pdf",
+                             toupper(sub("hrs_d_", "", outcome)), paper_city, year)))
+  }
+
+  # Levels: the mean-by-group panel the appendix prints.
+  if (!nzchar(outcome)) {
+    if (grouping != "education") return(NA_character_)
+    return(file.path("exposure_by_quintile",
+                     sprintf("plot_quintiles_%s_pm10_pm25_mean_%d_3km.pdf",
+                             paper_city, year)))
+  }
+
+  it_tag <- toupper(sub("hrs_d_", "", outcome))
+
+  # Income runs appear only as the IT1 panel, under the manuscript's decile wording.
+  if (grouping == "income") {
+    if (it_tag != "IT1") return(NA_character_)
+    return(file.path("exposure_by_quintile",
+                     sprintf("plot_decile_hours_above_IT1_%s_%d_3km_reg1.pdf",
+                             paper_city, year)))
+  }
+
+  file.path("exposure_by_quintile",
+            sprintf("plot_hours_above_%s_%s_%d_3km_reg1.pdf",
+                    it_tag, paper_city, year))
 }
