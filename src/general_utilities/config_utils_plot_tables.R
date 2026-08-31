@@ -49,11 +49,18 @@ attach_packages(pkgs)
 rm(pkgs)
 
 # Function definitions, split by theme. Nothing below runs; each file only defines.
+# Two process modules come first. geo_ids.R because the map figures reconcile ids against
+# the census the same way the process stage does, so a width mismatch leaves no unit
+# unshaded; exposure_regressions.R because the exposure figures locate their inputs with
+# idw_artifact_path(), rather than rebuilding the artifact naming a second time.
+source(here::here("src", "general_utilities", "process", "geo_ids.R"))
+source(here::here("src", "general_utilities", "process", "exposure_regressions.R"))
 source(here::here("src", "general_utilities", "plot", "maps.R"))
 source(here::here("src", "general_utilities", "plot", "timeseries_hourly.R"))
 source(here::here("src", "general_utilities", "plot", "exposure_figures.R"))
 source(here::here("src", "general_utilities", "plot", "latex_tables.R"))
 source(here::here("src", "general_utilities", "plot", "station_monitoring.R"))
+source(here::here("src", "general_utilities", "plot", "imputation_diagnostics.R"))
 source(here::here("src", "general_utilities", "plot", "concentration_distributions.R"))
 
 
