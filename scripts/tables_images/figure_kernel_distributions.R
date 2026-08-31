@@ -75,8 +75,8 @@ city_data <- list(
 # ============================================================================================
 # II: Process data — Figure 1 (2023)
 # ============================================================================================
-# x_max is a display-only zoom: the density is estimated on all hours of the year. A handful
-# of unflagged values live far IT2 and would stretch the axis.
+# x_max bounds the density evaluation grid; the bandwidth still uses all hours of the
+# year, so unflagged far-tail values no longer stretch the grid and inflate the y scale.
 p_pm10 <- plot_kernel_density_by_city(
   city_data,
   pollutant       = "pm10",

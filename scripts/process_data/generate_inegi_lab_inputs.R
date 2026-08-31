@@ -61,7 +61,7 @@ poll <- arrow::open_dataset(arrow_cdmx_2023) |>
   dplyr::collect() |>
   data.table::as.data.table()
 
-# Redudant first part: the city writers drop values < 0 before the hourly
+# The negative half is now redundant: the city writers drop values < 0 before the hourly
 # mean. The >= 9999 half is not — CALPULALPAN reaches 79999 and sits 19.58 km from the
 # nearest metro municipality, so it clears the 3/5 km buffers but enters the 20 km one.
 for (pol in c("pm25", "pm10")) {
