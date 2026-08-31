@@ -87,6 +87,9 @@ source(here::here("scripts", "process_data", "estimate_exposure.R"))
 
 source(here::here("scripts", "process_data", "compute_descriptive_tables.R"))
 source(here::here("scripts", "process_data", "compute_station_scatter_inputs.R"))
+source(here::here("scripts", "process_data", "compute_distance_band_descriptives.R"))
+source(here::here("scripts", "process_data", "impute_missing_hourly.R"))
+source(here::here("scripts", "process_data", "estimate_exposure_imputed.R"))
 
 # ============================================================================================
 # Step 7: MERRA-2 Satellite Track
@@ -102,11 +105,17 @@ source(here::here("scripts", "process_data", "process_merra2_panels.R"))
 # ============================================================================================
 # Final publication artefacts. These read only from data/processed/ or data/interim/.
 
-source(here::here("scripts", "tables_images", "render_paper_tables.R"))
+source(here::here("scripts", "tables_images", "render_station_tables.R"))
+source(here::here("scripts", "tables_images", "render_missing_tables.R"))
+source(here::here("scripts", "tables_images", "render_census_tables.R"))
 source(here::here("scripts", "tables_images", "generate_exposure_plots.R"))
-source(here::here("scripts", "tables_images", "figure_exposure_by_quintile.R"))
 source(here::here("scripts", "tables_images", "plot_station_monitoring_figures.R"))
+source(here::here("scripts", "tables_images", "figure_station_scatter.R"))
+source(here::here("scripts", "tables_images", "figure_population_density_maps.R"))
+source(here::here("scripts", "tables_images", "figure_pollution_quintile_maps.R"))
+source(here::here("scripts", "tables_images", "figure_imputation_diagnostics.R"))
 source(here::here("scripts", "tables_images", "figure_merra2_vs_stations.R"))
 source(here::here("scripts", "tables_images", "figure_aerosol_composition.R"))
 source(here::here("scripts", "tables_images", "figure_kernel_distributions.R"))
+source(here::here("scripts", "tables_images", "figure_quintile_kernel_distributions.R"))
 source(here::here("scripts", "tables_images", "figure_study_area_maps.R"))
