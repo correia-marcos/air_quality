@@ -1942,6 +1942,13 @@ santiago_download_metro_area_2017 <- function(
 #   the 2-digit-year century correctly: 97->1997, 00->2000; data span 1997-2026),
 #   serialize the result to a naive ISO string, stage it as VARCHAR, and STRPTIME
 #   it back to a plain TIMESTAMP.
+#
+# NEGATIVE READINGS:
+#   SINCA's unvalidated column carries instrument sentinels as negative numbers
+#   (-99.9 PM2.5). A concentration below zero is physically impossible, so the pivot
+#   drops those readings before AVG() — after the mean they would be indistinguishable
+#   from a low valid hour. Pollutants only: temperature and wind direction are
+#   legitimately negative. Counts print per station-year-pollutant so the loss is audited.
 #' @Written_on: 18/02/2026
 #' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
@@ -2135,21 +2142,35 @@ dt <- tryCatch(
   # Path is injected via gsub to avoid %-codes sprintf misread.
   dataset_path <- file.path(out_dir, paste0(out_name, "_dataset"))
   if (dir.exists(dataset_path)) unlink(dataset_path, recursive = TRUE)
-  
+
+  # Negative concentrations are physically impossible; report them, then drop them in the
+  # pivot below. Pollutants only: temperature and wind direction may legitimately be < 0.
+  neg_rep <- DBI::dbGetQuery(con, "
+    SELECT station, year, param AS pollutant, COUNT(*) AS n_negative,
+           MIN(value) AS min_value
+    FROM staging_sinca
+    WHERE value < 0
+      AND param IN ('pm10','pm25','ozone','no','no2','nox','co','so2')
+    GROUP BY 1,2,3 ORDER BY 4 DESC;")
+  if (nrow(neg_rep) > 0L) {
+    message("-> Masking negative readings (station-year-pollutant):")
+    print(neg_rep, row.names = FALSE)
+  }
+
   sql_pivot <- "
     COPY (
       SELECT
         STRPTIME(datetime, '%Y-%m-%d %H:%M:%S') AS datetime,
         station,
         year,
-        AVG(CASE WHEN param = 'pm10'        THEN value END) AS pm10,
-        AVG(CASE WHEN param = 'pm25'        THEN value END) AS pm25,
-        AVG(CASE WHEN param = 'ozone'       THEN value END) AS ozone,
-        AVG(CASE WHEN param = 'no'          THEN value END) AS no,
-        AVG(CASE WHEN param = 'no2'         THEN value END) AS no2,
-        AVG(CASE WHEN param = 'nox'         THEN value END) AS nox,
-        AVG(CASE WHEN param = 'co'          THEN value END) AS co,
-        AVG(CASE WHEN param = 'so2'         THEN value END) AS so2,
+        AVG(CASE WHEN param = 'pm10'  AND value >= 0 THEN value END) AS pm10,
+        AVG(CASE WHEN param = 'pm25'  AND value >= 0 THEN value END) AS pm25,
+        AVG(CASE WHEN param = 'ozone' AND value >= 0 THEN value END) AS ozone,
+        AVG(CASE WHEN param = 'no'    AND value >= 0 THEN value END) AS no,
+        AVG(CASE WHEN param = 'no2'   AND value >= 0 THEN value END) AS no2,
+        AVG(CASE WHEN param = 'nox'   AND value >= 0 THEN value END) AS nox,
+        AVG(CASE WHEN param = 'co'    AND value >= 0 THEN value END) AS co,
+        AVG(CASE WHEN param = 'so2'   AND value >= 0 THEN value END) AS so2,
         AVG(CASE WHEN param = 'temperature' THEN value END) AS temperature,
         AVG(CASE WHEN param = 'rh'          THEN value END) AS rh,
         AVG(CASE WHEN param = 'wind_speed'  THEN value END) AS wind_speed,

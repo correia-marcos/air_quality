@@ -1228,6 +1228,12 @@ sp_filter_stations_in_metro <- function(
 #   tzone attributes and avoids DST gaps/folds from civil time zones. The stored
 #   clock equals the source clock for any tz argument.
 #
+# NEGATIVE READINGS:
+#   A concentration below zero is physically impossible, so the pivot drops those readings
+#   before AVG(). CETESB currently ships none; the guard is here so the four city writers
+#   enforce one invariant and a future feed change cannot leak sentinels downstream.
+#   Pollutants only: temperature and wind direction are legitimately negative.
+#
 #' @Written_on: 19/12/2025
 # --------------------------------------------------------------------------------------------
 sp_process_stations_data_to_parquet <- function(
@@ -1479,7 +1485,21 @@ sp_process_stations_data_to_parquet <- function(
   # STRPTIME converts the staged ISO text back to a naive TIMESTAMP.
   dataset_path <- file.path(out_dir, paste0(out_name, "_dataset"))
   if (dir.exists(dataset_path)) unlink(dataset_path, recursive = TRUE)
-  
+
+  # Negative concentrations are physically impossible; report them, then drop them in the
+  # pivot below. Pollutants only: temperature and wind direction may legitimately be < 0.
+  neg_rep <- DBI::dbGetQuery(con, "
+    SELECT station, year, param AS pollutant, COUNT(*) AS n_negative,
+           MIN(value) AS min_value
+    FROM staging_cetesb
+    WHERE value < 0
+      AND param IN ('pm10','pm25','ozone','no','no2','nox','co','so2')
+    GROUP BY 1,2,3 ORDER BY 4 DESC;")
+  if (nrow(neg_rep) > 0L) {
+    message("-> Masking negative readings (station-year-pollutant):")
+    print(neg_rep, row.names = FALSE)
+  }
+
   sql_pivot <- "
     COPY (
       SELECT
@@ -1487,14 +1507,14 @@ sp_process_stations_data_to_parquet <- function(
         station,
         station_code,
         year,
-        AVG(CASE WHEN param = 'pm10' THEN value END) AS pm10,
-        AVG(CASE WHEN param = 'pm25' THEN value END) AS pm25,
-        AVG(CASE WHEN param = 'ozone' THEN value END) AS ozone,
-        AVG(CASE WHEN param = 'no' THEN value END) AS no,
-        AVG(CASE WHEN param = 'no2' THEN value END) AS no2,
-        AVG(CASE WHEN param = 'nox' THEN value END) AS nox,
-        AVG(CASE WHEN param = 'co' THEN value END) AS co,
-        AVG(CASE WHEN param = 'so2' THEN value END) AS so2,
+        AVG(CASE WHEN param = 'pm10'  AND value >= 0 THEN value END) AS pm10,
+        AVG(CASE WHEN param = 'pm25'  AND value >= 0 THEN value END) AS pm25,
+        AVG(CASE WHEN param = 'ozone' AND value >= 0 THEN value END) AS ozone,
+        AVG(CASE WHEN param = 'no'    AND value >= 0 THEN value END) AS no,
+        AVG(CASE WHEN param = 'no2'   AND value >= 0 THEN value END) AS no2,
+        AVG(CASE WHEN param = 'nox'   AND value >= 0 THEN value END) AS nox,
+        AVG(CASE WHEN param = 'co'    AND value >= 0 THEN value END) AS co,
+        AVG(CASE WHEN param = 'so2'   AND value >= 0 THEN value END) AS so2,
         AVG(CASE WHEN param = 'temperature' THEN value END) AS temperature,
         AVG(CASE WHEN param = 'rh' THEN value END) AS rh,
         AVG(CASE WHEN param = 'wind_speed' THEN value END) AS wind_speed,

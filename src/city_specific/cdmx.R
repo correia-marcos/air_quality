@@ -4053,6 +4053,18 @@ cdmx_download_census_data <- function(
   long_all <- long_all[!is.na(long_all$.__var), , drop = FALSE]
   
   # ---- (4) Aggregate & Pivot ------------------------------------------------
+  # Negative concentrations are physically impossible; report then NA them before the
+  # hourly mean so a sentinel cannot contaminate the mean it shares with a valid reading.
+  neg <- !is.na(long_all$value) & long_all$value < 0
+  if (any(neg)) {
+    message("-> Masking negative readings (station-year-pollutant):")
+    print(as.data.frame(table(station   = long_all$station[neg],
+                              year      = long_all$year[neg],
+                              pollutant = long_all$.__var[neg])) |>
+            subset(Freq > 0), row.names = FALSE)
+    long_all$value[neg] <- NA_real_
+  }
+
   aggr <- long_all |>
     dplyr::group_by(datetime, station, station_code, year, .__var) |>
     dplyr::summarise(value = .mean_na(value), .groups = "drop")
@@ -4449,12 +4461,24 @@ cdmx_download_census_data <- function(
     "FROM staging_long WHERE parametro IS NOT NULL;"
   ))
   
+  # Negative concentrations are physically impossible; report then drop them before the
+  # hourly AVG so a sentinel cannot contaminate the mean it shares with a valid reading.
+  neg_rep <- DBI::dbGetQuery(con, paste0(
+    "SELECT station, year, var AS pollutant, COUNT(*) AS n_negative, ",
+    "MIN(value) AS min_value FROM long_mapped ",
+    "WHERE var IS NOT NULL AND value < 0 GROUP BY 1,2,3 ORDER BY 4 DESC;"
+  ))
+  if (nrow(neg_rep) > 0L) {
+    message("-> Masking negative readings (station-year-pollutant):")
+    print(neg_rep, row.names = FALSE)
+  }
+
   DBI::dbExecute(con, paste0(
     "CREATE TABLE aggr AS SELECT datetime, station, station_code, year, var, ",
-    "AVG(value) AS value FROM long_mapped WHERE var IS NOT NULL ",
-    "GROUP BY 1,2,3,4,5;"
+    "AVG(CASE WHEN value >= 0 THEN value END) AS value FROM long_mapped ",
+    "WHERE var IS NOT NULL GROUP BY 1,2,3,4,5;"
   ))
-  
+
   # One canonical code per name (handles slight code variations).
   DBI::dbExecute(con, paste0(
     "CREATE TABLE st_ref AS SELECT station, station_code FROM (",
@@ -4542,6 +4566,16 @@ cdmx_download_census_data <- function(
 #' @Return: Arrow Dataset handle (if Parquet written) else tibble.
 #' @Steps : (1) discover CSVs, (2) RAM detect + engine pick,
 #          (3A) memory engine, (3B) duckdb engine.
+#' @details
+#   NEGATIVE READINGS:
+#     secondary_data_dir holds SINAICA's unvalidated "Datos crudos" feed, which ships no
+#     validity flag and lets faulty instruments through — CALPULALPAN's 2023 PM2.5 is
+#     11% negative hours alongside a lattice of multiples of 5000/3 µg/m³. A concentration
+#     below zero is physically impossible, so both engines drop those readings before the
+#     hourly mean; after the mean they would be indistinguishable from a low valid hour.
+#     Downstream outlier detection cannot catch them: it flags only values above the
+#     station-month p99. Counts print per station-year-pollutant so the loss is auditable
+#     and a wholly faulty station-year can be judged on the numbers.
 #' @Written_on: 20/08/2025
 #' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------

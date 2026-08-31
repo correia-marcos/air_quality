@@ -2298,6 +2298,13 @@ bogota_filter_stations_in_metro <- function(
 #     Datetimes enter DuckDB as VARCHAR (via to_iso()) to avoid a DuckDB
 #     R-driver bug that shifts hours from POSIXct tzone attributes. STRPTIME()
 #     converts them back to plain TIMESTAMP, so no timezone conversion occurs.
+#   NEGATIVE READINGS:
+#     RMCAB/SISAIRE ship instrument sentinels as negative numbers (-9999 PM10,
+#     -5 PM2.5). A concentration below zero is physically impossible, so the
+#     pivot drops those readings before AVG() — after the mean they would be
+#     indistinguishable from a low valid hour. Applied to pollutants only:
+#     temperature and wind direction are legitimately negative. The counts are
+#     printed per station-year-pollutant so the loss stays auditable.
 #' @Written_on: 29/10/2025
 #' @Written_by: Marcos Paulo
 # ----------------------------------------------------------------------------------------
@@ -2631,33 +2638,47 @@ bogota_process_stations_data_to_parquet <- function(
       AND COALESCE(r.param,   s.param)   = cov.param;
   ")
   
-  # D3: long -> wide, one row per (station, datetime), one column per pollutant. 
-  # AVG() returns NULL when all inputs are NULL and also yields the hourly mean of 
+  # D3: long -> wide, one row per (station, datetime), one column per pollutant.
+  # AVG() returns NULL when all inputs are NULL and also yields the hourly mean of
   # floored SISAIRE readings. Partition by year for downstream pruning.
   dataset_path <- file.path(out_dir, paste0(out_name, "_dataset"))
   if (dir.exists(dataset_path)) unlink(dataset_path, recursive = TRUE)
-  
+
+  # Negative concentrations are physically impossible; report them, then drop them in the
+  # pivot below. Pollutants only: temperature and wind direction may legitimately be < 0.
+  neg_rep <- DBI::dbGetQuery(con, "
+    SELECT station, year, param AS pollutant, COUNT(*) AS n_negative,
+           MIN(value) AS min_value
+    FROM staging_merged
+    WHERE value < 0
+      AND param IN ('pm10','pm25','ozone','no','no2','nox','co','so2')
+    GROUP BY 1,2,3 ORDER BY 4 DESC;")
+  if (nrow(neg_rep) > 0L) {
+    message("-> Masking negative readings (station-year-pollutant):")
+    print(neg_rep, row.names = FALSE)
+  }
+
   sql_pivot <- sprintf("
     COPY (
       SELECT
         datetime,
         station,
         year,
-        AVG(CASE WHEN param='pm10'
+        AVG(CASE WHEN param='pm10'  AND value >= 0
                  THEN value END) AS pm10,
-        AVG(CASE WHEN param='pm25'
+        AVG(CASE WHEN param='pm25'  AND value >= 0
                  THEN value END) AS pm25,
-        AVG(CASE WHEN param='ozone'
+        AVG(CASE WHEN param='ozone' AND value >= 0
                  THEN value END) AS ozone,
-        AVG(CASE WHEN param='no'
+        AVG(CASE WHEN param='no'    AND value >= 0
                  THEN value END) AS no,
-        AVG(CASE WHEN param='no2'
+        AVG(CASE WHEN param='no2'   AND value >= 0
                  THEN value END) AS no2,
-        AVG(CASE WHEN param='nox'
+        AVG(CASE WHEN param='nox'   AND value >= 0
                  THEN value END) AS nox,
-        AVG(CASE WHEN param='co'
+        AVG(CASE WHEN param='co'    AND value >= 0
                  THEN value END) AS co,
-        AVG(CASE WHEN param='so2'
+        AVG(CASE WHEN param='so2'   AND value >= 0
                  THEN value END) AS so2,
         AVG(CASE WHEN param='temp'
                  THEN value END) AS temperature,
