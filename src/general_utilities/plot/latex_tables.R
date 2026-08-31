@@ -17,6 +17,8 @@
 #   7. write_station_count_latex
 #   8. latex_missing_by_quintile
 #   9. latex_census_summary
+#  10. render_missing_dimension_table
+#  11. latex_distance_band_table
 #
 #' @Date: August 2026
 #' @Author: Marcos Paulo
@@ -772,4 +774,125 @@ latex_census_summary <- function(dt) {
     "    \\bottomrule",
     "\\end{tabular}"
   )
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: render_missing_dimension_table
+#
+#' @param dir_missing string; folder holding the missing-proportion Parquet files.
+#' @param city_id     string; city file prefix, e.g. "sao_paulo_metro".
+#' @param panel       string; "raw" or "clean", the panel the shares describe.
+#' @param dim         string; the dimension to tabulate, e.g. "station".
+#' @param out_dir     string; folder to write the .tex into.
+#
+#' @return  invisible path of the .tex written.
+#
+#' @details
+#   Reads one <city>_<panel>_missing_by_<dim>.parquet and writes the matching .tex, so a
+#   calling script states only which city, panel and dimension it wants. File naming is
+#   the reason this exists: the input stem and the output stem must agree, and pairing
+#   them here keeps a rename from silently producing a table of the wrong panel.
+#
+#' @Written_on : August 2026
+#' @Written_by : Marcos Paulo
+# --------------------------------------------------------------------------------------------
+render_missing_dimension_table <- function(dir_missing, city_id, panel, dim, out_dir) {
+  stem <- sprintf("%s_%s_missing_by_%s", city_id, panel, dim)
+
+  missing_list <- list(arrow::read_parquet(
+    file.path(dir_missing, paste0(stem, ".parquet"))))
+  names(missing_list) <- dim
+
+  out_file <- file.path(out_dir, paste0(stem, ".tex"))
+
+  table_missing_by_dimension(
+    missing_list     = missing_list,
+    dim              = dim,
+    city_label       = city_id,
+    save_latex_table = TRUE,
+    out_file         = out_file,
+    overwrite_tex    = TRUE)
+
+  invisible(out_file)
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: latex_distance_band_table
+#
+#' @param bands_dt   data.table from compute_distance_band_summary(), stacked across
+#                    cities. Needs city, band, statistic and value_label.
+#' @param panel_cities character of length two; the cities for Panel A and Panel B.
+#
+#' @return  character vector; the LaTeX tabular lines, ready for writeLines().
+#
+#' @details
+#   Two city panels in one tabular, which is how the manuscript prints these. Rows follow
+#   the reading order of the published table -- counts, then population, then composition,
+#   then the schooling range and the two densities -- rather than the alphabetical order
+#   the long input happens to carry. A statistic absent for a city is simply not printed
+#   for that panel, because the censuses do not all record the same variables.
+#
+#' @Written_on : August 2026
+#' @Written_by : Marcos Paulo
+# --------------------------------------------------------------------------------------------
+latex_distance_band_table <- function(bands_dt, panel_cities) {
+  dt <- data.table::as.data.table(bands_dt)
+
+  band_order <- c("All", "Within 1 km", "Within 3 km", "Within 5 km",
+                  "Within 10 km", "Within 20 km")
+
+  # Reading order of the published table; anything unlisted follows in place.
+  stat_order <- c("Population", "Share of adults", "Mean age", "Share of women",
+                  "Share of HH women", "Share of indigenous", "Share of whites",
+                  "Share of blacks", "Share of employed", "Share of formal employees",
+                  "Share of informal employees", "Mean years of schooling",
+                  "Mean income", "Share with no education",
+                  "Share with graduate education", "Range years of schooling",
+                  "Total population density (pop/km2)",
+                  "Average population density (pop/km2)")
+
+  header <- c(
+    "\\begin{tabular}{lrrrrrr}",
+    "    \\midrule",
+    "    \\midrule",
+    paste0("    \\textbf{Variable} & ",
+           paste0("\\textbf{", band_order, "}", collapse = " & "), " \\\\"),
+    "    \\midrule")
+
+  body <- character(0)
+
+  for (i in seq_along(panel_cities)) {
+    city_i <- panel_cities[i]
+    sub <- dt[city == city_i]
+
+    if (nrow(sub) == 0L) stop("No distance-band rows for city: ", city_i)
+
+    body <- c(body,
+              sprintf("    \\multicolumn{7}{l}{\\textbf{Panel %s. %s}} \\\\",
+                      LETTERS[i], latex_escape(city_i)),
+              "    \\midrule")
+
+    # The unit-count row is named after the unit, so it is found rather than listed.
+    count_stat <- grep("^Number of ", unique(sub$statistic), value = TRUE)
+    ordered <- c(count_stat, intersect(stat_order, unique(sub$statistic)))
+
+    for (st in ordered) {
+      vals <- vapply(band_order, function(b) {
+        v <- sub[statistic == st & band == b, value_label]
+        if (length(v) == 0L) "" else v[1]
+      }, character(1))
+
+      # Only the population cells carry a percent sign, which LaTeX reads as a comment.
+      vals <- gsub("%", "\\%", vals, fixed = TRUE)
+
+      body <- c(body, paste0("    ", latex_escape(st), " & ",
+                             paste(vals, collapse = " & "), " \\\\"))
+    }
+
+    if (i < length(panel_cities)) body <- c(body, "    \\midrule")
+  }
+
+  c(header, body, "    \\bottomrule", "    \\bottomrule", "\\end{tabular}")
 }
