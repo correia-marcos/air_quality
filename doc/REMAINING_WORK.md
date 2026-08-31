@@ -1,102 +1,106 @@
 # What is left to build in this repo
 
-What the manuscript needs that the **default pipeline** (`scripts/process_data/` →
-`scripts/tables_images/`) does not yet produce. The legacy track is mentioned only where it
-explains why something is absent.
+What the manuscript needs from the **default pipeline** (`scripts/process_data/` →
+`scripts/tables_images/`), and what the pipeline does not answer for. The legacy track is
+mentioned only where it explains why something is absent.
 
-Hand-maintained. Written August 2026, against
-`doc/paper/IDB Discussion Paper March 2025.tex`, which carries **123 distinct
-`\includegraphics` paths** and 5 `\input` targets. Re-check before acting.
+Hand-maintained. Rewritten **31 August 2026** against
+`doc/paper/IDB Discussion Paper March 2025.tex`. Re-check before acting.
 
----
+## The manuscript's inventory, re-derived
 
-## A. No producer anywhere — 20 figures
+The `.tex` carries **123 distinct `\includegraphics` paths**, of which **117 are active**
+and 6 are commented out, and **4 active `\input` targets** (`table_census_coverage`,
+`table_descriptives_a`, `table_descriptives_b`, `data_appendix`).
+`appendix_distance_computation` is **not** `\input` anywhere, and there is no `\include`.
 
-| Family | Count | Note |
-|---|---|---|
-| `descriptives/model2_<city>[_pm25][_scatter].png` | 16 | Imputation diagnostics: the linear prediction vs the actual hourly series, and the ratio of predicted-missing to observed means by station. **The data exists** — `impute_missing_hourly.R` writes `data/processed/imputed_ols/<city>_imputed` — but no script in `tables_images/` reads that folder. This is the largest single gap and the cheapest to close, because only the plotting is missing. |
-| `Final/maps/<city>_population_density_map.png` | 4 | No producer for the data or the figure. |
+**All 117 active figure paths, and all three code-producible `\input` targets, are now
+produced under the name the manuscript cites**, in `results/paper/`. That folder holds
+exactly the manuscript's deliverables and nothing else; `results/figures/` and
+`results/tables/` keep the repo's own working artefacts. Filenames are the manuscript's,
+but the folders are named for what the figures show rather than mirroring the `.tex`, and
+everything is `.pdf`. `results/paper/tex_path_mapping.csv` gives the old and new
+`\includegraphics` argument for all 117 paths, and `update_tex_paths.sh` applies them.
 
-## B. Producer exists, coverage is narrower than the paper's — 28 figures
-
-| Family | Paper needs | Repo produces | Gap |
-|---|---|---|---|
-| `Final/stations_dis_num_<city>_{3,5,10}km.png` | 12 (4 cities × 3 radii) | 4 (3 km only) | `plot_station_monitoring_figures.R` hardcodes `radius_km = 3` at four call sites. Make it a vector and loop. |
-| `kernel_plots/distribution_3km_<city>_<pol>.png` | 16 | 2 (Bogotá only) | `figure_exposure_by_quintile.R` sets `kernel_specs <- specs[1]`. The other three cities were commented out during development; the spec list is now correct, so widening to `seq_along(specs)` is a one-line change **once someone confirms `mode = "geo"` works for kernel density**. |
-| `Final/maps/map_<city>_3km.png` | 4 | 1 (Bogotá, as PDF) | `bogota_fig_pollution_quintiles_geo_id.R` is Bogotá-only by construction — the name says so. Generalising it to four cities is the intended fix. |
-
-## C. Producer exists and is current; the manuscript cites legacy filenames — ~70 figures
-
-**This is a paper-side edit, not a code gap.** The new pipeline's figures are correct and
-newer; the `.tex` still points at the Stata-era `.png` names. Nobody should "fix" working code
-here.
-
-| Manuscript path | Superseded by |
-|---|---|
-| `Final/plot_hours_above_IT{1,2}_<city>_2023_3km_reg1.png` (18) and the 2 `plot_decile_*` | `results/figures/exposure_by_group/ci/*_3km_*_ci.pdf` (14 files) |
-| `Final/plot_quintiles_<city>_all_mean_2023_3km_imp.png` and the `descriptives/` variants (12) | `results/figures/exposure_by_group/levels/*_3km_*_levels.pdf` (7 files) |
-| `descriptives/scatter_plot_<city>_*.png` (28) | `results/figures/station_monitoring/<city>_{avg,hours_it1,hours_it2}_pm10_pm25_vs_education.png` (12 files) |
-| `kernel_plots/all[_pm25][_2019/_2022].png` (6) | `results/figures/kernel_plots/all_pm{10,25}[_2019/_2022].pdf` from `figure_kernel_distributions.R` |
-
-Three caveats before treating this as purely editorial:
-
-- The `_imp` (imputed) variants of the hours-above figures have **no** counterpart in the new
-  pipeline. `impute_missing_hourly.R` produces the imputed panels, but no exposure figure
-  consumes them. If the paper keeps the imputed robustness check, that wiring is real work.
-- The counts do not line up one-for-one (18 legacy vs 14 new, 28 vs 12). Confirm the new
-  figures cover every cell the paper reports before deleting a reference.
-- The 5 km robustness twins of these two families are produced as well
-  (`*_5km_*_ci.pdf`, `*_5km_*_levels.pdf` in the same folders, by `generate_exposure_plots.R`).
-  The manuscript does not cite them — its robustness footnote speaks of radii from 1 km to
-  20 km — so surfacing them in an appendix is a paper-side decision.
-
-## D. Cited and produced under the same name — 5 figures
-
-`hour_average/<city>_ridge_plot.pdf` (4) and
-`hour_above_iterim_target/distribution_hours_above_IT2.pdf` (1), all from
-`figure_merra2_vs_stations.R`. These are the only paths where the manuscript and this repo
-already agree.
+Nothing on the figure or table side is outstanding. What remains is in section D: choices
+the code cannot make, and prose that disagrees with what the pipeline now computes.
 
 ---
 
-## Tables
+## A. Deliberately not produced
 
-The paper has 5 `\input` targets:
+The six commented-out `\includegraphics` paths. Three are the Santiago "others" panels
+(O3, CO and NO2), whose whole figure block is commented out; three are non-imputed
+`plot_quintiles_*` variants superseded by the `_imp` family. If the coauthors reinstate
+the quintile ones the `_imp` chain already covers them; the O3/CO/NO2 ones would need the
+interpolation widened past PM.
 
-| Target | Status |
-|---|---|
-| `tables/table_census_coverage` | **Produced, different filename.** `render_paper_tables.R` writes `results/tables/census_summary/census_summary_table.tex`. Point the paper at it or rename. |
-| `tables/table_descriptives_a` | **No producer.** |
-| `tables/table_descriptives_b` | **No producer.** |
-| `appendix_distance_computation` | Prose, maintained by hand in `doc/paper/`. |
-| `data_appendix` | Prose, maintained by hand. |
+## B. Tables
 
-Everything else `render_paper_tables.R` writes — station counts, WHO exceedances, the
-by-dimension missing shares, the education-quintile availability table — is **not** `\input`
-by the paper. Those are appendix and slide material, or were pasted in by hand.
+All three targets a script can produce are produced by `render_census_tables.R`:
+`table_census_coverage.tex` (also written under the repo's own
+`census_summary/census_summary_table.tex`) and `table_descriptives_a.tex` /
+`table_descriptives_b.tex`, built from `compute_distance_band_descriptives.R`.
+`data_appendix` is hand-maintained prose and is not a code target.
 
----
+Two things to know about the descriptive tables. First, they are computed from the
+individual census, so the population row is the whole resident population; the published
+version's density rows are not reproduced as printed, because the published "average
+population density" was computed as total population times the mean of 1/area, which is
+not a density and grows with the number of units. This repo reports mean(population/area).
+Second, the row set differs by city because the censuses do: Bogotá's canonical census
+carries no household-head or ethnicity variable, so the published "Share of HH women" and
+"Share of black" rows have no counterpart, and Santiago's age comes from its raw column.
 
-## Carried forward from the refactor
+## C. Kept but not cited
 
-Concrete items, each already flagged in the code where it matters:
+The 5 km exposure figures, the PM2.5 twins of the station-distance panels, and the other
+uncited figure families stay under the repo's own names as appendix and slide material.
 
-1. **Re-run the four `process_<city>_data.R` scripts.** The census writers emit Parquet as of
-   Step 5 and nothing reads CSV anymore, so the readers have no input until the writers run.
-   Re-run rather than converting the existing CSVs — converting would bake in the type damage
-   the change exists to prevent. Afterwards the stale `.csv` files under
-   `data/interim/census/` can be deleted.
-2. **`renv::snapshot()`** to record `geosphere`, which `geosphere::distm` uses but neither
-   `DESCRIPTION` nor `renv.lock` declared. `renv.lock` is protected from Claude.
-3. **A join bug in `station_education_quintile()`** (`src/general_utilities/process/diagnostics.R`).
-   It does a bare `as.character(geo_id)` on both sides. For CDMX the census side is numeric
-   `9002` → `"9002"` while the distance matrix, built from the gpkg, holds `"09002"`. Those
-   never match, so the CDMX rows of the education-quintile availability table are probably
-   empty. The fix is a `geo_id_width` column in the `compute_descriptive_tables.R` spec, but it
-   changes a reported table, so it is a decision rather than a cleanup.
-4. **The `panel <- "raw"` choice in `render_paper_tables.R`.** The by-dimension missing tables
-   describe structural missingness (hours the network never reported). Switching to `"clean"`
-   folds in what `detect_outliers.R` removed, which mixes two phenomena. One word to change if
-   the appendix wants the other one.
-5. **`doc/deletion_candidates.md`** lists 10 functions with no caller and the dead code the
-   merges dropped. None has been deleted; each is a one-line removal.
+## D. Carried-forward items
+
+0. **The published density rows are wrong.** See §B: the "average population density" row
+   of the two descriptive tables was computed as total population times the mean of 1/area.
+   Demonstrated in `doc/audits/census_processing/`, and it explains why those cells grow
+   with the radius while the total density falls. The new producer computes the mean of
+   the units' own densities.
+1. **The IDW stage now computes a 20 km buffer.** `estimate_idw.R` runs
+   `buffers_km <- c(3, 5, 20)`. Only the exposure density figures use 20 km, so no
+   regression is estimated on it and `estimate_exposure.R` keeps its own `c(3L, 5L)`.
+   The 20 km pass is the slow one: Bogotá's 57,032 units against 58 stations at 8,760
+   hours dominates the stage's runtime.
+
+   `figure_exposure_by_quintile.R` was retired rather than repaired. Both of its modes
+   read artifact names this repo no longer writes, its regression figures were already
+   superseded by `generate_exposure_plots.R`, and the densities it was meant to draw now
+   come from `figure_quintile_kernel_distributions.R`, which locates its inputs through
+   `idw_artifact_path()` so the naming cannot drift again.
+2. **The imputed specification is built for 2023 only.** The estimator fits one OLS per
+   station per pollutant per year, and the cleaned panels run from 2000, so imputing
+   every year is hours of fitting for results the manuscript never reports.
+   `impute_missing_hourly.R` therefore passes `years = 2023L`. Widen it if another year
+   is ever needed. The imputed panels are written to `data/processed/imputed_ols/` and
+   the fitted values for the diagnostics figures alongside them, as
+   `<city>_imputed_predictions.parquet`.
+
+   Two things worth recording about the result. The model tracks the observed series
+   closely: on Santiago's observed hours the correlation between prediction and reading
+   is 0.93 for both pollutants. And the paper's claim that the imputed results are
+   qualitatively similar holds — across the 80 education-gap estimates at 3 km, the
+   observed and imputed specifications agree in sign 80 times out of 80, and the two
+   sets of point estimates correlate at 0.995.
+3. **Santiago has no monitoring station in the lowest education quintile.** With the 2017
+   zonas censales, quintile 1 is empty in the availability table. Substantive, not a bug,
+   but it should be stated where that table is discussed.
+4. **The manuscript's prose disagrees with the census coverage table** on the geographic
+   unit for three cities: Bogotá is 2018 census tracts here versus 2005 localities in the
+   text, Mexico City has 63 municipalities versus 76, and Santiago is 1,654 zonas censales
+   versus 384 census tracts. The vintages the pipeline uses are the current ones; the text
+   needs updating, not the code.
+5. **Mexico City income is estimated in quintiles, not deciles.** 63 municipalities leave
+   too few clusters to identify ten coefficients. Five prose locations, two appendix tables
+   and one figure caption still say deciles.
+6. **`doc/audits/` is stale in two places.** The São Paulo duplicate-station finding is
+   fixed (`sp_process_stations_data_to_parquet()` now hard-stops if a station name carries
+   more than one CETESB code, and the rebuilt panel has no duplicate station-hours), and
+   the Bogotá geo-id and CDMX cluster-count findings are closed.
