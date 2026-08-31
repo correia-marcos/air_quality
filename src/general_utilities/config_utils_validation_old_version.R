@@ -39,6 +39,7 @@ attach_packages(pkgs)
 rm(pkgs)
 
 # Function definitions, split by theme. Nothing below runs; each file only defines.
+source(here::here("src", "general_utilities", "validation", "imputation_legacy.R"))
 source(here::here("src", "general_utilities", "validation", "prepare_panels.R"))
 source(here::here("src", "general_utilities", "validation", "compare_inputs.R"))
 source(here::here("src", "general_utilities", "validation", "compare_results.R"))
