@@ -7,12 +7,15 @@
 #   This script computes station-level pollution outcomes for active monitoring stations
 #   in 2023 and attaches socioeconomic characteristics from nearby or containing
 #   geographic units. The resulting datasets are inputs for station-level scatterplots.
+#   Santiago uses the 2017 zonas censales, matching the main exposure specification.
+#   Bogota is the one city on buffer context: its manzanas are so small that a single
+#   containing block is a noisy descriptor of what a station actually sits among.
 #
 #' @Summary:
 #   I.   Import data: Define paths and read stations, geographic units, and census files.
 #   II.  Process: Build station-level pollution-socioeconomic datasets for each city.
 #
-#' @Date: June 2026
+#' @Date: August 2026
 #' @Author: Marcos
 # ============================================================================================
 
@@ -48,9 +51,9 @@ gpkg_stations_sp       <- here::here(dir_geospatial, "sao_paulo",
 gpkg_geo_bogota   <- here::here(dir_geospatial, "bogota",
                                 "bogota_area_metro_census_tracts_2018.gpkg")
 gpkg_geo_cdmx     <- here::here(dir_geospatial, "cdmx",
-                                "cdmx_area_metro.gpkg")
+                                "cdmx_area_metro_municipalities_2024.gpkg")
 gpkg_geo_santiago <- here::here(dir_geospatial, "santiago",
-                                "gran_santiago_area_2024.gpkg")
+                                "gran_santiago_zonas_2017.gpkg")
 gpkg_geo_sp       <- here::here(dir_geospatial, "sao_paulo",
                                 "sao_paulo_metro_2010_weighting_areas.gpkg")
 
@@ -59,8 +62,8 @@ census_bogota_pq   <- here::here(dir_census, "bogota_2018",
                                  "census_2018_metro_collapsed.parquet")
 census_cdmx_pq     <- here::here(dir_census, "cdmx_extended_2020",
                                  "collapse_metro_area_2020.parquet")
-census_santiago_pq <- here::here(dir_census, "santiago_2024",
-                                 "census_santiago_collapsed_2024.parquet")
+census_santiago_pq <- here::here(dir_census, "santiago_2017",
+                                 "census_collapsed_2017.parquet")
 census_sp_pq       <- here::here(dir_census, "sao_paulo_2010",
                                  "census_sp_collapsed_2010.parquet")
 
@@ -110,9 +113,6 @@ station_bogota <- build_station_scatter_inputs(
   year_filter       = 2023L,
   context_method    = "buffer",
   context_buffer_km = 3,
-  geo_id_repair     = "bogota",
-  bogota_max_suffix = 2L,
-  bogota_broad_ids  = FALSE,
   pollutants        = c("pm10", "pm25"),
   who_it            = who_it,
   out_dir           = here::here(outdir_station, "bogota_2018"),
@@ -134,8 +134,6 @@ station_cdmx <- build_station_scatter_inputs(
   socio_vars        = c("education_mean", "income_mean"),
   year_filter       = 2023L,
   context_method    = "containing_geo",
-  context_buffer_km = 3,
-  geo_id_repair     = "none",
   pollutants        = c("pm10", "pm25"),
   who_it            = who_it,
   out_dir           = here::here(outdir_station, "cdmx_2020"),
@@ -146,23 +144,22 @@ station_cdmx <- build_station_scatter_inputs(
 
 # 3. Santiago
 # --------------------------------------------------------------------------------------------
-# Santiago uses census-tract-level geographic units, so containing-unit context is fine.
+# Zonas censales 2017, the main exposure specification. They are small enough that the
+# containing zona describes the station's immediate surroundings.
 station_santiago <- build_station_scatter_inputs(
   arrow_dir         = arrow_santiago,
   stations_sf       = stations_santiago,
   geo_sf            = geo_santiago,
   census_col        = census_santiago,
   station_id_col    = "station_name",
-  geo_sf_id_col     = "CUT",
+  geo_sf_id_col     = "zona_id",
   socio_vars        = c("education_mean"),
   year_filter       = 2023L,
   context_method    = "containing_geo",
-  context_buffer_km = 3,
-  geo_id_repair     = "none",
   pollutants        = c("pm10", "pm25"),
   who_it            = who_it,
-  out_dir           = here::here(outdir_station, "santiago_2024"),
-  out_name          = "santiago_2024_2023",
+  out_dir           = here::here(outdir_station, "santiago_2017"),
+  out_name          = "santiago_2017_2023",
   overwrite         = TRUE,
   return_data       = TRUE
 )
@@ -180,8 +177,6 @@ station_sp <- build_station_scatter_inputs(
   socio_vars        = c("education_mean", "income_mean"),
   year_filter       = 2023L,
   context_method    = "containing_geo",
-  context_buffer_km = 3,
-  geo_id_repair     = "none",
   pollutants        = c("pm10", "pm25"),
   who_it            = who_it,
   out_dir           = here::here(outdir_station, "sao_paulo_2010"),
