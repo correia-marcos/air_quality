@@ -19,6 +19,7 @@
 #   I.   Import data: define paths and the inputs that do not depend on the buffer.
 #   II.  Process: run every city and grouping, one buffer at a time.
 #   III. Save: stack the table families, print coverage, write the files.
+#   IV.  Individual-level robustness regressions at 3 km, written as their own table.
 #
 #' @Date: August 2026
 #' @Author: Marcos
@@ -157,6 +158,62 @@ for (buffer_km in buffers_km) {
   # Buffer and year go in each file stem, so a result can never be read out of context
   save_exposure_tables(tables, dir_out, buffer_km, analysis_year)
 }
+
+# ============================================================================================
+# IV: Individual-level robustness regressions
+# ============================================================================================
+# The appendix's robustness check: the same specification fitted on one row per person
+# rather than on geo-unit-by-group cells. Only the paper's 3 km education runs are
+# refitted; the exposure tables are re-read here so this section stands on its own.
+robust_buffer <- 3L
+
+exposure_bogota_3km       <- read_idw_artifact(dir_idw, "bogota_2018", "idw_exposure",
+                                               robust_buffer)
+exposure_cdmx_3km         <- read_idw_artifact(dir_idw, "cdmx_2020", "idw_exposure",
+                                               robust_buffer)
+exposure_santiago_3km     <- read_idw_artifact(dir_idw, "santiago_2017", "idw_exposure",
+                                               robust_buffer)
+exposure_santiago_rob_3km <- read_idw_artifact(dir_idw, "santiago_2024", "idw_exposure",
+                                               robust_buffer)
+exposure_sp_3km           <- read_idw_artifact(dir_idw, "sao_paulo_2010", "idw_exposure",
+                                               robust_buffer)
+
+ci_ind_bogota <- compute_exposure_regressions_individual(
+  exposure_dt = exposure_bogota_3km, individual_dt = individual_bogota,
+  group_col = "edu_quintile", year_filter = analysis_year)
+
+ci_ind_cdmx <- compute_exposure_regressions_individual(
+  exposure_dt = exposure_cdmx_3km, individual_dt = individual_cdmx,
+  group_col = "edu_quintile", year_filter = analysis_year)
+
+ci_ind_santiago <- compute_exposure_regressions_individual(
+  exposure_dt = exposure_santiago_3km, individual_dt = individual_santiago,
+  group_col = "edu_quintile", year_filter = analysis_year)
+
+ci_ind_santiago_rob <- compute_exposure_regressions_individual(
+  exposure_dt = exposure_santiago_rob_3km, individual_dt = individual_santiago_rob,
+  group_col = "edu_quintile", year_filter = analysis_year)
+
+ci_ind_sp <- compute_exposure_regressions_individual(
+  exposure_dt = exposure_sp_3km, individual_dt = individual_sp,
+  group_col = "edu_quintile", year_filter = analysis_year)
+
+# Stamp the run labels the stacked tables carry, then write one combined table.
+ci_ind_bogota[,       `:=`(city = "Bogota", city_id = "bogota_2018")]
+ci_ind_cdmx[,         `:=`(city = "CDMX", city_id = "cdmx_2020")]
+ci_ind_santiago[,     `:=`(city = "Santiago", city_id = "santiago_2017")]
+ci_ind_santiago_rob[, `:=`(city = "Santiago (comuna, 2024)", city_id = "santiago_2024")]
+ci_ind_sp[,           `:=`(city = "Sao Paulo", city_id = "sao_paulo_2010")]
+
+ci_individual <- data.table::rbindlist(
+  list(ci_ind_bogota, ci_ind_cdmx, ci_ind_santiago, ci_ind_santiago_rob, ci_ind_sp),
+  fill = TRUE)
+
+ci_individual[, `:=`(year = analysis_year, buffer_km = robust_buffer,
+                     socioeconomic_var = "education", group_type = "quintile")]
+
+save_exposure_tables(list(ci_estimates_education_individual = ci_individual),
+                     dir_out, robust_buffer, analysis_year)
 
 # Print a success message for when running inside Docker Container
 cat("Script from the IDB project executed successfully in the Docker container!\n")
