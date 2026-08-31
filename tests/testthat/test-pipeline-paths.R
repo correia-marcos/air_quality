@@ -58,8 +58,7 @@ test_that("every script path in the Makefile exists on disk", {
 # conscious opt-out; leaving it out is what makes the reverse check fail.
 known_unwired <- c(
   "scripts/process_data/generate_inegi_lab_inputs.R",
-  "scripts/process_data/impute_missing_hourly.R",
-  "scripts/tables_images/bogota_fig_pollution_quintiles_geo_id.R",
+  # Diagnostics that no manuscript figure depends on; see doc/REMAINING_WORK.md.
   "scripts/tables_images/figure_missing_heatmap.R",
   "scripts/tables_images/figure_pollution_stations_by_hour.R",
   "scripts/tables_images/figure_stations_on_metro_area.R"
@@ -73,4 +72,19 @@ test_that("every process_data and tables_images script is wired in or opted out"
 
   unaccounted <- setdiff(on_disk, c(pipeline_refs, makefile_refs, known_unwired))
   expect_equal(unaccounted, character(0))
+})
+
+# The two orchestrators must agree, not merely cover the set between them. Checking only
+# the union let compute_station_scatter_inputs.R sit in run_pipeline.R and nowhere in the
+# Makefile, which made `make figures` read whatever inputs happened to be on disk.
+test_that("run_pipeline.R and the Makefile reference the same stage scripts", {
+  stage_dirs <- c("scripts/process_data/", "scripts/tables_images/")
+  in_stage   <- function(x) x[startsWith(x, stage_dirs[1]) |
+                                startsWith(x, stage_dirs[2])]
+
+  pipeline_stage <- setdiff(in_stage(pipeline_refs), known_unwired)
+  makefile_stage <- setdiff(in_stage(makefile_refs), known_unwired)
+
+  expect_equal(sort(setdiff(pipeline_stage, makefile_stage)), character(0))
+  expect_equal(sort(setdiff(makefile_stage, pipeline_stage)), character(0))
 })
