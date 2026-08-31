@@ -358,8 +358,95 @@ compute_exposure_regressions <- function(exposure_dt,
 
 
 # --------------------------------------------------------------------------------------------
-# Internal helpers for the two exposure functions above.
-# Kept small and shared so both functions read the data the same way.
+# Function: compute_exposure_regressions_individual
+#
+#' @param ...  every argument of compute_exposure_regressions(), with the same meaning.
+#
+#' @return  the same table that compute_exposure_regressions() returns, with
+#           regression_unit = "individual" and n_units counting people, not cells.
+#
+#' @details
+#   The appendix's robustness check: the same saturated specification, estimated on one
+#   row per person weighted by person_weight, instead of on geo-unit-by-group cells
+#   weighted by within-group population share. Standard errors still cluster on the
+#   geographic unit, because that is the level at which exposure is assigned.
+#
+#   Point estimates are expected to be identical. For a saturated group model the fitted
+#   value of each group is that group's weighted mean of y, and y varies only across
+#   geographic units, so collapsing to cells and rescaling weights within group changes
+#   neither mean. The standard errors are what the two units disagree about: the cell
+#   estimator's weights are normalised per group, the individual estimator's are not, so
+#   the residual variance and the sandwich differ. Reporting both is the point.
+#
+#' @Written_on : August 2026
+#' @Written_by : Marcos Paulo
+# --------------------------------------------------------------------------------------------
+compute_exposure_regressions_individual <- function(exposure_dt,
+                                                    individual_dt   = NULL,
+                                                    group_col       = "edu_quintile",
+                                                    group_values    = 1:5,
+                                                    base_group      = max(group_values),
+                                                    pollutants      = c("pm10", "pm25"),
+                                                    outcome_pattern = "^hrs_d_.*_it[12]$",
+                                                    year_filter     = NULL,
+                                                    conf_level      = 0.95,
+                                                    normalized      = TRUE,
+                                                    se_type         = c("cluster_geo",
+                                                                        "classic"),
+                                                    quiet           = FALSE) {
+
+  se_type <- match.arg(se_type)
+
+  dt <- .exposure_merge_geo_group(
+    exposure_dt   = exposure_dt,
+    individual_dt = individual_dt,
+    group_col     = group_col,
+    group_values  = group_values,
+    year_filter   = year_filter,
+    quiet         = quiet
+  )
+
+  out_cols <- .exposure_outcome_cols(dt, outcome_pattern, pollutants)
+
+  res <- data.table::rbindlist(
+    lapply(
+      out_cols,
+      .exposure_fit_one,
+      dt              = dt,
+      group_col       = group_col,
+      group_values    = group_values,
+      base_group      = base_group,
+      pollutants      = pollutants,
+      se_type         = se_type,
+      conf_level      = conf_level,
+      normalized      = normalized,
+      regression_unit = "individual"
+    ),
+    fill = TRUE
+  )
+
+  if (nrow(res) == 0L) {
+    if (!quiet) {
+      message("[ci-individual] Warning: insufficient data to fit any models.")
+    }
+    return(data.table::data.table())
+  }
+
+  data.table::setorder(res, outcome, pollutant, group)
+
+  if (!quiet) {
+    message("[ci-individual] ", length(out_cols), " outcome(s) fit on ",
+            format(max(res$n_units), big.mark = ","), " person-rows | G = ",
+            max(res$n_clusters), ".")
+  }
+
+  return(res[])
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Internal helpers for the exposure functions above.
+# Kept small and shared so all of them read the data the same way.
 # --------------------------------------------------------------------------------------------
 
 # Merge geo-level exposure with the geo-by-group population table.
@@ -393,6 +480,10 @@ compute_exposure_regressions <- function(exposure_dt,
   if (group_col %in% names(dt)) {
     dt[, (group_col) := NULL]
   }
+
+  # Census-arbitrated id repair before the join, so a width mismatch costs no rows.
+  dt[, geo_id := reconcile_geo_ids(geo_id, ind$geo_id, label = "exposure merge",
+                                   quiet = quiet)]
 
   # This is an inner join: an exposure unit with no census row leaves the
   # sample here. Report the match rate so a silent ID mismatch (zero padding,
@@ -520,46 +611,60 @@ compute_exposure_regressions <- function(exposure_dt,
 
 
 # Fit one outcome and return tidy rows (base group plus each comparison group).
+# regression_unit = "individual" keeps one row per person instead of collapsing.
 .exposure_fit_one <- function(outcome_col, dt, group_col,
                               group_values, base_group, pollutants,
-                              se_type, conf_level, normalized) {
-  
+                              se_type, conf_level, normalized,
+                              regression_unit = "geo_group") {
+
   d0 <- dt[!is.na(get(outcome_col))]
-  
+
   if (nrow(d0) < length(group_values)) {
     return(NULL)
   }
-  
+
   # Optional normalization: divide the outcome by the base-group weighted mean.
   if (isTRUE(normalized)) {
     base_mean <- d0[
       get(group_col) == base_group,
       stats::weighted.mean(get(outcome_col), person_weight, na.rm = TRUE)
     ]
-    
+
     if (is.na(base_mean) || base_mean == 0) {
       return(NULL)
     }
-    
+
     d0[, y_model := get(outcome_col) / base_mean]
   } else {
     d0[, y_model := get(outcome_col)]
   }
-  
-  # Collapse to geo-by-group cells, then weight by population share in group.
-  # The share denominator is taken over the cells that actually enter this
-  # outcome's regression, so the weights sum to one within each group.
-  model_dt <- d0[
-    ,
-    .(geo_population = sum(person_weight, na.rm = TRUE),
-      y = stats::weighted.mean(y_model, person_weight, na.rm = TRUE)),
-    by = c("geo_id", group_col)
-  ]
 
-  model_dt <- model_dt[!is.na(y) & !is.na(geo_population) & geo_population > 0]
-  model_dt[, total_population_g := sum(geo_population), by = group_col]
-  model_dt[, w := geo_population / total_population_g]
-  model_dt <- model_dt[w > 0]
+  if (regression_unit == "individual") {
+    # One row per person, weighted by person_weight -- see @details of
+    # compute_exposure_regressions_individual.
+    model_dt <- d0[
+      !is.na(person_weight) & person_weight > 0,
+      .SD,
+      .SDcols = c("geo_id", group_col, "person_weight", "y_model")
+    ]
+
+    data.table::setnames(model_dt, c("person_weight", "y_model"), c("w", "y"))
+  } else {
+    # Collapse to geo-by-group cells, then weight by population share in group.
+    # The share denominator is taken over the cells that actually enter this
+    # outcome's regression, so the weights sum to one within each group.
+    model_dt <- d0[
+      ,
+      .(geo_population = sum(person_weight, na.rm = TRUE),
+        y = stats::weighted.mean(y_model, person_weight, na.rm = TRUE)),
+      by = c("geo_id", group_col)
+    ]
+
+    model_dt <- model_dt[!is.na(y) & !is.na(geo_population) & geo_population > 0]
+    model_dt[, total_population_g := sum(geo_population), by = group_col]
+    model_dt[, w := geo_population / total_population_g]
+    model_dt <- model_dt[w > 0]
+  }
 
   model_dt[, .cluster_geo := geo_id]
 
@@ -584,14 +689,16 @@ compute_exposure_regressions <- function(exposure_dt,
   n_coef     <- length(stats::coef(fit))
 
   # One assembled row builder reused for the base and comparison groups. The
-  # constant regression_unit column keeps the schema of the legacy estimates.
+  # regression_unit column keeps the schema of the legacy estimates and says
+  # which of the two estimating units produced the row.
   make_row <- function(grp, est, se, lo, hi) {
     data.table::data.table(
       outcome = meta$outcome, pollutant = meta$pollutant, group = grp,
       estimate = est, std_error = se, ci_low = lo, ci_high = hi,
       n_units = nrow(model_dt), n_clusters = n_clusters, n_coef = n_coef,
       base_group = base_group, group_col = group_col,
-      regression_unit = "geo_group", se_type = se_type, normalized = normalized
+      regression_unit = regression_unit, se_type = se_type,
+      normalized = normalized
     )
   }
   
