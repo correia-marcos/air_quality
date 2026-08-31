@@ -15,6 +15,7 @@
 #   5. plot_variable_across_cities
 #   6. plot_latin_america_map
 #   7. plot_inequality_pollution
+#   8. plot_population_density_map
 #
 #' @Date: August 2026
 #' @Author: Marcos Paulo
@@ -1137,4 +1138,107 @@ plot_inequality_pollution <- function(
   
   print(p)
   return(p)
+}
+
+
+# ---------------------------------------------------------------------------------------------
+# Function: plot_population_density_map
+#
+#' @param metro_sf     sf object; the metropolitan area's geographic units.
+#' @param stations_sf  sf object; the ground monitoring stations.
+#' @param arrow_dir    string; partitioned Parquet folder of hourly readings.
+#' @param census_df    data.frame; census counts by geographic unit.
+#' @param join_sf_col  string; the id column in metro_sf.
+#' @param join_df_col  string; the id column in census_df.
+#' @param pop_col      string; the population column in census_df.
+#' @param station_col  string; the station name column in stations_sf.
+#' @param year_filter  numeric; year a station must have reported in to be drawn.
+#' @param pollutants   character; a station counts as active if it reported any of these.
+#' @param city_label   string; label placed on the map.
+#' @param station_color string; colour of the station points.
+#' @param n_breaks     integer; number of density classes in the legend.
+#
+#' @return  a ggplot object.
+#
+#' @details
+#   People per square kilometre by geographic unit, with the stations that were active in
+#   year_filter drawn on top. Area is measured on the layer's own UTM grid, so the density
+#   is in real square kilometres rather than square degrees. Density is cut into quantile
+#   classes rather than shaded continuously, because a handful of very dense units would
+#   otherwise flatten the whole map into one colour.
+#
+#' @Written_on : August 2026
+#' @Written_by : Marcos Paulo
+# ---------------------------------------------------------------------------------------------
+plot_population_density_map <- function(
+    metro_sf,
+    stations_sf,
+    arrow_dir,
+    census_df,
+    join_sf_col,
+    join_df_col,
+    pop_col        = "pop_total",
+    station_col    = "station_name",
+    year_filter    = 2023,
+    pollutants     = c("pm25", "pm10"),
+    city_label     = "Metro Area",
+    station_color  = "#1B7837",
+    n_breaks       = 5L
+) {
+
+  # 1. Stations that actually reported in the requested year.
+  arrow_ds <- arrow::open_dataset(arrow_dir)
+
+  active_stations <- arrow_ds |>
+    dplyr::filter(year == year_filter) |>
+    dplyr::select(station, dplyr::all_of(pollutants)) |>
+    dplyr::collect() |>
+    dplyr::filter(
+      rowSums(!is.na(dplyr::across(dplyr::all_of(pollutants)))) > 0
+    ) |>
+    dplyr::distinct(station) |>
+    dplyr::pull(station)
+
+  stations_sf$norm_name <- normalize_key(stations_sf[[station_col]])
+  stations_subset <- stations_sf[stations_sf$norm_name %in%
+                                   normalize_key(active_stations), ]
+
+  # 2. Population per unit, attached to the geography and divided by its own area.
+  census_dt <- data.table::as.data.table(census_df)
+  census_dt <- census_dt[, .(geo_join = safe_chr(get(join_df_col)),
+                             population = as.numeric(get(pop_col)))]
+  census_dt <- census_dt[!is.na(geo_join), .(population = sum(population, na.rm = TRUE)),
+                         by = geo_join]
+
+  metro_utm <- sf::st_make_valid(sf::st_transform(metro_sf, crs = utm_epsg(metro_sf)))
+  metro_utm$geo_join <- reconcile_geo_ids(safe_chr(metro_utm[[join_sf_col]]),
+                                          census_dt$geo_join, label = city_label)
+  metro_utm$area_km2 <- as.numeric(sf::st_area(metro_utm)) / 1e6
+
+  idx <- match(metro_utm$geo_join, census_dt$geo_join)
+  metro_utm$population <- census_dt$population[idx]
+  metro_utm$density <- metro_utm$population / metro_utm$area_km2
+
+  # 3. Quantile classes, labelled with the range each one covers.
+  dens <- metro_utm$density[is.finite(metro_utm$density) & metro_utm$density > 0]
+  brks <- unique(stats::quantile(dens, probs = seq(0, 1, length.out = n_breaks + 1L),
+                                 na.rm = TRUE))
+
+  metro_utm$density_class <- cut(metro_utm$density, breaks = brks,
+                                 include.lowest = TRUE, dig.lab = 5)
+
+  stations_utm <- sf::st_transform(stations_subset, crs = sf::st_crs(metro_utm))
+
+  ggplot2::ggplot() +
+    ggplot2::geom_sf(data = metro_utm, ggplot2::aes(fill = density_class),
+                     color = NA) +
+    ggplot2::geom_sf(data = stations_utm, color = station_color, size = 1.8) +
+    ggplot2::scale_fill_viridis_d(option = "magma", direction = -1,
+                                  na.value = "grey85",
+                                  name = "People per km²") +
+    ggplot2::labs(title = city_label) +
+    ggplot2::theme(legend.position = "right",
+                   axis.text = ggplot2::element_blank(),
+                   axis.ticks = ggplot2::element_blank(),
+                   panel.grid = ggplot2::element_blank())
 }
