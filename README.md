@@ -1,12 +1,12 @@
 # IDB Project: Inequality in Air Pollution Monitoring and Exposure
 
-**Objective:** This repository contains the complete replication package for *“Inequality in Monitoring and Exposure to Air Pollution: Evidence from Four Latin American Cities”*.
+**Objective:** This repository contains the complete replication package for *“Inequality in Air Pollution Monitoring and Exposure: Evidence from Four Latin American Cities”*.
 
 We measure how both monitoring coverage and pollutant exposure differ across socioeconomic groups in Bogotá, Mexico City, Santiago, and São Paulo. To guarantee that every user—regardless of operating system—obtains bit-for-bit identical results, this project is:
 1.  **Containerized** using [Docker](https://www.docker.com) to lock system libraries (GDAL, GEOS, R).
 2.  **Version-controlled** using [renv](https://rstudio.github.io/renv/) to lock R package versions.
 
-Together, this ensures state-of ar-the-art reproducibility from data download through final figures. 
+Together, this ensures state-of-the-art reproducibility from data download through final figures.
 
 ---
 
@@ -14,10 +14,17 @@ Together, this ensures state-of ar-the-art reproducibility from data download th
 
 1. [Project Overview](#1-project-overview)
 2. [Repository Structure](#2-repository-structure)
-3. [Setup & Configuration](#3-setup--configuration)
-4. [Running the Analysis](#4-running-the-analysis)
-5. [Workflow Diagram](#5-workflow-diagram)
-6. [License & Citation](#6-license--citation)
+3. [Downloading Data](#3-downloading-data)
+4. [Prerequisites](#4-prerequisites)
+5. [Installation](#5-installation)
+6. [Usage](#6-usage)
+7. [Workflow](#7-workflow)
+8. [Contributing](#8-contributing)
+9. [License & Citation](#9-license--citation)
+
+> **New here?** [doc/HOW_TO_RUN.md](doc/HOW_TO_RUN.md) is a step-by-step guide written
+> for students and reviewers: install the container, understand the layout, and
+> reproduce the paper's figures and tables.
 
 ---
 
@@ -42,9 +49,11 @@ This project follows a "Source vs. Execution" pattern. `src/` contains logic/fun
 
 ```text
 .
+├── Makefile                   # Stage-level wrapper (skip-unchanged rebuilds)
 ├── docker-compose.yml         # Dev Orchestration
 ├── docker-compose.release.yml # Replication Orchestration (Immutable)
 ├── Dockerfile                 # Image definition
+├── entrypoint.sh              # Container entry point (batch runner / RStudio)
 ├── .env.example               # Template for credentials (COPY TO .env)
 ├── renv.lock                  # Exact R package versions
 ├── src/                       # Source Code (Functions only; no side effects)
@@ -60,15 +69,21 @@ This project follows a "Source vs. Execution" pattern. `src/` contains logic/fun
 ├── scripts/                   # Execution Pipelines
 │   ├── download_data/         # Pull raw data from APIs
 │   ├── process_data/          # Clean & Transform (Raw -> Interim -> Processed)
-│   └── tables_images/         # Generate final outputs
-├── data/
+│   ├── tables_images/         # Generate final outputs
+│   ├── validation_old_version/ # Legacy comparison track
+│   └── run_pipeline.R         # Master orchestrator — the single record of run order
+├── data/                      # (git-ignored)
+│   ├── downloads/             # Raw pulls, as fetched
 │   ├── raw/                   # Immutable original inputs
 │   ├── interim/               # Intermediate steps (parquet/rds)
-│   └── processed/             # Final analysis-ready datasets
-└── results/
-    ├── figures/               # PDFs and PNGs
-    └── tables/                # LaTeX and CSV tables
-  
+│   ├── processed/             # Final analysis-ready datasets
+│   └── _legacy/               # Coauthor's original data (validation track only)
+├── results/
+│   ├── paper/                 # EXACTLY what the manuscript prints
+│   ├── figures/               # Repo's own working figures (PDFs and PNGs)
+│   └── tables/                # Repo's own working tables (LaTeX and CSV)
+├── tests/                     # testthat suite (Rscript tests/testthat.R)
+└── doc/                       # Guides, audit trail, remaining-work notes
 ```
 
 ---
@@ -76,8 +91,6 @@ This project follows a "Source vs. Execution" pattern. `src/` contains logic/fun
 ## 3. Downloading Data
 
 Whenever possible, we fetch all project data via reproducible scripts. For datasets under restricted-access grants, we distribute files internally; for everything else, we reconstruct the site’s state (as of March 2025) using our download tools. Any open dataset that requires login is handled through the workflow below.
-
-### Earthdata Credentials
 
 ### NASA Earthdata
 
@@ -118,7 +131,8 @@ With credentials in place, simply run our [download script](scripts/download_dat
 
 ## 4. Prerequisites
 
-- **R (>= 4.2):** All required R packages and their exact versions are managed by `renv`. To install them, run:
+- **R 4.6** (the version pinned by the Docker image and `renv.lock`): All required R
+  packages and their exact versions are managed by `renv`. To install them, run:
 
   ```r
   renv::restore()
@@ -151,28 +165,38 @@ With credentials in place, simply run our [download script](scripts/download_dat
 
 ### Docker (Recommended)
 
-1. **Build** the Docker image
-   > **Note:** The initial build may take **30+ minutes**. Thanks to multi-stage caching, subsequent builds are much faster.
+There is no image to pull from a registry — `docker compose up` builds it locally
+from the `Dockerfile` and starts it.
+
+1. **Configure** your environment (RStudio login, credentials if re-downloading):
 
    ```bash
-   docker build -t correiamarcos/air_monitoring:latest .
+   cp .env.example .env    # defaults work for replication
    ```
 
-2. **Run** and mount your raw-data folder
+2. **Build and start** the containers:
+   > **Note:** The initial build may take **30+ minutes**. Thanks to multi-stage
+   > caching, subsequent builds are much faster.
 
    ```bash
-   docker run --rm -it \
-     -v "$(pwd)/data/raw:/air_monitoring/data/raw" \
-     correiamarcos/air_monitoring:latest run \
-       scripts/download_data/download_merra2_data.R \
-       2023-01-01 2023-12-31 M2T1NXAER.5.12.4 data/raw/merra2
+   docker compose up
    ```
 
-3. **Interactive shell** (for debugging or manual commands)
+   This starts the `analysis` service (R + RStudio + the pinned package library) and
+   a `selenium` service (only used by the download scripts).
+
+3. **Open RStudio** at `http://localhost:8787` (user/password from `.env`;
+   defaults `rstudio` / `replication`). `src/`, `scripts/` and `results/` are mounted
+   live from your clone.
+
+4. **Interactive shell** (for debugging or manual commands)
 
    ```bash
-   docker run --rm -it correiamarcos/air_monitoring:latest bash
+   docker compose run --rm analysis bash
    ```
+
+For the immutable replication run — code baked into the image, `data/raw` mounted
+read-only — use `docker compose -f docker-compose.release.yml up` instead.
 
 ### Local Setup with renv
 
@@ -194,26 +218,42 @@ With credentials in place, simply run our [download script](scripts/download_dat
 
 ## 6. Usage
 
-- **Run a single script:**
+- **Generate all analyses and outputs** — the master orchestrator is the single
+  record of run order (order matters, so use it rather than a glob). In RStudio:
 
-  ```bash
-  ./entrypoint.sh run scripts/process_data/detect_outliers.R
+  ```r
+  source(here::here("scripts", "run_pipeline.R"))
   ```
 
-- **Generate all analyses and outputs** (order matters, so use the controller rather than a
-  glob):
+- **Or use the Makefile** (stage-level wrapper with skip-unchanged rebuilds; stamps
+  under `data/.make`):
 
   ```bash
-  ./entrypoint.sh run scripts/run_pipeline.R
+  make              # process -> distances -> outliers -> exposure -> figures + tables
+  make help         # list all stage targets
+  make DOCKER=1     # run every recipe inside the compose "analysis" service
   ```
 
-  Or, for skip-unchanged rebuilds, `make all` (see `Makefile` for the stage targets).
+  `make download` (credential-gated raw pulls) and `make merra2` (the satellite
+  track) are deliberately **not** part of `make all`.
+
+- **Run a single script** (from the host, inside the container):
+
+  ```bash
+  docker compose run --rm analysis Rscript scripts/process_data/detect_outliers.R
+  ```
+
+  Or open it in RStudio and source it — every script is self-contained via
+  `here::here()`.
 
 - **Launch an interactive container shell** (advanced troubleshooting):
 
   ```bash
-  docker run --rm -it correiamarcos/air_monitoring:latest bash
+  docker compose run --rm analysis bash
   ```
+
+See [doc/HOW_TO_RUN.md](doc/HOW_TO_RUN.md) for the full walkthrough, including the
+reviewer's path to the manuscript's own figures and tables in `results/paper/`.
 
 ---
 
@@ -225,13 +265,18 @@ Our project proceeds in four main stages:
    - For open datasets: run the `scripts/download_data/` scripts; raw files appear in `data/raw/`.
    - For restricted-access files: these are distributed internally.
 2. **Preprocessing:**
-   - Scripts in `scripts/process_data/` clean, transform and merge the raw data.
+   - Scripts in `scripts/process_data/` clean, transform and merge the raw data
+     (`data/raw/` → `data/interim/` → `data/processed/`, with inspectable Parquet
+     checkpoints at each step).
 3. **Analysis & Visualization:**
-   - Scripts in `scripts/tables_images/` produce publication-quality figures in `results/figures/` and tables in `results/tables/`.
+   - Scripts in `scripts/tables_images/` produce the paper's figures and tables in
+     `results/paper/` (exactly what the manuscript prints), plus the repo's own
+     working artefacts in `results/figures/` and `results/tables/`.
 4. **Review & Export:**
    - Retrieve the final outputs for manuscript drafting or policy briefs.
 
-We also provide a visualization of scripts dependencies as following:
+We also provide a visualization of scripts dependencies as following (simplified —
+the `Makefile` and `scripts/run_pipeline.R` are the authoritative stage lists):
 
 ### 1. Processing Data
 
@@ -240,18 +285,21 @@ flowchart TD
   DL["download_data/download_merra2_data.R"]
   GP["process_data/generate_panel_air_quality.R"]
   MP["process_data/process_merra2_panels.R"]
-  PC["process_data/process_&lt;city&gt;_data.R"]
+  PC["process_data/process_<city>_data.R"]
   GD["process_data/generate_distance_matrices.R"]
   DO["process_data/detect_outliers.R"]
   IDW["process_data/estimate_idw.R"]
   REG["process_data/estimate_exposure.R"]
   DESC["process_data/compute_descriptive_tables.R"]
+  IMH["process_data/impute_missing_hourly.R"]
+  EEI["process_data/estimate_exposure_imputed.R"]
 
   DL --> GP --> MP
   PC --> GD --> IDW --> REG
   PC --> DO --> IDW
   GD --> DESC
   DO --> DESC
+  DO --> IMH --> EEI
 ```
 
 ### 2. Generating Images
@@ -260,18 +308,24 @@ flowchart TD
 flowchart TD
   MP["process_data/process_merra2_panels.R"]
   REG["process_data/estimate_exposure.R"]
-  DESC["process_data/compute_descriptive_tables.R"]
+  EEI["process_data/estimate_exposure_imputed.R"]
   IDW["process_data/estimate_idw.R"]
+  IMH["process_data/impute_missing_hourly.R"]
+  DESC["process_data/compute_descriptive_tables.R"]
 
   MP --> FM["tables_images/figure_merra2_vs_stations.R"]
   MP --> FA["tables_images/figure_aerosol_composition.R"]
   REG --> GE["tables_images/generate_exposure_plots.R"]
-  IDW --> FQ["tables_images/figure_exposure_by_quintile.R"]
-  DESC --> RT["tables_images/render_paper_tables.R"]
+  EEI --> GE
+  IDW --> FK["tables_images/figure_quintile_kernel_distributions.R"]
+  IMH --> FD["tables_images/figure_imputation_diagnostics.R"]
+  DESC --> ST["tables_images/render_station_tables.R"]
+  DESC --> CT["tables_images/render_census_tables.R"]
 ```
 
-`figure_study_area_maps.R` and `figure_stations_on_metro_area.R` read only `data/raw/`
-geospatial files, so they have no processing prerequisite.
+`figure_study_area_maps.R` reads only `data/raw/` geospatial files, so it has no
+processing prerequisite; `figure_stations_on_metro_area.R` additionally reads station
+locations from `data/interim/`.
 
 ---
 
@@ -298,6 +352,6 @@ geospatial files, so they have no processing prerequisite.
 - **Affiliation:** Inter‑American Development Bank
 - **Email:** [bridgeth@iadb.org][bridget_email]
 
-**Last Updated:** 2025‑05‑14 (YYYY-MM-DD)
+**Last Updated:** 2026‑08‑31 (YYYY-MM-DD)
 
 [bridget_email]: bridgeth@iadb.org
