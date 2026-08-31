@@ -3,9 +3,9 @@
 # ============================================================================================
 #' @Goal: Functions for the station-level monitoring figures.
 #
-#' @Description: How far each census unit sits from its nearest station, how that has changed
-#   over time, and how a station's pollution relates to the socioeconomic profile of the units
-#   around it. Sourced by config_utils_plot_tables.R; never sourced directly by a script.
+#' @Description: How far each census unit sits from its nearest station, and how a
+#   station's pollution relates to the socioeconomic profile of the units around it.
+#   Sourced by config_utils_plot_tables.R; never sourced directly by a script.
 #
 #' @Summary:
 #   1. make_station_acronyms
@@ -14,9 +14,10 @@
 #   4. build_station_distance_trend_data
 #   5. plot_station_distance_trend
 #   6. plot_dual_pollutant_station_scatter
-#   7. save_city_monitoring_figures
-#   8. safe_read_parquet / prepare_station_scatter_data
-#      (all three flagged in doc/deletion_candidates.md)
+#   7. save_station_distance_figures
+#   8. save_station_education_figures
+#   9. safe_read_parquet
+#  10. plot_station_scatter
 #
 #' @Date: August 2026
 #' @Author: Marcos Paulo
@@ -341,16 +342,18 @@ plot_station_distance_trend <- function(
       plot.margin = ggplot2::margin(10, 22, 12, 10)
     )
   
+  # cairo_pdf for .pdf so the Palatino text is embedded rather than substituted.
   ggplot2::ggsave(
     filename = out_file,
     plot = p,
     width = width,
     height = height,
     dpi = dpi,
+    device = if (grepl("\\.pdf$", out_file)) grDevices::cairo_pdf else NULL,
     limitsize = FALSE,
     bg = "white"
   )
-  
+
   return(p)
 }
 
@@ -577,100 +580,161 @@ plot_dual_pollutant_station_scatter <- function(
   }
   
   if (!is.null(out_file)) {
+    # cairo_pdf for .pdf so the Palatino text is embedded rather than substituted.
     ggplot2::ggsave(
       filename = out_file,
       plot = p,
       width = width,
       height = height,
       dpi = dpi,
+      device = if (grepl("\\.pdf$", out_file)) grDevices::cairo_pdf else NULL,
       limitsize = FALSE,
       bg = "white"
     )
   }
-  
+
   return(p)
 }
 
 
 # --------------------------------------------------------------------------------------
-# Function: save_city_monitoring_figures
+# Function: save_station_distance_figures
 #
 #' @param city_label string; city name for plot titles.
-#' @param city_id    string; city identifier for filenames.
+#' @param paper_city string; the name the manuscript uses in the file, e.g. "saopaulo".
 #' @param dist_pq    string; distance matrix path.
 #' @param census_dt  data.table; collapsed census data.
 #' @param station_dt data.table; station-socioeconomic data.
-#' @param radius_km  numeric; radius used in coverage figure.
-#' @param outdir_fig string; output folder.
+#' @param radius_km  numeric; radius the station count is taken within.
+#' @param outdir_paper string; folder for the PM10 panel the manuscript prints.
+#' @param outdir_repo  string; folder for the PM2.5 companion the manuscript does not.
+#' @param adaptive_y_axis logical; zoom the y-axis to the observed data.
 #
-#' @return  invisible list with ggplot objects.
+#' @return  invisible list with the two ggplot objects.
+#
+#' @details
+#   The radius-dependent half of the station-monitoring family: number of stations within
+#   radius_km and distance to the nearest one, against education. The 3 km file carries
+#   the paper's "_v2" tag, which marks a re-render of that panel rather than a different
+#   specification.
+#
+#   Two output folders because the two panels have different audiences. The manuscript
+#   prints the PM10 one, so it goes to results/paper/; the PM2.5 companion is the repo's
+#   own and goes beside the other station-monitoring figures. Separating them here, where
+#   the files are written, is what keeps results/paper/ holding only deliverables.
+#
+#' @Written_on : August 2026
+#' @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------
-save_city_monitoring_figures <- function(
+save_station_distance_figures <- function(
     city_label,
-    city_id,
+    paper_city,
     dist_pq,
     census_dt,
     station_dt,
     radius_km = 3,
-    outdir_fig,
+    outdir_paper,
+    outdir_repo,
     adaptive_y_axis = TRUE
 ) {
-  
-  # Store plot objects in a named list.
+
   plots <- list()
-  
+
   # Apply station-level education scale correction once per city.
   station_dt <- rescale_station_education(
     station_dt = station_dt,
     city_label = city_label,
     x_col = "education_mean"
   )
-  
-  # 1. PM10 station coverage and nearest-distance plot.
+
+  # The manuscript tags its 3 km panel "_v2"; the wider radii carry no tag.
+  radius_tag <- if (radius_km == 3) "3km_v2" else paste0(radius_km, "km")
+
+  # 1. PM10 station coverage and nearest-distance plot: the paper's panel.
   active_pm10 <- get_active_station_ids(station_dt, pollutant = "pm10")
-  
+
   dt_pm10 <- build_station_distance_trend_data(
     dist_pq = dist_pq,
     census_dt = census_dt,
     active_ids = active_pm10,
     radius_km = radius_km
   )
-  
+
   plots$distance_pm10 <- plot_station_distance_trend(
     dt = dt_pm10,
     city_label = city_label,
     pollutant = "PM10",
     radius_km = radius_km,
     out_file = file.path(
-      outdir_fig,
-      paste0(city_id, "_stations_distance_pm10_", radius_km, "km.png")
+      outdir_paper,
+      paste0("stations_dis_num_", paper_city, "_", radius_tag, ".pdf")
     ),
     adaptive_y_axis = adaptive_y_axis
   )
-  
-  # 2. PM2.5 station coverage and nearest-distance plot.
+
+  # 2. PM2.5 companion, same view on the pollutant the paper does not print.
   active_pm25 <- get_active_station_ids(station_dt, pollutant = "pm25")
-  
+
   dt_pm25 <- build_station_distance_trend_data(
     dist_pq = dist_pq,
     census_dt = census_dt,
     active_ids = active_pm25,
     radius_km = radius_km
   )
-  
+
   plots$distance_pm25 <- plot_station_distance_trend(
     dt = dt_pm25,
     city_label = city_label,
     pollutant = "PM2.5",
     radius_km = radius_km,
     out_file = file.path(
-      outdir_fig,
-      paste0(city_id, "_stations_distance_pm25_", radius_km, "km.png")
+      outdir_repo,
+      paste0("stations_dis_num_", paper_city, "_", radius_tag, "_pm25.pdf")
     ),
     adaptive_y_axis = adaptive_y_axis
   )
-  
-  # 3. Average PM10 and PM2.5 concentration versus education.
+
+  invisible(plots)
+}
+
+
+# --------------------------------------------------------------------------------------
+# Function: save_station_education_figures
+#
+#' @param city_label string; city name for plot titles.
+#' @param city_id    string; city identifier for filenames.
+#' @param station_dt data.table; station-socioeconomic data.
+#' @param outdir_fig string; output folder.
+#' @param adaptive_y_axis logical; zoom the y-axis to the observed data.
+#
+#' @return  invisible list with ggplot objects.
+#
+#' @details
+#   The radius-independent half of the family: station-level outcomes against the
+#   education of the unit the station sits in, PM10 and PM2.5 on a shared dual axis.
+#   Split from the distance figures because nothing here depends on a radius, so
+#   sweeping radii would otherwise redraw these three plots unchanged each time.
+#
+#' @Written_on : August 2026
+#' @Written_by : Marcos Paulo
+# --------------------------------------------------------------------------------------
+save_station_education_figures <- function(
+    city_label,
+    city_id,
+    station_dt,
+    outdir_fig,
+    adaptive_y_axis = TRUE
+) {
+
+  plots <- list()
+
+  station_dt <- rescale_station_education(
+    station_dt = station_dt,
+    city_label = city_label,
+    x_col = "education_mean"
+  )
+
+  # 1. Average PM10 and PM2.5 concentration versus education.
   plots$avg_pollution <- plot_dual_pollutant_station_scatter(
     station_dt = station_dt,
     city_label = city_label,
@@ -686,7 +750,7 @@ save_city_monitoring_figures <- function(
     adaptive_y_axis = adaptive_y_axis
   )
   
-  # 4. Hours above IT1 versus education.
+  # 2. Hours above IT1 versus education.
   plots$hours_it1 <- plot_dual_pollutant_station_scatter(
     station_dt = station_dt,
     city_label = city_label,
@@ -702,7 +766,7 @@ save_city_monitoring_figures <- function(
     adaptive_y_axis = adaptive_y_axis
   )
   
-  # 5. Hours above IT2 versus education.
+  # 3. Hours above IT2 versus education.
   plots$hours_it2 <- plot_dual_pollutant_station_scatter(
     station_dt = station_dt,
     city_label = city_label,
@@ -741,50 +805,73 @@ safe_read_parquet <- function(path) {
 
 
 # --------------------------------------------------------------------------------------
-# Function: prepare_station_scatter_data
+# Function: plot_station_scatter
 #
-#' @param station_dt data.table; station-socioeconomic data.
-#' @param y_cols    character vector; outcome columns to plot.
-#' @param y_labels  named character vector; labels for outcome columns.
+#' @param station_dt data.table; station-level socioeconomic exposure data.
+#' @param y_col      string; the station outcome on the y axis.
+#' @param x_col      string; the socioeconomic column on the x axis.
+#' @param y_label    string; y-axis title.
+#' @param x_label    string; x-axis title.
+#' @param out_file   string; where to write the figure.
+#' @param point_color string; colour of the station points.
+#' @param font_family string; base font family.
+#' @param width      numeric; figure width in inches.
+#' @param height     numeric; figure height in inches.
+#' @param dpi        numeric; raster resolution.
 #
-#' @return  data.table in long format.
+#' @return  ggplot object; also written to out_file.
+#
+#' @details
+#   One station per point: a single pollutant outcome against the socioeconomic profile
+#   of the unit the station sits in, with the ordinary least squares fit the paper
+#   prints. Separate from plot_dual_pollutant_station_scatter(), which puts both
+#   pollutants on a shared rescaled axis; the manuscript's scatter figures show one
+#   pollutant at a time, so a shared axis would misstate the level.
+#
+#' @Written_on : August 2026
+#' @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------
-prepare_station_scatter_data <- function(
+plot_station_scatter <- function(
     station_dt,
-    y_cols,
-    y_labels
+    y_col,
+    x_col,
+    y_label,
+    x_label,
+    out_file,
+    point_color = "darkblue",
+    font_family = "Palatino",
+    width       = 8.5,
+    height      = 5.8,
+    dpi         = 300
 ) {
-  
-  # Ensure station data is copied before transformation.
-  dt <- data.table::copy(station_dt)
-  
-  # Require education_mean for all station-level scatterplots.
-  if (!"education_mean" %in% names(dt)) {
-    stop("Column `education_mean` not found in station-socio data.")
+
+  plot_dt <- data.table::copy(data.table::as.data.table(station_dt))
+
+  # Drop stations missing either axis: they carry no information for this figure.
+  plot_dt <- plot_dt[!is.na(get(y_col)) & !is.na(get(x_col))]
+
+  if (nrow(plot_dt) == 0L) {
+    stop("No station rows with both ", y_col, " and ", x_col, ".")
   }
-  
-  # Use station_id as the stable label source.
-  dt[, station_id := normalize_station(station_id)]
-  dt[, station_acr := make_station_acronyms(station_id)]
-  
-  # Keep only columns needed for plotting.
-  keep_cols <- unique(c("station_id", "station_acr", "education_mean", y_cols))
-  dt <- dt[, ..keep_cols]
-  
-  # Reshape to long format.
-  long <- data.table::melt(
-    dt,
-    id.vars = c("station_id", "station_acr", "education_mean"),
-    measure.vars = y_cols,
-    variable.name = "outcome",
-    value.name = "value"
+
+  p <- ggplot2::ggplot(plot_dt,
+                       ggplot2::aes(x = .data[[x_col]], y = .data[[y_col]])) +
+    ggplot2::geom_point(color = point_color, size = 2.4, alpha = 0.85) +
+    ggplot2::geom_smooth(method = "lm", formula = y ~ x, se = FALSE,
+                         color = "black", linewidth = 0.7) +
+    ggplot2::labs(x = x_label, y = y_label) +
+    ggplot2::theme(text = ggplot2::element_text(family = font_family))
+
+  ggplot2::ggsave(
+    filename = out_file,
+    plot = p,
+    width = width,
+    height = height,
+    dpi = dpi,
+    device = if (grepl("\\.pdf$", out_file)) grDevices::cairo_pdf else NULL,
+    limitsize = FALSE,
+    bg = "white"
   )
-  
-  # Attach clean labels.
-  long[, outcome_label := y_labels[as.character(outcome)]]
-  
-  # Drop missing and non-finite values.
-  long <- long[!is.na(education_mean) & !is.na(value) & is.finite(value)]
-  
-  long[]
+
+  return(p)
 }
