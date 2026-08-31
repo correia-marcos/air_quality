@@ -61,7 +61,7 @@ city_linetypes <- c(
 )
 
 fill_alpha      <- 0
-legend_position <- "top"
+legend_position <- "bottom"
 
 # List order is the legend order (the published figure's); colours come from the knobs,
 # so reordering this list never reassigns a colour.
