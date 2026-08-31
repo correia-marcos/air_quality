@@ -61,10 +61,9 @@ poll <- arrow::open_dataset(arrow_cdmx_2023) |>
   dplyr::collect() |>
   data.table::as.data.table()
 
-# Residual sensor codes survive outlier detection at three stations (CALPULALPAN
-# reaches 79999 with 671 negative hours). They sit outside every 5 km buffer at the
-# MUNICIPALITY level, so published results are unaffected — but at AGEB level they
-# would contaminate exposure, so negative and >= 9999 readings are masked here.
+# Redudant first part: the city writers drop values < 0 before the hourly
+# mean. The >= 9999 half is not — CALPULALPAN reaches 79999 and sits 19.58 km from the
+# nearest metro municipality, so it clears the 3/5 km buffers but enters the 20 km one.
 for (pol in c("pm25", "pm10")) {
   bad <- !is.na(poll[[pol]]) & (poll[[pol]] < 0 | poll[[pol]] >= 9999)
   if (any(bad)) {
