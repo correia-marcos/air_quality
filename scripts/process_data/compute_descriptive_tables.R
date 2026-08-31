@@ -6,13 +6,14 @@
 #
 #' @Description: One script for the paper's descriptive layer, because all five families
 # answer the same question — how much do we actually observe, and for whom. Each family
-# reads the hourly Arrow panels or the collapsed census and writes a machine-readable
-# artefact to data/processed/. No LaTeX is written here: render_paper_tables.R turns these
+# reads the hourly Arrow panels or the census and writes a machine-readable artefact to
+# data/processed/. No LaTeX is written here: the render_*_tables.R scripts turn these
 # Parquet files into the .tex files, which keeps this script on the data side of the
-# data/ -> results/ ratchet.
+# data/ -> results/ ratchet. Santiago uses the 2017 zonas censales throughout, matching
+# the main exposure specification; the 2024 communes are a robustness vintage only.
 #
 #' @Summary:
-#   I.   Import data: paths, analysis options and one city specification table.
+#   I.   Import data: paths and analysis options, one variable per city.
 #   II.  Missing proportions by station, month, hour and day of week (raw and cleaned).
 #   III. Station counts by pollutant.
 #   IV.  WHO exceedance factors.
@@ -46,40 +47,36 @@ pollutants    <- c("pm10", "pm25")
 report        <- "available"
 missing_dims  <- c("station", "month", "hour", "day_of_week")
 
-# One row per city, shared by all five table families. Two geographic id columns because
-# Santiago's individual census carries `comuna` and the collapse step renames it to `CUT`.
-# Santiago uses the 2024 commune census here, matching this diagnostic's distance matrix,
-# not the 2017 zonas of the main exposure specification.
-city_specs <- data.table::data.table(
-  city_id      = c("bogota", "cdmx", "santiago", "sao_paulo_metro"),
-  census_id    = c("bogota_2018", "cdmx_extended_2020", "santiago_2024",
-                   "sao_paulo_2010"),
-  dist_id      = c("bogota_2018", "cdmx_2020", "santiago_2024", "sao_paulo_2010"),
-  arrow_raw    = file.path(dir_raw,
-                           c("bogota_metro_dataset", "cdmx_metro_dataset",
-                             "santiago_metro_dataset", "sao_paulo_metro_dataset")),
-  arrow_clean  = file.path(dir_clean,
-                           c("bogota_metro_clean", "cdmx_metro_clean",
-                             "santiago_metro_clean", "sao_paulo_metro_clean")),
-  micro_id_col = c("GEO_ID", "CVE_MUN", "comuna", "code_weighting"),
-  geo_id_col   = c("GEO_ID", "CVE_MUN", "CUT", "code_weighting"),
-  pop_col      = c("weight", "weight", "weight", "weight"),
-  census_year  = c(2018L, 2020L, 2024L, 2010L),
-  census_level = c("Census tract", "Municipality", "Census tract", "Weighting area")
-)
+# Define raw and cleaned Arrow dataset paths
+raw_bogota   <- here::here(dir_raw, "bogota_metro_dataset")
+raw_cdmx     <- here::here(dir_raw, "cdmx_metro_dataset")
+raw_santiago <- here::here(dir_raw, "santiago_metro_dataset")
+raw_sp       <- here::here(dir_raw, "sao_paulo_metro_dataset")
 
-city_specs[, dist_pq := file.path(dir_dist, dist_id,
-                                  "matrix_geo_station_distances.parquet")]
+clean_bogota   <- here::here(dir_clean, "bogota_metro_clean")
+clean_cdmx     <- here::here(dir_clean, "cdmx_metro_clean")
+clean_santiago <- here::here(dir_clean, "santiago_metro_clean")
+clean_sp       <- here::here(dir_clean, "sao_paulo_metro_clean")
 
-city_specs[, micro_census := file.path(
-  dir_census, census_id,
-  c("census_2018_metro_individual.parquet", "census_metro_individual_2020.parquet",
-    "census_santiago_individual_2024.parquet", "census_sp_individual_2010.parquet"))]
+# Define geo-to-station distance matrix paths
+dist_bogota   <- here::here(dir_dist, "bogota_2018",
+                            "matrix_geo_station_distances.parquet")
+dist_cdmx     <- here::here(dir_dist, "cdmx_2020",
+                            "matrix_geo_station_distances.parquet")
+dist_santiago <- here::here(dir_dist, "santiago_2017",
+                            "matrix_geo_station_distances.parquet")
+dist_sp       <- here::here(dir_dist, "sao_paulo_2010",
+                            "matrix_geo_station_distances.parquet")
 
-city_specs[, geo_census := file.path(
-  dir_census, census_id,
-  c("census_2018_metro_collapsed.parquet", "collapse_metro_area_2020.parquet",
-    "census_santiago_collapsed_2024.parquet", "census_sp_collapsed_2010.parquet"))]
+# Define individual census paths
+micro_bogota   <- here::here(dir_census, "bogota_2018",
+                             "census_2018_metro_individual.parquet")
+micro_cdmx     <- here::here(dir_census, "cdmx_extended_2020",
+                             "census_metro_individual_2020.parquet")
+micro_santiago <- here::here(dir_census, "santiago_2017",
+                             "census_individual_2017.parquet")
+micro_sp       <- here::here(dir_census, "sao_paulo_2010",
+                             "census_sp_individual_2010.parquet")
 
 # ============================================================================================
 # II: Missing proportions by station, month, hour and day of week
@@ -87,26 +84,70 @@ city_specs[, geo_census := file.path(
 dir.create(outdir_missing, recursive = TRUE, showWarnings = FALSE)
 
 # Raw panels give structural missingness: hours the network never reported.
-for (i in seq_len(nrow(city_specs))) {
-  compute_missing_proportions(
-    arrow_dir   = city_specs$arrow_raw[i],
-    pollutants  = pollutants,
-    dims        = missing_dims,
-    year_filter = analysis_year,
-    out_dir     = outdir_missing,
-    out_name    = paste0(city_specs$city_id[i], "_raw"))
-}
+compute_missing_proportions(
+  arrow_dir   = raw_bogota,
+  pollutants  = pollutants,
+  dims        = missing_dims,
+  year_filter = analysis_year,
+  out_dir     = outdir_missing,
+  out_name    = "bogota_raw")
 
-# Cleaned panels give algorithmic missingness: what detect_outliers.R also removed.
-for (i in seq_len(nrow(city_specs))) {
-  compute_missing_proportions(
-    arrow_dir   = city_specs$arrow_clean[i],
-    pollutants  = pollutants,
-    dims        = missing_dims,
-    year_filter = analysis_year,
-    out_dir     = outdir_missing,
-    out_name    = paste0(city_specs$city_id[i], "_clean"))
-}
+compute_missing_proportions(
+  arrow_dir   = raw_cdmx,
+  pollutants  = pollutants,
+  dims        = missing_dims,
+  year_filter = analysis_year,
+  out_dir     = outdir_missing,
+  out_name    = "cdmx_raw")
+
+compute_missing_proportions(
+  arrow_dir   = raw_santiago,
+  pollutants  = pollutants,
+  dims        = missing_dims,
+  year_filter = analysis_year,
+  out_dir     = outdir_missing,
+  out_name    = "santiago_raw")
+
+compute_missing_proportions(
+  arrow_dir   = raw_sp,
+  pollutants  = pollutants,
+  dims        = missing_dims,
+  year_filter = analysis_year,
+  out_dir     = outdir_missing,
+  out_name    = "sao_paulo_metro_raw")
+
+# Cleaned panels add what detect_outliers.R removed; the paper reports the raw panel.
+compute_missing_proportions(
+  arrow_dir   = clean_bogota,
+  pollutants  = pollutants,
+  dims        = missing_dims,
+  year_filter = analysis_year,
+  out_dir     = outdir_missing,
+  out_name    = "bogota_clean")
+
+compute_missing_proportions(
+  arrow_dir   = clean_cdmx,
+  pollutants  = pollutants,
+  dims        = missing_dims,
+  year_filter = analysis_year,
+  out_dir     = outdir_missing,
+  out_name    = "cdmx_clean")
+
+compute_missing_proportions(
+  arrow_dir   = clean_santiago,
+  pollutants  = pollutants,
+  dims        = missing_dims,
+  year_filter = analysis_year,
+  out_dir     = outdir_missing,
+  out_name    = "santiago_clean")
+
+compute_missing_proportions(
+  arrow_dir   = clean_sp,
+  pollutants  = pollutants,
+  dims        = missing_dims,
+  year_filter = analysis_year,
+  out_dir     = outdir_missing,
+  out_name    = "sao_paulo_metro_clean")
 
 # ============================================================================================
 # III: Station counts by pollutant
@@ -115,27 +156,38 @@ dir.create(outdir_counts, recursive = TRUE, showWarnings = FALSE)
 
 # Counted on the raw panels: this describes the monitoring infrastructure that exists, not
 # the subset that survives outlier removal.
-station_counts <- data.table::rbindlist(lapply(
-  seq_len(nrow(city_specs)),
-  function(i) {
-    dt <- count_stations_reporting(
-      arrow_dir   = city_specs$arrow_raw[i],
-      pollutants  = pollutants,
-      year_filter = analysis_year,
-      mem_gb      = 8)
-    dt[, city_id := city_specs$city_id[i]]
-    dt
-  }
-))
+counts_bogota <- count_stations_reporting(
+  arrow_dir   = raw_bogota,
+  pollutants  = pollutants,
+  year_filter = analysis_year,
+  mem_gb      = 8)
+
+counts_cdmx <- count_stations_reporting(
+  arrow_dir   = raw_cdmx,
+  pollutants  = pollutants,
+  year_filter = analysis_year,
+  mem_gb      = 8)
+
+counts_santiago <- count_stations_reporting(
+  arrow_dir   = raw_santiago,
+  pollutants  = pollutants,
+  year_filter = analysis_year,
+  mem_gb      = 8)
+
+counts_sp <- count_stations_reporting(
+  arrow_dir   = raw_sp,
+  pollutants  = pollutants,
+  year_filter = analysis_year,
+  mem_gb      = 8)
 
 # Presentation order and accented names for the paper's station-count table.
-count_labels <- data.table::data.table(
-  city_id = c("santiago", "bogota", "cdmx", "sao_paulo_metro"),
-  city    = c("Santiago", "Bogotá", "Mexico City", "São Paulo"))
+counts_santiago[, city := "Santiago"]
+counts_bogota[,   city := "Bogotá"]
+counts_cdmx[,     city := "Mexico City"]
+counts_sp[,       city := "São Paulo"]
 
-station_counts <- merge(count_labels, station_counts, by = "city_id", all.x = TRUE)
-station_counts[, city_id := factor(city_id, levels = count_labels$city_id)]
-data.table::setorder(station_counts, city_id)
+station_counts <- data.table::rbindlist(
+  list(counts_santiago, counts_bogota, counts_cdmx, counts_sp))
 station_counts <- station_counts[, .(city, pm10, pm25)]
 
 save_table_parquet_csv(station_counts, outdir_counts,
@@ -148,16 +200,32 @@ dir.create(outdir_who, recursive = TRUE, showWarnings = FALSE)
 
 # Mean-of-means across stations, not a pooled grand mean: pooling would let the stations
 # with the most uptime dominate the city average. All years, not just analysis_year.
-who_exceedances <- data.table::rbindlist(lapply(
-  seq_len(nrow(city_specs)),
-  function(i) {
-    compute_who_exceedances(
-      arrow_dir   = city_specs$arrow_clean[i],
-      city_label  = city_specs$city_id[i],
-      pollutants  = pollutants,
-      year_filter = NULL)
-  }
-), fill = TRUE)
+who_bogota <- compute_who_exceedances(
+  arrow_dir   = clean_bogota,
+  city_label  = "bogota",
+  pollutants  = pollutants,
+  year_filter = NULL)
+
+who_cdmx <- compute_who_exceedances(
+  arrow_dir   = clean_cdmx,
+  city_label  = "cdmx",
+  pollutants  = pollutants,
+  year_filter = NULL)
+
+who_santiago <- compute_who_exceedances(
+  arrow_dir   = clean_santiago,
+  city_label  = "santiago",
+  pollutants  = pollutants,
+  year_filter = NULL)
+
+who_sp <- compute_who_exceedances(
+  arrow_dir   = clean_sp,
+  city_label  = "sao_paulo_metro",
+  pollutants  = pollutants,
+  year_filter = NULL)
+
+who_exceedances <- data.table::rbindlist(
+  list(who_bogota, who_cdmx, who_santiago, who_sp), fill = TRUE)
 
 save_raw_data_tidy_formatted(
   data          = who_exceedances,
@@ -173,23 +241,52 @@ save_raw_data_tidy_formatted(
 # Assigns each station the education quintile of its nearest census unit, then reports the
 # share of non-missing hours by quintile. A smaller share in the lower quintiles means the
 # exposure estimates are least reliable exactly where the paper's question bites.
-quintile_labels <- c("Bogota", "Mexico City", "Santiago", "Sao Paulo")
+quintile_bogota <- compute_missing_by_quintile(
+  city          = "Bogota",
+  city_order    = 1L,
+  pollution_dir = clean_bogota,
+  dist_pq       = dist_bogota,
+  census_file   = micro_bogota,
+  geo_id_col    = "geo_id",
+  pollutants    = pollutants,
+  year          = analysis_year,
+  report        = report)
 
-missing_by_quintile <- data.table::rbindlist(lapply(
-  seq_len(nrow(city_specs)),
-  function(i) {
-    compute_missing_by_quintile(
-      city          = quintile_labels[i],
-      city_order    = i,
-      pollution_dir = city_specs$arrow_clean[i],
-      dist_pq       = city_specs$dist_pq[i],
-      census_file   = city_specs$micro_census[i],
-      geo_id_col    = city_specs$micro_id_col[i],
-      pollutants    = pollutants,
-      year          = analysis_year,
-      report        = report)
-  }
-))
+quintile_cdmx <- compute_missing_by_quintile(
+  city          = "Mexico City",
+  city_order    = 2L,
+  pollution_dir = clean_cdmx,
+  dist_pq       = dist_cdmx,
+  census_file   = micro_cdmx,
+  geo_id_col    = "geo_id",
+  pollutants    = pollutants,
+  year          = analysis_year,
+  report        = report)
+
+quintile_santiago <- compute_missing_by_quintile(
+  city          = "Santiago",
+  city_order    = 3L,
+  pollution_dir = clean_santiago,
+  dist_pq       = dist_santiago,
+  census_file   = micro_santiago,
+  geo_id_col    = "geo_id",
+  pollutants    = pollutants,
+  year          = analysis_year,
+  report        = report)
+
+quintile_sp <- compute_missing_by_quintile(
+  city          = "Sao Paulo",
+  city_order    = 4L,
+  pollution_dir = clean_sp,
+  dist_pq       = dist_sp,
+  census_file   = micro_sp,
+  geo_id_col    = "geo_id",
+  pollutants    = pollutants,
+  year          = analysis_year,
+  report        = report)
+
+missing_by_quintile <- data.table::rbindlist(
+  list(quintile_bogota, quintile_cdmx, quintile_santiago, quintile_sp))
 
 save_table_parquet_csv(missing_by_quintile, outdir_missing,
                        paste0("missing_by_education_quintile_", analysis_year))
@@ -202,23 +299,44 @@ dir.create(outdir_census, recursive = TRUE, showWarnings = FALSE)
 # Population totals and geographic-unit counts behind the exposure estimates. Units with a
 # missing id or a non-positive weight are dropped, so the count is the estimation-relevant
 # one rather than the file's row count.
-census_labels <- data.table::data.table(
-  city       = c("Bogota", "Mexico City", "Gran Santiago", "Sao Paulo"),
-  city_latex = c("Bogot\\'a", "Mexico City", "Gran Santiago", "S\\~ao Paulo"))
+summary_bogota <- compute_city_census_summary(
+  census_path  = micro_bogota,
+  city         = "Bogota",
+  city_latex   = "Bogot\\'a",
+  census_year  = 2018L,
+  census_level = "Census tract",
+  geo_id_col   = "geo_id",
+  pop_col      = "person_weight")
 
-census_summary <- data.table::rbindlist(lapply(
-  seq_len(nrow(city_specs)),
-  function(i) {
-    compute_city_census_summary(
-      census_path  = city_specs$geo_census[i],
-      city         = census_labels$city[i],
-      city_latex   = census_labels$city_latex[i],
-      census_year  = city_specs$census_year[i],
-      census_level = city_specs$census_level[i],
-      geo_id_col   = city_specs$geo_id_col[i],
-      pop_col      = city_specs$pop_col[i])
-  }
-))
+summary_cdmx <- compute_city_census_summary(
+  census_path  = micro_cdmx,
+  city         = "Mexico City",
+  city_latex   = "Mexico City",
+  census_year  = 2020L,
+  census_level = "Municipality",
+  geo_id_col   = "geo_id",
+  pop_col      = "person_weight")
+
+summary_santiago <- compute_city_census_summary(
+  census_path  = micro_santiago,
+  city         = "Gran Santiago",
+  city_latex   = "Gran Santiago",
+  census_year  = 2017L,
+  census_level = "Census tract",
+  geo_id_col   = "geo_id",
+  pop_col      = "person_weight")
+
+summary_sp <- compute_city_census_summary(
+  census_path  = micro_sp,
+  city         = "Sao Paulo",
+  city_latex   = "S\\~ao Paulo",
+  census_year  = 2010L,
+  census_level = "Weighting area",
+  geo_id_col   = "geo_id",
+  pop_col      = "person_weight")
+
+census_summary <- data.table::rbindlist(
+  list(summary_bogota, summary_cdmx, summary_santiago, summary_sp))
 
 save_table_parquet_csv(census_summary, outdir_census, "census_summary")
 
