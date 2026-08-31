@@ -91,7 +91,7 @@ p_pm25 <- plot_kernel_density_by_city(
   city_data,
   pollutant       = "pm25",
   year            = 2023,
-  x_max           = 250,
+  x_max           = 100,
   city_colours    = city_colours,
   city_linetypes  = city_linetypes,
   fill_alpha      = fill_alpha,
