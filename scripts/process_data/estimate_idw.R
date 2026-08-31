@@ -6,11 +6,13 @@
 #' @Description: This script estimates the Inverse Distance Weights (IDW) used in the paper. 
 # It uses the outlier cleaned Arrow datasets of air quality (from detect_outliers.R), the 
 # distance matrices (from generate_distance_matrices.R), and census data (from 
-# process_{city}_data.R). The exposure estimation applies IDW interpolation within 3km and 
-# 5km buffers using DuckDB for out-of-core aggregation. Education quintiles are produced for
-# all four cities. Income groups are produced only for the two cities whose census carries 
-# income: deciles for Sao Paulo, but quintiles for CDMX, whose 63 municipalities leave too few 
-# clusters to identify 10 coefficients.
+# process_{city}_data.R). The exposure estimation applies IDW interpolation within 3km, 5km
+# and 20km buffers using DuckDB for out-of-core aggregation. 3km is the paper's
+# specification and 5km its robustness check; 20km exists only for the appendix's exposure
+# density figures, so no regression is estimated on it. Education quintiles are produced
+# for all four cities. Income groups are produced only for the two cities with census
+# income: deciles for Sao Paulo, quintiles for CDMX, whose 63 municipalities leave too
+# few clusters to identify 10 coefficients.
 #
 #' @Summary:
 #   I.   Import data: Define paths for Arrow datasets, matrices, and census files.
@@ -97,7 +99,7 @@ geo_sp           <- data.table::as.data.table(arrow::read_parquet(geo_sp_pq))
 dir.create(outdir_exp, recursive = TRUE, showWarnings = FALSE)
 
 # Define IDW specifications
-buffers_km     <- c(3, 5)
+buffers_km     <- c(3, 5, 20)
 distance_power <- 1
 
 # Run all cities for the baseline and robustness buffers
