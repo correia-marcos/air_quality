@@ -3,8 +3,8 @@
 # ============================================================================================
 #' @Goal: Functions for station socioeconomic context.
 #
-#' @Description: Summarises pollution per station and attaches the socioeconomic profile of the census
-#   units around it, which feeds the station-level scatter figures.
+#' @Description: Summarises pollution per station and attaches the socioeconomic profile
+#   of the census units around it, which feeds the station-level scatter figures.
 #   Sourced by config_utils_process_data.R; never sourced directly by a script.
 #
 #' @Summary:
@@ -200,9 +200,6 @@ compute_station_pollution_summary <- function(
 #' @param context_method    string; "containing_geo" or "buffer".
 #' @param buffer_km         numeric; buffer radius when context_method = "buffer".
 #' @param representative_pt string; "point_on_surface" or "centroid".
-#' @param geo_id_repair     string; "none", "bogota", or "suffix".
-#' @param bogota_max_suffix integer; maximum suffix repair for Bogota IDs.
-#' @param bogota_broad_ids  logical; allow broad Bogota ID repairs?
 #' @param quiet             logical; suppress messages. Default FALSE.
 #
 #' @return  data.table with one row per station and socioeconomic context.
@@ -216,9 +213,10 @@ compute_station_pollution_summary <- function(
 #   suits cities with very small units (e.g. Bogota), where a single containing
 #   unit is a noisy descriptor of the station's local socioeconomic context.
 #
-#   geo_id_repair = "suffix" handles cases where the spatial layer stores only the
-#   municipality component while the census stores a full state-municipality code.
-#   A repair is accepted only when the suffix match is unique.
+#   The geopackage's ids are reconciled against the census with reconcile_geo_ids()
+#   before the attribute merge. Every candidate repair is verified against the census,
+#   ambiguous ids are left alone, and the result is returned in input order so it can be
+#   written straight back into the sf object.
 #
 #' @Written_on : June 2026
 #' @Written_by : Marcos Paulo
@@ -233,23 +231,14 @@ compute_station_socio_context <- function(
     context_method    = c("containing_geo", "buffer"),
     buffer_km         = 3,
     representative_pt = c("point_on_surface", "centroid"),
-    geo_id_repair     = c("none", "bogota", "suffix"),
-    bogota_max_suffix = 2L,
-    bogota_broad_ids  = FALSE,
     quiet             = FALSE
 ) {
-  
-  # 0. Dependencies and argument matching
+
+  # 0. Argument matching
   # -----------------------------------------------------------------------
-  pkgs <- c("sf", "data.table", "stringi")
-  
-  for (p in pkgs) {
-  }
-  
   context_method <- match.arg(context_method)
   representative_pt <- match.arg(representative_pt)
-  geo_id_repair <- match.arg(geo_id_repair)
-  
+
   # 1. Input checks
   # -----------------------------------------------------------------------
   if (!inherits(stations_sf, "sf")) {
@@ -277,15 +266,6 @@ compute_station_socio_context <- function(
   
   # 2. Helpers
   # -----------------------------------------------------------------------
-  
-  
-  # Left-pad a character vector with zeros to a fixed width (base-R only).
-  .pad_left0 <- function(x, width) {
-    x <- as.character(x)
-    need <- pmax(0L, width - nchar(x))
-    paste0(strrep("0", need), x)
-  }
-  
   .weighted_mean <- function(x, w) {
     ok <- !is.na(x) & !is.na(w) & w > 0
     
@@ -294,61 +274,6 @@ compute_station_socio_context <- function(
     }
     
     sum(x[ok] * w[ok]) / sum(w[ok])
-  }
-  
-  .repair_suffix_ids <- function(geo_ids, census_ids) {
-    
-    geo_chr <- safe_chr(geo_ids)
-    census_chr <- safe_chr(census_ids)
-    
-    out <- data.table::data.table(
-      geo_id_original = geo_chr,
-      geo_id_repaired = geo_chr,
-      repair_method = "exact",
-      matched_repaired = geo_chr %in% census_chr
-    )
-    
-    unmatched <- which(!out$matched_repaired & !is.na(out$geo_id_original))
-    
-    if (length(unmatched) == 0L) {
-      return(out)
-    }
-    
-    census_unique <- unique(census_chr[!is.na(census_chr)])
-    
-    # Modal census width used for left-pad attempts.
-    width_modal <- as.integer(names(sort(
-      table(nchar(census_unique)),
-      decreasing = TRUE
-    ))[1])
-    
-    for (i in unmatched) {
-      id_i <- out$geo_id_original[i]
-      
-      # Try left-padding to the modal census ID width (base-R zero pad).
-      id_pad <- .pad_left0(id_i, width_modal)
-      
-      if (id_pad %in% census_unique) {
-        out$geo_id_repaired[i] <- id_pad
-        out$repair_method[i] <- "left_pad"
-        out$matched_repaired[i] <- TRUE
-        next
-      }
-      
-      # Try unique suffix matching. This fixes cases like 002 -> 9002.
-      suffix_matches <- census_unique[endsWith(census_unique, id_i)]
-      
-      if (length(suffix_matches) == 1L) {
-        out$geo_id_repaired[i] <- suffix_matches
-        out$repair_method[i] <- "unique_suffix"
-        out$matched_repaired[i] <- TRUE
-        next
-      }
-      
-      out$repair_method[i] <- "unmatched"
-    }
-    
-    out[]
   }
   
   # 3. Prepare spatial and census data
@@ -373,90 +298,16 @@ compute_station_socio_context <- function(
   census_keep <- unique(c("geo_id", "pop_total", socio_vars))
   census_dt <- census_dt[, ..census_keep]
   
-  # 4. Repair geographic IDs before merging census attributes
+  # 4. Reconcile geographic IDs against the census before merging attributes
   # -----------------------------------------------------------------------
-  if (geo_id_repair == "bogota") {
-    
-    if (!exists("repair_bogota_geo_ids", mode = "function")) {
-      stop(
-        "geo_id_repair = 'bogota' requires repair_bogota_geo_ids() ",
-        "to be defined in config_utils_process_data.R."
-      )
-    }
-    
-    id_xwalk <- repair_bogota_geo_ids(
-      geo_ids = geo_wgs$geo_id,
-      census_ids = census_dt$geo_id,
-      max_zero_suffix = bogota_max_suffix,
-      allow_broad_ids = bogota_broad_ids
-    )
-    
-    repair_cols <- c(
-      "geo_id_original",
-      "geo_id_repaired",
-      "repair_method",
-      "matched_repaired"
-    )
-    
-    id_xwalk <- id_xwalk[, ..repair_cols]
-    
-    geo_wgs$geo_id_original <- geo_wgs$geo_id
-    geo_dt <- data.table::as.data.table(sf::st_drop_geometry(geo_wgs))
-    
-    geo_dt <- merge(
-      geo_dt,
-      id_xwalk,
-      by.x = "geo_id_original",
-      by.y = "geo_id_original",
-      all.x = TRUE
-    )
-    
-    geo_wgs$geo_id <- geo_dt$geo_id_repaired
-    
-    if (!quiet) {
-      msg <- id_xwalk[
-        ,
-        .N,
-        by = repair_method
-      ][order(repair_method)]
-      
-      message("[station_context] Bogota ID repair summary:")
-      print(msg)
-    }
-  }
-  
-  if (geo_id_repair == "suffix") {
-    
-    id_xwalk <- .repair_suffix_ids(
-      geo_ids = geo_wgs$geo_id,
-      census_ids = census_dt$geo_id
-    )
-    
-    geo_wgs$geo_id_original <- geo_wgs$geo_id
-    geo_dt <- data.table::as.data.table(sf::st_drop_geometry(geo_wgs))
-    
-    geo_dt <- merge(
-      geo_dt,
-      id_xwalk,
-      by.x = "geo_id_original",
-      by.y = "geo_id_original",
-      all.x = TRUE
-    )
-    
-    geo_wgs$geo_id <- geo_dt$geo_id_repaired
-    
-    if (!quiet) {
-      msg <- id_xwalk[
-        ,
-        .N,
-        by = repair_method
-      ][order(repair_method)]
-      
-      message("[station_context] Suffix ID repair summary:")
-      print(msg)
-    }
-  }
-  
+  # Returns one repaired id per input position, so it can be assigned back in place.
+  geo_wgs$geo_id <- reconcile_geo_ids(
+    geo_wgs$geo_id,
+    census_dt$geo_id,
+    label = "station_context",
+    quiet = quiet
+  )
+
   # 5. Merge census attributes into geographic units
   # -----------------------------------------------------------------------
   geo_wgs <- merge(
@@ -601,9 +452,6 @@ compute_station_socio_context <- function(
 #' @param year_filter     integer; year to process. Default 2023.
 #' @param context_method  string; "containing_geo" or "buffer".
 #' @param context_buffer_km numeric; buffer radius when context_method = "buffer".
-#' @param geo_id_repair   string; "none", "bogota", or "suffix".
-#' @param bogota_max_suffix integer; maximum suffix repair for Bogota IDs.
-#' @param bogota_broad_ids logical; allow broad Bogota ID repairs?
 #' @param pollutants      character vector; pollutant columns to summarize.
 #' @param who_it          named list; WHO interim target thresholds.
 #' @param out_dir         string; output directory.
@@ -635,9 +483,6 @@ build_station_scatter_inputs <- function(
     year_filter       = 2023L,
     context_method    = c("containing_geo", "buffer"),
     context_buffer_km = 3,
-    geo_id_repair     = c("none", "bogota", "suffix"),
-    bogota_max_suffix = 2L,
-    bogota_broad_ids  = FALSE,
     pollutants        = c("pm10", "pm25"),
     who_it            = list(
       pm10 = c(it1 = 150, it2 = 100),
@@ -658,7 +503,6 @@ build_station_scatter_inputs <- function(
   }
   
   context_method <- match.arg(context_method)
-  geo_id_repair <- match.arg(geo_id_repair)
   
   # 1. Output path and early exit
   # -----------------------------------------------------------------------
@@ -706,9 +550,6 @@ build_station_scatter_inputs <- function(
     socio_vars        = socio_vars,
     context_method    = context_method,
     buffer_km         = context_buffer_km,
-    geo_id_repair     = geo_id_repair,
-    bogota_max_suffix = bogota_max_suffix,
-    bogota_broad_ids  = bogota_broad_ids,
     quiet             = quiet
   )
   
