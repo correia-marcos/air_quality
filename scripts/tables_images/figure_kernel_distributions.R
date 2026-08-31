@@ -35,6 +35,10 @@ set_paper_theme()
 # I: Import data
 # ============================================================================================
 dir_stations <- here::here("data", "processed", "monitoring_stations_outliers")
+
+# The six density panels are manuscript figures; the exceedance-share bar chart is the
+# repo's own companion, so the two go to different places.
+outdir_paper <- here::here("results", "paper", "figures", "city_distributions")
 outdir       <- here::here("results", "figures", "kernel_plots")
 
 fig_width  <- 16
@@ -158,20 +162,22 @@ exceedance_combined <- cowplot::plot_grid(e_pm10, e_pm25, nrow = 2)
 # V: Save figures
 # ============================================================================================
 dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
+dir.create(outdir_paper, recursive = TRUE, showWarnings = FALSE)
 
-# Name = file stem; the list answers "which plot -> which file" at a glance.
+# Name = file stem; the list answers "which plot -> which file" at a glance. The PM10
+# stems carry no pollutant token because that is how the manuscript cites them.
 density_figures <- list(
-  all_pm10      = p_pm10,
+  all           = p_pm10,
   all_pm25      = p_pm25,
-  all_pm10_2019 = p_pm10_2019,
+  all_2019      = p_pm10_2019,
   all_pm25_2019 = p_pm25_2019,
-  all_pm10_2022 = p_pm10_2022,
+  all_2022      = p_pm10_2022,
   all_pm25_2022 = p_pm25_2022
 )
 
 for (stem in names(density_figures)) {
   ggplot2::ggsave(
-    filename = file.path(outdir, paste0(stem, ".pdf")),
+    filename = file.path(outdir_paper, paste0(stem, ".pdf")),
     plot     = density_figures[[stem]], device = cairo_pdf,
     width    = fig_width, height = fig_height, dpi = fig_dpi)
 }

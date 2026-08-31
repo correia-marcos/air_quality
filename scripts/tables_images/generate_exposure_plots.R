@@ -38,9 +38,13 @@ set_paper_theme()
 # I: Import data
 # ============================================================================================
 # Define input and output folders
-dir_reg    <- here::here("data", "processed", "idw_regressions")
-outdir_ci  <- here::here("results", "figures", "exposure_by_group", "ci")
-outdir_lvl <- here::here("results", "figures", "exposure_by_group", "levels")
+dir_reg      <- here::here("data", "processed", "idw_regressions")
+dir_reg_imp  <- here::here("data", "processed", "idw_regressions_imputed")
+outdir_ci    <- here::here("results", "figures", "exposure_by_group", "ci")
+outdir_lvl   <- here::here("results", "figures", "exposure_by_group", "levels")
+outdir_paper <- here::here("results", "paper", "figures")
+
+analysis_year <- 2023L
 
 # Artifact paths written by estimate_exposure.R: one set per buffer radius (3 km is
 # the paper's specification, 5 km the robustness check) and per analysis year.
@@ -93,6 +97,10 @@ city_files  <- c(Bogota = "bogota", CDMX = "mexico_city",
                  Santiago = "santiago", `Sao Paulo` = "sao_paulo",
                  `Santiago (comuna, 2024)` = "santiago_comuna_2024")
 
+# The manuscript's own spelling, used for the second copy of the 3 km figures.
+paper_files <- c(bogota = "bogota", mexico_city = "mexico",
+                 santiago = "santiago", sao_paulo = "saopaulo")
+
 # ============================================================================================
 # II: Build figures
 # ============================================================================================
@@ -130,4 +138,64 @@ if (has_income) {
 
 cat("Saved exposure CI figures to:", outdir_ci, "\n")
 cat("Saved exposure level figures to:", outdir_lvl, "\n")
+
+# ============================================================================================
+# IV: Save the manuscript's copy of the 3 km figures
+# ============================================================================================
+# Same plot objects, written a second time under the names the .tex cites; see
+# paper_exposure_filename() for which runs the manuscript prints.
+paper_plots <- c(plots_ci_edu, plots_lvl_edu)
+
+if (has_income) {
+  paper_plots <- c(paper_plots, plots_ci_inc, plots_lvl_inc)
+}
+
+n_paper <- 0L
+
+for (fname in names(paper_plots)) {
+  paper_path <- paper_exposure_filename(fname, paper_files, analysis_year)
+
+  if (is.na(paper_path)) next
+
+  out_file <- file.path(outdir_paper, paper_path)
+  dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
+  save_plot_pdf(paper_plots[[fname]], out_file)
+  n_paper <- n_paper + 1L
+}
+
+cat("Saved", n_paper, "manuscript-named figures under:", outdir_paper, "\n")
+
+# ============================================================================================
+# V: The imputed robustness specification
+# ============================================================================================
+# Same figures, estimated on the panels that combine observed and imputed readings. Only
+# education at 3 km is produced, which is all the manuscript reports for this variant.
+ci_imp_pq  <- here::here(dir_reg_imp, "exposure_ci_estimates_education_3km_2023.parquet")
+sum_imp_pq <- here::here(dir_reg_imp,
+                         "exposure_group_summaries_education_3km_2023.parquet")
+
+ci_imputed      <- data.table::as.data.table(arrow::read_parquet(ci_imp_pq))
+summary_imputed <- data.table::as.data.table(arrow::read_parquet(sum_imp_pq))
+
+plots_ci_imp  <- build_exposure_ci_figures(ci_imputed, "education",
+                                           city_labels, city_files)
+plots_lvl_imp <- build_exposure_level_figures(summary_imputed, "education",
+                                              city_labels, city_files)
+
+imputed_plots <- c(plots_ci_imp, plots_lvl_imp)
+n_imputed <- 0L
+
+for (fname in names(imputed_plots)) {
+  paper_path <- paper_exposure_filename(fname, paper_files, analysis_year,
+                                        imputed = TRUE)
+
+  if (is.na(paper_path)) next
+
+  out_file <- file.path(outdir_paper, paper_path)
+  dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
+  save_plot_pdf(imputed_plots[[fname]], out_file)
+  n_imputed <- n_imputed + 1L
+}
+
+cat("Saved", n_imputed, "imputed-specification figures under:", outdir_paper, "\n")
 cat("Script from the IDB project executed successfully in the Docker container!\n")

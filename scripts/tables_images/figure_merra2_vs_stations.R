@@ -41,6 +41,10 @@ outdir_hourly  <- here::here("results", "figures", "hour_average")
 outdir_targets <- here::here("results", "figures", "hour_above_iterim_target")
 outdir_maps    <- here::here("results", "figures", "maps")
 
+# Of the figures below, the manuscript prints only the ridgelines and the IT2 episode
+# durations; those go to results/paper/, the rest stay with the repo's own outputs.
+outdir_paper   <- here::here("results", "paper", "figures", "hourly_profiles")
+
 # Figure geometry and series styling, shared by every figure here.
 fig_width      <- 16
 fig_height     <- 9
@@ -152,6 +156,7 @@ ggplot2::ggsave(
 # IV: Average pollution by hour of day
 # ============================================================================================
 dir.create(outdir_hourly, recursive = TRUE, showWarnings = FALSE)
+dir.create(outdir_paper, recursive = TRUE, showWarnings = FALSE)
 
 for (s in city_specs) {
   bar <- plot_hourly_avg_pollution(
@@ -167,7 +172,7 @@ for (s in city_specs) {
 
   # Titles are dropped on save: the paper captions these figures itself.
   ggplot2::ggsave(
-    file.path(outdir_hourly, paste0(s$stem, "_ridge_plot.pdf")),
+    file.path(outdir_paper, paste0(s$stem, "_ridge_plot.pdf")),
     ridge + ggplot2::labs(title = NULL) +
       ggplot2::theme(plot.title = ggplot2::element_blank()),
     device = cairo_pdf,
@@ -188,8 +193,11 @@ for (target in c("IT1", "IT2")) {
     target        = target,
     pollution_var = "pm25_stations")
 
+  # The manuscript prints IT2 only; IT1 is the repo's own companion.
+  out_dir <- if (target == "IT2") outdir_paper else outdir_targets
+
   ggplot2::ggsave(
-    file.path(outdir_targets, paste0("distribution_hours_above_", target, ".pdf")),
+    file.path(out_dir, paste0("distribution_hours_above_", target, ".pdf")),
     p + ggplot2::labs(title = NULL) +
       ggplot2::theme(plot.title = ggplot2::element_blank()),
     device = cairo_pdf,
