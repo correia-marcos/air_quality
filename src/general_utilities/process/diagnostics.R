@@ -3,15 +3,19 @@
 # ============================================================================================
 #' @Goal: Functions for coverage and exceedance diagnostics.
 #
-#' @Description: Counts reporting stations, WHO exceedances and missingness. They feed the
-# paper's
-#   descriptive tables rather than the exposure estimates.
-#   Sourced by config_utils_process_data.R; never sourced directly by a script.
+#' @Description: Counts reporting stations, WHO exceedances, missingness and who lives
+#   near a station. These feed the paper's descriptive tables rather than the exposure
+#   estimates. Sourced by config_utils_process_data.R; never sourced directly.
 #
 #' @Summary:
 #   1. summarize_stations_by_pollutant
 #   2. compute_who_exceedances
 #   3. compute_missing_proportions
+#   4. compute_city_census_summary
+#   5. count_stations_reporting
+#   6. station_education_quintile
+#   7. compute_missing_by_quintile
+#   8. compute_distance_band_summary
 #
 #' @Date: August 2026
 #' @Author: Marcos Paulo
@@ -485,21 +489,26 @@ compute_missing_proportions <- function(
 # --------------------------------------------------------------------------------------------
 # Function: compute_city_census_summary
 #
-#' @param census_path string; path to a city's collapsed census Parquet file.
+#' @param census_path string; path to a city's individual census Parquet file.
 #' @param city       string; display name for the output row.
 #' @param city_latex string; the same name, LaTeX-escaped for the table.
 #' @param census_year integer; census vintage.
 #' @param census_level string; the geographic level, e.g. "Municipality".
 #' @param geo_id_col string; geographic identifier column in the census file.
-#' @param pop_col    string; population weight column.
+#' @param pop_col    string; person weight column.
 #
 #' @return  one-row data.table with population, unit count and mean population per unit.
 #
 #' @details
 #   Arguments are named rather than taken as a spec row, so the signature documents
-#   what the function needs. Units with a missing id, missing weight or non-positive
+#   what the function needs. Records with a missing id, missing weight or non-positive
 #   weight are dropped before counting, which is what makes n_census_geographic_units
 #   the estimation-relevant count rather than the file's row count.
+#
+#   Reads the individual microdata, not the collapsed file: the collapsed `pop_total`
+#   is the population aged 25+, because each city module applies the adult filter when
+#   collapsing. The paper's coverage table reports the whole resident population, so
+#   summing person_weight over every record is the quantity it asks for.
 #
 #' @Written_by : Marcos Paulo
 #' @Updated_on : August 2026
@@ -510,7 +519,8 @@ compute_city_census_summary <- function(census_path, city, city_latex, census_ye
     stop("Census file not found: ", census_path)
   }
 
-  dt <- data.table::as.data.table(arrow::read_parquet(census_path))
+  dt <- data.table::as.data.table(
+    arrow::read_parquet(census_path, col_select = c(geo_id_col, pop_col)))
 
   missing_cols <- setdiff(c(geo_id_col, pop_col), names(dt))
 
@@ -630,7 +640,10 @@ count_stations_reporting <- function(arrow_dir,
 #   years of schooling, cuts into five equal-count bins, then assigns each station the
 #   quintile of the unit whose representative point is nearest to it. Nearest unit, not
 #   units within a buffer: this asks which population a station sits among, not which
-#   population it measures.
+#   population it measures. Before the station-to-quintile merge, the distance matrix's
+#   geo ids are reconciled against the census ids with reconcile_geo_ids(): CDMX stores
+#   "9002" in the census but "09002" in the matrix, and without the repair the inner
+#   join silently drops every CDMX station.
 #
 #' @Written_by : Marcos Paulo
 #' @Updated_on : August 2026
@@ -671,7 +684,7 @@ station_education_quintile <- function(dist_pq, census_file, geo_id_col) {
   
   weight_col <- find_col(
     census,
-    c("weight", "weights", "fe", "factor_expansion", "n", "FACTOR"),
+    c("person_weight", "weight", "weights", "fe", "factor_expansion", "n", "FACTOR"),
     census_file
   )
   
@@ -733,7 +746,11 @@ station_education_quintile <- function(dist_pq, census_file, geo_id_col) {
   ]
   
   nearest <- nearest[, .(station, geo_id)]
-  
+
+  # Census-arbitrated id repair (CDMX "9002" vs "09002") -- see @details.
+  nearest[, geo_id := reconcile_geo_ids(geo_id, census_geo$geo_id,
+                                        label = basename(census_file))]
+
   census_q <- census_geo[
     edu_quintile %in% 1:5,
     .(geo_id, quintile = edu_quintile)
@@ -897,4 +914,133 @@ compute_missing_by_quintile <- function(city, city_order, pollution_dir, dist_pq
   
   message("[missing by quintile] ", city, " done.")
   out[]
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: compute_distance_band_summary
+#
+#' @param dist_pq     string; path to the geo-to-station distance matrix.
+#' @param census_path string; path to the city's individual census Parquet file.
+#' @param area_dt     data.table; one row per geographic unit with geo_id and area_km2.
+#' @param city        string; display name stamped on every output row.
+#' @param unit_label  string; what one geographic unit is, e.g. "municipalities".
+#' @param share_vars  named character; label -> 0/1 column averaged over all residents.
+#' @param mean_vars   named character; label -> column averaged over non-missing values.
+#' @param educ_col    string; years-of-schooling column. Default "educ_years".
+#' @param radii_km    numeric vector; the bands to report. Default c(1, 3, 5, 10, 20).
+#
+#' @return  long data.table with columns city, band, statistic, value and value_label:
+#           one row per statistic per band, plus the "All" band covering every unit.
+#
+#' @details
+#   Describes who lives near a monitoring station. A unit joins a band when the distance
+#   from its representative point to the nearest station is within that radius, so the
+#   bands are nested and "All" is the whole metropolitan area. Every statistic
+#   is population weighted, and the population reported is the whole resident population,
+#   not the 25+ subset the exposure stage estimates on.
+#
+#   Two density rows, because they answer different questions: the total density divides
+#   the band's population by its total land area, while the average density is the mean of
+#   the units' own densities and so reflects how concentrated the typical unit is. The
+#   published version of this table computed the second as total population times the mean
+#   of 1/area, which is not a density and grows with the number of units; this returns
+#   mean(population / area).
+#
+#' @Written_on : August 2026
+#' @Written_by : Marcos Paulo
+# --------------------------------------------------------------------------------------------
+compute_distance_band_summary <- function(dist_pq, census_path, area_dt, city,
+                                          unit_label, share_vars, mean_vars,
+                                          educ_col = "educ_years",
+                                          radii_km = c(1, 3, 5, 10, 20)) {
+
+  keep_cols <- unique(c("geo_id", "person_weight", educ_col,
+                        unname(share_vars), unname(mean_vars)))
+
+  census <- data.table::as.data.table(
+    arrow::read_parquet(census_path, col_select = dplyr::all_of(keep_cols)))
+  census[, geo_id := safe_chr(geo_id)]
+  census <- census[!is.na(person_weight) & person_weight > 0]
+
+  dist <- data.table::as.data.table(arrow::read_parquet(dist_pq))
+  dist[, geo_id := safe_chr(geo_id)]
+
+  # One distance per unit: how far its residents are from any monitoring at all.
+  nearest <- dist[!is.na(distance_km),
+                  .(distance_nearest_km = min(distance_km)), by = geo_id]
+  nearest[, geo_id := reconcile_geo_ids(geo_id, census$geo_id, label = city)]
+
+  # Unit-level aggregates, computed once and then subset per band.
+  unit <- census[, .(population = sum(person_weight),
+                     educ_weight = sum(person_weight[!is.na(get(educ_col))]),
+                     educ_sum = sum(person_weight * get(educ_col), na.rm = TRUE)),
+                 by = geo_id]
+  unit[, education_mean := data.table::fifelse(educ_weight > 0,
+                                               educ_sum / educ_weight, NA_real_)]
+
+  unit <- merge(unit, nearest, by = "geo_id", all.x = TRUE)
+  unit <- merge(unit, area_dt, by = "geo_id", all.x = TRUE)
+
+  out <- vector("list", length(radii_km) + 1L)
+  bands <- c("All", paste0("Within ", radii_km, " km"))
+  total_population <- sum(unit$population)
+
+  for (i in seq_along(bands)) {
+    ids <- if (i == 1L) unit$geo_id else
+      unit[!is.na(distance_nearest_km) & distance_nearest_km <= radii_km[i - 1L], geo_id]
+
+    unit_i <- unit[geo_id %in% ids]
+    ppl_i  <- census[geo_id %in% ids]
+
+    rows <- data.table::data.table(
+      statistic = c(paste("Number of", unit_label), "Population"),
+      value     = c(nrow(unit_i), sum(unit_i$population)))
+
+    # Counts are whole units; the population also carries its share of the metro total.
+    # The percent sign is left unescaped here and escaped by the LaTeX writer.
+    rows[, value_label := format(round(value), big.mark = ",", trim = TRUE)]
+    rows[statistic == "Population",
+         value_label := sprintf("%s (%.2f%%)", value_label,
+                                100 * value / total_population)]
+
+    for (lab in names(share_vars)) {
+      col <- share_vars[[lab]]
+      rows <- rbind(rows, data.table::data.table(
+        statistic = lab,
+        value = stats::weighted.mean(ppl_i[[col]], ppl_i$person_weight, na.rm = TRUE),
+        value_label = NA_character_), fill = TRUE)
+    }
+
+    for (lab in names(mean_vars)) {
+      col <- mean_vars[[lab]]
+      ok  <- !is.na(ppl_i[[col]])
+      rows <- rbind(rows, data.table::data.table(
+        statistic = lab,
+        value = stats::weighted.mean(ppl_i[[col]][ok], ppl_i$person_weight[ok]),
+        value_label = NA_character_), fill = TRUE)
+    }
+
+    edu_range <- range(unit_i$education_mean, na.rm = TRUE)
+    area_sum  <- sum(unit_i$area_km2, na.rm = TRUE)
+    dens_unit <- unit_i[!is.na(area_km2) & area_km2 > 0, population / area_km2]
+
+    rows <- rbind(rows, data.table::data.table(
+      statistic = c("Range years of schooling",
+                    "Total population density (pop/km2)",
+                    "Average population density (pop/km2)"),
+      value = c(NA_real_, sum(unit_i$population) / area_sum, mean(dens_unit)),
+      value_label = c(sprintf("[%.3f, %.3f]", edu_range[1], edu_range[2]),
+                      NA_character_, NA_character_)), fill = TRUE)
+
+    rows[, band := bands[i]]
+    out[[i]] <- rows
+  }
+
+  res <- data.table::rbindlist(out)
+  res[, city := city]
+  res[is.na(value_label), value_label := format(round(value, 3), big.mark = ",",
+                                                trim = TRUE)]
+
+  res[, .(city, band, statistic, value, value_label)]
 }
