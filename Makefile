@@ -9,7 +9,7 @@
 #
 # Usage:
 #   make                 # build the analysis: process -> distances -> outliers -> exposure
-#                        #                      -> descriptives -> figures + tables
+#                        #                      -> descriptives + scatter -> figures + tables
 #   make process         # run a single stage (and anything it depends on)
 #   make DOCKER=1        # run every recipe inside the compose "analysis" service
 #   make download        # large, credential-gated raw pulls (never part of `make all`)
@@ -36,7 +36,7 @@ SRC := $(shell find src -name '*.R')
 
 # ---- Phony convenience targets -------------------------------------------------------------
 .PHONY: all download process merra2 distances outliers exposure descriptives \
-        figures tables validate clean help
+        scatter imputed figures tables validate clean help
 
 all: figures tables
 
@@ -81,19 +81,46 @@ $(STAMP)/exposure.stamp: scripts/process_data/estimate_idw.R \
 #    summary. Needs the cleaned panels, the distance matrices and the processed census.
 descriptives: $(STAMP)/descriptives.stamp
 $(STAMP)/descriptives.stamp: scripts/process_data/compute_descriptive_tables.R \
+                             scripts/process_data/compute_distance_band_descriptives.R \
                              $(STAMP)/distances.stamp $(STAMP)/outliers.stamp
 	$(RUN) scripts/process_data/compute_descriptive_tables.R
+	$(RUN) scripts/process_data/compute_distance_band_descriptives.R
+	touch $@
+
+# 5b. Station-level socioeconomic inputs. plot_station_monitoring_figures.R reads these,
+#     so `figures` depends on this target rather than on whatever is left on disk.
+scatter: $(STAMP)/scatter.stamp
+$(STAMP)/scatter.stamp: scripts/process_data/compute_station_scatter_inputs.R \
+                        $(STAMP)/outliers.stamp
+	$(RUN) scripts/process_data/compute_station_scatter_inputs.R
+	touch $@
+
+# 5c. Imputed panels for the robustness specification, plus the fitted values its
+#     diagnostics figures plot. One OLS per station, so this is the slow descriptive step.
+imputed: $(STAMP)/imputed.stamp
+$(STAMP)/imputed.stamp: scripts/process_data/impute_missing_hourly.R \
+                        scripts/process_data/estimate_exposure_imputed.R \
+                        $(STAMP)/outliers.stamp $(STAMP)/distances.stamp
+	$(RUN) scripts/process_data/impute_missing_hourly.R
+	$(RUN) scripts/process_data/estimate_exposure_imputed.R
 	touch $@
 
 # 6. Publication artefacts. Read only from data/processed; regenerate on demand (phony).
-figures: exposure
+figures: exposure scatter imputed
 	$(RUN) scripts/tables_images/generate_exposure_plots.R
-	$(RUN) scripts/tables_images/figure_exposure_by_quintile.R
+	$(RUN) scripts/tables_images/figure_imputation_diagnostics.R
 	$(RUN) scripts/tables_images/plot_station_monitoring_figures.R
+	$(RUN) scripts/tables_images/figure_station_scatter.R
+	$(RUN) scripts/tables_images/figure_population_density_maps.R
+	$(RUN) scripts/tables_images/figure_pollution_quintile_maps.R
 	$(RUN) scripts/tables_images/figure_kernel_distributions.R
+	$(RUN) scripts/tables_images/figure_quintile_kernel_distributions.R
+	$(RUN) scripts/tables_images/figure_study_area_maps.R
 
 tables: exposure descriptives
-	$(RUN) scripts/tables_images/render_paper_tables.R
+	$(RUN) scripts/tables_images/render_station_tables.R
+	$(RUN) scripts/tables_images/render_missing_tables.R
+	$(RUN) scripts/tables_images/render_census_tables.R
 
 # MERRA-2 satellite track: independent of the station pipeline above, so it is not a
 # prerequisite of `all`. generate_panel_air_quality.R is the slow .nc4 step.
@@ -121,7 +148,8 @@ clean:
 	rm -rf $(STAMP)
 
 help:
-	@echo "Targets: all process distances outliers exposure descriptives figures tables"
+	@echo "Targets: all process distances outliers exposure descriptives scatter"
+	@echo "         imputed figures tables"
 	@echo "         merra2 download validate clean"
 	@echo "Add DOCKER=1 to run each step inside the compose \"analysis\" service."
 

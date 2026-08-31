@@ -50,11 +50,16 @@ src/                 Functions (logic). Sourced, never run directly.
 scripts/             Execution. Each script sources the src/ it needs, then runs.
   download_data/      Pull raw inputs (APIs, Selenium, Earthdata)
   process_data/       raw -> interim -> processed
-  tables_images/      processed -> results/figures, results/tables
+  tables_images/      processed -> results/paper (manuscript), results/figures, results/tables
   validation_old_version/  Legacy comparison + Quarto reports
   run_pipeline.R      Master orchestrator, and the only record of run order
 data/                raw/ interim/ processed/ downloads/ _legacy/   (all git-ignored)
-results/             figures/ tables/ validation_old_version/
+results/
+  paper/              Exactly what the manuscript prints: figures/ + tables/, copied to
+                      Overleaf as-is. A cited figure lives here and nowhere else.
+  figures/ tables/    The repo's own working artefacts (5 km robustness, companions,
+                      diagnostics) — never cited by the paper.
+  validation_old_version/
 ```
 
 Scripts are named for what they produce, never numbered: the run order lives in
