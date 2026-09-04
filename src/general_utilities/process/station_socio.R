@@ -603,3 +603,101 @@ build_station_scatter_inputs <- function(
   
   return(invisible(out))
 }
+
+
+# --------------------------------------------------------------------------------------------
+# Function: compute_threshold_exceedance_days
+#
+#' @param arrow_dir   string; path to a city's cleaned hourly Arrow dataset.
+#' @param city_label  string; city name stamped on every row of the output.
+#' @param year_filter integer; year to keep. Default 2023.
+#' @param pollutants  character vector; pollutants to summarise. Default pm10/pm25.
+#' @param who_it      list; per-pollutant IT1/IT2 thresholds in ug/m3.
+#
+#' @return  data.table, one row per city x series x pollutant x threshold, with
+#           days_ge1, days_ge2 and mean_hours (hours per exceeding day).
+#
+#' @details
+#   The appendix's two threshold tables in one pass, because both read the same daily
+#   exceedance counts. An hour counts as exceeding when the reading is at or above the
+#   24-hour interim target, the same proxy for an hourly extreme the IDW step uses.
+#
+#   Two series are reported because they answer different questions. The city-hour series
+#   averages the reporting stations within each hour first, so it describes the metro area
+#   as a whole and a local spike is diluted. The station-hour series keeps stations apart,
+#   so a day counts when any single station exceeds; it describes what the worst-off
+#   neighbourhood experienced. The published numbers differ by an order of magnitude
+#   between the two, which is the point of printing both.
+#
+#   mean_hours is conditional on exceedance: the mean of the exceeding-hour count over the
+#   days (city-hour) or station-days (station-hour) that had at least one such hour. It is
+#   NA when nothing exceeded, which is a real result, not a missing value.
+#
+#   Outlier-flagged readings are already NA in the cleaned panels, so no extra filter is
+#   applied here; dropping NA is enough.
+#
+#' @Written_on : September 2026
+#' @Written_by : Marcos Paulo
+# --------------------------------------------------------------------------------------------
+compute_threshold_exceedance_days <- function(
+    arrow_dir,
+    city_label,
+    year_filter = 2023L,
+    pollutants  = c("pm10", "pm25"),
+    who_it      = list(
+      pm10 = c(it1 = 150, it2 = 100),
+      pm25 = c(it1 = 75,  it2 = 50)
+    )
+) {
+
+  if (!dir.exists(arrow_dir)) stop("`arrow_dir` not found: ", arrow_dir)
+
+  # Read one year of station-hour readings and date them; the date is the unit both
+  # series count days over.
+  dt <- arrow::open_dataset(arrow_dir) |>
+    dplyr::filter(year == year_filter) |>
+    dplyr::select(dplyr::all_of(c("station", "datetime", pollutants))) |>
+    dplyr::collect() |>
+    data.table::as.data.table()
+
+  dt[, date := as.Date(datetime)]
+
+  out <- list()
+
+  for (poll in pollutants) {
+    # The city-hour series collapses the stations reporting in each hour to one value.
+    city_hours <- dt[!is.na(get(poll)),
+                     .(value = mean(get(poll))), by = .(date, datetime)]
+
+    for (it in names(who_it[[poll]])) {
+      cut_off <- who_it[[poll]][[it]]
+
+      # City-hour: exceeding hours per day, then days at or above each hour count.
+      per_day <- city_hours[value >= cut_off, .(n_hours = .N), by = date]
+
+      # Station-hour: exceeding hours per station-day, so one station can carry a day.
+      per_station_day <- dt[!is.na(get(poll)) & get(poll) >= cut_off,
+                            .(n_hours = .N), by = .(station, date)]
+
+      out[[length(out) + 1L]] <- data.table::rbindlist(list(
+        data.table::data.table(
+          series     = "city_hour",
+          days_ge1   = per_day[n_hours >= 1L, .N],
+          days_ge2   = per_day[n_hours >= 2L, .N],
+          mean_hours = if (nrow(per_day) == 0L) NA_real_ else mean(per_day$n_hours)),
+        data.table::data.table(
+          series     = "station_hour",
+          days_ge1   = per_station_day[n_hours >= 1L, unique(date)] |> length(),
+          days_ge2   = per_station_day[n_hours >= 2L, unique(date)] |> length(),
+          mean_hours = if (nrow(per_station_day) == 0L) NA_real_ else
+            mean(per_station_day$n_hours))
+      ))[, `:=`(city = city_label, year = year_filter,
+                pollutant = poll, threshold = it)]
+    }
+  }
+
+  data.table::setcolorder(
+    data.table::rbindlist(out),
+    c("city", "year", "series", "pollutant", "threshold",
+      "days_ge1", "days_ge2", "mean_hours"))
+}
