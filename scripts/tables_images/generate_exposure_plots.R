@@ -76,6 +76,10 @@ summary_edu_5km <- data.table::as.data.table(arrow::read_parquet(summary_edu_5km
 ci_education      <- rbind(ci_edu_3km, ci_edu_5km)
 summary_education <- rbind(summary_edu_3km, summary_edu_5km)
 
+# The regressions also cover the annual means, which only render_exposure_tables.R
+# reports. Drop those rows so the CI figure family stays the two exceedance outcomes.
+ci_education <- ci_education[outcome != "avg"]
+
 # Income artifacts cover only CDMX and Sao Paulo, so they are optional
 has_income <- all(file.exists(ci_inc_3km_pq), file.exists(ci_inc_5km_pq),
                   file.exists(summary_inc_3km_pq), file.exists(summary_inc_5km_pq))
@@ -85,7 +89,7 @@ if (has_income) {
   summary_inc_3km <- data.table::as.data.table(arrow::read_parquet(summary_inc_3km_pq))
   summary_inc_5km <- data.table::as.data.table(arrow::read_parquet(summary_inc_5km_pq))
 
-  ci_income      <- rbind(ci_inc_3km, ci_inc_5km)
+  ci_income      <- rbind(ci_inc_3km, ci_inc_5km)[outcome != "avg"]
   summary_income <- rbind(summary_inc_3km, summary_inc_5km)
 }
 
@@ -174,7 +178,8 @@ ci_imp_pq  <- here::here(dir_reg_imp, "exposure_ci_estimates_education_3km_2023.
 sum_imp_pq <- here::here(dir_reg_imp,
                          "exposure_group_summaries_education_3km_2023.parquet")
 
-ci_imputed      <- data.table::as.data.table(arrow::read_parquet(ci_imp_pq))
+ci_imputed      <- data.table::as.data.table(arrow::read_parquet(ci_imp_pq))[
+  outcome != "avg"]
 summary_imputed <- data.table::as.data.table(arrow::read_parquet(sum_imp_pq))
 
 plots_ci_imp  <- build_exposure_ci_figures(ci_imputed, "education",
