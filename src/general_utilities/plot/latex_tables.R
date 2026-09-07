@@ -12,15 +12,17 @@
 #   2. table_who_exceedances
 #   3. table_stations_by_pollutant
 #   4. table_missing_by_dimension
-#   5. write_exposure_summary_table_tex
+#   5. latex_exposure_means_by_group
 #   6. plot_missing_heatmap
 #   7. write_station_count_latex
 #   8. latex_missing_by_quintile
 #   9. latex_census_summary
 #  10. render_missing_dimension_table
 #  11. latex_distance_band_table
+#  12. latex_exposure_hours_by_group
+#  13. latex_threshold_exceedance_table
 #
-#' @Date: August 2026
+#' @Date: September 2026
 #' @Author: Marcos Paulo
 # ============================================================================================
 
@@ -411,77 +413,170 @@ table_missing_by_dimension <- function(
 
 
 # --------------------------------------------------------------------------------------------
-# Function: write_exposure_summary_table_tex
+# Function: latex_exposure_means_by_group
 #
-#' @param summary_dt data.table; output from compute_exposure_group_summaries().
-#' @param out_path  string; path to save .tex table.
-#' @param digits    integer; number of decimal places. Default 2.
-#' @param caption   string; LaTeX table caption.
-#' @param label     string; LaTeX table label.
+#' @param summary_dt data.table; exposure_group_summaries_* from estimate_exposure.R.
+#' @param ci_dt      data.table; exposure_ci_estimates_* from the same run.
+#' @param panel_cities character; cities to print, in panel order (the `city` values).
+#' @param panel_labels named character; city -> panel heading. Defaults to the city value,
+#                      which is the artefact's internal name ("CDMX"), not the paper's.
+#' @param n_groups   integer; widest group count across the panels, 5 or 10.
+#' @param digits     integer; decimal places for the concentrations. Default 2.
 #
-#' @return  Invisibly returns out_path.
+#' @return  character vector; a bare LaTeX tabular, ready for writeLines().
 #
 #' @details
-#   Writes a compact LaTeX table with weighted means and medians by group.
+#   The appendix's "mean and median concentration by group" table: one city panel per
+#   entry of panel_cities, four value rows per panel (PM10 mean/median, PM2.5 mean/median)
+#   and two p-value rows. Groups run across the columns.
 #
-#' @Written_by: Marcos Paulo
+#   The p-value tests the lowest group against the top group, which is the omitted
+#   reference of the exposure regression, so it is read off that regression's coefficient
+#   rather than recomputed: p = 2 * pt(-|estimate / std_error|, df = n_clusters - 1). The
+#   t(G-1) reference distribution matches the one the confidence intervals already use.
+#   Cities whose panel has fewer groups than n_groups leave the surplus cells blank, which
+#   is what lets CDMX's income quintiles and Sao Paulo's income deciles share one tabular.
+#
+#' @Written_on : September 2026
+#' @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------------
-write_exposure_summary_table_tex <- function(
-    summary_dt,
-    out_path,
-    digits  = 2,
-    caption = "Exposure summary by socioeconomic group",
-    label   = "tab:exposure_summary"
-) {
-  
-  dt <- data.table::copy(data.table::as.data.table(summary_dt))
-  
-  req_cols <- c("outcome", "pollutant", "group", "weighted_mean",
-                "weighted_median")
-  miss_cols <- setdiff(req_cols, names(dt))
-  
-  if (length(miss_cols) > 0L) {
-    stop("Missing columns: ", paste(miss_cols, collapse = ", "))
+latex_exposure_means_by_group <- function(summary_dt, ci_dt, panel_cities,
+                                          panel_labels = NULL,
+                                          n_groups = 5L, digits = 2L) {
+  means <- data.table::as.data.table(summary_dt)[outcome == "avg"]
+  ci    <- data.table::as.data.table(ci_dt)[outcome == "avg" & group == 1]
+
+  if (is.null(panel_labels)) panel_labels <- stats::setNames(panel_cities, panel_cities)
+
+  groups <- seq_len(n_groups)
+  col_spec <- paste0("l", strrep("r", n_groups))
+
+  header <- c(
+    paste0("\\begin{tabular}{", col_spec, "}"),
+    "    \\toprule",
+    "    \\toprule",
+    paste0("    Group & ", paste(groups, collapse = " & "), " \\\\"),
+    "    \\midrule")
+
+  # One row of the panel: a statistic for one pollutant, across the group columns.
+  value_row <- function(sub, poll, stat_col, label) {
+    vals <- vapply(groups, function(g) {
+      v <- sub[pollutant == poll & group == g, get(stat_col)]
+      if (length(v) == 0L || is.na(v[1])) "" else formatC(v[1], format = "f",
+                                                          digits = digits)
+    }, character(1))
+    paste0("    ", label, " & ", paste(vals, collapse = " & "), " \\\\")
   }
-  
-  dir.create(dirname(out_path), recursive = TRUE, showWarnings = FALSE)
-  
-  dt[, weighted_mean := round(weighted_mean, digits)]
-  dt[, weighted_median := round(weighted_median, digits)]
-  
-  lines <- c(
-    "\\begin{table}[!htbp]",
-    "\\centering",
-    paste0("\\caption{", caption, "}"),
-    paste0("\\label{", label, "}"),
-    "\\begin{tabular}{llrrr}",
-    "\\toprule",
-    "Outcome & Pollutant & Group & Mean & Median \\\\",
-    "\\midrule"
-  )
-  
-  body <- dt[
-    ,
-    sprintf(
-      "%s & %s & %s & %s & %s \\\\",
-      outcome,
-      pollutant,
-      group,
-      format(weighted_mean, nsmall = digits),
-      format(weighted_median, nsmall = digits)
-    )
-  ]
-  
-  lines <- c(
-    lines,
-    body,
-    "\\bottomrule",
-    "\\end{tabular}",
-    "\\end{table}"
-  )
-  
-  writeLines(lines, out_path)
-  invisible(out_path)
+
+  body <- character(0)
+
+  for (i in seq_along(panel_cities)) {
+    city_i <- panel_cities[i]
+    sub    <- means[city == city_i]
+
+    if (nrow(sub) == 0L) stop("No exposure summary rows for city: ", city_i)
+
+    body <- c(body,
+              sprintf("    \\multicolumn{%d}{l}{\\textbf{Panel %s. %s}} \\\\",
+                      n_groups + 1L, LETTERS[i], latex_escape(panel_labels[[city_i]])),
+              "    \\midrule",
+              value_row(sub, "pm10", "weighted_mean",   "$PM_{10}$ Mean"),
+              value_row(sub, "pm10", "weighted_median", "$PM_{10}$ Median"),
+              value_row(sub, "pm25", "weighted_mean",   "$PM_{2.5}$ Mean"),
+              value_row(sub, "pm25", "weighted_median", "$PM_{2.5}$ Median"))
+
+    # The lowest-vs-top-group test, one row per pollutant; blank where not estimated.
+    for (poll in c("pm10", "pm25")) {
+      est <- ci[city == city_i & pollutant == poll]
+      lab <- if (poll == "pm10") "$PM_{10}$" else "$PM_{2.5}$"
+
+      p_cell <- if (nrow(est) == 0L || is.na(est$std_error[1]) ||
+                    est$std_error[1] <= 0) {
+        ""
+      } else {
+        formatC(2 * stats::pt(-abs(est$estimate[1] / est$std_error[1]),
+                              df = est$n_clusters[1] - 1L),
+                format = "f", digits = 2L)
+      }
+
+      body <- c(body, paste0(
+        "    P-value (lowest vs. top group, ", lab, ") & ", p_cell,
+        strrep(" & ", n_groups - 1L), " \\\\"))
+    }
+
+    if (i < length(panel_cities)) body <- c(body, "    \\midrule")
+  }
+
+  c(header, body, "    \\bottomrule", "    \\bottomrule", "\\end{tabular}")
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: latex_exposure_hours_by_group
+#
+#' @param summary_dt data.table; exposure_group_summaries_* from estimate_exposure.R.
+#' @param panel_cities character; cities to print, in panel order (the `city` values).
+#' @param panel_labels named character; city -> panel heading. Defaults to the city value,
+#                      which is the artefact's internal name ("CDMX"), not the paper's.
+#
+#' @return  character vector; a bare LaTeX tabular, ready for writeLines().
+#
+#' @details
+#   The appendix's "average hours above IT1 and IT2 by group" table. Groups run down the
+#   rows here rather than across the columns, so panels with different group counts need
+#   no padding: CDMX prints five income rows and Sao Paulo ten. The four value columns are
+#   IT1 PM10/PM2.5 then IT2 PM10/PM2.5, taken from the weighted means of the hrs_d_it1 and
+#   hrs_d_it2 outcomes.
+#
+#' @Written_on : September 2026
+#' @Written_by : Marcos Paulo
+# --------------------------------------------------------------------------------------------
+latex_exposure_hours_by_group <- function(summary_dt, panel_cities,
+                                          panel_labels = NULL) {
+  dt <- data.table::as.data.table(summary_dt)[outcome %in% c("hrs_d_it1", "hrs_d_it2")]
+
+  if (is.null(panel_labels)) panel_labels <- stats::setNames(panel_cities, panel_cities)
+
+  header <- c(
+    "\\begin{tabular}{lcc|cc}",
+    "    \\toprule",
+    "    \\toprule",
+    paste0("    Group & \\multicolumn{2}{c|}{Average hours $\\geq$ IT1} & ",
+           "\\multicolumn{2}{c}{Average hours $\\geq$ IT2} \\\\"),
+    "    & $PM_{10}$ & $PM_{2.5}$ & $PM_{10}$ & $PM_{2.5}$ \\\\",
+    "    \\midrule")
+
+  body <- character(0)
+
+  for (i in seq_along(panel_cities)) {
+    city_i <- panel_cities[i]
+    sub    <- dt[city == city_i]
+
+    if (nrow(sub) == 0L) stop("No exposure summary rows for city: ", city_i)
+
+    body <- c(body,
+              sprintf("    \\multicolumn{5}{l}{\\textbf{Panel %s. %s}} \\\\",
+                      LETTERS[i], latex_escape(panel_labels[[city_i]])),
+              "    \\midrule")
+
+    # Each city prints as many group rows as its own regression estimated.
+    for (g in sort(unique(sub$group))) {
+      vals <- vapply(
+        list(c("hrs_d_it1", "pm10"), c("hrs_d_it1", "pm25"),
+             c("hrs_d_it2", "pm10"), c("hrs_d_it2", "pm25")),
+        function(k) {
+          v <- sub[outcome == k[1] & pollutant == k[2] & group == g, weighted_mean]
+          if (length(v) == 0L || is.na(v[1])) "" else formatC(v[1], format = "f",
+                                                              digits = 2L)
+        }, character(1))
+
+      body <- c(body, paste0("    ", g, " & ", paste(vals, collapse = " & "), " \\\\"))
+    }
+
+    if (i < length(panel_cities)) body <- c(body, "    \\midrule")
+  }
+
+  c(header, body, "    \\bottomrule", "    \\bottomrule", "\\end{tabular}")
 }
 
 
@@ -595,7 +690,6 @@ plot_missing_heatmap <- function(
 #
 #' @param station_counts data.table with columns city, pm10, pm25.
 #' @param out_file      string; destination .tex path.
-#' @param table_size    string; LaTeX size macro. Default "\\tiny".
 #
 #' @return  invisible out_file. Writes a three-column city/PM10/PM2.5 table.
 #
@@ -607,41 +701,37 @@ plot_missing_heatmap <- function(
 #   The two header rows previously ended in a single backslash, which LaTeX reads as
 #   escaping
 #   the newline rather than ending the row; both now emit the required double backslash.
+#   Emits a bare tabular, like the census and distance-band producers, so the manuscript
+#   supplies the float, caption and label. The former \begin{center} + \tiny wrapper and
+#   the \multicolumn{2} banner (which spanned two of three columns) are gone: the banner
+#   duplicated the caption and made the header row invalid.
 #
 #' @Written_by : Marcos Paulo
-#' @Updated_on : August 2026
+#' @Updated_on : September 2026
 # --------------------------------------------------------------------------------------------
-write_station_count_latex <- function(station_counts,
-                                       out_file,
-                                       table_size = "\\tiny") {
+write_station_count_latex <- function(station_counts, out_file) {
   station_counts <- data.table::copy(station_counts)
-  
+
   lines_body <- apply(station_counts, 1, function(x) {
     paste0("  ", x[["city"]], " &  ", x[["pm10"]], " &  ",
            x[["pm25"]], " \\\\ ")
   })
-  
+
   latex_lines <- c(
-    "\\vspace{0.1cm}",
-    "\\begin{center}",
-    table_size,
     "\\begin{tabular}{lcc}",
     "\\toprule",
     "\\toprule",
-    "\\multicolumn{2}{c}{\\textbf{Number of monitoring stations}} \\\\",
-    "\\cmidrule{2-3}",
     "\\textbf{City} & $PM_{10}$ & $PM_{2.5}$ \\\\",
     "\\midrule",
     lines_body,
     "\\bottomrule",
     "\\bottomrule",
-    "\\end{tabular}",
-    "\\end{center}"
+    "\\end{tabular}"
   )
-  
+
   dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
   writeLines(latex_lines, out_file, useBytes = TRUE)
-  
+
   invisible(out_file)
 }
 
@@ -892,6 +982,110 @@ latex_distance_band_table <- function(bands_dt, panel_cities) {
     }
 
     if (i < length(panel_cities)) body <- c(body, "    \\midrule")
+  }
+
+  c(header, body, "    \\bottomrule", "    \\bottomrule", "\\end{tabular}")
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: latex_threshold_exceedance_table
+#
+#' @param exceed_dt data.table; compute_threshold_exceedance_days() stacked across cities.
+#' @param measure   string; "days" for the day counts, "hours" for the mean hours per
+#                    exceeding day.
+#' @param city_order character; cities in the order the manuscript prints them.
+#
+#' @return  character vector; a bare LaTeX tabular, ready for writeLines().
+#
+#' @details
+#   Both appendix threshold tables come off the same artefact, so one emitter serves them
+#   and they cannot fall out of step. measure = "days" prints eight columns -- at least
+#   one
+#   and at least two hours, for IT1 and IT2, for each pollutant -- and measure = "hours"
+#   prints four, the mean exceeding hours per exceeding day. Each has a city-hour panel
+#   and
+#   a station-hour panel, in that order.
+#
+#   An empty cell in the hours table means nothing exceeded that threshold, so no
+#   conditional mean exists; it is a result, not a gap.
+#
+#' @Written_on : September 2026
+#' @Written_by : Marcos Paulo
+# --------------------------------------------------------------------------------------------
+latex_threshold_exceedance_table <- function(exceed_dt, measure = c("days", "hours"),
+                                             city_order = c("Bogota", "Santiago",
+                                                            "Mexico City",
+                                                            "Sao Paulo")) {
+  measure <- match.arg(measure)
+  dt      <- data.table::as.data.table(exceed_dt)
+
+  series_panels <- c(city_hour = "Panel a. City-hour series",
+                     station_hour = "Panel b. Station-hour series")
+
+  if (measure == "days") {
+    # Column key: one (column, pollutant, threshold, statistic) tuple per value column.
+    keys <- list(c("pm10", "it1", "days_ge1"), c("pm10", "it2", "days_ge1"),
+                 c("pm10", "it1", "days_ge2"), c("pm10", "it2", "days_ge2"),
+                 c("pm25", "it1", "days_ge1"), c("pm25", "it2", "days_ge1"),
+                 c("pm25", "it1", "days_ge2"), c("pm25", "it2", "days_ge2"))
+
+    header <- c(
+      "\\begin{tabular}{lcccc|cccc}",
+      "    \\toprule",
+      "    \\toprule",
+      paste0("     & \\multicolumn{2}{c}{At least 1 hour} & ",
+             "\\multicolumn{2}{c}{At least 2 hours} & ",
+             "\\multicolumn{2}{c}{At least 1 hour} & ",
+             "\\multicolumn{2}{c}{At least 2 hours} \\\\"),
+      paste0("    City & IT1 PM10 & IT2 PM10 & IT1 PM10 & IT2 PM10 & ",
+             "IT1 PM2.5 & IT2 PM2.5 & IT1 PM2.5 & IT2 PM2.5 \\\\"),
+      "    \\midrule")
+
+    n_col <- 9L
+  } else {
+    keys <- list(c("pm10", "it1", "mean_hours"), c("pm10", "it2", "mean_hours"),
+                 c("pm25", "it1", "mean_hours"), c("pm25", "it2", "mean_hours"))
+
+    header <- c(
+      "\\begin{tabular}{lcccc}",
+      "    \\toprule",
+      "    \\toprule",
+      "     & \\multicolumn{4}{c}{Average hours above:} \\\\",
+      "    City & IT1 PM10 & IT2 PM10 & IT1 PM2.5 & IT2 PM2.5 \\\\",
+      "    \\midrule")
+
+    n_col <- 5L
+  }
+
+  body <- character(0)
+
+  for (s in names(series_panels)) {
+    body <- c(body, sprintf("    \\multicolumn{%d}{l}{\\textit{%s}} \\\\",
+                            n_col, series_panels[[s]]),
+              "    \\midrule")
+
+    for (city_i in city_order) {
+      sub <- dt[city == city_i & series == s]
+
+      if (nrow(sub) == 0L) stop("No exceedance rows for city: ", city_i)
+
+      vals <- vapply(keys, function(k) {
+        v <- sub[pollutant == k[1] & threshold == k[2], get(k[3])]
+        if (length(v) == 0L || is.na(v[1])) {
+          ""
+        } else if (measure == "days") {
+          format(as.integer(v[1]), big.mark = ",")
+        } else {
+          formatC(v[1], format = "f", digits = 2L)
+        }
+      }, character(1))
+
+      body <- c(body, paste0("    ", latex_escape(city_i), " & ",
+                             paste(vals, collapse = " & "), " \\\\"))
+    }
+
+    if (s == "city_hour") body <- c(body, "    \\midrule")
   }
 
   c(header, body, "    \\bottomrule", "    \\bottomrule", "\\end{tabular}")
