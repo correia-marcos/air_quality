@@ -26,6 +26,7 @@ source(here::here("src", "general_utilities", "config_utils_plot_tables.R"))
 # Define input and output folders
 dir_missing        <- here::here("data", "processed", "missing_proportions")
 outdir_missing_tex <- here::here("results", "tables", "missing_proportions")
+outdir_paper       <- here::here("results", "paper", "tables")
 
 analysis_year <- 2023L
 
@@ -81,6 +82,12 @@ for (dim in missing_dims) {
 tex_quintile <- file.path(outdir_missing_tex,
                           paste0("missing_by_education_quintile_", analysis_year, ".tex"))
 writeLines(latex_missing_by_quintile(missing_by_quintile), tex_quintile)
+
+# The manuscript prints this one, so it also goes to the paper tree under the same name.
+dir.create(outdir_paper, recursive = TRUE, showWarnings = FALSE)
+writeLines(latex_missing_by_quintile(missing_by_quintile),
+           file.path(outdir_paper,
+                     paste0("missing_by_education_quintile_", analysis_year, ".tex")))
 
 # ============================================================================================
 # III: Report

@@ -17,6 +17,7 @@
 #   II.  Missing proportions by station, month, hour and day of week (raw and cleaned).
 #   III. Station counts by pollutant.
 #   IV.  WHO exceedance factors.
+#   IVb. Days and hours above the WHO interim targets, city-hour and station-hour.
 #   V.   Data availability by education quintile.
 #   VI.  Census summary.
 #
@@ -40,6 +41,7 @@ outdir_missing  <- here::here("data", "processed", "missing_proportions")
 outdir_counts   <- here::here("data", "processed", "station_counts")
 outdir_who      <- here::here("data", "processed", "who_exceedances")
 outdir_census   <- here::here("data", "processed", "census_summary")
+outdir_exceed   <- here::here("data", "processed", "threshold_exceedances")
 
 # Analysis options. "available" reports non-missing shares, "missing" the complement.
 analysis_year <- 2023L
@@ -234,6 +236,35 @@ save_raw_data_tidy_formatted(
   write_rds     = FALSE,
   write_parquet = TRUE,
   write_csv_gz  = FALSE)
+
+# ============================================================================================
+# IVb: Days and hours above the WHO interim targets
+# ============================================================================================
+dir.create(outdir_exceed, recursive = TRUE, showWarnings = FALSE)
+
+# Two series per city: the metro average hour by hour, and the individual stations. The
+# gap between them is how much a city-wide average hides a local spike.
+exceed_bogota <- compute_threshold_exceedance_days(
+  arrow_dir = clean_bogota, city_label = "Bogota", year_filter = analysis_year,
+  pollutants = pollutants)
+
+exceed_santiago <- compute_threshold_exceedance_days(
+  arrow_dir = clean_santiago, city_label = "Santiago", year_filter = analysis_year,
+  pollutants = pollutants)
+
+exceed_cdmx <- compute_threshold_exceedance_days(
+  arrow_dir = clean_cdmx, city_label = "Mexico City", year_filter = analysis_year,
+  pollutants = pollutants)
+
+exceed_sp <- compute_threshold_exceedance_days(
+  arrow_dir = clean_sp, city_label = "Sao Paulo", year_filter = analysis_year,
+  pollutants = pollutants)
+
+threshold_exceedances <- data.table::rbindlist(
+  list(exceed_bogota, exceed_santiago, exceed_cdmx, exceed_sp))
+
+save_table_parquet_csv(threshold_exceedances, outdir_exceed,
+                       paste0("days_and_hours_", analysis_year))
 
 # ============================================================================================
 # V: Data availability by education quintile
