@@ -802,7 +802,8 @@ read_idw_artifact <- function(dir_idw, city_id, what, buffer_km = NULL, suffix =
 #' @param summary_pattern string; regex selecting summary outcome columns. Default
 #                       "^(avg|hrs_d)_" (means and exceedance hours).
 #' @param ci_pattern    string; regex selecting regression outcome columns. Default
-#                       "^hrs_d_.*_it[12]$" (IT1/IT2 exceedance hours only).
+#                       "^(avg_.+|hrs_d_.+_it[12])$" (annual means, plus IT1/IT2
+#                       exceedance hours).
 #' @param conf_level    numeric; confidence level for intervals. Default 0.95.
 #' @param normalized    logical; divide each outcome by the base-group mean.
 #                       Default TRUE.
@@ -825,14 +826,19 @@ read_idw_artifact <- function(dir_idw, city_id, what, buffer_km = NULL, suffix =
 #   calling script states only what actually varies by city -- its data, geography and
 #   grouping -- plus the year and buffer it was built with.
 #
+#   ci_pattern covers the annual means as well as the exceedance hours, because the
+#   appendix's mean-concentration table reports a Q1-vs-Q5 p-value that only the
+#   regression can supply. The figures draw the exceedance outcomes only and filter the
+#   avg rows out themselves; see generate_exposure_plots.R.
+#
 #' @Written_by : Marcos Paulo
-#' @Updated_on : August 2026
+#' @Updated_on : September 2026
 # --------------------------------------------------------------------------------------------
 run_city_exposure <- function(city, city_id, exposure_dt, individual_dt, geo_station_pq,
                               socio_var, group_col, n_groups, year, buffer_km,
                               pollutants      = c("pm10", "pm25"),
                               summary_pattern = "^(avg|hrs_d)_",
-                              ci_pattern      = "^hrs_d_.*_it[12]$",
+                              ci_pattern      = "^(avg_.+|hrs_d_.+_it[12])$",
                               conf_level      = 0.95,
                               normalized      = TRUE,
                               se_type         = "cluster_geo") {
