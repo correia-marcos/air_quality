@@ -4,23 +4,22 @@ What the manuscript needs from the **default pipeline** (`scripts/process_data/`
 `scripts/tables_images/`), and what the pipeline does not answer for. The legacy track is
 mentioned only where it explains why something is absent.
 
-Hand-maintained. Rewritten **31 August 2026** against
-`doc/paper/IDB Discussion Paper March 2025.tex`. Re-check before acting.
+Hand-maintained. Rewritten **31 August 2026**, revised **1 September 2026** against
+`doc/paper/paper_draft_part1.tex`. Re-check before acting.
 
 ## The manuscript's inventory, re-derived
 
 The `.tex` carries **123 distinct `\includegraphics` paths**, of which **117 are active**
-and 6 are commented out, and **4 active `\input` targets** (`table_census_coverage`,
-`table_descriptives_a`, `table_descriptives_b`, `data_appendix`).
-`appendix_distance_computation` is **not** `\input` anywhere, and there is no `\include`.
+and 6 are commented out. `appendix_distance_computation` is **not** `\input` anywhere, and
+there is no `\include`.
 
-**All 117 active figure paths, and all three code-producible `\input` targets, are now
-produced under the name the manuscript cites**, in `results/paper/`. That folder holds
-exactly the manuscript's deliverables and nothing else; `results/figures/` and
-`results/tables/` keep the repo's own working artefacts. Filenames are the manuscript's,
-but the folders are named for what the figures show rather than mirroring the `.tex`, and
-everything is `.pdf`. `results/paper/tex_path_mapping.csv` gives the old and new
-`\includegraphics` argument for all 117 paths, and `update_tex_paths.sh` applies them.
+**The draft has been rewired to `results/paper/`** (1 September 2026). All 117 active
+figure paths now resolve there, and the draft carries **11 `\input` table targets** plus
+`data_appendix`. That folder holds exactly the manuscript's deliverables and nothing else;
+`results/figures/` and `results/tables/` keep the repo's own working artefacts. Filenames
+are the manuscript's, but the folders are named for what the figures show rather than
+mirroring the `.tex`, and everything is `.pdf`. `results/paper/tex_path_mapping.csv` gives
+the old and new `\includegraphics` argument, and `update_tex_paths.sh` applies every row.
 
 Nothing on the figure or table side is outstanding. What remains is in section D: choices
 the code cannot make, and prose that disagrees with what the pipeline now computes.
@@ -37,11 +36,34 @@ interpolation widened past PM.
 
 ## B. Tables
 
-All three targets a script can produce are produced by `render_census_tables.R`:
-`table_census_coverage.tex` (also written under the repo's own
-`census_summary/census_summary_table.tex`) and `table_descriptives_a.tex` /
-`table_descriptives_b.tex`, built from `compute_distance_band_descriptives.R`.
-`data_appendix` is hand-maintained prose and is not a code target.
+**Eleven of the manuscript's twelve tables are now produced by code** and `\input` from
+`results/paper/tables/`. Every fragment is a bare `tabular`; the manuscript keeps its own
+float, caption and label.
+
+| Table | Producer |
+|---|---|
+| `table_census_coverage`, `table_descriptives_a`, `table_descriptives_b` | `render_census_tables.R` |
+| `stations_by_pollutant_2023`, `table_days_above_thresholds`, `table_avg_hours_above_thresholds` | `render_station_tables.R` |
+| `missing_by_education_quintile_2023` | `render_missing_tables.R` |
+| the four exposure-by-group tables | `render_exposure_tables.R` |
+
+The twelfth, the WHO interim-target values, stays hardcoded in the `.tex`: it is a table
+of definitional constants, not a result. `data_appendix` is hand-maintained prose and is
+not a code target either.
+
+Three things to know about the tables that were hardcoded until 1 September 2026 and now
+come from the pipeline.
+
+First, the **station counts** rose sharply against the published table (Bogotá 19 → 48
+PM10, CDMX 23 → 32, São Paulo 29 → 28), because the metro station universe changed.
+
+Second, **data availability by education quintile is far more unequal than published**:
+Bogotá's Q1 PM10 share falls from 0.876 to 0.480, and Santiago's Q1 is `--` because that
+city has no monitoring station in its lowest education quintile (§D.3).
+
+Third, the **two income tables can no longer be cut in deciles for both cities** — CDMX is
+estimated in quintiles (§D.5). The tables print Mexico City Q1–Q5 and São Paulo D1–D10 in
+one tabular, and their captions say so. The body prose has not been updated to match.
 
 Two things to know about the descriptive tables. First, they are computed from the
 individual census, so the population row is the whole resident population; the published
@@ -90,16 +112,21 @@ uncited figure families stay under the repo's own names as appendix and slide ma
    observed and imputed specifications agree in sign 80 times out of 80, and the two
    sets of point estimates correlate at 0.995.
 3. **Santiago has no monitoring station in the lowest education quintile.** With the 2017
-   zonas censales, quintile 1 is empty in the availability table. Substantive, not a bug,
-   but it should be stated where that table is discussed.
+   zonas censales, quintile 1 is empty in the availability table. Substantive, not a bug.
+   Since 1 September 2026 the manuscript prints this: `table_share_missings` is now
+   `\input` from the pipeline and shows `--` in Santiago's Q1 cell. **The surrounding
+   prose still does not explain it**, which is now a visible gap rather than a latent one.
 4. **The manuscript's prose disagrees with the census coverage table** on the geographic
    unit for three cities: Bogotá is 2018 census tracts here versus 2005 localities in the
    text, Mexico City has 63 municipalities versus 76, and Santiago is 1,654 zonas censales
    versus 384 census tracts. The vintages the pipeline uses are the current ones; the text
    needs updating, not the code.
 5. **Mexico City income is estimated in quintiles, not deciles.** 63 municipalities leave
-   too few clusters to identify ten coefficients. Five prose locations, two appendix tables
-   and one figure caption still say deciles.
+   too few clusters to identify ten coefficients. The two appendix tables were fixed on
+   1 September 2026 — they now print Mexico City in quintiles and São Paulo in deciles,
+   and their captions and notes say why. **Five prose locations and one figure caption
+   still say deciles** (`\ref{figure_exposure_it1_decile}` and the paragraphs around
+   lines 630, 637 and 716 of `paper_draft_part1.tex`).
 6. **`doc/audits/` is stale in two places.** The São Paulo duplicate-station finding is
    fixed (`sp_process_stations_data_to_parquet()` now hard-stops if a station name carries
    more than one CETESB code, and the rebuilt panel has no duplicate station-hours), and

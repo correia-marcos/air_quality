@@ -121,6 +121,7 @@ tables: exposure descriptives
 	$(RUN) scripts/tables_images/render_station_tables.R
 	$(RUN) scripts/tables_images/render_missing_tables.R
 	$(RUN) scripts/tables_images/render_census_tables.R
+	$(RUN) scripts/tables_images/render_exposure_tables.R
 
 # MERRA-2 satellite track: independent of the station pipeline above, so it is not a
 # prerequisite of `all`. generate_panel_air_quality.R is the slow .nc4 step.
