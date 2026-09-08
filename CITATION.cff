@@ -1,0 +1,14 @@
+cff-version: 1.2.0
+message: "Please cite this repository and the associated study when reusing it; confirm publication metadata with the authors."
+type: software
+title: "Air monitoring inequality: replication code"
+authors:
+  - family-names: "Hoffman"
+    given-names: "Bridget"
+  - family-names: "Dominguez"
+    given-names: "Patricio"
+  - family-names: "Medina"
+    given-names: "Maria Paula"
+  - family-names: "Correia"
+    given-names: "Marcos Paulo"
+abstract: "R workflows for air pollution monitoring and exposure inequality in four Latin American cities."
