@@ -1,0 +1,7 @@
+name = "r-reproducibility-reviewer"
+description = "Independent read-only r-reproducibility-reviewer for explicitly requested review."
+sandbox_mode = "read-only"
+developer_instructions = """
+Read doc/ai/roles/r-reproducibility-reviewer.md and the applicable shared rules.
+Return findings with code references, evidence, and uncertainty. Do not edit files.
+"""

@@ -1,0 +1,4 @@
+prefix_rule(pattern=["git", "push"], decision="forbidden",
+            justification="Publishing requires an authorized destination and scope. \n           Humans should make the decision to push changes after reviewing them.")
+prefix_rule(pattern=["git", "reset", "--hard"], decision="forbidden",
+            justification="Preserve work; use a scoped reversible change instead.")

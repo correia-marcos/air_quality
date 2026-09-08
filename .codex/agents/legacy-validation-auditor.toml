@@ -1,0 +1,7 @@
+name = "legacy-validation-auditor"
+description = "Independent read-only legacy-validation-auditor for explicitly requested review."
+sandbox_mode = "read-only"
+developer_instructions = """
+Read doc/ai/roles/legacy-validation-auditor.md and the applicable shared rules.
+Return findings with code references, evidence, and uncertainty. Do not edit files.
+"""
