@@ -30,7 +30,7 @@ Rplots.pdf
 # ---------------------------------------------------------------------------
 # Data
 # ---------------------------------------------------------------------------
-# All data directories are excluded. Raw inputs are archived on Zenodo
+# All data directories are excluded. Raw inputs require an external provenance/access archive
 data/
  
  
@@ -92,3 +92,10 @@ doc/audits/*
 # Claude Code — Local, individual settings
 # ---------------------------------------------------------------------------
 /.claude/settings.local.json
+# Personal export destination wrapper
+/scripts/export/paper.local.sh
+# Generated report renders and verification workspaces
+/scripts/validation_old_version/*.html
+/scripts/validation_old_version/*.pdf
+
+**/__pycache__/
