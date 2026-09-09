@@ -40,9 +40,9 @@ set_paper_theme()
 # Define input and output folders
 dir_reg      <- here::here("data", "processed", "idw_regressions")
 dir_reg_imp  <- here::here("data", "processed", "idw_regressions_imputed")
-outdir_ci    <- here::here("results", "figures", "exposure_by_group", "ci")
-outdir_lvl   <- here::here("results", "figures", "exposure_by_group", "levels")
-outdir_paper <- here::here("results", "paper", "figures")
+outdir_ci    <- here::here("results", "figures", "exposure")
+outdir_lvl   <- here::here("results", "figures", "exposure")
+outdir_paper <- here::here("results", "figures")
 
 analysis_year <- 2023L
 
@@ -131,13 +131,17 @@ dir.create(outdir_ci, recursive = TRUE, showWarnings = FALSE)
 dir.create(outdir_lvl, recursive = TRUE, showWarnings = FALSE)
 
 # Education figures
-save_exposure_figures(plots_ci_edu, outdir_ci)
-save_exposure_figures(plots_lvl_edu, outdir_lvl)
+save_exposure_figures(plots_ci_edu[is.na(vapply(names(plots_ci_edu),
+  paper_exposure_filename, character(1), paper_files, analysis_year))], outdir_ci)
+save_exposure_figures(plots_lvl_edu[is.na(vapply(names(plots_lvl_edu),
+  paper_exposure_filename, character(1), paper_files, analysis_year))], outdir_lvl)
 
 # Income figures
 if (has_income) {
-  save_exposure_figures(plots_ci_inc, outdir_ci)
-  save_exposure_figures(plots_lvl_inc, outdir_lvl)
+  save_exposure_figures(plots_ci_inc[is.na(vapply(names(plots_ci_inc),
+  paper_exposure_filename, character(1), paper_files, analysis_year))], outdir_ci)
+  save_exposure_figures(plots_lvl_inc[is.na(vapply(names(plots_lvl_inc),
+  paper_exposure_filename, character(1), paper_files, analysis_year))], outdir_lvl)
 }
 
 cat("Saved exposure CI figures to:", outdir_ci, "\n")
@@ -146,7 +150,7 @@ cat("Saved exposure level figures to:", outdir_lvl, "\n")
 # ============================================================================================
 # IV: Save the manuscript's copy of the 3 km figures
 # ============================================================================================
-# Same plot objects, written a second time under the names the .tex cites; see
+# Selected plot objects are written once under the mapped source names; see
 # paper_exposure_filename() for which runs the manuscript prints.
 paper_plots <- c(plots_ci_edu, plots_lvl_edu)
 
