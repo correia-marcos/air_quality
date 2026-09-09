@@ -70,7 +70,7 @@ table_states_to_download <- table_state_metro_distances(
   metro_area_sf = metro_area,
   save_latex_table = TRUE,
   caption = "Administrative states and distance to metropolitan area (in Km)",
-  out_file = here::here("results", "tables", "states_to_get_stations", "CDMX.tex"),
+  out_file = here::here("results", "tables", "station_source_regions_CDMX.tex"),
   overwrite_tex = TRUE
 ) # change cdmx_cfg$which_states if necessary! Depending on result
 
