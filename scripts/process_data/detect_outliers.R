@@ -26,7 +26,7 @@ source(here::here("src", "general_utilities", "config_utils_process_data.R"))
 # I: Import data
 # ============================================================================================
 # Define the output general folders
-dir_pollution    <- here::here("data", "raw", "monitoring_stations")
+dir_pollution    <- here::here("data", "interim", "monitoring_stations")
 outdir_distances <- here::here("data", "processed", "distances_matrices")
 outdir_results   <- here::here("data", "processed", "monitoring_stations_outliers")
 

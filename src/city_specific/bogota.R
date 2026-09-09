@@ -34,7 +34,7 @@ bogota_cfg <- list(
   # Processing parameters
   years           = 2000L:2023L,
   dl_dir          = here::here("data", "downloads", "bogota"),
-  out_dir         = here::here("data", "raw"),
+  out_dir         = here::here("data", "interim"),
   which_states    = c("Bogotá D.C.", "Cundinamarca", "Huila", "Meta", "Tolima"),
   cities_in_metro = c(
     "Bogotá DC", "Bojacá", "Cajicá", "Chía", "Cota", "El Rosal", "Facatativá", "Funza",
@@ -99,7 +99,7 @@ bogota_download_metro_area <- function(
     base_url           = bogota_cfg$base_url_shp,
     municipality_codes = bogota_cfg$city_code_metro,
     download_dir       = here::here("data", "downloads", "Administrative", "Colombia"),
-    out_file           = here::here("data", "raw", "admin", "Colombia", "bogota.gpkg"),
+    out_file           = here::here("data", "interim", "geospatial_data", "admin", "Colombia", "bogota.gpkg"),
     overwrite_zip      = FALSE,
     overwrite_gpkg     = TRUE,
     quiet              = FALSE
@@ -2056,7 +2056,7 @@ bogota_filter_stations_in_metro <- function(
     metro_area,
     radius_km      = 20,
     stations_epsg  = 4326,
-    out_file       = here::here("data", "raw", "geospatial_data",
+    out_file       = here::here("data", "interim", "geospatial_data",
                                 "bogota", "stations.gpkg"),
     overwrite_gpkg = TRUE,
     dissolve       = TRUE
@@ -2820,7 +2820,7 @@ bogota_missing_matrix <- function(merged_tbl,
 # --------------------------------------------------------------------------------------------
 bogota_filter_census_2005 <- function(
     census_zip = here::here(bogota_cfg$dl_dir, "census", "CG2005_AMPLIADO.zip"),
-    out_dir    = here::here("data", "raw", "census", "Bogota", "CG2005"),
+    out_dir    = here::here("data", "interim", "census_extracted", "Bogota", "CG2005"),
     overwrite  = FALSE,
     quiet      = FALSE
 ) {
@@ -3324,7 +3324,7 @@ bogota_harmonize_census_2005_data <- function(
 # --------------------------------------------------------------------------------------------
 bogota_filter_census_2018 <- function(
     census_folder = here::here(bogota_cfg$dl_dir, "census_2018"),
-    out_dir       = here::here("data", "raw", "census", "Bogota", "CNPV2018"),
+    out_dir       = here::here("data", "interim", "census_extracted", "Bogota", "CNPV2018"),
     overwrite     = FALSE,
     quiet         = FALSE
 ) {
@@ -3729,7 +3729,7 @@ bogota_download <- function(
         mgn_year     = x$yr,
         base_url     = cfg$base_url_shp,
         download_dir = file.path(cfg$dl_dir, "metro_area"),
-        out_file     = here::here("data", "raw", "geospatial_data",
+        out_file     = here::here("data", "interim", "geospatial_data",
                                   "bogota", x$out)
       )
     })
@@ -3909,12 +3909,12 @@ bogota_process <- function(
   
   # 3. Census 2005 (Basic + Extended)
   .step("census_2005", {
-    raw_census <- here::here("data", "raw", "census", "bogota")
+    extracted_census <- here::here("data", "interim", "census_extracted", "bogota")
     
     ext <- bogota_filter_census_2005(
       census_zip = file.path(cfg$dl_dir, "census",
                              "CG2005_AMPLIADO.zip"),
-      out_dir    = file.path(raw_census, "CG2005_EXTENDED"),
+      out_dir    = file.path(extracted_census, "CG2005_EXTENDED"),
       overwrite  = TRUE,
       quiet      = quiet
     )
@@ -3928,7 +3928,7 @@ bogota_process <- function(
     bas <- bogota_filter_census_2005(
       census_zip = file.path(cfg$dl_dir, "census",
                              "CG2005_BASICO.zip"),
-      out_dir    = file.path(raw_census, "CG2005_BASIC"),
+      out_dir    = file.path(extracted_census, "CG2005_BASIC"),
       overwrite  = FALSE,
       quiet      = quiet
     )
@@ -3943,11 +3943,11 @@ bogota_process <- function(
   
   # 4. Census 2018
   .step("census_2018", {
-    raw_census <- here::here("data", "raw", "census", "bogota")
+    extracted_census <- here::here("data", "interim", "census_extracted", "bogota")
     
     paths <- bogota_filter_census_2018(
       census_folder = file.path(cfg$dl_dir, "census"),
-      out_dir       = file.path(raw_census, "CNPV_2018"),
+      out_dir       = file.path(extracted_census, "CNPV_2018"),
       overwrite     = FALSE,
       quiet         = quiet
     )

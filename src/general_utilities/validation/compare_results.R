@@ -551,7 +551,7 @@ compare_outlier_procedure <- function(
   if (is.null(cmp)) stop("[", cfg$id, "] cfg$compare is NULL.")
   
   new_clean_dir     <- cmp$new_clean_dir
-  new_raw_dir       <- here::here("data", "raw", "monitoring_stations", 
+  new_raw_dir       <- here::here("data", "interim", "monitoring_stations",
                                   paste0(cfg$id, "_metro_dataset"))
   legacy_clean_path <- cmp$legacy_clean_path
   legacy_raw_path   <- cmp$legacy_single_csv

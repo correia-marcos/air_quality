@@ -44,8 +44,8 @@ build_compare_cfg <- function(city_id) {
   # 1. Base parameters shared across ALL cities
   base_compare <- list(
     pipeline_tz      = "UTC",
-    out_root         = here::here("results", "validation_old_version"),
-    city_dir         = file.path("results", "validation_old_version", city_id),
+    out_root         = here::here("data", "validation"),
+    city_dir         = file.path("data", "validation", city_id),
     compare_years    = 2023L,
     focus_pollutants = c("pm10", "pm25"),
     value_cols       = c("pm10", "pm25", "ozone", "co", "no2"),
@@ -74,9 +74,9 @@ build_compare_cfg <- function(city_id) {
       drop_stations           = character(0),
       residual_map            = c("CENTRODEALTORENDIMIENTO" = "CAR",
                                   "ELJAZMIN"                = "JAZMIN"),
-      new_metro_gpkg          = here::here("data", "raw", "geospatial_data", "bogota", 
+      new_metro_gpkg          = here::here("data", "interim", "geospatial_data", "bogota",
                                            "bogota_area_metro_2018.gpkg"),
-      new_stations_gpkg       = here::here("data", "raw", "geospatial_data", "bogota",
+      new_stations_gpkg       = here::here("data", "interim", "geospatial_data", "bogota",
                                            "bogota_2018_stations_buffer_metro.gpkg"),
       legacy_shp_dir          = here::here("data", "_legacy", "cities_shapefiles", 
                                            "Bogota_metro"),
@@ -104,7 +104,7 @@ build_compare_cfg <- function(city_id) {
                                            "bogota_metro_clean"),
       legacy_clean_path       = here::here("data", "_legacy", "outlier", "bogota",
                                            "pollution_data_balanced_2023.rds"),
-      qmd_path                = here::here(base_compare$out_root, "bogota",
+      qmd_path                = here::here("scripts", "validation_old_version",
                                            "bogota_report.qmd"),
       html_dest               = file.path(base_compare$out_root, city_id, 
                                           "bogota_validation_report.html")

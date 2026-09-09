@@ -24,7 +24,7 @@ source(here::here("src", "general_utilities", "config_utils_plot_tables.R"))
 # Define the location of datasets
 dir_cdmx_stations_data   <- here::here("data", "raw","air_monitoring_stations",
                                        "cdmx_metro_buffer_stations_dataset")
-dir_cdmx_area            <- here::here("data", "raw", "geospatial_data",
+dir_cdmx_area            <- here::here("data", "interim", "geospatial_data",
                                        "metro_areas", "cdmx_metro.gpkg")
 dir_cdmx_station_loc     <- here::here("data", "interim", "spatial_filtered_stations",
                                        "CDMX_stations.gpkg")
@@ -62,7 +62,7 @@ cdmx_has_pm_stations_entity_scheme <- plot_metro_area_interactive(
 # II: Save data
 # ============================================================================================
 # Ensure output folder exists
-outdir <- here("results", "figures", "maps_interactive")
+outdir <- here("results", "figures", "maps")
 dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
 
 # Save plot

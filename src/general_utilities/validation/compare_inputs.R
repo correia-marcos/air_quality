@@ -353,9 +353,9 @@ compare_ground_stations <- function(
     cfg$tz
   
   # 4) Locate the new Arrow dataset. The naming convention is fixed:
-  #    data/raw/monitoring_stations/{city_id}_metro_dataset.
+  #    data/interim/monitoring_stations/{city_id}_metro_dataset.
   new_arrow_dir <- here::here(
-    "data", "raw", "monitoring_stations",
+    "data", "interim", "monitoring_stations",
     paste0(cfg$id, "_metro_dataset")
   )
   if (!dir.exists(new_arrow_dir))

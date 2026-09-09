@@ -22,7 +22,7 @@ cdmx_cfg <- list(
   tz               = "America/Mexico_City",
   years            = 2000L:2023L,
   dl_dir           = here::here("data", "downloads", "cdmx"),
-  out_dir          = here::here("data", "raw"),
+  out_dir          = here::here("data", "interim"),
   cities_in_metro  = c(09002, 09003, 09004, 09005, 09006, 09007, 09008, 09009, 09010, 09011,
                        09012, 09013, 09014, 09015, 09016, 09017, 13013, 13069, 15002, 15011,
                        15013, 15020, 15022, 15023, 15024, 15025, 15028, 15029, 15030, 15031,
@@ -1785,7 +1785,7 @@ cdmx_download_metro_area <- function(
     keep_municipality = cdmx_cfg$cities_in_metro,
     download_dir      = here::here("data", "downloads", "Administrative",
                                    "Mexico"),
-    out_file          = here::here("data", "raw", "admin", "Mexico",
+    out_file          = here::here("data", "interim", "geospatial_data", "admin", "Mexico",
                                    "cdmx_metro.gpkg"),
     overwrite_zip     = FALSE,
     overwrite_gpkg    = TRUE,
@@ -4764,7 +4764,7 @@ cdmx_filter_stations_in_metro <- function(
 # --------------------------------------------------------------------------------------------
 mexico_filter_census <- function(
     census_dir = here::here("data", "downloads", "census_mx"),
-    out_dir    = here::here("data", "raw", "census", "Mexico_2020"),
+    out_dir    = here::here("data", "interim", "census_extracted", "Mexico_2020"),
     overwrite  = FALSE,
     quiet      = FALSE
 ) {

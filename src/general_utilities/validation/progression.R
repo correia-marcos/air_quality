@@ -57,7 +57,7 @@ build_bogota_progression_specs <- function(cfg, buffer_km = 5L) {
   # new-pipeline 2018 geo-station distance parquet.
   step4_arrow_clean <- here::here("data", "processed", "monitoring_stations_outliers",
                                   "bogota_metro_clean")
-  step4_arrow_raw   <- here::here("data", "raw", "monitoring_stations",
+  step4_arrow_raw   <- here::here("data", "interim", "monitoring_stations",
                                   "bogota_metro_dataset")
   step4_arrow_dir   <- if (dir.exists(step4_arrow_clean)) step4_arrow_clean
   else if (dir.exists(step4_arrow_raw)) step4_arrow_raw

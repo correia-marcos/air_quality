@@ -48,7 +48,7 @@ south_america <- ne_countries(continent = "South America", returnclass = "sf")
 mexico_states <- ne_states(country = "Mexico", returnclass = "sf")
 
 # CDMX metro area under the current legal definition
-cdmx_metro <- sf::st_read(here::here("data", "raw", "geospatial_data",
+cdmx_metro <- sf::st_read(here::here("data", "interim", "geospatial_data",
                                      "metro_areas", "cdmx_metro.gpkg"))
 
 # The eight states whose monitoring data was downloaded for the CDMX metro area

@@ -29,7 +29,7 @@ dir_mtime <- function(dirs, fun) {
 # One row per stage: everything under `inputs` feeds everything under `output`.
 freshness_stages <- list(
   list(stage  = "detect_outliers.R",
-       inputs = file.path("data", "raw", "monitoring_stations"),
+       inputs = file.path("data", "interim", "monitoring_stations"),
        output = file.path("data", "processed", "monitoring_stations_outliers")),
   list(stage  = "estimate_idw.R",
        inputs = c(file.path("data", "processed", "monitoring_stations_outliers"),
@@ -40,16 +40,16 @@ freshness_stages <- list(
        output = file.path("data", "processed", "idw_regressions")),
   list(stage  = "generate_exposure_plots.R",
        inputs = file.path("data", "processed", "idw_regressions"),
-       output = file.path("results", "figures", "exposure_by_group")),
+       output = file.path("results", "figures", "exposure")),
   list(stage  = "compute_station_scatter_inputs.R",
        inputs = file.path("data", "processed", "monitoring_stations_outliers"),
        output = file.path("data", "processed", "station_socio_exposure")),
   list(stage  = "plot_station_monitoring_figures.R (education scatters)",
        inputs = file.path("data", "processed", "station_socio_exposure"),
-       output = file.path("results", "figures", "station_monitoring")),
+       output = file.path("results", "figures", "monitoring")),
   list(stage  = "plot_station_monitoring_figures.R (distance panels)",
        inputs = file.path("data", "processed", "station_socio_exposure"),
-       output = file.path("results", "paper", "figures", "monitoring_coverage")),
+       output = file.path("results", "figures", "monitoring")),
   list(stage  = "impute_missing_hourly.R",
        inputs = file.path("data", "processed", "monitoring_stations_outliers"),
        output = file.path("data", "processed", "imputed_ols")),
@@ -58,26 +58,39 @@ freshness_stages <- list(
        output = file.path("data", "processed", "idw_regressions_imputed")),
   list(stage  = "figure_station_scatter.R",
        inputs = file.path("data", "processed", "station_socio_exposure"),
-       output = file.path("results", "paper", "figures", "station_scatters")),
+       output = file.path("results", "figures", "monitoring")),
   list(stage  = "figure_kernel_distributions.R",
        inputs = file.path("data", "processed", "monitoring_stations_outliers"),
-       output = file.path("results", "paper", "figures", "city_distributions")),
-  list(stage  = "table scripts (missing_proportions)",
+       output = file.path("results", "figures", "temporal")),
+  list(stage  = "render_missing_tables.R",
        inputs = file.path("data", "processed", "missing_proportions"),
-       output = file.path("results", "tables", "missing_proportions")),
-  list(stage  = "table scripts (census_summary)",
+       output = file.path("results", "tables")),
+  list(stage  = "render_census_tables.R",
        inputs = file.path("data", "processed", "census_summary"),
-       output = file.path("results", "tables", "census_summary")),
+       output = file.path("results", "tables")),
   list(stage  = "figure_population_density_maps.R",
        inputs = file.path("data", "interim", "census"),
-       output = file.path("results", "paper", "figures", "maps"))
+       output = file.path("results", "figures", "maps"))
 )
 
 test_that("no stage output is older than its inputs", {
   for (st in freshness_stages) {
     newest_in  <- dir_mtime(st$inputs, max)
-    oldest_out <- dir_mtime(st$output, min)
-    if (is.na(newest_in) || is.na(oldest_out)) next
+    # Topic folders mix producers. Only this producer's selected manuscript files
+    # may stand in for its outputs; unrelated historical figures cannot date the stage.
+    producer <- sub(" .*", "", st$stage)
+    manifest <- artifact_manifest(here::here("config/paper_artifacts.csv"))
+    selected <- manifest$source_path[basename(manifest$producer_script) == producer]
+    if (length(selected)) {
+      paths <- here::here(selected)
+      oldest_out <- if (all(file.exists(paths))) min(file.info(paths)$mtime) else as.POSIXct(NA)
+    } else oldest_out <- dir_mtime(st$output, min)
+    if (is.na(newest_in) || is.na(oldest_out)) {
+      if (identical(getOption("airmonitoring.test_mode"), "release")) {
+        fail(paste("Missing freshness input/output for", st$stage))
+      } else skip(paste("Missing freshness input/output for", st$stage))
+      next
+    }
     expect_lte(as.numeric(newest_in), as.numeric(oldest_out),
                label = paste0("newest input mtime for stage '", st$stage, "'"),
                expected.label = paste0("its oldest output mtime (stale: re-run ",

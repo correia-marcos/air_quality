@@ -24,7 +24,7 @@ sao_paulo_cfg <- list(
   base_url_qualar  = "https://qualar.cetesb.sp.gov.br/",
   years            = 2000L:2023L,
   dl_dir           = here::here("data", "downloads", "sao_paulo"),
-  out_dir          = here::here("data", "raw"),
+  out_dir          = here::here("data", "interim"),
   which_states     = c("São_Paulo"), 
   cities_in_metro  = c(3503901, 3505708, 3506607, 3509007, 3509205, 3510609, 3513009, 3513801,
                        3515004, 3515103, 3515707, 3516309, 3516408, 3518305, 3518800, 3522208,
@@ -426,7 +426,7 @@ sao_paulo_download_metro_area <- function(
     base_url          = sao_paulo_cfg$base_url_shp,
     keep_municipality = sao_paulo_cfg$cities_in_metro,
     download_dir      = here::here("data", "downloads", "Administrative", "Brazil"),
-    out_file          = here::here("data", "raw", "admin", "Brazil", "sao_paulo_metro.gpkg"),
+    out_file          = here::here("data", "interim", "geospatial_data", "admin", "Brazil", "sao_paulo_metro.gpkg"),
     overwrite_zip     = FALSE,
     overwrite_gpkg    = TRUE,
     container         = TRUE,
@@ -669,7 +669,7 @@ sao_paulo_download_metro_area <- function(
 sao_paulo_download_weighting_areas <- function(
     keep_municipality,
     year           = 2010,
-    out_file       = here::here("data", "raw", "admin", "Brazil", 
+    out_file       = here::here("data", "interim", "geospatial_data", "admin", "Brazil",
                                 "sp_weighting_areas.gpkg"),
     overwrite_gpkg = TRUE,
     quiet          = FALSE
@@ -1087,7 +1087,7 @@ sp_filter_stations_in_metro <- function(
     metro_area,
     radius_km      = 20,
     stations_esri  = "ESRI:103213", # Defaulting to UTM Zone 23S
-    out_file       = here::here("data", "raw", "geospatial_data", 
+    out_file       = here::here("data", "interim", "geospatial_data",
                                 "sao_paulo", "stations.gpkg"),
     overwrite_gpkg = TRUE,
     dissolve       = TRUE

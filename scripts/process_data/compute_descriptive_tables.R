@@ -32,7 +32,7 @@ source(here::here("src", "general_utilities", "config_utils_process_data.R"))
 # I: Import data
 # ============================================================================================
 # Define input and output folders
-dir_raw     <- here::here("data", "raw", "monitoring_stations")
+dir_raw     <- here::here("data", "interim", "monitoring_stations")
 dir_clean   <- here::here("data", "processed", "monitoring_stations_outliers")
 dir_dist    <- here::here("data", "processed", "distances_matrices")
 dir_census  <- here::here("data", "interim", "census")

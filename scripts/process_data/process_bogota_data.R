@@ -80,7 +80,7 @@ bogota_stations_data <- bogota_process_stations_data_to_parquet(
 # Apply function to unpack & filter the 2005 extended census data, then read and process
 process_extended <- bogota_filter_census_2005(
   census_zip = here::here(bogota_cfg$dl_dir, "census", "CG2005_AMPLIADO.zip"),
-  out_dir    = here::here("data", "raw", "census", "bogota", "CG2005_EXTENDED"),
+  out_dir    = here::here("data", "interim", "census_extracted", "bogota", "CG2005_EXTENDED"),
   overwrite  = TRUE,
   quiet      = FALSE)
 process_harmonize_extended <- bogota_harmonize_census_2005_data(
@@ -91,7 +91,7 @@ process_harmonize_extended <- bogota_harmonize_census_2005_data(
 # Apply function to unpack & filter the 2005 basic census data, then read and process
 process_basic <- bogota_filter_census_2005(
   census_zip = here::here(bogota_cfg$dl_dir, "census", "CG2005_BASICO.zip"),
-  out_dir    = here::here("data", "raw", "census", "bogota", "CG2005_BASIC"),
+  out_dir    = here::here("data", "interim", "census_extracted", "bogota", "CG2005_BASIC"),
   overwrite  = FALSE,
   quiet      = FALSE
 )
@@ -104,7 +104,7 @@ process_harmonize_basic <- bogota_harmonize_census_2005_data(
 # Apply function to unpack & filter the 2005 basic census data, then read and process
 process_2018 <- bogota_filter_census_2018(
   census_folder = here::here(bogota_cfg$dl_dir, "census"),
-  out_dir       = here::here("data", "raw", "census", "bogota", "CNPV_2018"),
+  out_dir       = here::here("data", "interim", "census_extracted", "bogota", "CNPV_2018"),
   overwrite     = FALSE,
   quiet         = FALSE
 )

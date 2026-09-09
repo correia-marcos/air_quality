@@ -27,8 +27,8 @@ set_paper_theme()
 # I: Import data
 # ============================================================================================
 # Define the output general folders
-dir_pollution   <- here::here("data", "raw", "monitoring_stations")
-dir_geospatial  <- here::here("data", "raw", "geospatial_data")
+dir_pollution   <- here::here("data", "interim", "monitoring_stations")
+dir_geospatial  <- here::here("data", "interim", "geospatial_data")
 dir_census      <- here::here("data", "interim", "census")
 outdir_figures  <- here::here("results", "validation_rep_package", "Bogota")
 legacy_stations <- here::here("data", "_legacy", "ground_stations", "bogota")

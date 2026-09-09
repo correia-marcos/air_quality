@@ -28,7 +28,7 @@ dir_cdmx_stations_data   <- here::here("data", "raw","air_monitoring_stations",
                                        "cdmx_metro_buffer_stations_dataset")
 dir_l_cdmx_stations_data <- here::here("data", "_legacy", "pollution", "Mexico_city",
                                        "Air_Pollution_Mexico_2010_2023.dta")
-dir_cdmx_area            <- here::here("data", "raw", "geospatial_data",
+dir_cdmx_area            <- here::here("data", "interim", "geospatial_data",
                                        "metro_areas", "cdmx_metro.gpkg")
 dir_l_cdmx_area          <- here::here("data", "raw",
                                        "cities_shapefiles(old)",

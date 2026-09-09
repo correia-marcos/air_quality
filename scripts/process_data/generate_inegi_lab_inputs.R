@@ -31,7 +31,7 @@ source(here::here("src", "city_specific", "cdmx.R"))
 # Cleaned pollution data (outliers already masked) and station locations.
 arrow_cdmx_2023 <- here::here("data", "processed", "monitoring_stations_outliers",
                               "cdmx_metro_clean", "year=2023")
-gpkg_stations   <- here::here("data", "raw", "geospatial_data", "cdmx",
+gpkg_stations   <- here::here("data", "interim", "geospatial_data", "cdmx",
                               "cdmx_stations_buffer_metro.gpkg")
 
 # Urban AGEB polygons from the "Marco Geoestadistico, Censo de Poblacion y Vivienda
@@ -88,7 +88,7 @@ cat("Pollution input:", nrow(poll), "station-hours,",
 # agebs <- do.call(rbind, lapply(shp_agebs, sf::st_read, quiet = TRUE))
 # agebs$cve_mun <- as.integer(agebs$CVE_ENT) * 1000L + as.integer(agebs$CVE_MUN)
 # agebs_metro <- agebs[agebs$cve_mun %in% cdmx_cfg$cities_in_metro, ]
-agebs_metro <- st_read(here::here("data", "raw", "geospatial_data", "cdmx",
+agebs_metro <- st_read(here::here("data", "interim", "geospatial_data", "cdmx",
                                   "cdmx_area_metro_2024.gpkg"))
 # The 13-char CVEGEO (ENT+MUN+LOC+AGEB) is the join key the lab script rebuilds
 # from the microdata; stop if the layer does not carry it in that exact shape.

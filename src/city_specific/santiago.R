@@ -26,7 +26,7 @@ santiago_cfg <- list(
   base_new_census  = "https://storage.googleapis.com/bktdescargascenso2024/",
   years            = 2000L:2023L,
   dl_dir           = here::here("data", "downloads", "santiago"),
-  out_dir          = here::here("data", "raw"),
+  out_dir          = here::here("data", "interim"),
   which_states     = c("Libertador General Bernardo O'Higgimns", "Metropolitana de Santiago",
                        "Valparaíso"), 
   cities_in_metro  = c("Buin", "Calera de Tango", "Cerrillos", "Cerro Navia", "Colina",
@@ -121,7 +121,7 @@ santiago_download_metro_area_2024 <- function(
     base_url          = santiago_cfg$base_url_shp,
     keep_municipality = santiago_cfg$cities_in_metro,
     download_dir      = here::here("data", "downloads", "Administrative", "Chile"),
-    out_file          = here::here("data", "raw", "admin", "Chile",
+    out_file          = here::here("data", "interim", "geospatial_data", "admin", "Chile",
                                    "santiago_metro.gpkg"),
     dissolve_by       = NULL,
     overwrite_zip     = FALSE,
@@ -1497,7 +1497,7 @@ santiago_filter_stations_in_metro <- function(
     metro_area,
     radius_km      = 20,
     out_file       = here::here(
-      "data", "raw", "geospatial_data", "santiago", "stations.gpkg"
+      "data", "interim", "geospatial_data", "santiago", "stations.gpkg"
     ),
     overwrite_gpkg = TRUE,
     dissolve       = TRUE,
@@ -1821,7 +1821,7 @@ santiago_download_metro_area_2017 <- function(
     base_url       = santiago_cfg$base_url_dpa_17,
     conurbacion    = "GRAN SANTIAGO",
     region_prefix  = "13",
-    out_file       = here::here("data", "raw", "geospatial_data", "santiago",
+    out_file       = here::here("data", "interim", "geospatial_data", "santiago",
                                 "gran_santiago_zonas_2017.gpkg"),
     overwrite_gpkg = TRUE,
     quiet          = FALSE

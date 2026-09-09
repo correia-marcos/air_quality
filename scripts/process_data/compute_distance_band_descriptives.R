@@ -28,7 +28,7 @@ source(here::here("src", "general_utilities", "config_utils_process_data.R"))
 # Define input and output folders
 dir_dist       <- here::here("data", "processed", "distances_matrices")
 dir_census     <- here::here("data", "interim", "census")
-dir_geospatial <- here::here("data", "raw", "geospatial_data")
+dir_geospatial <- here::here("data", "interim", "geospatial_data")
 outdir_bands   <- here::here("data", "processed", "distance_band_descriptives")
 
 # The radii the paper reports, in kilometres.

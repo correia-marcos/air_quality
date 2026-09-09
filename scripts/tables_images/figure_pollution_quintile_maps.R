@@ -28,10 +28,10 @@ set_paper_theme()
 # I: Setup
 # ============================================================================================
 # Define input and output folders
-dir_geospatial <- here::here("data", "raw", "geospatial_data")
+dir_geospatial <- here::here("data", "interim", "geospatial_data")
 dir_census     <- here::here("data", "interim", "census")
-dir_raw        <- here::here("data", "raw", "monitoring_stations")
-outdir_maps    <- here::here("results", "paper", "figures", "maps")
+dir_raw        <- here::here("data", "interim", "monitoring_stations")
+outdir_maps    <- here::here("results", "figures", "maps")
 
 dir.create(outdir_maps, recursive = TRUE, showWarnings = FALSE)
 

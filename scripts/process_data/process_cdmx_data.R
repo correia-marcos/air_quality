@@ -73,7 +73,7 @@ cdmx_stations_data <- cdmx_merge_pollution_data(
 # Apply function to unpack the census data (unzip and filter) then read and process
 process_cdmx_census <- mexico_filter_census(
   census_dir = here::here(cdmx_cfg$dl_dir, "census"),
-  out_dir    = here::here("data", "raw", "census", "cdmx", "CPV2020_EXTENDED"),
+  out_dir    = here::here("data", "interim", "census_extracted", "cdmx", "CPV2020_EXTENDED"),
   overwrite  = FALSE,
   quiet      = FALSE
 )
