@@ -25,8 +25,18 @@ source(here::here("src", "general_utilities", "process", "geo_ids.R"))
 source(here::here("src", "general_utilities", "process", "idw_exposure.R"))
 source(here::here("src", "general_utilities", "process", "exposure_regressions.R"))
 
-testthat::test_dir(
-  here::here("tests", "testthat"),
-  reporter = "summary",
-  stop_on_failure = FALSE
-)
+for (file in c("distances.R", "outliers.R", "imputation.R")) {
+  source(here::here("src", "general_utilities", "process", file))
+}
+source(here::here("src", "general_utilities", "test_runner.R"))
+source(here::here("src", "general_utilities", "reproducibility.R"))
+args <- commandArgs(trailingOnly = TRUE)
+mode_arg <- grep("^--mode=", args, value = TRUE)
+if (length(mode_arg) > 1L || any(!grepl("^--mode=", args))) {
+  stop("Use --mode=development, --mode=synthetic, or --mode=release.")
+}
+mode <- if (length(mode_arg)) sub("^--mode=", "", mode_arg) else "development"
+result <- run_project_tests(here::here("tests", "testthat"), mode)
+cat("\nTest mode:", result$mode, "\n")
+print(result$counts)
+quit(status = result$status)

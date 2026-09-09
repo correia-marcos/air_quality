@@ -58,6 +58,12 @@ required_cols <- list(
 # the canonical schema. The second case is a stale-data skip, not a pass: re-run
 # scripts/process_data/process_<city>_data.R and the contract starts being enforced.
 skip_without_census <- function() {
+  if (identical(getOption("airmonitoring.test_mode"), "release")) {
+    if (!requireNamespace("arrow", quietly = TRUE)) stop("Release requires arrow.")
+    absent <- vapply(canonical_census_files(), function(f) !file.exists(f$path), logical(1))
+    if (any(absent)) stop("Release requires all declared census artifacts: ",
+      paste(vapply(canonical_census_files()[absent], `[[`, "", "path"), collapse = ", "))
+  }
   testthat::skip_if_not_installed("arrow")
 
   files <- Filter(function(f) file.exists(f$path), canonical_census_files())
@@ -70,6 +76,9 @@ skip_without_census <- function() {
     !"geo_id" %in% names(arrow::read_parquet(f$path, as_data_frame = FALSE))
   }, logical(1))
 
+  if (any(pre_canonical) && identical(getOption("airmonitoring.test_mode"), "release")) {
+    stop("Release census predates the canonical schema; regenerate it.")
+  }
   testthat::skip_if(
     any(pre_canonical),
     paste("census on disk predates the canonical schema -",
