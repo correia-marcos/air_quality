@@ -7,7 +7,7 @@ FROM rocker/rstudio:4.6.1 AS base
 ENV DEBIAN_FRONTEND=noninteractive TZ=UTC
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential git curl ca-certificates pkg-config cmake \
+    build-essential git curl ca-certificates pkg-config cmake make python3 \
     # Java for rJava/XLConnect
     default-jdk \
     # Files watchers and asynchronous operations
@@ -56,6 +56,14 @@ COPY --from=builder /air_monitoring/renv /air_monitoring/renv
 
 # 2. Copy the full project code
 COPY . .
+
+# Install the bundled fonts for batch renders, too.
+RUN mkdir -p /usr/local/share/fonts/air-monitoring \
+ && cp fonts/*.otf /usr/local/share/fonts/air-monitoring/ \
+ && fc-cache -f
+
+# Cache the pinned DuckDB ICU extension while build networking is available.
+RUN Rscript -e "con <- DBI::dbConnect(duckdb::duckdb()); DBI::dbExecute(con, 'INSTALL icu'); DBI::dbDisconnect(con, shutdown=TRUE)"
 
 # 3. RStudio & Permissions Setup
 RUN mkdir -p /home/rstudio/.config/rstudio \
