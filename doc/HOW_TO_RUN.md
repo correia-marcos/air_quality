@@ -1,211 +1,77 @@
-# How to run this repository from scratch
+# Run, verify and export
 
-For a student or a journal reviewer with no prior exposure to the project: install the
-container, understand how the repository is divided, and reproduce the paper's figures
-and tables. The whole setup in five commands:
+The analytical methods are unchanged by the structural migration. Existing numerical tests and audits support specific properties. A complete reproduction requires declared inputs, a recorded clean run, revision-matched comparisons and rendering review. No independent researcher reproduction is claimed.
 
-```bash
-git clone <repository-url> Coding && cd Coding
-cp .env.example .env
-docker compose up          # first run builds the image; then open http://localhost:8787
+## Daily development
+
+Use the R version and dependency versions in renv.lock; restore them explicitly with renv::restore(). Do not regenerate the lockfile to resolve an incidental local library problem. The Dockerfile supplies spatial system libraries and bundled fonts. `make` preserves the existing stage orchestrator; `make merra2` runs the satellite track. Acquisition (`make download`) is always separate and may require credentials and interactive source access.
+
+```sh
+Rscript tests/testthat.R                         # synthetic tests plus available local checks
+Rscript tests/testthat.R --mode=synthetic        # synthetic and structural checks only
+Rscript tests/testthat.R --mode=release          # full-data checks; missing requirements fail
+Rscript scripts/verification/verify.R            # local inventory, checks and export report
+Rscript scripts/verification/verify.R --full     # build and attempt isolated full reproduction
 ```
 
-then, inside the RStudio that opens in your browser:
+Development reports optional missing full-data checks as skips. Assertion failures and errors produce a nonzero exit. Release treats skipped checks as incomplete. Test-suite release success alone is not a complete reproduction claim: the verification command additionally requires a fresh rebuilt run, unchanged inputs and reviewed comparisons. The package loader refuses automatic dependency installation when AIR_VERIFY_STRICT=1.
 
-```r
-source(here::here("scripts", "run_pipeline.R"))
+Local machine note (September 2026): existing compiled libraries work with the framework R at `/Library/Frameworks/R.framework/Versions/4.6/Resources/bin/Rscript`. Homebrew R 4.6.1 crashed when loading those binaries. Do not mix those installations. This is a local compatibility finding, not a portable invocation requirement. Restoring the container library remains the packaged route.
+
+## Input access and preparation
+
+| Input family | Access / acquisition | Placement and limitation |
+|---|---|---|
+| Station observations | City providers, through scripts/download_data/download_<city>_data.R | Preserve downloaded/source files in data/downloads and data/raw. Standardized hourly panels are derived and now belong in data/interim/monitoring_stations. Provider availability may change. |
+| Census | DANE (Bogotá), INEGI (Mexico), INE (Santiago), IBGE (São Paulo); see city modules and source-specific scripts | Preserve original archives and source tables. Extracted working files belong in data/interim/census_extracted. Restricted access, laboratory-only inputs and redistribution rights must be verified with the data owner. |
+| Geographic boundaries | Source definitions in each city module | Generated layers belong in data/interim/geospatial_data. Several existing builders are coupled to acquisition; an empty clean workspace may expose a missing preparation stage. Copied legacy layers do not count as regenerated layers. |
+| MERRA-2 | NASA Earthdata; scripts/download_data/download_merra2_data.R | Earthdata access is required for acquisition. Preserve original granules and document collection/version. No credentials are needed merely to read authorized local copies. |
+| Legacy comparison | Coauthor-supplied data/_legacy | Local audit inputs; no assumption of redistribution permission. Outputs in ignored data/validation/<city>. |
+
+The repository does not establish that every input can be publicly redistributed. Before release, supply a file-level provider/version/access/license inventory, including instructions and contact/access route for restricted material. Do not invent a Zenodo deposit or identifier. The verification input CSV records SHA-256 hashes and sizes; those hashes establish file identity, not legal access or provenance on their own.
+
+Migration preserves original source files. `config/data_migration.csv` classifies derived roots; the complete local copied-file map is in data/verification/migration-baseline/derived_data_migration.csv. No consumer should silently fall back to the former derived location under raw. Original archives remain intact.
+
+## Isolated batch reproduction
+
+`verify.R --full` builds the current working-tree code with the unchanged renv lock, records image identity, and invokes docker-compose.verify.yml. The service overrides the interactive entrypoint: no RStudio or Selenium is required. Source raw/downloads/_legacy mounts are read-only, generated intermediate/processed/result directories start empty, and runtime networking is disabled. Image construction can download dependencies; acquisition is not part of verification. Rebuilding is refused if the expected Linux source mounts are not read-only.
+
+Local reports live under ignored data/verification/<timestamp>. They record code revision and uncommitted patch, code/input/output inventories, SHA-256 checksums, R/renv/platform/spatial-library versions, image identity, seed and thread settings, commands, timings, failures and limitations. Existing Parquet metadata is retained. Failures are evidence to investigate, not a reason to silently install packages, reuse stale outputs or widen numerical tolerances.
+
+Historical figures and tables have unknown producing revisions. To register a reviewed baseline, populate config/verification_comparisons.csv with processed Parquet paths, unique semicolon-separated keys, baseline file paths, tolerances and any prior scientific justification. Keep restricted baseline files local. A baseline-review.json must identify baseline_revision, candidate_revision, candidate_code_sha256 (from the run code inventory), reviewer, human_reviewed, baseline_sha256 (path-to-hash mapping), plot_data_reviewed and rendering_reviewed. For isolated runs, store these materials in data/verification/baseline (or AIR_BASELINE_ROOT); it is mounted read-only at /baseline. Baseline paths in the comparison manifest refer to that container location. Never fill these fields on someone else's behalf. The verifier rejects unreviewed hashes, different schemas/identifiers/counts/missingness and uncovered processed Parquet products. New numeric defaults are atol=1e-10 and rtol=1e-8; existing stricter oracles remain unchanged.
+
+Review all underlying plot data as well as rendering. PDF bytes can differ due to metadata/fonts; a byte difference alone is not a scientific discrepancy. A colleague's run is independent reproduction only after that colleague actually executes and reports it.
+
+Retain the tested image, not only its mutable tag:
+
+```sh
+docker image inspect air-monitoring-verification:local --format '{{.Id}}'
+docker save -o air-monitoring-tested-image.tar air-monitoring-verification:local
+shasum -a 256 air-monitoring-tested-image.tar
 ```
 
-The rest of this guide explains each step and the alternative entry points (Makefile,
-single scripts, no-Docker).
+Archive the image identity, tar checksum, code revision/patch, run report and authorized data inventory together. Rebuilding a Docker tag later can resolve different system packages. No tested-image retention is claimed until these commands run after an accepted verification.
 
-## 1. What you need
+## Results and manuscript export
 
-- **git** and **Docker** (Docker Desktop on macOS/Windows, Docker Engine on Linux).
-  Nothing else: R, every R package, and all system libraries (GDAL, GEOS, PROJ, Java)
-  live inside the container, pinned by `renv.lock` and the `Dockerfile`.
-- **Disk and patience:** the image is several GB and the first build takes a while
-  because R packages are compiled. Later builds reuse the cache.
-- **The raw data** (see §3): `data/` is git-ignored, so a fresh clone contains no data.
+Only two result roots exist: results/figures and results/tables. Figure topics are maps, monitoring, exposure, imputation, temporal, satellite and diagnostics. Tables are flat and descriptively named. Interactive HTML assets remain beside their HTML. Analytical Parquet intermediates belong in data layers. config/artifact_migration.csv maps old artifact paths to preserved new paths.
 
-## 2. Install the container (one-time)
+config/paper_artifacts.csv tracks artifact_id, source_path, paper_path and producer_script. Its initial selection contains 117 figure paths and 11 tables from the local draft; future drafts may legitimately change these counts. The exporter validates the entire manifest before writing, preserves existing manuscript-relative paths, checks SHA-256 after copying, refuses destination collisions and requires explicit overwrite. It never edits TeX, deletes unrelated files or synchronizes Overleaf.
 
-There is no image to `docker pull` from a registry — `docker compose up` **builds** it
-locally from the repo's `Dockerfile` and then starts it.
-
-1. **Clone and configure:**
-
-   ```bash
-   git clone <repository-url> Coding && cd Coding
-   cp .env.example .env
-   ```
-
-   `.env` holds the RStudio login (`RSTUDIO_USER` / `RSTUDIO_PASSWORD`) and, only if
-   you will re-download raw data, Earthdata / Stadia Maps credentials. The defaults
-   (`rstudio` / `replication`) are fine for replication. `.env` is git-ignored —
-   never commit credentials.
-
-2. **Build and start:**
-
-   ```bash
-   docker compose up          # add -d to leave it running in the background
-   ```
-
-   Two services start: `analysis` (R + RStudio + the pinned package library, port
-   8787) and `selenium` (a headless Firefox used *only* by the download scripts).
-
-3. **Open RStudio** at <http://localhost:8787> and log in with the `.env` credentials.
-   You land in `/air_monitoring`, with `src/`, `scripts/` and `results/` mounted live
-   from your clone (edit on the host, the change is visible in the container).
-
-Stop with `docker compose down` (add `-v` to also drop the cached package volume).
-For the **immutable replication run** — source code baked into the image, `data/raw`
-mounted read-only — use `docker compose -f docker-compose.release.yml up` instead.
-
-## 3. Get the data in place
-
-`data/` is entirely git-ignored (size and licensing). Two options:
-
-- **Replication (recommended):** unpack the raw-data archive distributed with the
-  package into `data/raw/`. The pipeline then needs no network access and no
-  credentials.
-- **Re-download from source:** `scripts/download_data/` reconstructs each source as
-  of the analysis vintage. These scripts are credential-gated (Earthdata for MERRA-2),
-  slow, and web APIs drift — expect to adapt them. `make download` runs them all.
-
-`data/raw/` is an input of record: pipeline code reads it and never writes to it.
-
-## 4. How the repository is divided
-
-Two rules organize everything. **Functions in `src/`, execution in `scripts/`** — a
-referee can read any script top-to-bottom and watch the data change. And **data flows
-one way** — `data/raw` → `data/interim` → `data/processed` → `results` — with every
-stage's output written as Parquet that you can open and inspect on its own.
-
-| Path | What lives there |
-|---|---|
-| `src/city_specific/` | One module per city + `registry.R` (dispatch by city id) |
-| `src/general_utilities/` | Shared helpers, stage loaders (`config_utils_*.R`), `process/`, `plot/`, `validation/` |
-| `scripts/download_data/` | Pull raw inputs (APIs, Selenium, Earthdata) |
-| `scripts/process_data/` | raw → interim → processed |
-| `scripts/tables_images/` | processed → figures and tables |
-| `scripts/validation_old_version/` | Legacy-comparison track (audits the pipeline against the code behind the published numbers) |
-| `scripts/run_pipeline.R` | **The single record of run order** — sources every stage in dependency order |
-| `data/raw/` | Immutable original inputs (read-only from code) |
-| `data/interim/`, `data/processed/` | Reproducible intermediates; analysis-ready datasets (Parquet) |
-| `data/_legacy/` | Coauthor's original data — read-only, validation track only |
-| `results/paper/` | **Exactly what the manuscript prints** — nothing else |
-| `results/figures/`, `results/tables/` | The repo's own working artefacts (5 km robustness, companions, diagnostics) |
-| `tests/` | testthat suite (`Rscript tests/testthat.R`) |
-| `doc/` | This guide, the audit trail (`doc/audits/`), remaining-work notes |
-| `Makefile` | Stage-level wrapper around the same scripts (see §5B) |
-| `Dockerfile`, `renv.lock` | The two pinned layers: system + R version; package versions |
-
-Scripts are named for **what they produce**, never numbered — the run order lives in
-`run_pipeline.R` and in the `Makefile`, and a test fails if the two drift apart.
-
-## 5. Three ways to run the pipeline
-
-### A. `run_pipeline.R` — read it top-to-bottom (best first visit)
-
-`scripts/run_pipeline.R` sources each stage script in strict dependency order; it is
-plain `source(...)` lines, so reading it *is* reading the pipeline. In RStudio
-(inside the container, or locally after §6):
-
-```r
-source(here::here("scripts", "run_pipeline.R"))
+```sh
+Rscript scripts/export/export_paper.R --destination /your/local/paper --dry-run
+Rscript scripts/export/export_paper.R --destination /your/local/paper
+# Explicitly replace previously exported mapped files:
+Rscript scripts/export/export_paper.R --destination /your/local/paper --overwrite
+Rscript scripts/verification/check_manuscript.R doc/paper/paper_draft_part1.tex
 ```
 
-Download steps are commented out at the top (Step 0). The full run takes hours; the
-20 km IDW pass over Bogotá's ~57,000 units dominates.
+The scanner ignores comments, follows available literal local TeX includes and checks ordinary includegraphics/table input references. It reports missing includes and dynamic constructs; it is not a TeX interpreter. The current absent data_appendix prevents a complete manuscript-coverage assertion. Keep the local draft unchanged. The ignored scripts/export/paper.local.sh stores only personal invocation/destination; reusable selection and export logic remain tracked.
 
-### B. The Makefile — stage level, skips unchanged work (best for reruns)
+The tracked Quarto report is scripts/validation_old_version/bogota_report.qmd. Render generated reports and comparison products under ignored data/validation/<city>, including self-contained HTML. The migration map preserves existing local artifacts; do not delete historical comparison evidence during cleanup.
 
-`make` runs the stages in order and **skips stages whose inputs have not changed**
-(stamp files under `data/.make`; touching any `src/*.R` invalidates downstream
-stages):
+## Clean-room protocol and resources
 
-| Command | What it does |
-|---|---|
-| `make` (or `make all`) | process → distances → outliers → exposure → descriptives + scatter + imputed → figures + tables |
-| `make <stage>` | One stage and its prerequisites: `process`, `distances`, `outliers`, `exposure`, `descriptives`, `scatter`, `imputed`, `figures`, `tables` |
-| `make merra2` | Satellite track (MERRA-2 panels, station comparison, aerosol figures) — deliberately not part of `all` |
-| `make download` | Credential-gated raw pulls — deliberately not part of `all` |
-| `make validate` | Legacy-comparison track |
-| `make clean` | Remove stage stamps only — never deletes data or results |
-| `make help` | List targets |
+A colleague obtains the documented revision and retained image, acquires authorized inputs solely from package instructions, verifies their checksums, runs synthetic tests, then invokes the full isolated verification in a new directory. They report machine/image identity, commands, elapsed time, resource use, failures, skips, numerical differences and rendering assessment. Record their name/date only with their actual report. Resolve missing sources or scientific discrepancies before acceptance.
 
-`make` uses the R on your host. To run every recipe inside the container instead:
-
-```bash
-make DOCKER=1            # each step becomes docker compose run --rm analysis Rscript <script>
-```
-
-The Makefile is a convenience layer, **not** the reproducibility guarantee — that is
-Docker + renv + `here::here()` paths. If in doubt, prefer `make DOCKER=1` or the
-RStudio route.
-
-### C. One script at a time
-
-Every script is self-contained (`here::here()` resolves paths from the project root),
-so you can run any single one once its inputs exist — from RStudio, or from the host:
-
-```bash
-docker compose run --rm analysis Rscript scripts/process_data/detect_outliers.R
-```
-
-Useful for re-running one stage after changing one function, or for stepping through
-the pipeline stage by stage while inspecting each output.
-
-## 6. No Docker? Local R + renv
-
-Possible, but you own the system libraries (GDAL, UDUNITS, Java, … — see the
-`Dockerfile`'s apt list), so Docker is the supported path. With an R version matching
-`renv.lock` (R 4.6):
-
-```r
-install.packages("renv")
-renv::restore()           # installs every package at its pinned version
-```
-
-then open `Coding.Rproj` and run as in §5A. The same scripts run identically in both
-environments — that is what `here::here()` buys.
-
-## 7. Reviewer checklist: the paper's results in five steps
-
-1. `docker compose up`, open <http://localhost:8787>, put the raw data in `data/raw/`.
-2. Run `source(here::here("scripts", "run_pipeline.R"))` (or `make DOCKER=1` from the
-   host). Hours, one command.
-3. **Look in `results/paper/`** — it holds exactly the manuscript's deliverables:
-   every figure and table the paper cites, under the `.tex`'s own filenames, all PDF.
-   `results/paper/tex_path_mapping.csv` maps each old `\includegraphics` path to the
-   produced file, and `results/paper/update_tex_paths.sh` applies the mapping to a
-   copy of the manuscript. `results/figures/` and `results/tables/` hold the repo's
-   own working artefacts — never cited by the paper.
-4. **Verify without re-reading code:** `Rscript tests/testthat.R` covers hand-worked
-   golden values for the IDW estimator, the canonical data schema across all four
-   cities, and pipeline path integrity.
-5. **Inspect any intermediate:** every Parquet under `data/interim/` and
-   `data/processed/` opens directly (`arrow::open_dataset()`, DuckDB, or RStudio's
-   data viewer). The design goal is that you can stop after any stage and see exactly
-   what the code produced.
-
-For a bit-for-bit, frozen-environment run: `docker compose -f docker-compose.release.yml
-up` starts the same pipeline from an image whose code cannot be edited from the host,
-with `data/raw` mounted read-only.
-
-## 8. Troubleshooting
-
-- **First `docker compose up` is slow** — expected; the multi-stage build compiles the
-  R library once and caches it (a named volume `renv_cache`).
-- **Port 8787 already in use** — change the left-hand side of the port map in
-  `docker-compose.yml` (`"8788:8787"`) and open the new port.
-- **The `selenium` service fails its health check** — it is only used by the download
-  scripts. For analysis-only work, bypass it:
-  `docker compose run --rm --no-deps analysis bash`.
-- **`make` on the host fails on missing packages** — the host R is not the pinned
-  library; use `make DOCKER=1` (or `renv::restore()` locally, §6).
-- **Scripts inside the container cannot see your edits** — the dev compose mounts
-  `src/`, `scripts/`, `results/` live; only `data/` subfolders other than `raw/` and
-  `downloads/` are not mounted, and are written inside the container. If you need
-  them on the host, copy them out with `docker compose cp`.
+Observed local input footprint at migration: about 4.6 GB raw, 14 GB downloads, 2.7 GB interim and 470 MB processed, excluding image/library overhead. Allow additional space for a fresh run and retained image. These are observed storage sizes, not measured minimum RAM requirements. Full runtime and peak memory are not yet established; stage timings are recorded by the verifier and should replace estimates after a completed run. Satellite processing and imputation can dominate runtime. See doc/ai/implementation.md for this implementation's measured check results and run outcome.

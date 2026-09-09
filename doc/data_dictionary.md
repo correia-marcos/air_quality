@@ -261,3 +261,5 @@ decisions rather than naming ones.
   inputs whose structure deliberately mirrors the legacy pipeline. They are **not** converted to
   this schema.
 - **Income exists only for CDMX and São Paulo.** Bogotá's and Santiago's censuses do not collect it.
+
+During a recorded verification, canonical Parquet metadata additionally includes `verification_run` and `code_revision` when supplied by the run environment. Existing city/year/geography metadata is retained. Run-level SHA-256 inventories connect files to the recorded code and input versions; an unstamped historical file is not a verified baseline.

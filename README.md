@@ -2,7 +2,7 @@
 
 **Objective:** This repository contains the complete replication package for *“Inequality in Air Pollution Monitoring and Exposure: Evidence from Four Latin American Cities”*.
 
-We measure how both monitoring coverage and pollutant exposure differ across socioeconomic groups in Bogotá, Mexico City, Santiago, and São Paulo. To guarantee that every user—regardless of operating system—obtains bit-for-bit identical results, this project is:
+We measure how both monitoring coverage and pollutant exposure differ across socioeconomic groups in Bogotá, Mexico City, Santiago, and São Paulo. To support computational reproduction across environments, this project uses the following controls. Their success must be assessed with a recorded run; they do not guarantee identical results:
 1.  **Containerized** using [Docker](https://www.docker.com) to lock system libraries (GDAL, GEOS, R).
 2.  **Version-controlled** using [renv](https://rstudio.github.io/renv/) to lock R package versions.
 
@@ -71,7 +71,7 @@ This project follows a "Source vs. Execution" pattern. `src/` contains logic/fun
 │   ├── process_data/          # Clean & Transform (Raw -> Interim -> Processed)
 │   ├── tables_images/         # Generate final outputs
 │   ├── validation_old_version/ # Legacy comparison track
-│   └── run_pipeline.R         # Master orchestrator — the single record of run order
+│   └── run_pipeline.R         # Master orchestrator; Makefile declares stage dependencies
 ├── data/                      # (git-ignored)
 │   ├── downloads/             # Raw pulls, as fetched
 │   ├── raw/                   # Immutable original inputs
@@ -79,9 +79,8 @@ This project follows a "Source vs. Execution" pattern. `src/` contains logic/fun
 │   ├── processed/             # Final analysis-ready datasets
 │   └── _legacy/               # Coauthor's original data (validation track only)
 ├── results/
-│   ├── paper/                 # EXACTLY what the manuscript prints
-│   ├── figures/               # Repo's own working figures (PDFs and PNGs)
-│   └── tables/                # Repo's own working tables (LaTeX and CSV)
+│   ├── figures/               # Canonical figures in seven topic folders
+│   └── tables/                # Canonical tables, flat (LaTeX and CSV)
 ├── tests/                     # testthat suite (Rscript tests/testthat.R)
 └── doc/                       # Guides, audit trail, remaining-work notes
 ```
@@ -125,7 +124,7 @@ Some data (e.g. MERRA-2) require free Earthdata credentials:
 
 With credentials in place, simply run our [download script](scripts/download_data/download_merra2_data.R)—either in R or via Docker—to pull all MERRA-2 `.nc4` files automatically.
 
-> **Tip:** You can always download manually from NASA’s [Data Portal](https://disc.gsfc.nasa.gov/datasets?project=MERRA-2), but scripting saves time and guarantees reproducibility.
+> **Tip:** You can always download manually from NASA’s [Data Portal](https://disc.gsfc.nasa.gov/datasets?project=MERRA-2), but scripting saves time and records the acquisition procedure.
 
 ---
 
@@ -253,7 +252,7 @@ read-only — use `docker compose -f docker-compose.release.yml up` instead.
   ```
 
 See [doc/HOW_TO_RUN.md](doc/HOW_TO_RUN.md) for the full walkthrough, including the
-reviewer's path to the manuscript's own figures and tables in `results/paper/`.
+reviewer's path to the manuscript's own figures and tables through `config/paper_artifacts.csv`.
 
 ---
 
@@ -262,16 +261,16 @@ reviewer's path to the manuscript's own figures and tables in `results/paper/`.
 Our project proceeds in four main stages:
 
 1. **Data ingestion:**
-   - For open datasets: run the `scripts/download_data/` scripts; raw files appear in `data/raw/`.
-   - For restricted-access files: these are distributed internally.
+   - For open datasets: run the `scripts/download_data/` scripts; source downloads remain in `data/downloads/` or `data/raw/`; derived products go to `data/interim/`.
+   - For restricted-access files: obtain authorized access from the data owner; redistribution is not assumed.
 2. **Preprocessing:**
    - Scripts in `scripts/process_data/` clean, transform and merge the raw data
      (`data/raw/` → `data/interim/` → `data/processed/`, with inspectable Parquet
      checkpoints at each step).
 3. **Analysis & Visualization:**
    - Scripts in `scripts/tables_images/` produce the paper's figures and tables in
-     `results/paper/` (exactly what the manuscript prints), plus the repo's own
-     working artefacts in `results/figures/` and `results/tables/`.
+     `results/figures/` (seven topic folders) and flat `results/tables/`. The tracked
+     `config/paper_artifacts.csv` selects artifacts for export to existing manuscript paths.
 4. **Review & Export:**
    - Retrieve the final outputs for manuscript drafting or policy briefs.
 
@@ -323,7 +322,7 @@ flowchart TD
   DESC --> CT["tables_images/render_census_tables.R"]
 ```
 
-`figure_study_area_maps.R` reads only `data/raw/` geospatial files, so it has no
+`figure_study_area_maps.R` reads prepared `data/interim/geospatial_data/` files, so it has no
 processing prerequisite; `figure_stations_on_metro_area.R` additionally reads station
 locations from `data/interim/`.
 
@@ -355,3 +354,5 @@ locations from `data/interim/`.
 **Last Updated:** 2026‑08‑31 (YYYY-MM-DD)
 
 [bridget_email]: bridgeth@iadb.org
+
+For the current verification modes, isolated-run protocol and manuscript export, see [HOW_TO_RUN](doc/HOW_TO_RUN.md). Shared agent guidance is in [doc/ai](doc/ai/README.md). Historical outputs are not a revision-matched numerical baseline.
