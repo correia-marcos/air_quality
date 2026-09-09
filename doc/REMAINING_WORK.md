@@ -1,3 +1,5 @@
+> September 2026 structural-migration note: operational paths and shared harness setup are now documented in [HOW_TO_RUN](HOW_TO_RUN.md) and [doc/ai](ai/README.md). Older paths and observations below are historical; this migration does not mark methodological findings resolved.
+
 # What is left to build in this repo
 
 What the manuscript needs from the **default pipeline** (`scripts/process_data/` →
