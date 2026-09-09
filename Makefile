@@ -154,3 +154,15 @@ help:
 	@echo "         merra2 download validate clean"
 	@echo "Add DOCKER=1 to run each step inside the compose \"analysis\" service."
 
+
+.PHONY: test test-release verify verify-full export-dry-run
+test:
+	$(RUN) tests/testthat.R
+test-release:
+	$(RUN) tests/testthat.R --mode=release
+verify:
+	$(RUN) scripts/verification/verify.R
+verify-full:
+	$(RUN) scripts/verification/verify.R --full
+export-dry-run:
+	$(RUN) scripts/export/export_paper.R --destination data/verification/export-preview --dry-run
