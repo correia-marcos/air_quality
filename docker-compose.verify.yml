@@ -1,0 +1,24 @@
+# Batch-only: no RStudio, Selenium, credentials, or prebuilt analytical products.
+services:
+  verify:
+    image: ${AIR_VERIFY_IMAGE:-air-monitoring-verification:local}
+    entrypoint: ["Rscript", "scripts/verification/verify.R", "--release", "--rebuild"]
+    working_dir: /air_monitoring
+    network_mode: none
+    environment:
+      AIR_VERIFY_STRICT: "1"
+      AIR_BASELINE_REVIEW: /baseline/baseline-review.json
+      AIR_VERIFY_RUN: /air_monitoring/data/verification
+      AIR_CODE_REVISION: ${AIR_CODE_REVISION:-unrecorded}
+      AIR_IMAGE_ID: ${AIR_IMAGE_ID:-unrecorded}
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+    volumes:
+      - ${AIR_SOURCE_ROOT}/data/raw:/air_monitoring/data/raw:ro
+      - ${AIR_SOURCE_ROOT}/data/downloads:/air_monitoring/data/downloads:ro
+      - ${AIR_SOURCE_ROOT}/data/_legacy:/air_monitoring/data/_legacy:ro
+      - ${AIR_VERIFY_RUN}/interim:/air_monitoring/data/interim
+      - ${AIR_VERIFY_RUN}/processed:/air_monitoring/data/processed
+      - ${AIR_VERIFY_RUN}/results:/air_monitoring/results
+      - ${AIR_VERIFY_RUN}/report:/air_monitoring/data/verification
+      - ${AIR_BASELINE_ROOT}:/baseline:ro

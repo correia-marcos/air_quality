@@ -52,6 +52,12 @@ services:
     volumes:
       - ./src:/air_monitoring/src
       - ./scripts:/air_monitoring/scripts
+      - ./tests:/air_monitoring/tests:ro
+      - ./config:/air_monitoring/config:ro
+      - ./doc/ai:/air_monitoring/doc/ai:ro
+      - ./data/interim:/air_monitoring/data/interim
+      - ./data/processed:/air_monitoring/data/processed
+      - ./data/validation:/air_monitoring/data/validation
       - ./results:/air_monitoring/results
       - ./data/raw:/air_monitoring/data/raw
       - ./data/downloads:/air_monitoring/data/downloads
