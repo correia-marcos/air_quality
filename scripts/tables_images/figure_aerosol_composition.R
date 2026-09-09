@@ -29,8 +29,8 @@ set_paper_theme()
 # I: Import data
 # ============================================================================================
 dir_pm25       <- here::here("data", "processed", "merra2_pm25")
-outdir_joint   <- here::here("results", "figures", "joint_plots")
-outdir_bycity  <- here::here("results", "figures", "cities_aerosols")
+outdir_joint   <- here::here("results", "figures", "satellite")
+outdir_bycity  <- here::here("results", "figures", "satellite")
 
 fig_width  <- 16
 fig_height <- 9

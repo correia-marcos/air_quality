@@ -9,7 +9,7 @@
 # each WHO interim target and the annual mean, for PM10 and PM2.5, against mean years of
 # schooling, plus the income variants for the two cities whose census carries income.
 # One station per point with an ordinary least squares fit. Every figure is written under
-# the file name the manuscript cites, in results/paper/figures/station_scatters/.
+# the file name the manuscript cites, in results/figures/monitoring/.
 #
 #' @Summary:
 #   I.   Setup: load dependencies, set the paper theme, define paths.
@@ -32,7 +32,7 @@ set_paper_theme()
 # ============================================================================================
 # Define input and output folders
 dir_station <- here::here("data", "processed", "station_socio_exposure")
-outdir_fig  <- here::here("results", "paper", "figures", "station_scatters")
+outdir_fig  <- here::here("results", "figures", "monitoring")
 
 dir.create(outdir_fig, recursive = TRUE, showWarnings = FALSE)
 

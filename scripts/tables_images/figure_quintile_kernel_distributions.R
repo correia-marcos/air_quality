@@ -28,7 +28,7 @@ set_paper_theme()
 # ============================================================================================
 # Define input and output folders
 dir_idw    <- here::here("data", "processed", "idw_estimates")
-outdir_fig <- here::here("results", "paper", "figures", "exposure_densities")
+outdir_fig <- here::here("results", "figures", "exposure")
 
 dir.create(outdir_fig, recursive = TRUE, showWarnings = FALSE)
 

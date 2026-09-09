@@ -12,7 +12,7 @@
 #   Santiago red for contrast, the other three black and told apart by linetype, no fill
 #   under the curves — is set once in the knob block in Section I and passed to every
 #   call, so a trial run means editing a knob and re-running one block. Seven PDFs land
-#   in results/figures/kernel_plots/.
+#   in results/figures/temporal/.
 #
 #' @Summary:
 #   I.    Import data: the four cities' cleaned station panels + the styling knobs.
@@ -38,8 +38,8 @@ dir_stations <- here::here("data", "processed", "monitoring_stations_outliers")
 
 # The six density panels are manuscript figures; the exceedance-share bar chart is the
 # repo's own companion, so the two go to different places.
-outdir_paper <- here::here("results", "paper", "figures", "city_distributions")
-outdir       <- here::here("results", "figures", "kernel_plots")
+outdir_paper <- here::here("results", "figures", "temporal")
+outdir       <- here::here("results", "figures", "temporal")
 
 fig_width  <- 16
 fig_height <- 9

@@ -32,7 +32,7 @@ set_paper_theme()
 # Define input and output folders
 dir_imputed <- here::here("data", "processed", "imputed_ols")
 dir_station <- here::here("data", "processed", "station_socio_exposure")
-outdir_fig  <- here::here("results", "paper", "figures", "imputation_diagnostics")
+outdir_fig  <- here::here("results", "figures", "imputation")
 
 dir.create(outdir_fig, recursive = TRUE, showWarnings = FALSE)
 

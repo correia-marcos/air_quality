@@ -35,15 +35,15 @@ set_paper_theme()
 dir_series     <- here::here("data", "processed", "merra2_stations_pm25")
 dir_shapefiles <- here::here("data", "raw", "cities_shapefiles")
 
-outdir_series  <- here::here("results", "figures", "time_series")
-outdir_ti      <- here::here("results", "figures", "m2_stations_removed_ti_days")
-outdir_hourly  <- here::here("results", "figures", "hour_average")
-outdir_targets <- here::here("results", "figures", "hour_above_iterim_target")
+outdir_series  <- here::here("results", "figures", "satellite")
+outdir_ti      <- here::here("results", "figures", "satellite")
+outdir_hourly  <- here::here("results", "figures", "temporal")
+outdir_targets <- here::here("results", "figures", "temporal")
 outdir_maps    <- here::here("results", "figures", "maps")
 
 # Of the figures below, the manuscript prints only the ridgelines and the IT2 episode
-# durations; those go to results/paper/, the rest stay with the repo's own outputs.
-outdir_paper   <- here::here("results", "paper", "figures", "hourly_profiles")
+# durations; those go to results/, the rest stay with the repo's own outputs.
+outdir_paper   <- here::here("results", "figures", "temporal")
 
 # Figure geometry and series styling, shared by every figure here.
 fig_width      <- 16

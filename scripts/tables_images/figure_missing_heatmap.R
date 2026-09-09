@@ -6,7 +6,7 @@
 #' @Description: Month × hour missing-pattern diagnostic. For each city we query
 # DuckDB for the exact two-way share of missing observations (month × hour) and
 # render it with `plot_missing_heatmap()`. One PDF per (city × pollutant) in
-# results/figures/joint_plots/missing_heatmap/.
+# results/figures/satellite/missing_heatmap/.
 #
 #' @Summary:
 #   I.   Define Arrow datasets + output folder
@@ -26,9 +26,9 @@ set_paper_theme()
 # ============================================================================================
 # I: Import data
 # ============================================================================================
-dir_pollution  <- here::here("data", "raw", "monitoring_stations")
+dir_pollution  <- here::here("data", "interim", "monitoring_stations")
 dir_missing    <- here::here("data", "processed", "missing_proportions")
-outdir_figs    <- here::here("results", "figures", "joint_plots", "missing_heatmap")
+outdir_figs    <- here::here("results", "figures", "diagnostics")
 dir.create(outdir_figs, recursive = TRUE, showWarnings = FALSE)
 
 arrow_dirs <- list(
