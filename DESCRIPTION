@@ -27,6 +27,7 @@ Imports:
     DBI,
     doParallel,
     dplyr,
+    digest,
     duckdb,
     exactextractr,
     foreach,
