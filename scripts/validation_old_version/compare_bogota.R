@@ -4,12 +4,12 @@
 #' @Goal  : Run all validation comparisons for Bogotá and render a single city-level report.
 #
 #' @Description: This script compares the new automated pipeline against the legacy dataset. 
-#   Artefacts are written to: results/validation_old_version/bogota/{data_type}/
+#   Artefacts are written to: data/validation/bogota/{data_type}/
 # 
 #' @Details: This script is the single entry point for comparing every data layer
 # of the Bogotá pipeline against the coauthor's legacy dataset. Comparison functions are called
 # in pipeline order (raw → interim → processed → results). All artefacts are written to:
-#     results/validation_old_version/bogota/
+#     data/validation/bogota/
 # A single self-contained HTML report is rendered from bogota_report.qmd.
 #
 #' @Summary: 
@@ -104,7 +104,7 @@ for (name in names(summaries)) {
 # =============================================================================================
 # III: Render city report
 # =============================================================================================
-# Quarto writes the HTML next to the .qmd; we copy it to results/ afterward.
+# Quarto writes the HTML next to the .qmd; we move it to ignored data/validation/ afterward.
 tryCatch({
   qmd_path = cfg$compare$qmd_path
   html_dest = cfg$compare$html_dest
@@ -118,15 +118,18 @@ tryCatch({
       out_root = cfg$compare$out_root
     )
   )
-  # Move rendered HTML to results folder
+  # Move rendered HTML only after confirming a successful, identical copy.
   html_beside_qmd <- file.path(dirname(qmd_path), html_name)
   if (normalizePath(html_beside_qmd) != normalizePath(html_dest)) {
-    file.copy(html_beside_qmd, html_dest, overwrite = TRUE)
+    if (!file.copy(html_beside_qmd, html_dest, overwrite = TRUE) ||
+        tools::md5sum(html_beside_qmd) != tools::md5sum(html_dest)) {
+      stop("Validation report copy failed; original render retained.")
+    }
     file.remove(html_beside_qmd)
   }
   message("\nReport: ", html_dest)
 },
-error = function(e) warning(
+error = function(e) stop(
   "Report rendering failed:\n", conditionMessage(e)
 ))
 

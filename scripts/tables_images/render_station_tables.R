@@ -8,7 +8,7 @@
 # calculated here: the counts describe the infrastructure that exists, the exceedance
 # factors compare annual concentrations against the WHO AQG 2021 targets, and the two
 # threshold tables report days above IT1/IT2 and the hours per exceeding day. The three
-# fragments the manuscript prints are written to results/paper/tables/ as well as to the
+# fragments the manuscript prints are written to results/tables/ as well as to the
 # repo's own results/tables/.
 #
 #' @Summary:
@@ -31,7 +31,7 @@ dir_counts    <- here::here("data", "processed", "station_counts")
 dir_who       <- here::here("data", "processed", "who_exceedances")
 dir_exceed    <- here::here("data", "processed", "threshold_exceedances")
 outdir_tables <- here::here("results", "tables")
-outdir_paper  <- here::here("results", "paper", "tables")
+outdir_paper  <- here::here("results", "tables")
 
 analysis_year <- 2023L
 
@@ -48,30 +48,26 @@ threshold_exceedances <- data.table::as.data.table(arrow::read_parquet(
 dir.create(outdir_paper, recursive = TRUE, showWarnings = FALSE)
 
 # Number of monitoring stations reporting each pollutant, by city. The manuscript prints
-# this one, so it is written to both trees under the same name.
-tex_counts <- file.path(outdir_tables, "station_counts",
+# this one; export selection points to this single canonical file.
+tex_counts <- file.path(outdir_tables,
                         paste0("stations_by_pollutant_", analysis_year, ".tex"))
 write_station_count_latex(station_counts = station_counts, out_file = tex_counts)
-write_station_count_latex(
-  station_counts = station_counts,
-  out_file = file.path(outdir_paper,
-                       paste0("stations_by_pollutant_", analysis_year, ".tex")))
 
 # Days above IT1/IT2, and the mean hours per exceeding day. Two views of one artefact.
 tab_days  <- latex_threshold_exceedance_table(threshold_exceedances, measure = "days")
 tab_hours <- latex_threshold_exceedance_table(threshold_exceedances, measure = "hours")
 
-dir.create(file.path(outdir_tables, "threshold_exceedances"),
+dir.create(outdir_tables,
            recursive = TRUE, showWarnings = FALSE)
 
-for (d in c(outdir_paper, file.path(outdir_tables, "threshold_exceedances"))) {
+for (d in outdir_tables) {
   writeLines(tab_days,  file.path(d, "table_days_above_thresholds.tex"), useBytes = TRUE)
   writeLines(tab_hours, file.path(d, "table_avg_hours_above_thresholds.tex"),
              useBytes = TRUE)
 }
 
 # Annual PM concentrations against the WHO AQG 2021 interim and long-term targets.
-tex_who <- file.path(outdir_tables, "who_exceedances", "who_exceedances_all_cities.tex")
+tex_who <- file.path(outdir_tables, "who_exceedances_all_cities.tex")
 dir.create(dirname(tex_who), recursive = TRUE, showWarnings = FALSE)
 
 table_who_exceedances(

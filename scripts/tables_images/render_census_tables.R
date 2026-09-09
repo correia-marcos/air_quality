@@ -29,7 +29,7 @@ source(here::here("src", "general_utilities", "config_utils_plot_tables.R"))
 dir_census    <- here::here("data", "processed", "census_summary")
 dir_bands     <- here::here("data", "processed", "distance_band_descriptives")
 outdir_tables <- here::here("results", "tables")
-outdir_paper  <- here::here("results", "paper", "tables")
+outdir_paper  <- here::here("results", "tables")
 
 dir.create(outdir_paper, recursive = TRUE, showWarnings = FALSE)
 
@@ -43,13 +43,12 @@ distance_bands <- arrow::read_parquet(
 tex_lines <- latex_census_summary(census_summary)
 
 # Repo-facing name, alongside the Parquet it was built from.
-tex_census <- file.path(outdir_tables, "census_summary", "census_summary_table.tex")
+tex_census <- file.path(outdir_tables, "census_summary_table.tex")
 dir.create(dirname(tex_census), recursive = TRUE, showWarnings = FALSE)
 writeLines(tex_lines, tex_census)
 
 # Manuscript-facing name: the paper \input's tables/table_census_coverage.
-tex_paper <- file.path(outdir_paper, "table_census_coverage.tex")
-writeLines(tex_lines, tex_paper)
+tex_paper <- tex_census  # Export mapping supplies the manuscript name.
 
 # Descriptive statistics by distance band, two cities per table as the paper prints them.
 tex_desc_a <- file.path(outdir_paper, "table_descriptives_a.tex")

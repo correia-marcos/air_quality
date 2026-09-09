@@ -9,8 +9,7 @@
 # and for income. Nothing is estimated here; the same artefacts already drive the exposure
 # figures, so table and figure cannot disagree. Only the paper's 3 km specification is
 # rendered. Fragments are bare tabulars, so the manuscript keeps its own float, caption
-# and label, and each is written to results/paper/tables/ (what the paper prints) and to
-# results/tables/exposure_by_groups/ (the repo's own copy).
+# and label; each is written once under results/tables/.
 #
 #' @Summary:
 #   I.   Import data: the 3 km education and income artefacts.
@@ -29,8 +28,7 @@ source(here::here("src", "general_utilities", "config_utils_plot_tables.R"))
 # ============================================================================================
 # Define input and output folders
 dir_reg      <- here::here("data", "processed", "idw_regressions")
-outdir_paper <- here::here("results", "paper", "tables")
-outdir_repo  <- here::here("results", "tables", "exposure_by_groups")
+outdir_paper <- here::here("results", "tables")
 
 analysis_year <- 2023L
 buffer_km     <- 3L
@@ -61,11 +59,10 @@ labels_inc <- c(CDMX = "Mexico City (income quintiles)",
                 `Sao Paulo` = "Sao Paulo (income deciles)")
 
 dir.create(outdir_paper, recursive = TRUE, showWarnings = FALSE)
-dir.create(outdir_repo, recursive = TRUE, showWarnings = FALSE)
 
-# Write one fragment to both trees, so the paper copy is never the only copy.
+# Write each canonical fragment once.
 write_both <- function(lines, stem) {
-  for (d in c(outdir_paper, outdir_repo)) {
+  for (d in outdir_paper) {
     writeLines(lines, file.path(d, paste0(stem, ".tex")), useBytes = TRUE)
   }
   message("Wrote: ", stem, ".tex")
@@ -98,7 +95,7 @@ write_both(tab_hours_inc, "table_hours_above_income_groups")
 # III: Report
 # ============================================================================================
 message("Exposure tables written to: ", outdir_paper)
-message("Repo copies written to: ", outdir_repo)
+
 
 # Print a success message for when running inside Docker Container
 cat("Script from the IDB project executed successfully in the Docker container!\n")

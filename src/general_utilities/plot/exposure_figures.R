@@ -1182,13 +1182,13 @@ build_exposure_level_figures <- function(sum_dt, tag, city_labels, city_files) {
 #
 #' @details
 #   The manuscript names these figures by what they show; this repo names them by the run
-#   that produced them. Rather than renaming the pipeline's own outputs, each figure is
-#   written twice, and this function is the single place the two vocabularies meet.
+#   that produced them. Selected plots are saved once using this mapping. Historical
+#   figures with different bytes remain distinct until comparison supports consolidation.
 #   Only the 3 km runs are printed, so every 5 km name maps to NA, as does the Santiago
 #   commune robustness run. The income CI figures keep the manuscript's "decile" wording
 #   even where the pipeline now estimates quintiles -- see doc/REMAINING_WORK.md.
 #
-#   The returned path is relative to results/paper/figures/. Its folders are named for
+#   The returned path is relative to results/figures/. Its folders are named for
 #   what the figures show, not for the manuscript's own Final/ and descriptives/, which
 #   said nothing about content.
 #
@@ -1219,12 +1219,12 @@ paper_exposure_filename <- function(fname, paper_files, year = 2023L,
     if (grouping != "education") return(NA_character_)
 
     if (!nzchar(outcome)) {
-      return(file.path("exposure_imputed",
+      return(file.path("imputation",
                        sprintf("plot_quintiles_%s_all_mean_%d_3km_imp.pdf",
                                paper_city, year)))
     }
 
-    return(file.path("exposure_imputed",
+    return(file.path("imputation",
                      sprintf("plot_hours_above_%s_%s_%d_3km_imp.pdf",
                              toupper(sub("hrs_d_", "", outcome)), paper_city, year)))
   }
@@ -1232,7 +1232,7 @@ paper_exposure_filename <- function(fname, paper_files, year = 2023L,
   # Levels: the mean-by-group panel the appendix prints.
   if (!nzchar(outcome)) {
     if (grouping != "education") return(NA_character_)
-    return(file.path("exposure_by_quintile",
+    return(file.path("exposure",
                      sprintf("plot_quintiles_%s_pm10_pm25_mean_%d_3km.pdf",
                              paper_city, year)))
   }
@@ -1242,12 +1242,12 @@ paper_exposure_filename <- function(fname, paper_files, year = 2023L,
   # Income runs appear only as the IT1 panel, under the manuscript's decile wording.
   if (grouping == "income") {
     if (it_tag != "IT1") return(NA_character_)
-    return(file.path("exposure_by_quintile",
+    return(file.path("exposure",
                      sprintf("plot_decile_hours_above_IT1_%s_%d_3km_reg1.pdf",
                              paper_city, year)))
   }
 
-  file.path("exposure_by_quintile",
+  file.path("exposure",
             sprintf("plot_hours_above_%s_%s_%d_3km_reg1.pdf",
                     it_tag, paper_city, year))
 }

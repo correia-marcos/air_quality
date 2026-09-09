@@ -619,9 +619,9 @@ plot_dual_pollutant_station_scatter <- function(
 #   specification.
 #
 #   Two output folders because the two panels have different audiences. The manuscript
-#   prints the PM10 one, so it goes to results/paper/; the PM2.5 companion is the repo's
+#   prints the PM10 one, so it goes to results/; the PM2.5 companion is the repo's
 #   own and goes beside the other station-monitoring figures. Separating them here, where
-#   the files are written, is what keeps results/paper/ holding only deliverables.
+#   the files are written, is what keeps results/ holding only deliverables.
 #
 #' @Written_on : August 2026
 #' @Written_by : Marcos Paulo

@@ -45,6 +45,10 @@ ensure_installed <- function(pkgs) {
     ". Run renv::restore() (or install locally with renv::install() then renv::snapshot())."
   )
 
+  if (identical(Sys.getenv("AIR_VERIFY_STRICT"), "1")) {
+    stop("Verification cannot install dependencies: ", paste(miss, collapse = ", "))
+  }
+
   old_repos <- getOption("repos")
   on.exit(options(repos = old_repos), add = TRUE)
 

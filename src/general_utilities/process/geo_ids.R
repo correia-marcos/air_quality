@@ -427,7 +427,10 @@ write_canonical_parquet <- function(dt, path, meta) {
 
   # Provenance rides along as file-level key-value metadata, not as columns.
   tbl <- arrow::as_arrow_table(dt)
-  tbl$metadata <- c(tbl$metadata, lapply(meta, as.character))
+  run_meta <- list(verification_run = Sys.getenv("AIR_RUN_ID"),
+                   code_revision = Sys.getenv("AIR_CODE_REVISION"))
+  run_meta <- run_meta[nzchar(unlist(run_meta))]
+  tbl$metadata <- c(tbl$metadata, lapply(c(meta, run_meta), as.character))
 
   arrow::write_parquet(tbl, path)
   invisible(path)

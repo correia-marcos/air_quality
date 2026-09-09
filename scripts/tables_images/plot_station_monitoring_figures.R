@@ -35,8 +35,8 @@ dir_distances <- here::here("data", "processed", "distances_matrices")
 dir_station   <- here::here("data", "processed", "station_socio_exposure")
 dir_census    <- here::here("data", "interim", "census")
 
-outdir_paper <- here::here("results", "paper", "figures", "monitoring_coverage")
-outdir_fig   <- here::here("results", "figures", "station_monitoring")
+outdir_paper <- here::here("results", "figures", "monitoring")
+outdir_fig   <- here::here("results", "figures", "monitoring")
 
 dir.create(outdir_paper, recursive = TRUE, showWarnings = FALSE)
 dir.create(outdir_fig, recursive = TRUE, showWarnings = FALSE)
