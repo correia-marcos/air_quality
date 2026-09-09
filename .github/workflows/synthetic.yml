@@ -1,0 +1,15 @@
+name: Synthetic verification
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  synthetic:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Harness adapters
+        run: python3 -m unittest discover -s tests/ai
+      - name: Restore declared environment
+        run: docker build -t air-monitoring-ci .
+      - name: Synthetic numerical and structural checks
+        run: docker run --rm --entrypoint Rscript air-monitoring-ci tests/testthat.R --mode=synthetic

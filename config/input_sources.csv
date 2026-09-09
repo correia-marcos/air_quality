@@ -1,0 +1,10 @@
+root,provider_or_origin,role,access_note,acquisition_script
+data/downloads/bogota,DANE and Bogota station providers,downloaded_source,Confirm version and redistribution rights with provider,scripts/download_data/download_bogota_data.R
+data/downloads/cdmx,INEGI and Mexico station providers,downloaded_source,Some census laboratory access may be restricted,scripts/download_data/download_cdmx_data.R
+data/downloads/santiago,INE and Santiago station providers,downloaded_source,Confirm version and redistribution rights with provider,scripts/download_data/download_santiago_data.R
+data/downloads/sao_paulo,IBGE and Sao Paulo station providers,downloaded_source,Confirm version and redistribution rights with provider,scripts/download_data/download_sao_paulo_data.R
+data/raw/merra2_aerosol_products,NASA MERRA-2,source_granules,Earthdata account for acquisition,scripts/download_data/download_merra2_data.R
+data/raw/merra2_country_pm,NASA MERRA-2,country_reference,Record original collection metadata,scripts/download_data/download_merra2_data.R
+data/raw/cities_shapefiles,Existing legacy geographic inputs,legacy_specification_input,Origin and producing revision need review,not_produced_by_current_pipeline
+data/raw/pollution_ground_stations,Existing legacy balanced station panels,legacy_satellite_input,Origin and producing revision need review,not_produced_by_current_pipeline
+data/_legacy,Coauthor supplied originals,legacy_comparison,Local restricted audit inputs; do not assume redistribution permission,external_supply

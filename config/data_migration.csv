@@ -1,0 +1,7 @@
+old_root,new_root,classification,action
+data/raw/monitoring_stations,data/interim/monitoring_stations,derived_working_products,copy_preserve_original
+data/raw/geospatial_data,data/interim/geospatial_data,derived_working_products,copy_preserve_original
+data/raw/census/bogota/CG2005_EXTENDED,data/interim/census_extracted/bogota/CG2005_EXTENDED,derived_working_products,copy_preserve_original
+data/raw/census/bogota/CG2005_BASIC,data/interim/census_extracted/bogota/CG2005_BASIC,derived_working_products,copy_preserve_original
+data/raw/census/bogota/CNPV_2018,data/interim/census_extracted/bogota/CNPV_2018,derived_working_products,copy_preserve_original
+data/raw/census/cdmx/CPV2020_EXTENDED,data/interim/census_extracted/cdmx/CPV2020_EXTENDED,derived_working_products,copy_preserve_original

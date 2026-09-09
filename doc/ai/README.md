@@ -1,0 +1,22 @@
+# Shared project guidance
+
+This directory is the canonical source for Claude, Codex, and other assistants.
+Read architecture.md at task start, then load only the relevant guidance below.
+Edit the shared source once; native wrappers contain discovery metadata and links.
+
+| Task | Read |
+|---|---|
+| Every task | [Architecture](architecture.md), [collaboration](collaboration.md) |
+| R/QMD/Rmd changes | [R style](rules/r-style.md) |
+| Data, src, scripts | [Data and paths](rules/data-and-paths.md) |
+| Container/dependency changes | [Reproducibility](rules/reproducibility.md) |
+| Legacy comparisons | [Validation](rules/validation.md) |
+| Repeated task | The matching file in [workflows](workflows/) |
+| Independent reviewer | The matching file in [roles](roles/) |
+| Scientific decisions | [Evidence index](evidence.md), [methods/tests](methods-tests.md) |
+| Client setup and hooks | [Harnesses](harnesses.md) |
+| Implementation status | [Migration evidence](implementation.md) |
+| Session transition | [Handoff](handoff.md) |
+
+A scoped rule may have documented exceptions. Existing user authorization is retained.
+Changes to methods, source inputs, and dependencies require the corresponding task scope.
