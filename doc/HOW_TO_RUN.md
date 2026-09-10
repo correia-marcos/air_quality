@@ -85,6 +85,19 @@ copies are reused. Refreshing them requires explicit `overwrite_source` (geograp
 `overwrite` (census). Bogotá, CDMX and the other geographic archives are acquired by the
 geography sections of their existing download scripts, using each city's configured paths.
 
+An existing unfiltered package-cache file can instead be preserved explicitly, without any
+download. Identify its release and retain its provenance before treating it as a replication
+input:
+
+```r
+santiago_acquire_census_2017(local_source = "/path/to/censo2017_duckdb_v155.sql")
+sao_paulo_acquire_census_2010(local_source = "/path/to/2010_population_v0.5.0.parquet")
+```
+
+These helpers verify the original and copied SHA-256 hashes. Their sidecars distinguish the
+local preservation date from the unknown original provider retrieval date. They do not certify
+that a cached file produced a historical manuscript result.
+
 The declared additional sources are:
 
 | Source | Preserved location under `data/downloads/` |
@@ -95,7 +108,8 @@ The declared additional sources are:
 | São Paulo population before project filtering | `sao_paulo/census/2010_population.parquet` |
 
 New acquisitions write `.source.json` sidecars with provider, requested version, acquisition
-time and SHA-256. Older archives without sidecars retain their original files; their retrieval
+time and SHA-256. Preserved cache copies record preservation time separately. Older archives
+without sidecars retain their original files; their retrieval
 dates are not invented. The verifier's `preparation-inputs.csv` reports these geographic and
 package-managed census prerequisites; it is not an exhaustive analytical-input certification.
 Use the isolated verifier to create fresh derived directories without deleting existing work.

@@ -242,6 +242,39 @@ record_source_acquisition <- function(path, provider, version) {
 }
 
 # --------------------------------------------------------------------------------------------
+# Function: preserve_local_source
+#' @param source Existing unfiltered provider file, including a package-managed cache.
+#' @param destination Declared preserved source location.
+#' @param provider Provider/package identity.
+#' @param version Known year/release; unknown provenance must be stated explicitly.
+#' @param overwrite Explicit permission to replace an existing preserved copy.
+#' @return Destination invisibly, after verifying the original and copied hashes.
+#' @details A preservation date does not establish the original retrieval date.
+# --------------------------------------------------------------------------------------------
+preserve_local_source <- function(source, destination, provider, version, overwrite = FALSE) {
+  if (file.exists(destination) && !overwrite) return(invisible(destination))
+  require_local_sources(source, "supply the existing unfiltered provider file")
+  if (identical(normalizePath(source), normalizePath(destination, mustWork = FALSE))) {
+    stop("Preserved destination must differ from the original source.")
+  }
+  hash <- function(path) digest::digest(file = path, algo = "sha256", serialize = FALSE)
+  original_hash <- hash(source)
+  dir.create(dirname(destination), recursive = TRUE, showWarnings = FALSE)
+  staged <- tempfile("source-copy-", tmpdir = dirname(destination))
+  on.exit(unlink(staged), add = TRUE)
+  if (!file.copy(source, staged) || !identical(hash(staged), original_hash) ||
+      !identical(hash(source), original_hash)) stop("Source copy checksum mismatch.")
+  if (!file.rename(staged, destination)) stop("Cannot preserve local source.")
+  metadata <- list(provider = provider, requested_version = version,
+    retrieved_utc = NULL, preserved_utc = format(Sys.time(), tz = "UTC", usetz = TRUE),
+    original_path = normalizePath(source), sha256 = original_hash,
+    note = "Original provider retrieval date is unknown; local preservation only.")
+  jsonlite::write_json(metadata, paste0(destination, ".source.json"),
+    pretty = TRUE, auto_unbox = TRUE, null = "null")
+  invisible(destination)
+}
+
+# --------------------------------------------------------------------------------------------
 # Function: preparation_input_status
 #' @param path Source inventory, with offline_preparation rows for required local files.
 #' @param root Project directory.

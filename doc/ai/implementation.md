@@ -1,6 +1,6 @@
 # Implementation and evidence
 
-## Container remediation — 9 September 2026
+## Container remediation — 9–10 September 2026
 
 The accepted remediation prepares geography inside existing city processors, preserves
 provider/package source copies, separates temporal manuscript production from optional
@@ -10,19 +10,23 @@ Scientific definitions and manuscript destinations are retained.
 
 Measured checks during implementation:
 
-- Native synthetic suite: 210 passed, no failures/errors/skips/warnings, using framework R
+- Native synthetic suite: 222 passed, no failures/errors/skips/warnings, using framework R
   with the declared existing local library. This is separate from container testing.
-- Seven geographic products regenerated from local archives matched historical interim
-  rows, identifiers, attributes, CRS and binary geometry exactly: Bogotá 2018 metro and
-  tracts, CDMX municipalities and AGEB, Santiago 2024 metro, São Paulo municipalities and
-  census tracts. All eight source-file SHA-256 hashes were unchanged.
+- Ten geographic products regenerated from local archives matched historical interim
+  rows, identifiers, attributes, CRS and binary geometry exactly: Bogotá 2005 metro,
+  municipalities and tracts; Bogotá 2018 metro and tracts; CDMX municipalities and AGEB;
+  Santiago 2024 metro; São Paulo municipalities and census tracts. All nine unique source-file
+  SHA-256 hashes were unchanged.
+- The existing native censo2017 database and censobr v0.5.0 population cache were copied
+  to declared source locations with identical SHA-256 hashes and unchanged originals.
+  Their original provider retrieval dates remain unknown; copying is not baseline approval.
 - Temporal fixtures passed; the extracted 33 preparation expressions and both plotting
   loops matched their original expressions. Real temporal inputs are missing locally.
 - Five harness tests passed from the repository and an unrelated working directory.
 
 Local evidence is under `data/verification/remediation-20260909/`. Historical intermediates
-are comparison evidence, not an approved revision-matched baseline. Six declared geographic/
-census source snapshots remain unavailable; the verifier reports these before analytical
+are comparison evidence, not an approved revision-matched baseline. Four declared geographic
+source snapshots remain unavailable; the verifier reports these before analytical
 rebuilding. Full source-to-manuscript execution, rendering review, and independent researcher
 reproduction remain incomplete. No provider version was substituted to bypass these limits.
 

@@ -43,6 +43,49 @@ test_that("Git-free images use supplied revision without claiming clean Git stat
   expect_identical(verification_revision(root, revision = "")$revision, "unrecorded")
 })
 
+test_that("local preservation verifies identity without inventing a retrieval date", {
+  root <- tempfile("preserve_source_")
+  dir.create(root)
+  on.exit(unlink(root, recursive = TRUE))
+  original <- file.path(root, "original")
+  destination <- file.path(root, "preserved", "source")
+  writeLines("unfiltered source", original)
+  before <- digest::digest(file = original, algo = "sha256", serialize = FALSE)
+  preserve_local_source(original, destination, "fixture", "known release")
+  record <- jsonlite::read_json(paste0(destination, ".source.json"))
+  expect_null(record$retrieved_utc)
+  expect_true(nzchar(record$preserved_utc))
+  expect_identical(record$sha256, before)
+  expect_identical(digest::digest(file = original, algo = "sha256", serialize = FALSE), before)
+  expect_identical(digest::digest(file = destination, algo = "sha256", serialize = FALSE), before)
+  writeLines("explicit refresh fixture", original)
+  preserve_local_source(original, destination, "fixture", "new release")
+  expect_identical(readLines(destination), "unfiltered source")
+  preserve_local_source(original, destination, "fixture", "new release", overwrite = TRUE)
+  expect_identical(readLines(destination), "explicit refresh fixture")
+  expect_error(preserve_local_source(original, original, "fixture", "version",
+    overwrite = TRUE), "must differ")
+})
+
+test_that("census acquisition accepts explicit local copies without package acquisition", {
+  env <- new.env(parent = globalenv())
+  for (city in c("registry", "santiago", "sao_paulo")) {
+    sys.source(here::here("src", "city_specific", paste0(city, ".R")), envir = env)
+  }
+  root <- tempfile("local_census_")
+  dir.create(root)
+  on.exit(unlink(root, recursive = TRUE))
+  original <- file.path(root, "original")
+  writeLines("copy-only fixture", original)
+  for (name in c("santiago_acquire_census_2017", "sao_paulo_acquire_census_2010")) {
+    destination <- file.path(root, name)
+    env[[name]](local_source = original, out_file = destination)
+    expect_identical(readLines(destination), readLines(original))
+    expect_error(env[[name]](local_source = file.path(root, "absent"),
+      out_file = paste0(destination, "-missing")), "Missing preserved source inputs")
+  }
+})
+
 test_that("census processing copies its preserved database before checking tables", {
   env <- new.env(parent = globalenv())
   sys.source(here::here("src", "city_specific", "registry.R"), envir = env)

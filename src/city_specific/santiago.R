@@ -2672,6 +2672,7 @@ register_city(
 # --------------------------------------------------------------------------------------------
 # Function: santiago_acquire_census_2017
 #' @param version censo2017 release tag; NULL uses the package provider default.
+#' @param local_source Existing unfiltered database to preserve without downloading.
 #' @param out_file Preserved database for subsequent offline processing.
 #' @param overwrite Explicitly replace an existing source snapshot.
 #' @return Preserved source path, invisibly.
@@ -2682,8 +2683,13 @@ santiago_acquire_census_2017 <- function(
     version = NULL,
     out_file = here::here("data", "downloads", "santiago", "census", "2017",
                           "censo2017.duckdb"),
-    overwrite = FALSE) {
+    overwrite = FALSE, local_source = NULL) {
   if (file.exists(out_file) && !overwrite) return(invisible(out_file))
+  if (!is.null(local_source)) {
+    known_version <- if (is.null(version)) "2017; provider release unrecorded" else version
+    return(preserve_local_source(local_source, out_file, "censo2017 local database",
+      paste(known_version, basename(local_source)), overwrite))
+  }
   work <- tempfile("censo2017_acquisition_")
   dir.create(work)
   old <- Sys.getenv("CENSO2017_DIR", unset = NA_character_)

@@ -1845,6 +1845,7 @@ register_city(
 
 # --------------------------------------------------------------------------------------------
 # Function: sao_paulo_acquire_census_2010
+#' @param local_source Existing unfiltered population Parquet to preserve without downloading.
 #' @param out_file Preserved, unfiltered provider Parquet.
 #' @param overwrite Explicitly replace an existing source snapshot.
 #' @return Preserved source path, invisibly.
@@ -1854,18 +1855,17 @@ register_city(
 sao_paulo_acquire_census_2010 <- function(
     out_file = here::here("data", "downloads", "sao_paulo", "census",
                           "2010_population.parquet"),
-    overwrite = FALSE) {
+    overwrite = FALSE, local_source = NULL) {
   if (file.exists(out_file) && !overwrite) return(invisible(out_file))
+  if (!is.null(local_source)) {
+    return(preserve_local_source(local_source, out_file, "censobr local population",
+      paste("2010", basename(local_source)), overwrite))
+  }
   population <- censobr::read_population(year = 2010, cache = TRUE)
   files <- population$files
   if (length(files) != 1L || !file.exists(files)) {
     stop("Expected one local censobr population Parquet.")
   }
-  dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
-  if (!file.copy(files, out_file, overwrite = overwrite)) {
-    stop("Cannot preserve census source.")
-  }
-  record_source_acquisition(out_file, paste("censobr::read_population", basename(files)),
-    paste("2010 censobr", utils::packageVersion("censobr")))
-  invisible(out_file)
+  preserve_local_source(files, out_file, "censobr::read_population",
+    paste("2010", basename(files), "censobr", utils::packageVersion("censobr")), overwrite)
 }
