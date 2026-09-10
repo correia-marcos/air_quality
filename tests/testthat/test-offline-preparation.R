@@ -72,6 +72,9 @@ test_that("Santiago local responses preserve representative-point membership and
   writeLines('{"count":4}', count_path)
   expect_error(env$santiago_download_metro_area_2017(download_dir = work,
     out_file = output, allow_download = FALSE, quiet = TRUE), "query was truncated")
+  expect_error(env$santiago_download_metro_area_2017(download_dir = work,
+    out_file = output, allow_download = TRUE, overwrite_gpkg = FALSE, quiet = TRUE),
+    "query was truncated")
   writeLines('{}', count_path)
   expect_error(env$santiago_download_metro_area_2017(download_dir = work,
     out_file = output, allow_download = FALSE, quiet = TRUE), "Missing zone count")

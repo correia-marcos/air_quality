@@ -10,7 +10,7 @@ Scientific definitions and manuscript destinations are retained.
 
 Measured checks during implementation:
 
-- Native synthetic suite: 209 passed, no failures/errors/skips/warnings, using framework R
+- Native synthetic suite: 210 passed, no failures/errors/skips/warnings, using framework R
   with the declared existing local library. This is separate from container testing.
 - Seven geographic products regenerated from local archives matched historical interim
   rows, identifiers, attributes, CRS and binary geometry exactly: Bogotá 2018 metro and

@@ -699,12 +699,6 @@ sao_paulo_download_weighting_areas <- function(
     }
   }
   
-  # 2) Check for Existing File
-  if (allow_download && file.exists(out_file) && !overwrite_gpkg) {
-    if (!quiet) message("↪︎ Output GPKG exists. Loading from disk...")
-    return(sf::st_read(out_file, quiet = TRUE))
-  }
-  
   # 3) Download Data
   if (!quiet) message("Reading preserved weighting areas (acquiring only if allowed).")
   
@@ -724,6 +718,13 @@ sao_paulo_download_weighting_areas <- function(
       paste(year, "geobr", utils::packageVersion("geobr")))
   }
   data_sf <- readRDS(source_path)
+
+  # Preserve/refresh the source even when retaining an existing derived output.
+  # 2) Check for Existing File
+  if (allow_download && file.exists(out_file) && !overwrite_gpkg) {
+    if (!quiet) message("↪︎ Output GPKG exists. Loading from disk...")
+    return(sf::st_read(out_file, quiet = TRUE))
+  }
 
   # 4) Process and Filter
   if (!quiet) message("🗺️  Filtering Spatial Data...")

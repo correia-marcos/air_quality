@@ -1841,11 +1841,6 @@ santiago_download_metro_area_2017 <- function(
     overwrite_source = FALSE
 ) {
 
-  if (allow_download && file.exists(out_file) && !isTRUE(overwrite_gpkg)) {
-    if (!quiet) message("[santiago_2017_area] Output exists and overwrite = FALSE.")
-    return(sf::st_read(out_file, quiet = TRUE))
-  }
-
   # Build an ArcGIS query URL. sf reads GeoJSON straight from the endpoint.
   .query <- function(service, where, fields, geom = "true") {
     paste0(base_url, "/", service, "/FeatureServer/0/query",
@@ -1890,6 +1885,12 @@ santiago_download_metro_area_2017 <- function(
   if (nrow(zonas) != n_expected) {
     stop("Zona_Censal returned ", nrow(zonas), " of ", n_expected,
          " features; the query was truncated.")
+  }
+
+  # Preserve/refresh the source even when retaining an existing derived output.
+  if (allow_download && file.exists(out_file) && !isTRUE(overwrite_gpkg)) {
+    if (!quiet) message("[santiago_2017_area] Output exists and overwrite = FALSE.")
+    return(sf::st_read(out_file, quiet = TRUE))
   }
 
   # 3. Keep the zones inside the conurbation. GEOS predicates are planar.
