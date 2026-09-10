@@ -43,7 +43,7 @@ COPY renv/settings.json renv/settings.json
 # Restore libraries (caching this layer)
 ENV RENV_CONFIG_CACHE_SYMLINKS=FALSE
 RUN R -e "install.packages('renv', repos='https://cran.rstudio.com/')" \
- && R -s -e "renv::restore(clean = TRUE)" \
+ && R -s -e "options(renv.install.timeout = 7200L); renv::restore(clean = TRUE)" \
  && R -s -e "stopifnot(requireNamespace('testthat', quietly = TRUE))"
 
 ################################################################################
@@ -52,6 +52,9 @@ RUN R -e "install.packages('renv', repos='https://cran.rstudio.com/')" \
 FROM base AS final
 
 WORKDIR /air_monitoring
+
+# Let --vanilla R processes find the platform-specific renv project library.
+ENV R_LIBS_USER=/air_monitoring/renv/library/linux-ubuntu-noble/R-%v/%p
 
 # 1. Copy the pre-built library from builder
 COPY --from=builder /air_monitoring/renv /air_monitoring/renv

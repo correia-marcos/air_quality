@@ -13,3 +13,5 @@ jobs:
         run: docker build -t air-monitoring-ci .
       - name: Synthetic numerical and structural checks
         run: docker run --rm --network none --entrypoint Rscript air-monitoring-ci tests/testthat.R --mode=synthetic
+      - name: Verifier-compatible synthetic checks
+        run: docker run --rm --network none --entrypoint Rscript air-monitoring-ci --vanilla tests/testthat.R --mode=synthetic
