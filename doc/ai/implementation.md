@@ -20,9 +20,19 @@ Measured checks during implementation:
 - The existing native censo2017 database and censobr v0.5.0 population cache were copied
   to declared source locations with identical SHA-256 hashes and unchanged originals.
   Their original provider retrieval dates remain unknown; copying is not baseline approval.
+- Census component runs using those sources and historical geography matched both collapsed
+  tables exactly: Santiago 5,931,919 individuals / 1,654 zones; São Paulo 1,216,611
+  individuals / 633 weighting areas. Individual records matched exactly as multisets, with
+  row ordering differing. All four source/geography hashes were unchanged. These checks do
+  not establish fresh geography or complete reproduction.
 - Temporal fixtures passed; the extracted 33 preparation expressions and both plotting
   loops matched their original expressions. Real temporal inputs are missing locally.
 - Five harness tests passed from the repository and an unrelated working directory.
+
+The fresh image restore initially exceeded renv's one-hour installation deadline while
+DuckDB and Arrow were still compiling. The retry completed with a two-hour deadline and
+unchanged package versions. The image also exposes the restored library to `Rscript --vanilla`
+subprocesses; CI exercises both normal and verifier-compatible synthetic invocations.
 
 Local evidence is under `data/verification/remediation-20260909/`. Historical intermediates
 are comparison evidence, not an approved revision-matched baseline. Four declared geographic
