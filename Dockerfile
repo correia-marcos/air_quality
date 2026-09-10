@@ -4,7 +4,8 @@
 # Must match the "R.Version" recorded in renv.lock
 FROM rocker/rstudio:4.6.1 AS base
 
-ENV DEBIAN_FRONTEND=noninteractive TZ=UTC
+# Keep DuckDB extensions outside R's session-temporary directory.
+ENV DEBIAN_FRONTEND=noninteractive TZ=UTC DUCKDB_R_HOME=/opt/duckdb
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential git curl ca-certificates pkg-config cmake make python3 \
@@ -42,7 +43,8 @@ COPY renv/settings.json renv/settings.json
 # Restore libraries (caching this layer)
 ENV RENV_CONFIG_CACHE_SYMLINKS=FALSE
 RUN R -e "install.packages('renv', repos='https://cran.rstudio.com/')" \
- && R -s -e "renv::restore(clean = TRUE)"
+ && R -s -e "renv::restore(clean = TRUE)" \
+ && R -s -e "stopifnot(requireNamespace('testthat', quietly = TRUE))"
 
 ################################################################################
 # STAGE 3: Final - Runtime
@@ -62,8 +64,10 @@ RUN mkdir -p /usr/local/share/fonts/air-monitoring \
  && cp fonts/*.otf /usr/local/share/fonts/air-monitoring/ \
  && fc-cache -f
 
-# Cache the pinned DuckDB ICU extension while build networking is available.
-RUN Rscript -e "con <- DBI::dbConnect(duckdb::duckdb()); DBI::dbExecute(con, 'INSTALL icu'); DBI::dbDisconnect(con, shutdown=TRUE)"
+# Cache the pinned DuckDB ICU extension in its persistent image-level home.
+RUN mkdir -p /opt/duckdb \
+ && Rscript -e "con <- DBI::dbConnect(duckdb::duckdb()); DBI::dbExecute(con, 'INSTALL icu'); DBI::dbDisconnect(con, shutdown=TRUE)" \
+ && chown -R rstudio:rstudio /opt/duckdb
 
 # 3. RStudio & Permissions Setup
 RUN mkdir -p /home/rstudio/.config/rstudio \
