@@ -15,7 +15,7 @@
 #   4.   Estimate exposure (IDW)
 #   5.   Exposure regressions
 #   6.   Descriptive tables
-#   7.   MERRA-2 satellite track
+#   7.   Preserved temporal preparation
 #   8.   Tables and figures
 #
 #' @Date: August 2026
@@ -92,13 +92,12 @@ source(here::here("scripts", "process_data", "impute_missing_hourly.R"))
 source(here::here("scripts", "process_data", "estimate_exposure_imputed.R"))
 
 # ============================================================================================
-# Step 7: MERRA-2 Satellite Track
+# Step 7: Preserved Temporal Preparation
 # ============================================================================================
-# Independent of the station pipeline above. generate_panel_air_quality.R reads the raw
-# .nc4 granules and takes hours, so it stays commented out unless the panels are missing.
-
-# source(here::here("scripts", "process_data", "generate_panel_air_quality.R"))
-source(here::here("scripts", "process_data", "process_merra2_panels.R"))
+# Preserve the manuscript's legacy station samples and MERRA-2 time support.
+# This includes the slow .nc4 extraction; pre-existing panels are not prerequisites.
+source(here::here("scripts", "process_data", "generate_panel_air_quality.R"))
+source(here::here("scripts", "process_data", "prepare_station_temporal.R"))
 
 # ============================================================================================
 # Step 8: Tables & Images
@@ -115,8 +114,15 @@ source(here::here("scripts", "tables_images", "figure_station_scatter.R"))
 source(here::here("scripts", "tables_images", "figure_population_density_maps.R"))
 source(here::here("scripts", "tables_images", "figure_pollution_quintile_maps.R"))
 source(here::here("scripts", "tables_images", "figure_imputation_diagnostics.R"))
-source(here::here("scripts", "tables_images", "figure_merra2_vs_stations.R"))
-source(here::here("scripts", "tables_images", "figure_aerosol_composition.R"))
+source(here::here("scripts", "tables_images", "figure_station_temporal.R"))
 source(here::here("scripts", "tables_images", "figure_kernel_distributions.R"))
 source(here::here("scripts", "tables_images", "figure_quintile_kernel_distributions.R"))
-source(here::here("scripts", "tables_images", "figure_study_area_maps.R"))
+
+
+# Optional supporting analyses: run `make merra2` after acquiring its extra inputs.
+# source(here::here("scripts", "process_data", "process_merra2_panels.R"))
+# source(here::here("scripts", "tables_images", "figure_merra2_vs_stations.R"))
+# source(here::here("scripts", "tables_images", "figure_aerosol_composition.R"))
+
+# Optional context maps: `make context-maps` (terrain tiles may require networking).
+# source(here::here("scripts", "tables_images", "figure_study_area_maps.R"))

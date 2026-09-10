@@ -88,3 +88,24 @@ test_that("run_pipeline.R and the Makefile reference the same stage scripts", {
   expect_equal(sort(setdiff(pipeline_stage, makefile_stage)), character(0))
   expect_equal(sort(setdiff(makefile_stage, pipeline_stage)), character(0))
 })
+
+# Compare executable commands, so commented optional paths cannot mask disagreement.
+test_that("default orchestrators execute the same manuscript stages", {
+  skip_if(Sys.which("make") == "", "make is unavailable")
+  lines <- readLines(file.path(root, "scripts", "run_pipeline.R"))
+  active <- tempfile(fileext = ".R")
+  on.exit(unlink(active), add = TRUE)
+  writeLines(lines[!grepl("^\\s*#", lines)], active)
+  r_stages <- pipeline_script_paths(active)
+  dry_run <- system2("make", c("-C", shQuote(root), "-n", "-B", "all"),
+                     stdout = TRUE)
+  make_stages <- sub("^Rscript ", "", dry_run[grepl("^Rscript ", dry_run)])
+  expect_setequal(r_stages, make_stages)
+  expect_false(anyDuplicated(make_stages) > 0L)
+  expect_true(match("scripts/process_data/generate_panel_air_quality.R", make_stages) <
+                match("scripts/process_data/prepare_station_temporal.R", make_stages))
+  expect_true(match("scripts/process_data/prepare_station_temporal.R", make_stages) <
+                match("scripts/tables_images/figure_station_temporal.R", make_stages))
+  expect_false(any(grepl(paste0("process_merra2_panels|figure_merra2_vs_stations|",
+                                 "figure_aerosol_composition"), make_stages)))
+})

@@ -5,8 +5,8 @@
 #   and over the day, and what area one MERRA-2 cell actually covers.
 #
 #' @Description: Every figure here answers the same question: can MERRA-2 stand in for a
-# ground station? Sections II-V read the merged series from process_merra2_panels.R and
-# compare the two sources at different aggregations; section VI draws the MERRA-2 grid
+# ground station? Sections II-III read merged series from prepare_station_temporal.R and
+# compare the two sources at different aggregations; section IV draws the MERRA-2 grid
 # over each metro area, which is the spatial version of the same caveat. Section III
 # repeats the Santiago series with thermal-inversion hours dropped, because inversion days
 # are where the two sources diverge most.
@@ -15,9 +15,7 @@
 #   I.   Import data: merged MERRA-2/station series, inversion flags, rasters, shapefiles.
 #   II.  Time series per city, smoothed and raw.
 #   III. Santiago excluding thermal-inversion hours.
-#   IV.  Average pollution by hour of day.
-#   V.   Duration of episodes above the WHO interim targets.
-#   VI.  MERRA-2 grid footprint over each metro area.
+#   IV.  MERRA-2 grid footprint over each metro area.
 #
 #' @Date: August 2026
 #' @Author: Marcos Paulo
@@ -37,13 +35,8 @@ dir_shapefiles <- here::here("data", "raw", "cities_shapefiles")
 
 outdir_series  <- here::here("results", "figures", "satellite")
 outdir_ti      <- here::here("results", "figures", "satellite")
-outdir_hourly  <- here::here("results", "figures", "temporal")
-outdir_targets <- here::here("results", "figures", "temporal")
 outdir_maps    <- here::here("results", "figures", "maps")
 
-# Of the figures below, the manuscript prints only the ridgelines and the IT2 episode
-# durations; those go to results/, the rest stay with the repo's own outputs.
-outdir_paper   <- here::here("results", "figures", "temporal")
 
 # Figure geometry and series styling, shared by every figure here.
 fig_width      <- 16
@@ -153,59 +146,7 @@ ggplot2::ggsave(
   width = fig_width, height = fig_height, dpi = fig_dpi)
 
 # ============================================================================================
-# IV: Average pollution by hour of day
-# ============================================================================================
-dir.create(outdir_hourly, recursive = TRUE, showWarnings = FALSE)
-dir.create(outdir_paper, recursive = TRUE, showWarnings = FALSE)
-
-for (s in city_specs) {
-  bar <- plot_hourly_avg_pollution(
-    df = s$df, region_name = s$label, plot_ci = TRUE, bar_width = 0.7)
-
-  ridge <- plot_hourly_ridgeline_pollution(
-    df = s$df, region_name = s$label, pollution_var = "pm25_stations")
-
-  ggplot2::ggsave(
-    file.path(outdir_hourly, paste0(s$stem, "_bar_plot.pdf")),
-    bar, device = cairo_pdf,
-    width = fig_width, height = fig_height, dpi = fig_dpi)
-
-  # Titles are dropped on save: the paper captions these figures itself.
-  ggplot2::ggsave(
-    file.path(outdir_paper, paste0(s$stem, "_ridge_plot.pdf")),
-    ridge + ggplot2::labs(title = NULL) +
-      ggplot2::theme(plot.title = ggplot2::element_blank()),
-    device = cairo_pdf,
-    width = fig_width, height = fig_height, dpi = fig_dpi)
-}
-
-# ============================================================================================
-# V: Duration of episodes above the WHO interim targets
-# ============================================================================================
-dir.create(outdir_targets, recursive = TRUE, showWarnings = FALSE)
-
-city_dfs <- stats::setNames(lapply(city_specs, `[[`, "df"),
-                            vapply(city_specs, `[[`, character(1), "label"))
-
-for (target in c("IT1", "IT2")) {
-  p <- plot_time_spans_ridgeline(
-    list_of_dfs   = city_dfs,
-    target        = target,
-    pollution_var = "pm25_stations")
-
-  # The manuscript prints IT2 only; IT1 is the repo's own companion.
-  out_dir <- if (target == "IT2") outdir_paper else outdir_targets
-
-  ggplot2::ggsave(
-    file.path(out_dir, paste0("distribution_hours_above_", target, ".pdf")),
-    p + ggplot2::labs(title = NULL) +
-      ggplot2::theme(plot.title = ggplot2::element_blank()),
-    device = cairo_pdf,
-    width = fig_width, height = fig_height, dpi = fig_dpi)
-}
-
-# ============================================================================================
-# VI: MERRA-2 grid footprint over each metro area
+# IV: MERRA-2 grid footprint over each metro area
 # ============================================================================================
 dir.create(outdir_maps, recursive = TRUE, showWarnings = FALSE)
 

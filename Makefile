@@ -36,7 +36,7 @@ SRC := $(shell find src -name '*.R')
 
 # ---- Phony convenience targets -------------------------------------------------------------
 .PHONY: all download process merra2 distances outliers exposure descriptives \
-        scatter imputed figures tables validate clean help
+        scatter imputed temporal figures tables context-maps validate clean help
 
 all: figures tables
 
@@ -106,7 +106,7 @@ $(STAMP)/imputed.stamp: scripts/process_data/impute_missing_hourly.R \
 	touch $@
 
 # 6. Publication artefacts. Read only from data/processed; regenerate on demand (phony).
-figures: exposure scatter imputed
+figures: exposure scatter imputed descriptives temporal
 	$(RUN) scripts/tables_images/generate_exposure_plots.R
 	$(RUN) scripts/tables_images/figure_imputation_diagnostics.R
 	$(RUN) scripts/tables_images/plot_station_monitoring_figures.R
@@ -115,7 +115,7 @@ figures: exposure scatter imputed
 	$(RUN) scripts/tables_images/figure_pollution_quintile_maps.R
 	$(RUN) scripts/tables_images/figure_kernel_distributions.R
 	$(RUN) scripts/tables_images/figure_quintile_kernel_distributions.R
-	$(RUN) scripts/tables_images/figure_study_area_maps.R
+	$(RUN) scripts/tables_images/figure_station_temporal.R
 
 tables: exposure descriptives
 	$(RUN) scripts/tables_images/render_station_tables.R
@@ -123,13 +123,23 @@ tables: exposure descriptives
 	$(RUN) scripts/tables_images/render_census_tables.R
 	$(RUN) scripts/tables_images/render_exposure_tables.R
 
-# MERRA-2 satellite track: independent of the station pipeline above, so it is not a
-# prerequisite of `all`. generate_panel_air_quality.R is the slow .nc4 step.
-merra2:
+# Shared temporal inputs preserve MERRA-2 timestamp support for manuscript figures.
+temporal: $(STAMP)/temporal.stamp
+$(STAMP)/temporal.stamp: scripts/process_data/generate_panel_air_quality.R \
+                         scripts/process_data/prepare_station_temporal.R $(SRC) | $(STAMP)
 	$(RUN) scripts/process_data/generate_panel_air_quality.R
+	$(RUN) scripts/process_data/prepare_station_temporal.R
+	touch $@
+
+# Optional comparisons reuse the city series, adding country/NASA and inversion inputs.
+merra2: temporal
 	$(RUN) scripts/process_data/process_merra2_panels.R
 	$(RUN) scripts/tables_images/figure_merra2_vs_stations.R
 	$(RUN) scripts/tables_images/figure_aerosol_composition.R
+
+# Context maps are not manuscript artifacts; the terrain version may contact Stadia.
+context-maps: process
+	$(RUN) scripts/tables_images/figure_study_area_maps.R
 
 # ---- Optional / manual ---------------------------------------------------------------------
 # Large, credential-gated raw pulls. Deliberately NOT a prerequisite of `all`.
@@ -150,8 +160,8 @@ clean:
 
 help:
 	@echo "Targets: all process distances outliers exposure descriptives scatter"
-	@echo "         imputed figures tables"
-	@echo "         merra2 download validate clean"
+	@echo "         imputed temporal figures tables"
+	@echo "         merra2 context-maps download validate clean"
 	@echo "Add DOCKER=1 to run each step inside the compose \"analysis\" service."
 
 
