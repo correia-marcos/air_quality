@@ -28,9 +28,11 @@ inventory <- function(paths) {
   data.frame(path = sub(paste0(root, "/"), "", files, fixed = TRUE),
              bytes = file.info(files)$size, sha256 = vapply(files, sha, character(1)))
 }
+source("src/general_utilities/reproducibility.R")
+provenance <- verification_revision(root)
 report <- list(started_utc = format(Sys.time(), tz = "UTC", usetz = TRUE),
-  revision = Sys.getenv("AIR_CODE_REVISION", paste(capture("git", c("rev-parse", "HEAD")), collapse = "\n")),
-  changes = capture("git", c("status", "--porcelain")), R = R.version.string,
+  revision = provenance$revision, git_available = provenance$git_available,
+  changes = provenance$changes, R = R.version.string,
   renv = if (requireNamespace("renv", quietly = TRUE)) as.character(packageVersion("renv")) else NA,
   platform = Sys.info(), image = Sys.getenv("AIR_IMAGE_ID", "unrecorded"),
   spatial = if (requireNamespace("sf", quietly = TRUE)) sf::sf_extSoftVersion() else NULL,
@@ -39,7 +41,9 @@ report <- list(started_utc = format(Sys.time(), tz = "UTC", usetz = TRUE),
   reproduction_verified = FALSE, independent_reproduction = "not performed")
 save_report <- function() jsonlite::write_json(report, file.path(run, "report.json"),
                                               pretty = TRUE, auto_unbox = TRUE, null = "null")
-writeLines(capture("git", c("diff", "--binary", "HEAD")), file.path(run, "working-tree.patch"))
+if (provenance$git_available) {
+  writeLines(provenance$patch, file.path(run, "working-tree.patch"))
+}
 code <- inventory(c("src", "scripts", "config", "tests", "doc/ai"))
 root_code <- c("Dockerfile", "Makefile", "renv.lock", "DESCRIPTION", ".Rprofile", "docker-compose.verify.yml")
 code <- rbind(code, data.frame(path = root_code, bytes = file.info(root_code)$size,
@@ -85,7 +89,23 @@ if (rebuild) {
   ro <- !is.null(mounts) && all(vapply(protected, function(p)
     any(mounts$V2 == p & grepl("(^|,)ro(,|$)", mounts$V4)), logical(1)))
   if (!ro) report$findings <- c(report$findings, "Rebuild refused: source directories are not read-only mounts.")
-  else report$stages$rebuild <- command("make", c("-B", shQuote("RUN=Rscript scripts/verification/run_stage.R"), "all", "merra2"), file.path(run, "rebuild.log"))
+  else {
+    requirements <- preparation_input_status("config/input_sources.csv", root)
+    write.csv(requirements, file.path(run, "preparation-inputs.csv"), row.names = FALSE)
+    missing <- requirements$root[!requirements$present]
+    report$stages$preparation_inputs <- list(exit_status = as.integer(length(missing) > 0L),
+      missing = missing, inventory = "preparation-inputs.csv")
+    if (length(missing)) {
+      message("Missing preparation sources; see ", file.path(run, "preparation-inputs.csv"))
+      report$findings <- c(report$findings,
+        paste("Acquire missing preparation sources before rebuilding:",
+              paste(missing, collapse = "; ")))
+    } else {
+      report$stages$rebuild <- command("make",
+        c("-B", shQuote("RUN=Rscript scripts/verification/run_stage.R"), "all"),
+        file.path(run, "rebuild.log"))
+    }
+  }
 }
 mode <- if ("--release" %in% args || rebuild) "release" else "development"
 rscript <- file.path(R.home("bin"), "Rscript")
