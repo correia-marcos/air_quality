@@ -67,12 +67,18 @@ fails if you forget.
 
 ## How to run
 
-- **Preferred (reproducible):** `docker compose up` → open RStudio at `http://localhost:8787`
-  (user/pass from `.env`, copied from `.env.example`). See `README.md` §3–4.
-- **Full pipeline:** open `Coding.Rproj`, then `source(here::here("scripts","run_pipeline.R"))`.
-  Download steps are commented out by default (large); enable only when re-fetching raw data.
+- **Development:** `docker compose up` starts live-code RStudio. Add
+  `--profile acquisition` only when a download script needs Selenium.
+- **Interactive image-baked code:** `docker compose -f docker-compose.release.yml up` mounts
+  declared source inputs read-only and derived/output roots writable.
+- **Manuscript pipeline:** `make all` or
+  `source(here::here("scripts", "run_pipeline.R"))` runs the maintained manuscript stages,
+  including preserved temporal preparation. `make merra2` is optional supporting analysis.
+- **Isolated verification:** `Rscript scripts/verification/verify.R --full` rebuilds derived
+  outputs with source mounts read-only and runtime networking disabled.
 - **One stage:** run the relevant script in `scripts/`; each is self-contained via `here::here()`.
-- Packages are pinned with **renv**. If something is missing, run `renv::restore()`.
+  Restore packages with `renv::restore()` when required. See `doc/HOW_TO_RUN.md` for the
+  acquisition and evidence contract.
 
 ## Conventions (summary — full detail in `doc/ai/rules/`)
 

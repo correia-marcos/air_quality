@@ -1,358 +1,130 @@
-# IDB Project: Inequality in Air Pollution Monitoring and Exposure
+# Inequality in Air Pollution Monitoring and Exposure
 
-**Objective:** This repository contains the complete replication package for *“Inequality in Air Pollution Monitoring and Exposure: Evidence from Four Latin American Cities”*.
+Replication repository for *Inequality in Air Pollution Monitoring and Exposure:
+Evidence from Four Latin American Cities*. It analyzes monitoring coverage and pollutant
+exposure across Bogotá, Mexico City, Santiago, and São Paulo.
 
-We measure how both monitoring coverage and pollutant exposure differ across socioeconomic groups in Bogotá, Mexico City, Santiago, and São Paulo. To support computational reproduction across environments, this project uses the following controls. Their success must be assessed with a recorded run; they do not guarantee identical results:
-1.  **Containerized** using [Docker](https://www.docker.com) to lock system libraries (GDAL, GEOS, R).
-2.  **Version-controlled** using [renv](https://rstudio.github.io/renv/) to lock R package versions.
+## Current status
 
-Together, this ensures state-of-the-art reproducibility from data download through final figures.
+The repository records a reproducible workflow; it does not yet establish complete
+scientific reproduction. That claim requires declared source inputs, a fresh isolated run,
+revision-matched numerical comparisons, and review of plot data and rendering. Historical
+outputs are not a reviewed baseline. See [doc/HOW_TO_RUN.md](doc/HOW_TO_RUN.md) for the
+current procedure and limitations.
 
----
+Choose a route:
 
-## Table of Contents
+| Goal | Start here |
+|---|---|
+| Reproduce manuscript outputs | [Run and verify](doc/HOW_TO_RUN.md#manuscript-pipeline) |
+| Run optional satellite comparisons | [Supporting analyses](doc/HOW_TO_RUN.md#supporting-analyses) |
+| Develop or acquire inputs | [Development and acquisition](doc/HOW_TO_RUN.md#development-and-acquisition) |
+| Record an isolated release check | [Isolated batch verification](doc/HOW_TO_RUN.md#isolated-batch-verification) |
 
-1. [Project Overview](#1-project-overview)
-2. [Repository Structure](#2-repository-structure)
-3. [Downloading Data](#3-downloading-data)
-4. [Prerequisites](#4-prerequisites)
-5. [Installation](#5-installation)
-6. [Usage](#6-usage)
-7. [Workflow](#7-workflow)
-8. [Contributing](#8-contributing)
-9. [License & Citation](#9-license--citation)
-
-> **New here?** [doc/HOW_TO_RUN.md](doc/HOW_TO_RUN.md) is a step-by-step guide written
-> for students and reviewers: install the container, understand the layout, and
-> reproduce the paper's figures and tables.
-
----
-
-## 1. Project Overview
-
-**Motivation:**
-Air pollution is a leading environmental health risk. If exposure to pollution is unequal, it reinforces socioeconomic disparities in health, education, and productivity.
-
-**Scope:**
-- **Cities:** Bogotá (COL), Mexico City (MEX), Santiago (CHL), São Paulo (BRA).
-- **Pollutants:** PM₂.₅ and PM₁₀ (primary), plus O₃, CO, NO₂.
-- **Data:**
-    - Ground-station measurements (hourly, 2023).
-    - Census microdata (Income, Education, Location).
-    - MERRA-2 Satellite Aerosol Optical Depth (for robustness).
-
----
-
-## 2. Repository Structure
-
-This project follows a "Source vs. Execution" pattern. `src/` contains logic/functions, while `scripts/` executes that logic.
+## Repository layout
 
 ```text
-.
-├── Makefile                   # Stage-level wrapper (skip-unchanged rebuilds)
-├── docker-compose.yml         # Dev Orchestration
-├── docker-compose.release.yml # Replication Orchestration (Immutable)
-├── Dockerfile                 # Image definition
-├── entrypoint.sh              # Container entry point (batch runner / RStudio)
-├── .env.example               # Template for credentials (COPY TO .env)
-├── renv.lock                  # Exact R package versions
-├── src/                       # Source Code (Functions only; no side effects)
-│   ├── city_specific/         # Cleaning logic per city + registry.R
-│   └── general_utilities/
-│       ├── base_utils.R       # Shared helpers, no packages, no side effects
-│       ├── setup_packages.R   # ensure_installed() / attach_packages()
-│       ├── theme_paper.R      # set_paper_theme()
-│       ├── config_utils_*.R   # One thin loader per stage: packages + source() its parts
-│       ├── process/           # raw -> interim -> processed logic
-│       ├── plot/              # figure and LaTeX-table builders
-│       └── validation/        # legacy-comparison helpers
-├── scripts/                   # Execution Pipelines
-│   ├── download_data/         # Pull raw data from APIs
-│   ├── process_data/          # Clean & Transform (Raw -> Interim -> Processed)
-│   ├── tables_images/         # Generate final outputs
-│   ├── validation_old_version/ # Legacy comparison track
-│   └── run_pipeline.R         # Master orchestrator; Makefile declares stage dependencies
-├── data/                      # (git-ignored)
-│   ├── downloads/             # Raw pulls, as fetched
-│   ├── raw/                   # Immutable original inputs
-│   ├── interim/               # Intermediate steps (parquet/rds)
-│   ├── processed/             # Final analysis-ready datasets
-│   └── _legacy/               # Coauthor's original data (validation track only)
-├── results/
-│   ├── figures/               # Canonical figures in seven topic folders
-│   └── tables/                # Canonical tables, flat (LaTeX and CSV)
-├── tests/                     # testthat suite (Rscript tests/testthat.R)
-└── doc/                       # Guides, audit trail, remaining-work notes
+src/                 Reusable R functions
+scripts/             Executable acquisition, processing, figures, validation and verification
+data/downloads/      Preserved acquired source files (ignored; inputs of record)
+data/raw/            Authorized original inputs (ignored; inputs of record)
+data/interim/        Regenerated intermediate data, including prepared geography
+data/processed/      Regenerated analytical products
+results/             Regenerated figures and tables
+config/paper_artifacts.csv  Manuscript artifact paths and producing scripts
+doc/HOW_TO_RUN.md    Operational instructions and reproduction limits
+doc/ai/              Shared guidance for coding assistants
+tools/harness/       Optional Claude/Codex development-tooling policy
 ```
 
----
+`src/` contains reusable logic; `scripts/` runs it. The stage lists in
+`scripts/run_pipeline.R` and the `Makefile` are maintained together.
 
-## 3. Downloading Data
+## Inputs and geography
 
-Whenever possible, we fetch all project data via reproducible scripts. For datasets under restricted-access grants, we distribute files internally; for everything else, we reconstruct the site’s state (as of March 2025) using our download tools. Any open dataset that requires login is handled through the workflow below.
+External acquisition is a separate, online step. Keep authorized downloads and provider
+responses under `data/downloads/`, with their requested year/version, retrieval date and
+checksum. City processing then prepares the geographic layers it needs from those local
+sources, with downloads disabled. A missing source must be acquired through the relevant
+download script; a pre-existing generated layer is not a substitute for preparation.
 
-### NASA Earthdata
+The isolated verifier mounts `data/raw/`, `data/downloads/`, and `data/_legacy/` read-only
+and disables runtime networking. This tests whether declared local inputs are sufficient;
+it does not acquire data. Some sources have access restrictions or changing providers, so
+availability and redistribution rights remain separate requirements.
 
-Some data (e.g. MERRA-2) require free Earthdata credentials:
+MERRA-2 acquisition requires NASA Earthdata access. Configure credentials outside the
+repository and follow the acquisition guidance in [doc/HOW_TO_RUN.md](doc/HOW_TO_RUN.md).
+Do not commit credentials or source inputs.
 
-1. **Register** at [Earthdata Login](https://urs.earthdata.nasa.gov/users/new).  
-2. **macOS / Linux**  
-   - Create or update your `~/.netrc`:
-    In your terminal, go to the location of the repo and write:
+## Containers
 
-     ```bash
-     cat <<EOF > ~/.netrc
-     machine urs.earthdata.nasa.gov login YOUR_USER password YOUR_PASS
-     EOF
-     chmod 600 ~/.netrc
-     ```
+Three Compose files serve distinct uses:
 
-     where *YOUR_NASA_USER* and *YOUR_NASA_PASS* must be your saved username and password. The last part only is used in order to increase security of your information.
+| Command | Use |
+|---|---|
+| `docker compose up` | Interactive RStudio with live project code for development. |
+| `docker compose --profile acquisition up` | Development plus Selenium for acquisition scripts that need a browser. |
+| `docker compose -f docker-compose.release.yml up` | Interactive RStudio using code baked into the image, with source inputs read-only. |
+| `Rscript scripts/verification/verify.R --full` | Batch-only isolated verification with fresh derived outputs and no runtime network. |
 
-3. **Windows**  
-   - Create (or update) `_netrc` in `%USERPROFILE%`:
+Copy `.env.example` to `.env` only for interactive RStudio settings. The verification
+container uses neither credentials nor Selenium. `renv.lock` controls R packages; image
+identity, code revision, lockfile hash, installed versions, and source inventories provide
+the environment evidence. There is no active dated package-repository setting.
 
-     ```powershell
-     @"
-     machine urs.earthdata.nasa.gov login YOUR_USER password YOUR_PASS
-     "@ | Out-File -Encoding ASCII $HOME\_netrc
-     ```
+## Manuscript pipeline
 
-   - In File Explorer, open **Properties → Security** on `_netrc` and grant only your user Read & Write.
+After authorized inputs have been acquired, run either entry point from the repository root:
 
-4. **Exclude** your netrc file from Git (add `_netrc` / `.netrc` to `.gitignore`).
+```sh
+make all
+# or, in R:
+source(here::here("scripts", "run_pipeline.R"))
+```
 
-With credentials in place, simply run our [download script](scripts/download_data/download_merra2_data.R)—either in R or via Docker—to pull all MERRA-2 `.nc4` files automatically.
+Both routes run city processing, the core analysis, the preserved temporal preparation, and
+manuscript figures and tables. The temporal figures retain their existing legacy station
+samples and MERRA-2 timestamp support.
 
-> **Tip:** You can always download manually from NASA’s [Data Portal](https://disc.gsfc.nasa.gov/datasets?project=MERRA-2), but scripting saves time and records the acquisition procedure.
-
----
-
-## 4. Prerequisites
-
-- **R 4.6** (the version pinned by the Docker image and `renv.lock`): All required R
-  packages and their exact versions are managed by `renv`. To install them, run:
-
-  ```r
-  renv::restore()
-  ```
-
-- **Docker:** A container runtime that captures system libraries, OS settings and dependencies in an isolated image.
-  - Download & install from [Docker](https://www.docker.com/get-started):
-    - **macOS** → Docker Desktop
-    - **Windows** → Docker Desktop
-    - **Linux** → Docker Engine\
-      We recommend driving Docker from the terminal (CLI); running the full RStudio GUI inside a container can be resource-heavy.
-
-- **System libraries:** Required for spatial and data processing. In our Dockerfile we install:
-
-  ```bash
-  libxml2-dev \
-  libssl-dev \
-  libcurl4-openssl-dev \
-  libgdal-dev \
-  libudunits2-dev \
-  libpng-dev \
-  libfreetype6-dev
-  ```
-
-- **Earthdata credentials:** For MERRA-2 and other protected sources, see **Section 3: Downloading Data**.
-
----
-
-## 5. Installation
-
-### Docker (Recommended)
-
-There is no image to pull from a registry — `docker compose up` builds it locally
-from the `Dockerfile` and starts it.
-
-1. **Configure** your environment (RStudio login, credentials if re-downloading):
-
-   ```bash
-   cp .env.example .env    # defaults work for replication
-   ```
-
-2. **Build and start** the containers:
-   > **Note:** The initial build may take **30+ minutes**. Thanks to multi-stage
-   > caching, subsequent builds are much faster.
-
-   ```bash
-   docker compose up
-   ```
-
-   This starts the `analysis` service (R + RStudio + the pinned package library) and
-   a `selenium` service (only used by the download scripts).
-
-3. **Open RStudio** at `http://localhost:8787` (user/password from `.env`;
-   defaults `rstudio` / `replication`). `src/`, `scripts/` and `results/` are mounted
-   live from your clone.
-
-4. **Interactive shell** (for debugging or manual commands)
-
-   ```bash
-   docker compose run --rm analysis bash
-   ```
-
-For the immutable replication run — code baked into the image, `data/raw` mounted
-read-only — use `docker compose -f docker-compose.release.yml up` instead.
-
-### Local Setup with renv
-
-1. **Install** `renv` (if missing):
-
-   ```r
-   install.packages("renv")
-   ```
-
-2. **Restore** the exact package library:
-
-   ```r
-   renv::restore()
-   ```
-
-3. **Open** the RStudio project (`Coding.Rproj`) to start working locally.
-
----
-
-## 6. Usage
-
-- **Generate all analyses and outputs** — the master orchestrator is the single
-  record of run order (order matters, so use it rather than a glob). In RStudio:
-
-  ```r
-  source(here::here("scripts", "run_pipeline.R"))
-  ```
-
-- **Or use the Makefile** (stage-level wrapper with skip-unchanged rebuilds; stamps
-  under `data/.make`):
-
-  ```bash
-  make              # process -> distances -> outliers -> exposure -> figures + tables
-  make help         # list all stage targets
-  make DOCKER=1     # run every recipe inside the compose "analysis" service
-  ```
-
-  `make download` (credential-gated raw pulls) and `make merra2` (the satellite
-  track) are deliberately **not** part of `make all`.
-
-- **Run a single script** (from the host, inside the container):
-
-  ```bash
-  docker compose run --rm analysis Rscript scripts/process_data/detect_outliers.R
-  ```
-
-  Or open it in RStudio and source it — every script is self-contained via
-  `here::here()`.
-
-- **Launch an interactive container shell** (advanced troubleshooting):
-
-  ```bash
-  docker compose run --rm analysis bash
-  ```
-
-See [doc/HOW_TO_RUN.md](doc/HOW_TO_RUN.md) for the full walkthrough, including the
-reviewer's path to the manuscript's own figures and tables through `config/paper_artifacts.csv`.
-
----
-
-## 7. Workflow
-
-Our project proceeds in four main stages:
-
-1. **Data ingestion:**
-   - For open datasets: run the `scripts/download_data/` scripts; source downloads remain in `data/downloads/` or `data/raw/`; derived products go to `data/interim/`.
-   - For restricted-access files: obtain authorized access from the data owner; redistribution is not assumed.
-2. **Preprocessing:**
-   - Scripts in `scripts/process_data/` clean, transform and merge the raw data
-     (`data/raw/` → `data/interim/` → `data/processed/`, with inspectable Parquet
-     checkpoints at each step).
-3. **Analysis & Visualization:**
-   - Scripts in `scripts/tables_images/` produce the paper's figures and tables in
-     `results/figures/` (seven topic folders) and flat `results/tables/`. The tracked
-     `config/paper_artifacts.csv` selects artifacts for export to existing manuscript paths.
-4. **Review & Export:**
-   - Retrieve the final outputs for manuscript drafting or policy briefs.
-
-We also provide a visualization of scripts dependencies as following (simplified —
-the `Makefile` and `scripts/run_pipeline.R` are the authoritative stage lists):
-
-### 1. Processing Data
+`make merra2` runs additional optional satellite comparisons after `make all` prerequisites
+and any extra satellite/NASA inputs are available. It is supporting analysis, not a separate
+manuscript route.
 
 ```mermaid
 flowchart TD
-  DL["download_data/download_merra2_data.R"]
-  GP["process_data/generate_panel_air_quality.R"]
-  MP["process_data/process_merra2_panels.R"]
-  PC["process_data/process_<city>_data.R"]
-  GD["process_data/generate_distance_matrices.R"]
-  DO["process_data/detect_outliers.R"]
-  IDW["process_data/estimate_idw.R"]
-  REG["process_data/estimate_exposure.R"]
-  DESC["process_data/compute_descriptive_tables.R"]
-  IMH["process_data/impute_missing_hourly.R"]
-  EEI["process_data/estimate_exposure_imputed.R"]
-
-  DL --> GP --> MP
-  PC --> GD --> IDW --> REG
-  PC --> DO --> IDW
-  GD --> DESC
-  DO --> DESC
-  DO --> IMH --> EEI
+  D[Online acquisition through existing functions] --> I[Preserved source inputs]
+  I --> P[City processing: prepare geography, stations and census]
+  P --> A[Distances, outliers, exposure and robustness]
+  A --> F[Manuscript figures and tables]
+  T[Legacy station inputs and MERRA-2 time support] --> H[Preserved temporal preparation]
+  H --> F
+  H --> S[Optional satellite comparisons]
+  N[Additional satellite and NASA inputs] --> S
+  L[Legacy inputs] --> V[Separate legacy validation]
+  B[Offline release verification] -. records and checks .-> P
+  B -. compares and reviews .-> F
 ```
 
-### 2. Generating Images
+## Checks and export
 
-```mermaid
-flowchart TD
-  MP["process_data/process_merra2_panels.R"]
-  REG["process_data/estimate_exposure.R"]
-  EEI["process_data/estimate_exposure_imputed.R"]
-  IDW["process_data/estimate_idw.R"]
-  IMH["process_data/impute_missing_hourly.R"]
-  DESC["process_data/compute_descriptive_tables.R"]
-
-  MP --> FM["tables_images/figure_merra2_vs_stations.R"]
-  MP --> FA["tables_images/figure_aerosol_composition.R"]
-  REG --> GE["tables_images/generate_exposure_plots.R"]
-  EEI --> GE
-  IDW --> FK["tables_images/figure_quintile_kernel_distributions.R"]
-  IMH --> FD["tables_images/figure_imputation_diagnostics.R"]
-  DESC --> ST["tables_images/render_station_tables.R"]
-  DESC --> CT["tables_images/render_census_tables.R"]
+```sh
+Rscript tests/testthat.R --mode=synthetic
+Rscript scripts/verification/verify.R
+Rscript scripts/verification/verify.R --full
 ```
 
-`figure_study_area_maps.R` reads prepared `data/interim/geospatial_data/` files, so it has no
-processing prerequisite; `figure_stations_on_metro_area.R` additionally reads station
-locations from `data/interim/`.
+Passing tests or a completed run are evidence for the checks that actually ran; they do not
+by themselves establish scientific or independent reproduction. The verifier records inputs,
+outputs, environment details, failures, and comparison limitations. Export selected artifacts
+with `scripts/export/export_paper.R`; see the operational guide for commands and constraints.
 
----
+## Contributing and citation
 
-## 8. Contributing
+Keep scientific specifications and inputs of record unchanged unless explicitly authorized.
+Use the shared guidance in [doc/ai](doc/ai/README.md) for assistant-supported work. The project
+is released under the [MIT License](LICENSE.md); cite the repository and related publication
+when reusing its methods or results.
 
-1. Fork the repository.
-2. Create a feature branch: `git checkout -b feature/your-feature`.
-3. Commit changes with descriptive messages.
-4. Push and open a Pull Request.
-5. Ensure code style consistency and add tests if applicable.
-
----
-
-## 9. License & Citation
-
-- Licensed under MIT License. See [LICENSE.md](LICENSE.md).
-- Please cite this repository or related publications when reusing methods or results.
-
----
-
-## Contact
-
-- **Project Lead:** Bridget Hoffmann
-- **Affiliation:** Inter‑American Development Bank
-- **Email:** [bridgeth@iadb.org][bridget_email]
-
-**Last Updated:** 2026‑08‑31 (YYYY-MM-DD)
-
-[bridget_email]: bridgeth@iadb.org
-
-For the current verification modes, isolated-run protocol and manuscript export, see [HOW_TO_RUN](doc/HOW_TO_RUN.md). Shared agent guidance is in [doc/ai](doc/ai/README.md). Historical outputs are not a revision-matched numerical baseline.
+Contact: Bridget Hoffmann, Inter-American Development Bank,
+[bridgeth@iadb.org](mailto:bridgeth@iadb.org).

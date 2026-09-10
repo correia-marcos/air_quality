@@ -1,6 +1,7 @@
 services:
   selenium:
     image: selenium/standalone-firefox:4.34.0-20250717
+    profiles: ["acquisition"]
     ports:
       - "4445:4444"
       - "7900:7900"        # VNC, optional
@@ -26,11 +27,6 @@ services:
     build:
       context: .
       target: final
-      args:
-        PPM_DATE: "2026-03-01"
-    depends_on:
-      selenium:
-        condition: service_healthy
     ports:
       - "8787:8787"
     restart: unless-stopped
@@ -39,6 +35,7 @@ services:
     environment:
       - PASSWORD=${RSTUDIO_PASSWORD}
       - USER=${RSTUDIO_USER}
+      # Available when the optional acquisition profile starts Selenium.
       - REMOTE_DRIVER_URL=http://selenium:4444
       - IN_DOCKER=true
       # Arrow/DuckDB predictable tmp (optional)

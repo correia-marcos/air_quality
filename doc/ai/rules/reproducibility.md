@@ -17,13 +17,21 @@ A completed run and reviewed comparisons are required; environment controls alon
 
 - The Dockerfile's three stages (`base` → `builder` → `final`) exist so `renv::restore()` is
   cached in `builder`. Don't collapse them or you lose fast rebuilds.
+- DuckDB extensions use the image-level `DUCKDB_R_HOME=/opt/duckdb`. Keep the directory
+  writable by both batch and RStudio users, and test extension loading in a fresh process.
+- `DESCRIPTION` and the configured renv snapshot fields define the restored dependency set.
+  Test-only packages remain in `Suggests` but must be included when their checks run in the
+  image.
 - `R CMD javareconf` must stay — `rJava`/`XLConnect` break without it.
 - New system libraries go in the `base` stage `apt-get` block, grouped with a comment, and must
   be reflected in the corresponding R package in `DESCRIPTION` + `renv.lock`.
 - `.Rprofile` detects Docker (`IN_DOCKER`) and `setwd("/air_monitoring")` **before** sourcing
   `renv/activate.R`. Preserve that order.
-- `docker-compose.yml` is for **development** (mounts `src/`, `scripts/`, `results/` live);
-  `docker-compose.release.yml` retains the older interactive setup; `docker-compose.verify.yml` is the batch isolated verification path.
+- `docker-compose.yml` is for **development** (mounts `src/`, `scripts/`, `results/` live).
+  Selenium is an acquisition profile, not an analysis dependency.
+- `docker-compose.release.yml` is interactive image-baked code with declared inputs read-only
+  and derived/output roots writable. `docker-compose.verify.yml` is the batch isolated
+  verification path: no credentials, Selenium, live-code mount, or runtime networking.
 
 ## Credentials — never commit, never print
 

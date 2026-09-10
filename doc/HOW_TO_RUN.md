@@ -1,48 +1,173 @@
 # Run, verify and export
 
-The analytical methods are unchanged by the structural migration. Existing numerical tests and audits support specific properties. A complete reproduction requires declared inputs, a recorded clean run, revision-matched comparisons and rendering review. No independent researcher reproduction is claimed.
+This is the operational guide for the repository. The analytical methods are unchanged by
+the infrastructure work. Passing tests, a completed pipeline, reviewed numerical parity, and
+independent researcher reproduction are different forms of evidence. Complete scientific
+reproduction is not yet claimed.
 
-## Daily development
+## Development and acquisition
 
-Use the R version and dependency versions in renv.lock; restore them explicitly with renv::restore(). Do not regenerate the lockfile to resolve an incidental local library problem. The Dockerfile supplies spatial system libraries and bundled fonts. `make` preserves the existing stage orchestrator; `make merra2` runs the satellite track. Acquisition (`make download`) is always separate and may require credentials and interactive source access.
+Restore the recorded R environment before running locally:
 
-```sh
-Rscript tests/testthat.R                         # synthetic tests plus available local checks
-Rscript tests/testthat.R --mode=synthetic        # synthetic and structural checks only
-Rscript tests/testthat.R --mode=release          # full-data checks; missing requirements fail
-Rscript scripts/verification/verify.R            # local inventory, checks and export report
-Rscript scripts/verification/verify.R --full     # build and attempt isolated full reproduction
+```r
+renv::restore()
 ```
 
-Development reports optional missing full-data checks as skips. Assertion failures and errors produce a nonzero exit. Release treats skipped checks as incomplete. Test-suite release success alone is not a complete reproduction claim: the verification command additionally requires a fresh rebuilt run, unchanged inputs and reviewed comparisons. The package loader refuses automatic dependency installation when AIR_VERIFY_STRICT=1.
+Use `docker compose up` for interactive RStudio with live code. Run
+`docker compose --profile acquisition up` when a download script needs Selenium. The
+release Compose file starts interactive RStudio from code baked into the image:
 
-Local machine note (September 2026): existing compiled libraries work with the framework R at `/Library/Frameworks/R.framework/Versions/4.6/Resources/bin/Rscript`. Homebrew R 4.6.1 crashed when loading those binaries. Do not mix those installations. This is a local compatibility finding, not a portable invocation requirement. Restoring the container library remains the packaged route.
+```sh
+docker compose -f docker-compose.release.yml up
+```
 
-## Input access and preparation
+Copy `.env.example` to `.env` only for interactive RStudio configuration. Keep Earthdata
+and other source credentials outside the repository. The batch verifier needs neither
+credentials nor Selenium.
 
-| Input family | Access / acquisition | Placement and limitation |
-|---|---|---|
-| Station observations | City providers, through scripts/download_data/download_<city>_data.R | Preserve downloaded/source files in data/downloads and data/raw. Standardized hourly panels are derived and now belong in data/interim/monitoring_stations. Provider availability may change. |
-| Census | DANE (Bogotá), INEGI (Mexico), INE (Santiago), IBGE (São Paulo); see city modules and source-specific scripts | Preserve original archives and source tables. Extracted working files belong in data/interim/census_extracted. Restricted access, laboratory-only inputs and redistribution rights must be verified with the data owner. |
-| Geographic boundaries | Source definitions in each city module | Generated layers belong in data/interim/geospatial_data. Several existing builders are coupled to acquisition; an empty clean workspace may expose a missing preparation stage. Copied legacy layers do not count as regenerated layers. |
-| MERRA-2 | NASA Earthdata; scripts/download_data/download_merra2_data.R | Earthdata access is required for acquisition. Preserve original granules and document collection/version. No credentials are needed merely to read authorized local copies. |
-| Legacy comparison | Coauthor-supplied data/_legacy | Local audit inputs; no assumption of redistribution permission. Outputs in ignored data/validation/<city>. |
+Acquisition is a deliberate, online first step. Use the relevant script in
+`scripts/download_data/`, retain the authorized source files in `data/downloads/`, and record
+provider, requested year/version, retrieval date and checksum. Preserve `data/raw/`,
+`data/downloads/`, `data/_legacy/`, and `renv.lock`; do not regenerate or overwrite them as
+a routine processing step.
 
-The repository does not establish that every input can be publicly redistributed. Before release, supply a file-level provider/version/access/license inventory, including instructions and contact/access route for restricted material. Do not invent a Zenodo deposit or identifier. The verification input CSV records SHA-256 hashes and sizes; those hashes establish file identity, not legal access or provenance on their own.
+Some inputs have restricted access, laboratory-only availability, or non-redistributable
+licenses. File hashes identify the local input used; they do not establish public access,
+provider provenance, or scientific equivalence to an unavailable historical version.
 
-Migration preserves original source files. `config/data_migration.csv` classifies derived roots; the complete local copied-file map is in data/verification/migration-baseline/derived_data_migration.csv. No consumer should silently fall back to the former derived location under raw. Original archives remain intact.
+## Input preparation
 
-## Isolated batch reproduction
+Each city processing script first prepares the geographic layers it consumes from declared
+local sources. Processing passes `allow_download = FALSE`: it must report a missing source and
+the acquisition route instead of contacting a provider or accepting an old generated layer.
+The geographic definitions remain the city modules' responsibility, including their current
+years, identifiers, clipping, CRS transformations, and membership rules.
 
-`verify.R --full` builds the current working-tree code with the unchanged renv lock, records image identity, and invokes docker-compose.verify.yml. The service overrides the interactive entrypoint: no RStudio or Selenium is required. Source raw/downloads/_legacy mounts are read-only, generated intermediate/processed/result directories start empty, and runtime networking is disabled. Image construction can download dependencies; acquisition is not part of verification. Rebuilding is refused if the expected Linux source mounts are not read-only.
+For a clean run:
 
-Local reports live under ignored data/verification/<timestamp>. They record code revision and uncommitted patch, code/input/output inventories, SHA-256 checksums, R/renv/platform/spatial-library versions, image identity, seed and thread settings, commands, timings, failures and limitations. Existing Parquet metadata is retained. Failures are evidence to investigate, not a reason to silently install packages, reuse stale outputs or widen numerical tolerances.
+1. Acquire all authorized sources online through the existing acquisition functions.
+2. Preserve the downloaded files and record their metadata and hashes.
+3. Start with empty `data/interim/`, `data/processed/`, and `results/` directories.
+4. Run the city processors; they regenerate geography and the downstream products from local
+   sources.
 
-Historical figures and tables have unknown producing revisions. To register a reviewed baseline, populate config/verification_comparisons.csv with processed Parquet paths, unique semicolon-separated keys, baseline file paths, tolerances and any prior scientific justification. Keep restricted baseline files local. A baseline-review.json must identify baseline_revision, candidate_revision, candidate_code_sha256 (from the run code inventory), reviewer, human_reviewed, baseline_sha256 (path-to-hash mapping), plot_data_reviewed and rendering_reviewed. For isolated runs, store these materials in data/verification/baseline (or AIR_BASELINE_ROOT); it is mounted read-only at /baseline. Baseline paths in the comparison manifest refer to that container location. Never fill these fields on someone else's behalf. The verifier rejects unreviewed hashes, different schemas/identifiers/counts/missingness and uncovered processed Parquet products. New numeric defaults are atol=1e-10 and rtol=1e-8; existing stricter oracles remain unchanged.
+Santiago's package-managed census database and São Paulo's package-managed census data are
+also declared inputs. Their source copies must be available locally; any writable database
+working copy belongs in `data/interim/`. Do not rely on an installed package cache or runtime
+download during processing or verification.
 
-Review all underlying plot data as well as rendering. PDF bytes can differ due to metadata/fonts; a byte difference alone is not a scientific discrepancy. A colleague's run is independent reproduction only after that colleague actually executes and reports it.
+If an historical provider version is unavailable, do not treat a newly retrieved version as
+equivalent without scientific review. Existing geographic intermediates may aid comparison but
+do not replace the source-based preparation step.
 
-Retain the tested image, not only its mutable tag:
+### Acquire the missing package/provider sources only
+
+After loading the download configuration and the relevant city module, the calls below
+preserve sources without running the station-download workflow. For example:
+
+```r
+source(here::here("src", "general_utilities", "config_utils_download_data.R"))
+source(here::here("src", "city_specific", "registry.R"))
+source(here::here("src", "city_specific", "santiago.R"))
+santiago_download_metro_area_2017(allow_download = TRUE)
+santiago_acquire_census_2017()
+
+source(here::here("src", "city_specific", "sao_paulo.R"))
+sao_paulo_download_weighting_areas(
+  keep_municipality = sao_paulo_cfg$cities_in_metro, allow_download = TRUE)
+sao_paulo_acquire_census_2010()
+```
+
+These calls contact providers when sources are absent. For historical replication, supply the
+reviewed `version` to `santiago_acquire_census_2017(version = ...)`; the default uses the
+package provider default and does not establish equivalence to an old run. Existing source
+copies are reused. Refreshing them requires explicit `overwrite_source` (geography) or
+`overwrite` (census). Bogotá, CDMX and the other geographic archives are acquired by the
+geography sections of their existing download scripts, using each city's configured paths.
+
+The declared additional sources are:
+
+| Source | Preserved location under `data/downloads/` |
+|---|---|
+| Santiago 2017 ArcGIS responses | `santiago/metro_area/2017/GRAN_SANTIAGO_13_metro.geojson`, `GRAN_SANTIAGO_13_zonas.geojson`, `GRAN_SANTIAGO_13_count.json` |
+| São Paulo 2010 weighting areas before metro filtering | `sao_paulo/metro_area/sp_weighting_areas_2010.rds` |
+| Santiago census before project filtering | `santiago/census/2017/censo2017.duckdb` |
+| São Paulo population before project filtering | `sao_paulo/census/2010_population.parquet` |
+
+New acquisitions write `.source.json` sidecars with provider, requested version, acquisition
+time and SHA-256. Older archives without sidecars retain their original files; their retrieval
+dates are not invented. The verifier's `preparation-inputs.csv` reports these geographic and
+package-managed census prerequisites; it is not an exhaustive analytical-input certification.
+Use the isolated verifier to create fresh derived directories without deleting existing work.
+
+## Manuscript pipeline
+
+From the repository root, use either maintained entry point after inputs are available:
+
+```sh
+make all
+```
+
+```r
+source(here::here("scripts", "run_pipeline.R"))
+```
+
+Both routes execute city processing, the core station/census analysis, preserved temporal
+preparation, and manuscript figures and tables. `make` uses stage stamps; after changing or
+reacquiring source data, force a rebuild with `make -B all`.
+
+The temporal manuscript figures intentionally retain the legacy station panels and MERRA-2
+timestamp support. This preserves their historical time support and sample. It does not claim
+that the figures are independent of that preparation.
+
+## Supporting analyses
+
+Run optional satellite comparisons separately:
+
+```sh
+make merra2
+```
+
+This reuses the temporal prerequisites and adds country/NASA comparisons, satellite
+correlations, aerosol figures, thermal-inversion comparisons, and grid illustrations. Acquire
+its additional MERRA-2/NASA inputs before running it. `make merra2` is supporting analysis and
+does not replace `make all` as the manuscript route.
+
+Context maps are also optional: `make context-maps` prepares the city inputs and renders
+additional context figures. Its Stadia basemap may require online access and credentials;
+these unselected figures are outside offline manuscript verification. Legacy comparison uses
+`make validate` and its separate authorized legacy inputs.
+
+## Checks
+
+```sh
+Rscript tests/testthat.R --mode=synthetic
+Rscript tests/testthat.R --mode=release
+Rscript scripts/verification/verify.R
+```
+
+Synthetic mode runs portable checks. Release test mode treats missing full-data requirements as
+incomplete. `verify.R` records local code and input inventories, checks, export status, and
+known limitations; it is not a clean-room reproduction claim.
+
+## Isolated batch verification
+
+```sh
+Rscript scripts/verification/verify.R --full
+```
+
+`--full` builds the image and invokes `docker-compose.verify.yml`. The verifier mounts
+`data/raw/`, `data/downloads/`, and `data/_legacy/` read-only; starts generated directories
+empty; uses image-baked code; and disables runtime networking. It executes `make -B all`, so
+geography and other derived products must be recreated from the declared source copies.
+
+The verifier reports missing prerequisites before expensive stages where possible. It records
+the supplied code revision and patch separately from the container's code inventory; it only
+queries Git when repository metadata is present. A failed stage, missing source, skipped
+required check, incomplete manuscript inspection, or missing reviewed baseline remains a
+failure or limitation in the report.
+
+Keep a tested image by identity rather than mutable tag:
 
 ```sh
 docker image inspect air-monitoring-verification:local --format '{{.Id}}'
@@ -50,28 +175,38 @@ docker save -o air-monitoring-tested-image.tar air-monitoring-verification:local
 shasum -a 256 air-monitoring-tested-image.tar
 ```
 
-Archive the image identity, tar checksum, code revision/patch, run report and authorized data inventory together. Rebuilding a Docker tag later can resolve different system packages. No tested-image retention is claimed until these commands run after an accepted verification.
+Record the image identifier and checksum with the code revision/patch, lockfile hash,
+installed package/system-library versions, declared input inventory, run report, numerical
+comparisons, and rendering review.
 
 ## Results and manuscript export
 
-Only two result roots exist: results/figures and results/tables. Figure topics are maps, monitoring, exposure, imputation, temporal, satellite and diagnostics. Tables are flat and descriptively named. Interactive HTML assets remain beside their HTML. Analytical Parquet intermediates belong in data layers. config/artifact_migration.csv maps old artifact paths to preserved new paths.
-
-config/paper_artifacts.csv tracks artifact_id, source_path, paper_path and producer_script. Its initial selection contains 117 figure paths and 11 tables from the local draft; future drafts may legitimately change these counts. The exporter validates the entire manifest before writing, preserves existing manuscript-relative paths, checks SHA-256 after copying, refuses destination collisions and requires explicit overwrite. It never edits TeX, deletes unrelated files or synchronizes Overleaf.
+`config/paper_artifacts.csv` maps each selected product to its unchanged manuscript path and
+producer script. Export only to an authorized local manuscript copy:
 
 ```sh
 Rscript scripts/export/export_paper.R --destination /your/local/paper --dry-run
 Rscript scripts/export/export_paper.R --destination /your/local/paper
-# Explicitly replace previously exported mapped files:
 Rscript scripts/export/export_paper.R --destination /your/local/paper --overwrite
 Rscript scripts/verification/check_manuscript.R doc/paper/paper_draft_part1.tex
 ```
 
-The scanner ignores comments, follows available literal local TeX includes and checks ordinary includegraphics/table input references. It reports missing includes and dynamic constructs; it is not a TeX interpreter. The current absent data_appendix prevents a complete manuscript-coverage assertion. Keep the local draft unchanged. The ignored scripts/export/paper.local.sh stores only personal invocation/destination; reusable selection and export logic remain tracked.
+The exporter validates the manifest, checks copied-file hashes, and never edits TeX or deletes
+unrelated manuscript files. The scanner reports absent includes and dynamic constructs; it is
+not a TeX interpreter. The unavailable `data_appendix` prevents a complete manuscript-coverage
+claim.
 
-The tracked Quarto report is scripts/validation_old_version/bogota_report.qmd. Render generated reports and comparison products under ignored data/validation/<city>, including self-contained HTML. The migration map preserves existing local artifacts; do not delete historical comparison evidence during cleanup.
+## Acceptance limits
 
-## Clean-room protocol and resources
+An accepted scientific reproduction still needs a fresh isolated run, declared and unchanged
+inputs, revision-matched numerical baselines, review of plot data and rendering, and a recorded
+independent researcher run. Do not fill comparison or review evidence on another person's
+behalf, manufacture a baseline, widen tolerances, or substitute newer inputs silently.
 
-A colleague obtains the documented revision and retained image, acquires authorized inputs solely from package instructions, verifies their checksums, runs synthetic tests, then invokes the full isolated verification in a new directory. They report machine/image identity, commands, elapsed time, resource use, failures, skips, numerical differences and rendering assessment. Record their name/date only with their actual report. Resolve missing sources or scientific discrepancies before acceptance.
+## Dependency snapshots
 
-Observed local input footprint at migration: about 4.6 GB raw, 14 GB downloads, 2.7 GB interim and 470 MB processed, excluding image/library overhead. Allow additional space for a fresh run and retained image. These are observed storage sizes, not measured minimum RAM requirements. Full runtime and peak memory are not yet established; stage timings are recorded by the verifier and should replace estimates after a completed run. Satellite processing and imputation can dominate runtime. See doc/ai/implementation.md for this implementation's measured check results and run outcome.
+`renv/settings.json` keeps explicit snapshots and enables `snapshot.dev`, so the project's
+`Suggests` (including testthat) enter the lockfile. Required dependency fields remain
+`Imports`, `Depends`, and `LinkingTo`; adding `Suggests` globally would also pull optional
+packages from downstream dependencies. Dependency changes use renv, with analytical versions
+reviewed separately from the testing additions.

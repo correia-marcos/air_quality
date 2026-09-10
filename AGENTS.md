@@ -13,5 +13,6 @@ Proceed with routine authorized work; clarify consequential scientific ambiguity
 Report actual checks, failures, skips, and limitations. A test pass is not a complete
 reproduction claim. Use specialist agents only for requested independent work.
 
-Run `Rscript tests/testthat.R --mode=synthetic` for portable checks; release evidence
-uses `Rscript scripts/verification/verify_release.R`. See doc/REPRODUCIBILITY.md.
+Run `Rscript tests/testthat.R --mode=synthetic` for portable checks. Use
+`Rscript scripts/verification/verify.R --full` for isolated release verification; see
+`doc/HOW_TO_RUN.md`. A passing check is not a complete reproduction claim.

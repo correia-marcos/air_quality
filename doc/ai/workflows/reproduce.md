@@ -6,4 +6,8 @@ Permitted actions: inspect and diagnose, restore the declared environment when a
 
 Required evidence: input/code/output inventories, environment and image identity, executed stages and durations, nonzero failures, skips, schemas, manuscript export plan, numerical comparisons and rendering review. Preserve historical outputs as historical references if their producing revision is unknown.
 
-Completion: report precisely what ran and whether full reproduction succeeded. A missing source, missing prepared geography, unsupported manuscript reference, absent baseline or unavailable client is an explicit finding. Never claim full reproduction from a successful Docker build or a collection of existing figures. Follow the clean-room protocol; independent reproduction is recorded only after a colleague performs it.
+Completion: report precisely what ran and whether full reproduction succeeded. A missing source,
+failed source-based geography preparation, unsupported manuscript reference, absent baseline or
+unavailable client is an explicit finding. Never claim full reproduction from a successful Docker
+build or a collection of existing figures. Follow the clean-room protocol; independent
+reproduction is recorded only after a colleague performs it.

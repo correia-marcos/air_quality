@@ -1,4 +1,8 @@
-> September 2026 structural-migration note: operational paths and shared harness setup are now documented in [HOW_TO_RUN](HOW_TO_RUN.md) and [doc/ai](ai/README.md). Older paths and observations below are historical; this migration does not mark methodological findings resolved.
+> September 2026 note: [HOW_TO_RUN](HOW_TO_RUN.md) is the operational source of truth and
+> [doc/ai](ai/README.md) is the shared harness guidance. The dated methodological findings below
+> are retained as evidence. Current produced artifacts are tracked by
+> `config/paper_artifacts.csv` under `results/figures/` and `results/tables/`; historical paths
+> mentioned below do not define the current pipeline.
 
 # What is left to build in this repo
 
@@ -15,13 +19,11 @@ The `.tex` carries **123 distinct `\includegraphics` paths**, of which **117 are
 and 6 are commented out. `appendix_distance_computation` is **not** `\input` anywhere, and
 there is no `\include`.
 
-**The draft has been rewired to `results/paper/`** (1 September 2026). All 117 active
-figure paths now resolve there, and the draft carries **11 `\input` table targets** plus
-`data_appendix`. That folder holds exactly the manuscript's deliverables and nothing else;
-`results/figures/` and `results/tables/` keep the repo's own working artefacts. Filenames
-are the manuscript's, but the folders are named for what the figures show rather than
-mirroring the `.tex`, and everything is `.pdf`. `results/paper/tex_path_mapping.csv` gives
-the old and new `\includegraphics` argument, and `update_tex_paths.sh` applies every row.
+**Current manuscript export uses `config/paper_artifacts.csv`.** It maps selected files under
+`results/figures/` and `results/tables/` to unchanged manuscript-relative destinations. The
+1 September 2026 `results/paper/` arrangement and its path-mapping script are historical
+observations, not current instructions. The draft still carries **11 `\input` table targets**
+plus `data_appendix`.
 
 Nothing on the figure or table side is outstanding. What remains is in section D: choices
 the code cannot make, and prose that disagrees with what the pipeline now computes.
