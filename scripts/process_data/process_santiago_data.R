@@ -27,6 +27,22 @@ source(here::here("src","city_specific", "registry.R"))
 source(here::here("src","city_specific", "santiago.R"))
 
 # ============================================================================================
+# Geographic preparation: local sources only; acquisition is a separate first step.
+# ============================================================================================
+santiago_download_metro_area_2017(
+  conurbacion = "GRAN SANTIAGO", region_prefix = "13",
+  out_file = here::here(santiago_cfg$out_dir, "geospatial_data", "santiago",
+                        "gran_santiago_zonas_2017.gpkg"),
+  allow_download = FALSE)
+santiago_download_metro_area_2024(
+  type = "gran_santiago", level = "mpio", base_url = santiago_cfg$base_url_shp,
+  keep_municipality = santiago_cfg$cities_in_metro,
+  download_dir = here::here(santiago_cfg$dl_dir, "metro_area"), dissolve_by = "CUT",
+  out_file = here::here(santiago_cfg$out_dir, "geospatial_data", "santiago",
+                        "gran_santiago_area_2024.gpkg"),
+  allow_download = FALSE)
+
+# ============================================================================================
 # I: Import  data
 # ============================================================================================
 # Define the output general folders

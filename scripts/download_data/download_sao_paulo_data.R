@@ -89,5 +89,8 @@ logs_qualar_stations_metadata <- sao_paulo_download_metadata(
   out_file   = here::here(sao_paulo_cfg$dl_dir,
                           "stations_metadata", "stations_metadata.csv"))
 
+# Preserve the package-managed census source before analytical filtering.
+sao_paulo_acquire_census_2010()
+
 # Print a success message for when running inside Docker Container
 cat("Script from the IDB projected executed successfully in the Docker container!\n")

@@ -28,6 +28,23 @@ source(here::here("src","city_specific", "registry.R"))
 source(here::here("src","city_specific", "bogota.R"))
 
 # ============================================================================================
+# Geographic preparation: local sources only; acquisition is a separate first step.
+# ============================================================================================
+# Rebuild the same five geographic products from preserved DANE sources.
+for (spec in list(
+  list("mpio_localidad", 2005, "bogota_area_metro_2005.gpkg"),
+  list("mpio", 2005, "bogota_area_metro_municipalities_2005.gpkg"),
+  list("manzana", 2005, "bogota_area_metro_census_tracts_2005.gpkg"),
+  list("mpio_localidad", 2018, "bogota_area_metro_2018.gpkg"),
+  list("manzana", 2018, "bogota_area_metro_census_tracts_2018.gpkg"))) {
+  bogota_download_metro_area(
+    level = spec[[1]], mgn_year = spec[[2]], base_url = bogota_cfg$base_url_shp,
+    download_dir = here::here(bogota_cfg$dl_dir, "metro_area"),
+    out_file = here::here(bogota_cfg$out_dir, "geospatial_data", "bogota", spec[[3]]),
+    allow_download = FALSE)
+}
+
+# ============================================================================================
 # I: Import  data
 # ============================================================================================
 # Define the output general folders

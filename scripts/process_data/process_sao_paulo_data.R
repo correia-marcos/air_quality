@@ -27,6 +27,25 @@ source(here::here("src","city_specific", "registry.R"))
 source(here::here("src","city_specific", "sao_paulo.R"))
 
 # ============================================================================================
+# Geographic preparation: local sources only; acquisition is a separate first step.
+# ============================================================================================
+for (spec in list(
+  c("mpio", "sao_paulo_metro_2010.gpkg"),
+  c("setor_censitario", "sao_paulo_metro_2010_census_tracts.gpkg"))) {
+  sao_paulo_download_metro_area(
+    level = spec[1], base_url = sao_paulo_cfg$base_url_shp,
+    keep_municipality = sao_paulo_cfg$cities_in_metro,
+    download_dir = here::here(sao_paulo_cfg$dl_dir, "metro_area"),
+    out_file = here::here(sao_paulo_cfg$out_dir, "geospatial_data", "sao_paulo", spec[2]),
+    allow_download = FALSE)
+}
+sao_paulo_download_weighting_areas(
+  keep_municipality = sao_paulo_cfg$cities_in_metro, year = 2010,
+  out_file = here::here(sao_paulo_cfg$out_dir, "geospatial_data", "sao_paulo",
+                        "sao_paulo_metro_2010_weighting_areas.gpkg"),
+  allow_download = FALSE)
+
+# ============================================================================================
 # I: Import  data
 # ============================================================================================
 # Define the output general folders

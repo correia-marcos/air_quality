@@ -27,6 +27,20 @@ source(here::here("src","city_specific", "registry.R"))
 source(here::here("src","city_specific", "cdmx.R"))
 
 # ============================================================================================
+# Geographic preparation: local sources only; acquisition is a separate first step.
+# ============================================================================================
+for (spec in list(
+  c("municipality", "cdmx_area_metro_municipalities_2024.gpkg"),
+  c("ageb", "cdmx_area_metro_2024.gpkg"))) {
+  cdmx_download_metro_area(
+    level = spec[1], base_url = cdmx_cfg$base_url_shp,
+    keep_municipality = cdmx_cfg$cities_in_metro,
+    download_dir = here::here(cdmx_cfg$dl_dir, "metro_area"),
+    out_file = here::here(cdmx_cfg$out_dir, "geospatial_data", "cdmx", spec[2]),
+    allow_download = FALSE)
+}
+
+# ============================================================================================
 # I: Import  data
 # ============================================================================================
 # Define the output general folders

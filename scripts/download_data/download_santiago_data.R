@@ -116,5 +116,8 @@ census_2024 <- santiago_download_census_data(
   year = 2024,
   download_folder = here::here(santiago_cfg$dl_dir, "census"))
 
+# Preserve the package-managed census source before analytical filtering.
+santiago_acquire_census_2017()
+
 # Print a success message for when running inside Docker Container
 cat("Script from the IDB projected executed successfully in the Docker container!\n")

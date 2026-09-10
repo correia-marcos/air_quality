@@ -78,6 +78,7 @@ santiago_cfg <- list(
 
 # --------------------------------------------------------------------------------------------
 # Function: santiago_download_metro_area_2024
+#' @param allow_download Permit source acquisition; FALSE requires preserved local files.
 #
 #' @param type             string; "metro_santiago" or "gran_santiago".
 #' @param level            string; "mpio" or "manzana".
@@ -127,7 +128,8 @@ santiago_download_metro_area_2024 <- function(
     overwrite_zip     = FALSE,
     overwrite_gpkg    = TRUE,
     container         = TRUE,
-    quiet             = FALSE
+    quiet             = FALSE,
+    allow_download = TRUE
 ) {
   
   # 0. Match arguments and check packages
@@ -135,7 +137,7 @@ santiago_download_metro_area_2024 <- function(
   type  <- match.arg(tolower(type), c("metro_santiago", "gran_santiago"))
   level <- match.arg(tolower(level), c("mpio", "manzana"))
   
-  pkgs <- c("sf", "selenium")
+  pkgs <- if (allow_download) c("sf", "selenium") else "sf"
   
   for (p in pkgs) {
     if (!requireNamespace(p, quietly = TRUE)) {
@@ -147,7 +149,7 @@ santiago_download_metro_area_2024 <- function(
   # -----------------------------------------------------------------------
   root_dl_dir <- here::here("data", "downloads")
   
-  dir.create(download_dir, recursive = TRUE, showWarnings = FALSE)
+  if (allow_download) dir.create(download_dir, recursive = TRUE, showWarnings = FALSE)
   dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
   
   zip_browser_name <- "Cartografia_censo2024_Pais.zip"
@@ -265,6 +267,11 @@ santiago_download_metro_area_2024 <- function(
 
   # 3. Download ZIP with Selenium, if needed
   # -----------------------------------------------------------------------
+  if (!allow_download) {
+    require_local_sources(zip_target_path,
+      "geographic acquisition in scripts/download_data/download_santiago_data.R")
+    if (overwrite_zip) stop("overwrite_zip requires allow_download = TRUE")
+  }
   if (!file.exists(zip_target_path) || isTRUE(overwrite_zip)) {
     
     if (!quiet) {
@@ -470,6 +477,7 @@ santiago_download_metro_area_2024 <- function(
       stop("Timeout: ZIP file did not appear in ", root_dl_dir)
     }
     
+    record_source_acquisition(zip_target_path, base_url, "2024")
   } else {
     if (!quiet) {
       message("[santiago_area] ZIP already present: ", zip_target_path)
@@ -1305,7 +1313,7 @@ santiago_download_census_data <- function(
       "\n⛔️ DEPRECATED: Direct download for 2017 '", type, "' is unavailable.\n",
       "   The official URLs are broken/changed.\n\n",
       "   👉 ACTION: Please use the 'censo2017' package logic instead.\n",
-      "      Run: censo2017::censo_descargar_base() to build the local DB.\n"
+      "      Run: santiago_acquire_census_2017() to preserve the local DB.\n"
     ))
   }
   
@@ -1783,6 +1791,9 @@ santiago_filter_stations_in_metro <- function(
 
 # --------------------------------------------------------------------------------------------
 # Function: santiago_download_metro_area_2017
+#' @param download_dir Persistent, unfiltered ArcGIS responses for offline preparation.
+#' @param overwrite_source Explicitly refresh the complete source response set.
+#' @param allow_download Permit source acquisition; FALSE requires preserved local files.
 #
 #' @param base_url              string; INE 2017 DPA ArcGIS services root.
 #' @param conurbacion           string; conurbation name delimiting the metro area.
@@ -1824,10 +1835,13 @@ santiago_download_metro_area_2017 <- function(
     out_file       = here::here("data", "interim", "geospatial_data", "santiago",
                                 "gran_santiago_zonas_2017.gpkg"),
     overwrite_gpkg = TRUE,
-    quiet          = FALSE
+    quiet          = FALSE,
+    allow_download = TRUE,
+    download_dir = here::here("data", "downloads", "santiago", "metro_area", "2017"),
+    overwrite_source = FALSE
 ) {
 
-  if (file.exists(out_file) && !isTRUE(overwrite_gpkg)) {
+  if (allow_download && file.exists(out_file) && !isTRUE(overwrite_gpkg)) {
     if (!quiet) message("[santiago_2017_area] Output exists and overwrite = FALSE.")
     return(sf::st_read(out_file, quiet = TRUE))
   }
@@ -1840,34 +1854,38 @@ santiago_download_metro_area_2017 <- function(
            "&returnGeometry=", geom, "&outSR=4326&f=geojson")
   }
 
-  # 1. Conurbation polygon that delimits the metropolitan area.
-  if (!quiet) message("[santiago_2017_area] Downloading conurbation: ", conurbacion)
-
-  metro <- sf::st_read(
-    .query("Conurbaciones_2017", sprintf("CONURB='%s'", conurbacion), "*"),
-    quiet = TRUE
-  )
-
+  # Preserve provider responses before applying the existing metropolitan selection.
+  where_zonas <- sprintf("CUT LIKE '%s%%'", region_prefix)
+  urls <- c(
+    metro = .query("Conurbaciones_2017", sprintf("CONURB='%s'", conurbacion), "*"),
+    zonas = .query("Zona_Censal", where_zonas, "CUT,COD_DISTRI,COD_ZONA,d_COMUNA"),
+    count = paste0(base_url, "/Zona_Censal/FeatureServer/0/query?where=",
+      utils::URLencode(where_zonas, reserved = TRUE), "&returnCountOnly=true&f=json"))
+  stem <- paste0(gsub("[^A-Za-z0-9]", "_", conurbacion), "_", region_prefix)
+  paths <- stats::setNames(file.path(download_dir,
+    paste0(stem, c("_metro.geojson", "_zonas.geojson", "_count.json"))), names(urls))
+  if (!allow_download) {
+    require_local_sources(paths,
+      "geographic acquisition in scripts/download_data/download_santiago_data.R")
+    if (overwrite_source) stop("overwrite_source requires allow_download = TRUE")
+  }
+  if (allow_download && (overwrite_source || any(!file.exists(paths)))) {
+    dir.create(download_dir, recursive = TRUE, showWarnings = FALSE)
+    if (any(file.exists(paths)) && !overwrite_source) {
+      stop("Incomplete source set; explicitly refresh all three ArcGIS responses.")
+    }
+    for (name in names(paths)) {
+      utils::download.file(urls[[name]], paths[[name]], mode = "wb", quiet = quiet)
+      record_source_acquisition(paths[[name]], urls[[name]], "2017")
+    }
+  }
+  metro <- sf::st_read(paths[["metro"]], quiet = TRUE)
+  zonas <- sf::st_read(paths[["zonas"]], quiet = TRUE)
+  n_expected <- as.integer(jsonlite::fromJSON(paths[["count"]])$count)
   if (nrow(metro) == 0L) {
     stop("Conurbation '", conurbacion, "' not found in Conurbaciones_2017.")
   }
-
-  # 2. Census zones of the region. One call returns them all, but the service caps
-  # responses at 2000 records, so compare against the count the server reports.
-  where_zonas <- sprintf("CUT LIKE '%s%%'", region_prefix)
-
-  n_expected <- as.integer(jsonlite::fromJSON(paste0(
-    base_url, "/Zona_Censal/FeatureServer/0/query",
-    "?where=", utils::URLencode(where_zonas, reserved = TRUE),
-    "&returnCountOnly=true&f=json"
-  ))$count)
-
-  if (!quiet) message("[santiago_2017_area] Downloading ", n_expected, " census zones.")
-
-  zonas <- sf::st_read(
-    .query("Zona_Censal", where_zonas, "CUT,COD_DISTRI,COD_ZONA,d_COMUNA"),
-    quiet = TRUE
-  )
+  if (length(n_expected) != 1L || is.na(n_expected)) stop("Missing zone count.")
 
   if (nrow(zonas) != n_expected) {
     stop("Zona_Censal returned ", nrow(zonas), " of ", n_expected,
@@ -2199,6 +2217,8 @@ dt <- tryCatch(
 
 # --------------------------------------------------------------------------------------------
 # Function: santiago_process_census_2017
+#' @param source_db Preserved censo2017 database, acquired separately.
+#' @param work_dir Writable location for a fresh copy of that database.
 #
 #' @param sf_data           sf object; metro-area census zones, from
 #                           santiago_download_metro_area_2017().
@@ -2232,12 +2252,11 @@ santiago_process_census_2017 <- function(
     sf_data,
     match_col = "zona_id",
     out_dir   = here::here("data", "processed", "santiago", "census"),
-    quiet     = FALSE
+    quiet     = FALSE,
+    source_db = here::here("data", "downloads", "santiago", "census", "2017",
+                           "censo2017.duckdb"),
+    work_dir = here::here("data", "interim", "census_extracted", "santiago", "2017")
 ) {
-
-  if (!requireNamespace("censo2017", quietly = TRUE)) {
-    stop("Package 'censo2017' required.")
-  }
 
   # Validate spatial inputs
   if (!inherits(sf_data, "sf")) stop("'sf_data' must be an sf spatial object.")
@@ -2253,15 +2272,21 @@ santiago_process_census_2017 <- function(
     message("[santiago_2017] Connecting to local Census 2017 database...")
   }
   
-  con <- censo2017::censo_conectar()
-  
-  # Validate that the database is actually populated
-  if (!"personas" %in% DBI::dbListTables(con)) {
-    censo2017::censo_desconectar()
-    censo2017::censo_descargar()
+  require_local_sources(source_db, "santiago_acquire_census_2017()")
+  dir.create(work_dir, recursive = TRUE, showWarnings = FALSE)
+  work_db <- file.path(work_dir, "censo2017.duckdb")
+  if (identical(normalizePath(source_db), normalizePath(work_db, mustWork = FALSE))) {
+    stop("Census working copy must differ from the preserved source.")
   }
-  
-  con <- censo2017::censo_conectar()
+  if (!file.copy(source_db, work_db, overwrite = TRUE)) {
+    stop("Cannot copy census database.")
+  }
+  con <- DBI::dbConnect(duckdb::duckdb(dbdir = work_db))
+  on.exit(DBI::dbDisconnect(con, shutdown = TRUE), add = TRUE)
+  required_tables <- c("personas", "hogares", "viviendas", "zonas")
+  if (!all(required_tables %in% DBI::dbListTables(con))) {
+    stop("Preserved census database lacks required tables; reacquire its declared version.")
+  }
 
   # Residence geography is not in `personas` (p10/p11/p12comuna are migration
   # questions); it lives in `zonas`, via the household and dwelling keys.
@@ -2405,7 +2430,6 @@ santiago_process_census_2017 <- function(
     collapsed_df, file.path(out_dir, "census_collapsed_2017.parquet"),
     c(s17_meta, list(table_level = "geo")))
   
-  censo2017::censo_desconectar()
   return(list(individual = individual_df, collapsed = collapsed_df))
 }
 
@@ -2643,3 +2667,45 @@ register_city(
   id  = "santiago",
   cfg = santiago_cfg
 )
+
+# --------------------------------------------------------------------------------------------
+# Function: santiago_acquire_census_2017
+#' @param version censo2017 release tag; NULL uses the package provider default.
+#' @param out_file Preserved database for subsequent offline processing.
+#' @param overwrite Explicitly replace an existing source snapshot.
+#' @return Preserved source path, invisibly.
+#' @details Acquisition uses the pinned package in a temporary working directory. This
+#   snapshot precedes all project filtering; refreshing a release needs source review.
+# --------------------------------------------------------------------------------------------
+santiago_acquire_census_2017 <- function(
+    version = NULL,
+    out_file = here::here("data", "downloads", "santiago", "census", "2017",
+                          "censo2017.duckdb"),
+    overwrite = FALSE) {
+  if (file.exists(out_file) && !overwrite) return(invisible(out_file))
+  work <- tempfile("censo2017_acquisition_")
+  dir.create(work)
+  old <- Sys.getenv("CENSO2017_DIR", unset = NA_character_)
+  on.exit({
+    censo2017::censo_desconectar()
+    if (is.na(old)) Sys.unsetenv("CENSO2017_DIR") else Sys.setenv(CENSO2017_DIR = old)
+    unlink(work, recursive = TRUE)
+  }, add = TRUE)
+  censo2017::censo_desconectar()
+  Sys.setenv(CENSO2017_DIR = work)
+  censo2017::censo_descargar(ver = version)
+  censo2017::censo_desconectar()
+  db <- list.files(work, pattern = "[.]sql$", full.names = TRUE)
+  if (length(db) != 1L) stop("Expected one acquired censo2017 database.")
+  dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
+  if (!file.copy(db, out_file, overwrite = overwrite)) {
+    stop("Cannot preserve census source.")
+  }
+  requested <- if (is.null(version)) {
+    "provider default; release provenance needs review"
+  } else version
+  record_source_acquisition(out_file, "censo2017::censo_descargar",
+    paste(requested, "censo2017", utils::packageVersion("censo2017"),
+          "duckdb", utils::packageVersion("duckdb")))
+  invisible(out_file)
+}

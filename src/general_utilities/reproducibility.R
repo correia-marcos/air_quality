@@ -208,3 +208,75 @@ compare_numerical_tables <- function(actual, expected, keys, atol = 1e-10, rtol 
   if (length(failures)) stop("Numerical/structural differences: ", paste(failures, collapse = ", "))
   invisible(TRUE)
 }
+
+# --------------------------------------------------------------------------------------------
+# Function: require_local_sources
+#' @param paths Required source files.
+#' @param acquisition Instruction for acquiring the missing inputs.
+#' @return The paths, invisibly; missing sources stop before processing or downloading.
+# --------------------------------------------------------------------------------------------
+require_local_sources <- function(paths, acquisition) {
+  missing <- paths[!file.exists(paths)]
+  if (length(missing)) {
+    stop("Missing preserved source inputs: ", paste(missing, collapse = "; "),
+         ". Acquire them first: ", acquisition, call. = FALSE)
+  }
+  invisible(paths)
+}
+
+# --------------------------------------------------------------------------------------------
+# Function: record_source_acquisition
+#' @param path Newly acquired source file; existing inputs are never relabelled as new.
+#' @param provider Provider or package call used to acquire the file.
+#' @param version Requested source year/version, including package version when relevant.
+#' @return Sidecar path, invisibly.
+#' @details Records file identity and acquisition time, not scientific approval.
+# --------------------------------------------------------------------------------------------
+record_source_acquisition <- function(path, provider, version) {
+  metadata <- list(provider = provider, requested_version = as.character(version),
+    retrieved_utc = format(Sys.time(), tz = "UTC", usetz = TRUE),
+    sha256 = digest::digest(file = path, algo = "sha256", serialize = FALSE))
+  sidecar <- paste0(path, ".source.json")
+  jsonlite::write_json(metadata, sidecar, pretty = TRUE, auto_unbox = TRUE)
+  invisible(sidecar)
+}
+
+# --------------------------------------------------------------------------------------------
+# Function: preparation_input_status
+#' @param path Source inventory, with offline_preparation rows for required local files.
+#' @param root Project directory.
+#' @return Required preparation inputs with presence flags and acquisition instructions.
+#' @details This preflight covers geography and package-managed census prerequisites;
+#   it does not certify the availability or provenance of every analytical input.
+# --------------------------------------------------------------------------------------------
+preparation_input_status <- function(path, root) {
+  sources <- utils::read.csv(path, stringsAsFactors = FALSE)
+  sources <- sources[sources$role == "offline_preparation", , drop = FALSE]
+  sources$present <- file.exists(file.path(root, sources$root))
+  sources
+}
+
+# --------------------------------------------------------------------------------------------
+# Function: verification_revision
+#' @param root Project directory; .git may be a directory or a worktree metadata file.
+#' @param revision Explicit revision supplied by the host, when available.
+#' @return Revision, Git availability, working-tree changes and patch.
+#' @details An image has a code inventory but no Git metadata. Missing Git information
+#   is recorded explicitly, without invoking Git or fabricating a clean-tree claim.
+# --------------------------------------------------------------------------------------------
+verification_revision <- function(root, revision = Sys.getenv("AIR_CODE_REVISION")) {
+  has_git <- file.exists(file.path(root, ".git")) && nzchar(Sys.which("git"))
+  git <- function(args) {
+    result <- system2("git", c("-C", shQuote(root), args), stdout = TRUE, stderr = TRUE)
+    if (!is.null(attr(result, "status"))) stop("Cannot collect Git provenance.")
+    result
+  }
+  if (!nzchar(revision)) {
+    revision <- if (has_git) paste(git(c("rev-parse", "HEAD")), collapse = "\n") else {
+      "unrecorded"
+    }
+  }
+  list(revision = revision, git_available = has_git,
+    changes = if (has_git) git(c("status", "--porcelain")) else NULL,
+    patch = if (has_git) git(c("diff", "--binary", "HEAD")) else NULL)
+}

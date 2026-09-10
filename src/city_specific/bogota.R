@@ -71,6 +71,7 @@ bogota_cfg <- list(
 # ============================================================================================
 # --------------------------------------------------------------------------------------------
 # Function: bogota_download_metro_area
+#' @param allow_download Permit source acquisition; FALSE requires preserved local files.
 #' @param level                     character; "mpio", "depto", "manzana", or "mpio_localidad".
 #' @param mgn_year                  numeric; 2018 or 2005.
 #' @param base_url                  string; base URL of DANE geoportal files.
@@ -102,7 +103,8 @@ bogota_download_metro_area <- function(
     out_file           = here::here("data", "interim", "geospatial_data", "admin", "Colombia", "bogota.gpkg"),
     overwrite_zip      = FALSE,
     overwrite_gpkg     = TRUE,
-    quiet              = FALSE
+    quiet              = FALSE,
+    allow_download = TRUE
 ) {
   
   level <- match.arg(
@@ -136,7 +138,14 @@ bogota_download_metro_area <- function(
   )
   loc_path <- file.path(download_dir, "bogota_loca.gpkg")
   
-  dir.create(download_dir, recursive = TRUE, showWarnings = FALSE)
+  if (!allow_download) {
+    required <- file.path(download_dir, zip_names)
+    if (level == "mpio_localidad") required <- c(required, loc_path)
+    require_local_sources(required, "geographic acquisition in scripts/download_data/download_bogota_data.R")
+    if (overwrite_zip) stop("overwrite_zip requires allow_download = TRUE")
+  }
+  if (allow_download) dir.create(download_dir, recursive = TRUE, showWarnings = FALSE)
+  dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
   exdir <- file.path(tempdir(), paste0("col_shp_", level, "_", mgn_year))
   if (dir.exists(exdir)) unlink(exdir, recursive = TRUE)
   dir.create(exdir)
@@ -155,6 +164,7 @@ bogota_download_metro_area <- function(
                          httr::write_disk(zip_path, overwrite = TRUE), 
                          times = 5, httr::timeout(3600))
       if (httr::status_code(req) != 200L) stop("Download failed.")
+      record_source_acquisition(zip_path, zip_url, mgn_year)
     }
     if (!quiet) message("📦 Extracting ", zip_name, "...")
     archive::archive_extract(zip_path, dir = exdir)
@@ -169,6 +179,7 @@ bogota_download_metro_area <- function(
                              httr::write_disk(loc_path, overwrite = TRUE), 
                              times = 5, httr::timeout(3600))
       if (httr::status_code(req_loc) != 200L) stop("GPKG Download failed.")
+      record_source_acquisition(loc_path, loc_url, mgn_year)
     }
   }
   

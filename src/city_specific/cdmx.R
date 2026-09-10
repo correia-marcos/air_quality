@@ -1759,6 +1759,7 @@ inegi_census_2020_ampliado_links <- function() {
 
 # --------------------------------------------------------------------------------------------
 # Function: cdmx_download_metro_area
+#' @param allow_download Permit source acquisition; FALSE requires preserved local files.
 #' @param base_url                 ficha URL (with ?upc=...) OR direct .zip URL
 #' @param level                    "municipality" (default) or "ageb"
 #' @param keep_municipality        vector of municipality CVEGEO keys to keep
@@ -1789,14 +1790,15 @@ cdmx_download_metro_area <- function(
                                    "cdmx_metro.gpkg"),
     overwrite_zip     = FALSE,
     overwrite_gpkg    = TRUE,
-    quiet             = FALSE
+    quiet             = FALSE,
+    allow_download = TRUE
 ) {
   # 0) Resolve level and locale (UTF-8-friendly filename handling)
   level <- match.arg(level)
   Sys.setlocale("LC_CTYPE", "en_US.UTF-8")
   
   # 1) Guarantee folders exist
-  dir.create(download_dir, recursive = TRUE, showWarnings = FALSE)
+  if (allow_download) dir.create(download_dir, recursive = TRUE, showWarnings = FALSE)
   dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
   
   # 2) Normalize target municipality CVEGEO keys (digits only, 5 chars)
@@ -1855,12 +1857,18 @@ cdmx_download_metro_area <- function(
     stop("Could not locate 'integrado.zip'. Pass a direct .zip URL.")
   }
   
-  zip_url  <- get_zip_url(base_url)
-  zip_name <- basename(zip_url)
+  zip_name <- if (grepl("\\.zip$", base_url, ignore.case = TRUE)) {
+    basename(base_url)
+  } else "mg_2024_integrado.zip"
   zip_path <- file.path(download_dir, zip_name)
+  if (!allow_download) {
+    require_local_sources(zip_path, "geographic acquisition in scripts/download_data/download_cdmx_data.R")
+    if (overwrite_zip) stop("overwrite_zip requires allow_download = TRUE")
+  }
   
   # 5) Download integrated ZIP (robust with retry)
   if (!file.exists(zip_path) || isTRUE(overwrite_zip)) {
+    zip_url <- get_zip_url(base_url)
     if (!quiet) message("Downloading: ", zip_url)
     ua <- httr::user_agent(
       sprintf("R (%s) / IDB-AirMonitoring",
@@ -1876,6 +1884,7 @@ cdmx_download_metro_area <- function(
     if (httr::status_code(req) != 200L) {
       stop("HTTP ", httr::status_code(req), " downloading: ", zip_url)
     }
+    record_source_acquisition(zip_path, zip_url, "2024")
     if (!quiet) message("Saved: ", zip_path)
   } else if (!quiet) {
     message("ZIP already present (skip): ", zip_path)

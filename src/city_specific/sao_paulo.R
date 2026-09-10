@@ -391,6 +391,7 @@ map_qualar_metadata <- function(base_url, search_url, login, password, container
 
 # --------------------------------------------------------------------------------------------
 # Function: sao_paulo_download_metro_area
+#' @param allow_download Permit source acquisition; FALSE requires preserved local files.
 #
 #' @param level                    string; "mpio" (Municipality) or
 #                                  "setor_censitario" (Census Tract).
@@ -430,7 +431,8 @@ sao_paulo_download_metro_area <- function(
     overwrite_zip     = FALSE,
     overwrite_gpkg    = TRUE,
     container         = TRUE,
-    quiet             = FALSE
+    quiet             = FALSE,
+    allow_download = TRUE
 ) {
   
   level <- match.arg(level)
@@ -456,13 +458,20 @@ sao_paulo_download_metro_area <- function(
   
   root_dl_dir <- Sys.getenv("DOWNLOADS_DIR", here::here("data", "downloads"))
   
-  if (!dir.exists(download_dir)) dir.create(download_dir, recursive = TRUE)
+  if (allow_download && !dir.exists(download_dir)) {
+    dir.create(download_dir, recursive = TRUE)
+  }
   if (!dir.exists(dirname(out_file))) dir.create(dirname(out_file), recursive = TRUE)
   
   zip_landing_path <- file.path(root_dl_dir, target_file_name) 
   zip_target_path  <- file.path(download_dir, target_file_name)
   
   # 2) Selenium Download Logic ---------------------------------------------------
+  if (!allow_download) {
+    require_local_sources(zip_target_path,
+      "geographic acquisition in scripts/download_data/download_sao_paulo_data.R")
+    if (overwrite_zip) stop("overwrite_zip requires allow_download = TRUE")
+  }
   if (!file.exists(zip_target_path) || isTRUE(overwrite_zip)) {
     if (!quiet) message("⬇️  Starting Selenium to scrape IBGE Data (Census 2010)...")
     
@@ -583,6 +592,7 @@ sao_paulo_download_metro_area <- function(
     
     if (!download_success) stop("Timeout: File never finished downloading.")
     
+    record_source_acquisition(zip_target_path, base_url, "2010")
   } else {
     if (!quiet) message("↪︎ ZIP already present: ", basename(zip_target_path))
   }
@@ -654,6 +664,9 @@ sao_paulo_download_metro_area <- function(
 
 # --------------------------------------------------------------------------------------------
 # Function: sao_paulo_download_weighting_areas
+#' @param download_dir Persistent unfiltered weighting-area source.
+#' @param overwrite_source Explicitly refresh the preserved source.
+#' @param allow_download Permit source acquisition; FALSE requires preserved local files.
 #
 #' @param keep_municipality        vector; IBGE municipality codes to keep.
 #' @param year                     numeric; Census year (default 2010).
@@ -672,11 +685,14 @@ sao_paulo_download_weighting_areas <- function(
     out_file       = here::here("data", "interim", "geospatial_data", "admin", "Brazil",
                                 "sp_weighting_areas.gpkg"),
     overwrite_gpkg = TRUE,
-    quiet          = FALSE
+    quiet          = FALSE,
+    allow_download = TRUE,
+    download_dir = here::here("data", "downloads", "sao_paulo", "metro_area"),
+    overwrite_source = FALSE
 ) {
   
   # 1) Check Dependencies
-  req_pkgs <- c("geobr", "sf", "dplyr")
+  req_pkgs <- c("sf", "dplyr", if (allow_download) "geobr")
   for(p in req_pkgs) {
     if (!requireNamespace(p, quietly = TRUE)) {
       stop(paste("Package", p, "required."))
@@ -684,25 +700,31 @@ sao_paulo_download_weighting_areas <- function(
   }
   
   # 2) Check for Existing File
-  if (file.exists(out_file) && !overwrite_gpkg) {
+  if (allow_download && file.exists(out_file) && !overwrite_gpkg) {
     if (!quiet) message("↪︎ Output GPKG exists. Loading from disk...")
     return(sf::st_read(out_file, quiet = TRUE))
   }
   
   # 3) Download Data
-  if (!quiet) message("⬇️  Downloading weighting areas via geobr...")
+  if (!quiet) message("Reading preserved weighting areas (acquiring only if allowed).")
   
-  # Using code_weighting = "SP" prevents downloading the whole country
-  data_sf <- tryCatch({
-    geobr::read_weighting_area(
-      code_weighting = "SP", 
-      year = year, 
-      showProgress = !quiet
-    )
-  }, error = function(e) {
-    stop("❌ Failed to download data from geobr: ", e$message)
-  })
-  
+  source_path <- file.path(download_dir, paste0("sp_weighting_areas_", year, ".rds"))
+  if (!allow_download) {
+    require_local_sources(source_path,
+      "geographic acquisition in scripts/download_data/download_sao_paulo_data.R")
+    if (overwrite_source) stop("overwrite_source requires allow_download = TRUE")
+  }
+  if (!file.exists(source_path) || overwrite_source) {
+    data_sf <- geobr::read_weighting_area(
+      code_weighting = "SP", year = year, showProgress = !quiet)
+    if (!inherits(data_sf, "sf") || !nrow(data_sf)) stop("Empty weighting-area source.")
+    dir.create(download_dir, recursive = TRUE, showWarnings = FALSE)
+    saveRDS(data_sf, source_path)
+    record_source_acquisition(source_path, "geobr::read_weighting_area(SP)",
+      paste(year, "geobr", utils::packageVersion("geobr")))
+  }
+  data_sf <- readRDS(source_path)
+
   # 4) Process and Filter
   if (!quiet) message("🗺️  Filtering Spatial Data...")
   
@@ -1550,6 +1572,7 @@ sp_process_stations_data_to_parquet <- function(
 
 # --------------------------------------------------------------------------------------------
 # Function: sp_process_census_2010
+#' @param source_file Preserved unfiltered censobr population Parquet.
 #
 #' @param sf_data  sf object; spatial weighting areas.
 #' @param match_col string; column with weighting area codes.
@@ -1582,11 +1605,13 @@ sp_process_census_2010 <- function(
     sf_data,
     match_col = "code_weighting",
     out_dir   = here::here("data", "processed", "sao_paulo", "census"),
-    quiet     = FALSE
+    quiet     = FALSE,
+    source_file = here::here("data", "downloads", "sao_paulo", "census",
+                             "2010_population.parquet")
 ) {
   
   # Check required packages and spatial input
-  req_pkgs <- c("censobr", "dplyr", "arrow", "readr")
+  req_pkgs <- c("dplyr", "arrow", "readr")
   
   for (p in req_pkgs) {
     if (!requireNamespace(p, quietly = TRUE)) {
@@ -1627,18 +1652,15 @@ sp_process_census_2010 <- function(
   
   # Connect to censobr
   if (!quiet) {
-    message("Connecting to 2010 Census data through censobr.")
+    message("Reading the preserved censobr 2010 population source.")
   }
   
-  raw_db <- censobr::read_population(
-    year = 2010,
-    columns = c(
+  require_local_sources(source_file, "sao_paulo_acquire_census_2010()")
+  raw_db <- arrow::open_dataset(source_file) |>
+    dplyr::select(dplyr::all_of(c(
       "V0011", "V0010", "V1004", "V0601", "V0606",
-      "V0633", "V0634", "V0648", "V6036", "V6400", "V6525"
-    ),
-    showProgress = !quiet
-  )
-  
+      "V0633", "V0634", "V0648", "V6036", "V6400", "V6525")))
+
   # Filter and harmonize variables
   if (!quiet) {
     message("Applying harmonization rules.")
@@ -1819,3 +1841,30 @@ register_city(
   id  = "sao_paulo",
   cfg = sao_paulo_cfg
 )
+
+# --------------------------------------------------------------------------------------------
+# Function: sao_paulo_acquire_census_2010
+#' @param out_file Preserved, unfiltered provider Parquet.
+#' @param overwrite Explicitly replace an existing source snapshot.
+#' @return Preserved source path, invisibly.
+#' @details Copies the original file resolved by the pinned censobr package, before
+#   project column selection, sample filtering, or harmonization.
+# --------------------------------------------------------------------------------------------
+sao_paulo_acquire_census_2010 <- function(
+    out_file = here::here("data", "downloads", "sao_paulo", "census",
+                          "2010_population.parquet"),
+    overwrite = FALSE) {
+  if (file.exists(out_file) && !overwrite) return(invisible(out_file))
+  population <- censobr::read_population(year = 2010, cache = TRUE)
+  files <- population$files
+  if (length(files) != 1L || !file.exists(files)) {
+    stop("Expected one local censobr population Parquet.")
+  }
+  dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
+  if (!file.copy(files, out_file, overwrite = overwrite)) {
+    stop("Cannot preserve census source.")
+  }
+  record_source_acquisition(out_file, paste("censobr::read_population", basename(files)),
+    paste("2010 censobr", utils::packageVersion("censobr")))
+  invisible(out_file)
+}
