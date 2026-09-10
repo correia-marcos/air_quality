@@ -8,8 +8,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Harness adapters
-        run: python3 -m unittest discover -s tests/ai
+        run: python3 -m unittest discover -s tests/harness
       - name: Restore declared environment
         run: docker build -t air-monitoring-ci .
       - name: Synthetic numerical and structural checks
-        run: docker run --rm --entrypoint Rscript air-monitoring-ci tests/testthat.R --mode=synthetic
+        run: docker run --rm --network none --entrypoint Rscript air-monitoring-ci tests/testthat.R --mode=synthetic

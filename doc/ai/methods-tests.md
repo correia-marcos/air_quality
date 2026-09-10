@@ -11,6 +11,6 @@ This is a coverage map, not a claim of exhaustive correctness. All new checks re
 | process/imputation.R | test-numerical-contracts.R: preserves observed values exactly, fills selected gaps, emits only requested year and rejects absent years. | Prediction plausibility and inferential effects remain scientific questions. |
 | process/distances.R and end-to-end contract | test-integration.R: tiny polygons/stations, distance table, constant-signal IDW=60, zero group gap, rendered PDF/table and export. | Synthetic preparation does not validate every city's source parser. |
 | process/geo_ids.R | Existing canonical-name/schema tests and retained Parquet provenance. | Full-data schemas require local inputs. |
-| Export and harness adapters | test-export.R, test-test-runner.R, tests/ai/test_guard.py | Hooks supplement stronger OS boundaries; client trust must be verified. |
+| Export and harness adapters | test-export.R, test-test-runner.R, tests/harness/test_guard.py | Hooks supplement stronger OS boundaries; client trust must be verified. |
 
 New structural-parity comparisons use abs(actual-expected) <= 1e-10 + 1e-8*abs(expected). Existing stricter numerical tolerances are retained. Identifiers, schemas, counts, integer values and missingness masks compare exactly. Any domain-specific exception needs a written justification before acceptance; do not enlarge a tolerance after seeing failure. PDF checksums establish copying integrity, not scientific equivalence. Compare plot data and inspect rendering separately.

@@ -1,10 +1,10 @@
-"""Run with python3 -m unittest discover -s tests/ai."""
+"""Run with python3 -m unittest discover -s tests/harness."""
 from pathlib import Path
 import sys
 import unittest
 import tempfile
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts" / "ai"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools" / "harness"))
 from guard_policy import edit_decision, patch_edits, shell_decision
 
 
