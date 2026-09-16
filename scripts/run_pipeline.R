@@ -119,6 +119,13 @@ source(here::here("scripts", "tables_images", "figure_kernel_distributions.R"))
 source(here::here("scripts", "tables_images", "figure_quintile_kernel_distributions.R"))
 
 
+# Optional methodological analysis: `make resolution`. Re-keys the Bogota manzana exposure to
+# five nested census geographies and re-estimates the quintile gap at each. Not part of `all`:
+# the manuscript does not yet cite it, and it depends only on the exposure stage.
+# source(here::here("scripts", "process_data", "build_bogota_localidad_crosswalk.R"))
+# source(here::here("scripts", "process_data", "estimate_resolution_sensitivity.R"))
+# source(here::here("scripts", "tables_images", "figure_resolution_sensitivity.R"))
+
 # Optional supporting analyses: run `make merra2` after acquiring its extra inputs.
 # source(here::here("scripts", "process_data", "process_merra2_panels.R"))
 # source(here::here("scripts", "tables_images", "figure_merra2_vs_stations.R"))
