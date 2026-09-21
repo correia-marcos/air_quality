@@ -28,8 +28,11 @@
 #                             or "math_centroid_legacy".
 #' @param overwrite           logical; skip if output exists. Default TRUE.
 #' @param quiet               logical; suppress messages. Default FALSE.
+#' @param evaluation_crs      optional projected metre CRS for AEQD evaluation.
+#' @param return_points       logical; return prepared points and evaluation CRS.
+#                             Requires overwrite = TRUE when cached matrices exist.
 #
-#' @return  Named list of data.tables for station and geo distances.
+#' @return  Named station/geo distance tables; optional points and evaluation CRS.
 #' @details
 #   Calculates station-to-station and geo-to-station distance matrices. If
 #   representative_point = "point_on_surface", it uses an internal point returned by
@@ -73,13 +76,22 @@ compute_distance_matrices <- function(
     representative_point = c("point_on_surface", "math_centroid",
                              "math_centroid_legacy"),
     overwrite            = TRUE,
-    quiet                = FALSE
+    quiet                = FALSE,
+    evaluation_crs       = NULL,
+    return_points        = FALSE
 ) {
   
   # 0. Match requested methods
   # -----------------------------------------------------------------------
   dist_metric <- match.arg(distance_metric)
   representative_point <- match.arg(representative_point)
+  if (!is.null(evaluation_crs)) {
+    crs <- sf::st_crs(evaluation_crs)
+    if (dist_metric != "aeqd" || is.na(crs) || isTRUE(crs$IsGeographic) ||
+        !crs$units_gdal %in% c("metre", "meter", "m")) {
+      stop("evaluation_crs requires a projected metre CRS and metric = aeqd.")
+    }
+  }
   
   # 1. Check required packages
   # -----------------------------------------------------------------------
@@ -267,6 +279,9 @@ compute_distance_matrices <- function(
   
   geo_ready <- is.null(geo_sf) || file.exists(path_geo)
   
+  if (!overwrite && return_points && file.exists(path_sta) && geo_ready) {
+    stop("return_points requires overwrite = TRUE when cached matrices exist.")
+  }
   if (!overwrite && file.exists(path_sta) && geo_ready) {
     if (!quiet) {
       message("Files exist and overwrite = FALSE.")
@@ -319,7 +334,9 @@ compute_distance_matrices <- function(
     lon0 <- as.numeric((xmin + xmax) / 2)
     lat0 <- as.numeric((ymin + ymax) / 2)
     
-    proj_aeqd <- aeqd_crs(lon0 = lon0, lat0 = lat0)
+    proj_aeqd <- if (is.null(evaluation_crs)) {
+      aeqd_crs(lon0 = lon0, lat0 = lat0)
+    } else evaluation_crs
     stations_eval <- sf::st_transform(stations_wgs, crs = proj_aeqd)
     
   } else {
@@ -364,6 +381,7 @@ compute_distance_matrices <- function(
   arrow::write_parquet(station_dt, path_sta)
   
   geo_station_dt <- NULL
+  geo_points <- NULL
   
   # 7. Geo-to-station distances
   # -----------------------------------------------------------------------
@@ -434,8 +452,10 @@ compute_distance_matrices <- function(
   
   # 8. Return both matrices invisibly
   # -----------------------------------------------------------------------
-  invisible(list(
-    station_matrix     = station_dt,
-    geo_station_matrix = geo_station_dt
-  ))
+  result <- list(station_matrix = station_dt, geo_station_matrix = geo_station_dt)
+  if (return_points) {
+    result$representative_points <- geo_points
+    result$evaluation_crs <- sf::st_crs(stations_eval)
+  }
+  invisible(result)
 }

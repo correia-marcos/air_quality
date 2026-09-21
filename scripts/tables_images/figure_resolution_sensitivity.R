@@ -1,36 +1,29 @@
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-#' @Goal: Draw the resolution-sensitivity diagnostic figures for Bogota: how the
-#   education-quintile exposure gap changes as the geographic unit of analysis is
-#   coarsened from manzana up to municipio.
+#' @Goal: Plot optional geographic-resolution sensitivity products.
 #
-#' @Description: Reads the four artifacts already written under
-#   data/processed/resolution_sensitivity/ (CI estimates by resolution level, the
-#   paired-bootstrap change relative to manzana, the retained-variance decomposition,
-#   and unit coverage counts). No estimate, model, or interval is recomputed here;
-#   the script only reshapes for plotting. Seven figures are produced: three
-#   split-panel Design A figures, one per outcome (mean concentration, hours above
-#   WHO IT-1, hours above WHO IT-2), each stacking the Q1-vs-Q5 gap on top of its
-#   paired-bootstrap change relative to manzana on the same log-scale resolution
-#   axis; the paired-bootstrap delta relative to manzana (all outcomes, faceted);
-#   the same Q1-vs-Q5 profile for Design C (its own axis, not comparable to
-#   Design A); the share of population-weighted exposure variance retained at each
-#   resolution; and the full Q1..Q5 profile for Design A (supplementary). Figures
-#   are built into a named list first and written to PDF only in the last
-#   section.
+#' @Description: Default reference mode retains the historical Bogota figures.
+# --scope=multicity reads completed three-city products, separates A/B/C, shows
+# monitoring diagnostics and valid paired differences, and writes a review packet.
+# It never recomputes estimates or exports to the manuscript.
 #
 #' @Summary:
-#   I.   Setup: load dependencies, utilities, city config.
-#   II.  Import data: read the four resolution-sensitivity artifacts.
-#   III. Shared labels: resolution-level order, outcome/pollutant labels, captions.
-#   IV.  Build figures: draw each figure into a named list; nothing written yet.
-#   V.   Save figures: write each figure to results/figures/diagnostics/ as PDF.
+#   I.   Read reference or completed multicity products.
+#   II.  Plot city-specific supports and the separate Bogota locality branch.
+#   III. Save vector figures and a multipage methodological review packet.
 #
 #' @Date: September 2026
-#' @Author: Marcos
+#' @Author: Marcos Paulo
 # ============================================================================================
 
+resolution_args <- commandArgs(trailingOnly = TRUE)
+resolution_scope <- sub("^--scope=", "", grep("^--scope=", resolution_args, value = TRUE))
+if (!length(resolution_scope)) resolution_scope <- "reference"
+if (length(resolution_scope) != 1L ||
+    !resolution_scope %in% c("reference", "multicity")) stop("Invalid --scope.")
+if (any(!grepl("^--scope=", resolution_args))) stop("Use --scope=reference|multicity.")
+if (resolution_scope == "reference") {
 # Get all libraries and functions
 source(here::here("src", "general_utilities", "config_utils_plot_tables.R"))
 
@@ -92,12 +85,17 @@ clusters_at <- function(dt, design_) {
                       n_clusters]))
   if (length(g) == 1L) as.character(g) else paste(range(g), collapse = "-")
 }
-caption_design_c <- paste0(
-  base_caption, " Municipio clusters: G = ", clusters_at(ci_dt, "C"), ". ",
-  "Design C's gaps are normalized against a different reference group ",
-  "(area-mean-education quintiles, whose Q5 mean exposure is far lower), so its ",
-  "magnitudes are NOT comparable with Design A's."
-)
+historical_c_population <- ci_dt[design == "C",
+  .(population = unique(pop_estimation)), by = pollutant]
+caption_design_c <- paste(strwrap(paste0(
+  "Historical joint design: exposure aggregation and area-education classification. ",
+  "Bogota, 2023, 3 km. Estimation population: ",
+  format(historical_c_population[pollutant == "pm10", population], big.mark = ","),
+  " (PM10) / ",
+  format(historical_c_population[pollutant == "pm25", population], big.mark = ","),
+  " (PM2.5). Municipio clusters: G = ", clusters_at(ci_dt, "C"), ". ",
+  "Groups and populations differ from A; normalized magnitudes are not comparable."
+), width = 120), collapse = "\n")
 
 # Caption for the three per-outcome split figures: states both pollutant sample
 # sizes explicitly, since the manzana unit count also differs slightly by pollutant.
@@ -173,7 +171,8 @@ build_resolution_split_figure <- function(outcome_key, title_, subtitle_ = NULL)
   split_dt <- rbind(top_dt[, ..keep_cols], bottom_dt[, ..keep_cols])
 
   brk_dt <- unique(top_dt[, .(resolution_level, level_label, n_resolution_units)])
-  brk_dt <- brk_dt[, .(brk = mean(n_resolution_units)), by = .(resolution_level, level_label)]
+  brk_dt <- brk_dt[, .(brk = mean(n_resolution_units)), by = .(resolution_level,
+    level_label)]
   brk_dt <- brk_dt[order(brk)]
 
   # The unit count rides under the geography name: the log axis is there to show how much
@@ -227,7 +226,8 @@ build_resolution_split_figure <- function(outcome_key, title_, subtitle_ = NULL)
       # The rotated panel labels are the outermost element on the left, so the margin has to
       # clear them or the first character is cut off at the image edge.
       strip.text.y.left = ggplot2::element_text(angle = 90, size = 8.5,
-                                                margin = ggplot2::margin(r = 4, unit = "pt")),
+                                                margin = ggplot2::margin(r = 4,
+                                                  unit = "pt")),
       axis.text.x = ggplot2::element_text(angle = 0, hjust = 0.5, size = 7.5),
       plot.caption = ggplot2::element_text(hjust = 0),
       plot.margin = ggplot2::margin(t = 5, r = 5, b = 5, l = 26, unit = "pt")
@@ -305,7 +305,7 @@ plots[["resolution_sensitivity_design_c"]] <- ggplot2::ggplot(
   ggplot2::labs(
     x = "Resolution units (log scale, coarse to fine →)",
     y = "Q1 vs Q5 gap (%), Design C reference group",
-    title = "Resolution sensitivity, Design C (area-education quintiles)",
+    title = "Historical C: joint exposure aggregation and area classification",
     subtitle = "Not comparable in magnitude with Design A; see caption",
     caption = caption_design_c
   ) +
@@ -387,3 +387,239 @@ cat("Rows: fig_mean_top =", nrow(ci_dt[design == "A" & group == 1 & outcome == "
    "| fig2 =", nrow(fig2_dt), "| fig3 =", nrow(fig3_dt), "| fig4 =", nrow(fig4_dt),
    "| fig5 =", nrow(fig5_dt), "\n")
 cat("Script from the IDB project executed successfully in the Docker container!\n")
+
+} else {
+source(here::here("src", "general_utilities", "config_utils_resolution.R"))
+set_paper_theme(base_size = 11)
+cities <- c("bogota_2018", "santiago_2017", "sao_paulo_2010")
+city_labels <- c(bogota_2018 = "Bogota", santiago_2017 = "Santiago",
+                 sao_paulo_2010 = "Sao Paulo")
+dir_in <- here::here("data", "processed", "resolution_sensitivity")
+dir_out <- here::here("results", "figures", "diagnostics")
+dir.create(dir_out, recursive = TRUE, showWarnings = FALSE)
+for (city in cities) {
+  if (!identical(readLines(file.path(dir_in, city, "STATUS.txt"))[1], "complete")) {
+    stop("Incomplete resolution run: ", city)
+  }
+}
+# Named supports are ordered separately within each city; locality is a separate branch.
+levels <- rbindlist(lapply(cities, function(city) {
+  x <- fread(here::here("data", "interim", "resolution_sensitivity", city, "levels.csv"))
+  x[, city_id := city]
+  x
+}))
+levels[, axis_id := paste(city_id, level, sep = "/")]
+axis_order <- levels[order(city_id, -fine_to_coarse), axis_id]
+axis_labels <- setNames(levels$label, levels$axis_id)
+objects <- list()
+for (name in c("contrasts", "profiles", "differences", "variances", "matrices")) {
+  x <- rbindlist(lapply(cities, function(city) {
+    z <- fread(file.path(dir_in, city, paste0(name, ".csv")))
+    z[, city_id := city]
+    z
+  }), fill = TRUE)
+  x[, city := factor(city_labels[city_id], levels = unname(city_labels))]
+  if (!"pollutant" %in% names(x)) {
+    x[, pollutant := ifelse(grepl("pm25", outcome), "PM2.5", "PM10")]
+  } else x[, pollutant := ifelse(pollutant == "pm25", "PM2.5", "PM10")]
+  x[, axis := factor(paste(city_id, level, sep = "/"), levels = axis_order)]
+  objects[[name]] <- x
+}
+plots <- list()
+notes_a <- paste("Fixed education-reporting adults and individual quintiles.",
+  "Exposure aggregated with all-adult weights; locality branch shown separately.")
+notes_b <- paste("Native and common samples vary by level;",
+  "P = education-reporting adults.",
+  "\nCommon samples are pairwise intersections. Paired changes are shown separately.")
+for (design in c("A", "B")) for (outcome_type in c("avg", "it1", "it2")) {
+  selected_designs <- if (design == "A") "A" else c("B_native", "B_common")
+  x <- objects$contrasts[design %chin% selected_designs]
+  x <- x[grepl(if (outcome_type == "avg") "^avg" else paste0(outcome_type, "$"), outcome)]
+  x <- x[!(city_id == "bogota_2018" & level == "localidad")]
+  if (design == "A") x[, point_label := paste0("n=", n_clusters)] else {
+    x[, point_label := paste0("n=", n_clusters, "; P=",
+      format(round(population / 1e6, 2), nsmall = 2), "m")]
+  }
+  x[, series := factor(design, levels = c("A", "B_native", "B_common"),
+    labels = c("Fixed population", "Native B sample", "Pairwise common sample"))]
+  p <- ggplot(x, aes(axis, gap, group = series, colour = series, shape = series)) +
+    geom_hline(yintercept = 0, colour = "grey70", linewidth = .3) +
+    geom_line(linewidth = .4, na.rm = TRUE) + geom_point(size = 2, na.rm = TRUE) +
+    geom_text(aes(label = point_label), vjust = -1,
+              size = 2.4, show.legend = FALSE, check_overlap = TRUE, na.rm = TRUE) +
+    facet_wrap(vars(city, pollutant), ncol = 2, scales = "free") +
+    scale_x_discrete(labels = axis_labels) +
+    scale_colour_manual(values = c("Fixed population" = "#263746",
+      "Native B sample" = "#263746", "Pairwise common sample" = "#9B6137")) +
+    scale_y_continuous(expand = expansion(mult = c(.12, .23))) +
+    labs(title = paste("Design", design, "-", if (outcome_type == "avg")
+      "annual mean exposure" else paste("annual hours at or above",
+        toupper(outcome_type))),
+      x = "Geographic support (coarse to fine)",
+      y = if (outcome_type == "avg") "Q1 - Q5 (micrograms per cubic metre)" else
+        "Q1 - Q5 (hours)", colour = NULL, shape = NULL,
+      caption = if (design == "A") notes_a else notes_b) +
+    theme(legend.position = "bottom", panel.grid.minor = element_blank(),
+      panel.grid.major.x = element_blank(), axis.text.x = element_text(size = 9),
+      plot.caption = element_text(hjust = 0, size = 8),
+        strip.text = element_text(face = "bold"))
+  plots[[paste(design, outcome_type, sep = "_")]] <- p
+}
+# The parallel Bogota locality branch never masquerades as a nested sector-to-locality path.
+x <- objects$contrasts[city_id == "bogota_2018" & level %chin% c("fine", "localidad",
+  "municipio") & grepl("^avg", outcome) & design %chin% c("A", "B_native", "B_common")]
+plots$bogota_locality <- ggplot(x, aes(axis, gap, group = design, colour = design)) +
+  geom_hline(yintercept = 0, colour = "grey70") + geom_line(linewidth = .4) +
+  geom_point(size = 2) + facet_grid(design ~ pollutant, scales = "free_y",
+    labeller = labeller(design = c(A = "Design A", B_native = "Native B",
+                                   B_common = "Common B"))) +
+  scale_colour_manual(values = c(A = "#263746", B_native = "#9B6137",
+                                 B_common = "#718355")) +
+  scale_x_discrete(labels = axis_labels, drop = TRUE) +
+  labs(title = "Bogota: separate locality branch",
+    x = "Geographic support (coarse to fine)",
+       y = "Q1 - Q5 (micrograms per cubic metre)", caption = "Descriptive comparisons.") +
+  theme(legend.position = "none", panel.grid.minor = element_blank())
+for (design_name in c("A", "B_common")) {
+  x <- objects$differences[design == design_name & grepl("^avg", outcome) &
+                            !(city_id == "bogota_2018" & level == "localidad")]
+  plots[[paste0(design_name, "_differences")]] <-
+    ggplot(x, aes(axis, delta, group = 1)) +
+    geom_hline(yintercept = 0, colour = "grey60", linewidth = .4) +
+    geom_errorbar(aes(ymin = lower, ymax = upper), width = .12, na.rm = TRUE) +
+    geom_line(linewidth = .4) + geom_point(size = 2) +
+    facet_wrap(vars(city, pollutant), ncol = 2, scales = "free") +
+    scale_x_discrete(labels = axis_labels) +
+    labs(title = paste(if (design_name == "A") "Design A" else "Common-sample B",
+                    "- change relative to finest support"),
+      x = "Geographic support (coarse to fine)", y = "Change in absolute Q1 - Q5 gap",
+      caption = paste("95% conditional geographic-cluster bootstrap intervals;",
+        "999 draws.",
+        "Coarse comparisons are descriptive.",
+        "B endpoints use the same pairwise population.")) +
+    theme(panel.grid.minor = element_blank(), plot.caption = element_text(size = 8,
+      hjust = 0))
+}
+for (design_name in c("A", "B_native", "C")) {
+  x <- objects$profiles[design == design_name & grepl("^avg", outcome)]
+  x <- merge(x, levels[, .(city_id, level, label)], by = c("city_id", "level"))
+  plots[[paste0(design_name, "_profiles")]] <-
+    ggplot(x, aes(edu_quintile, mean, colour = label, group = label)) +
+    geom_line(linewidth = .5, na.rm = TRUE) + geom_point(size = 1.6, na.rm = TRUE) +
+    facet_wrap(vars(city, pollutant), ncol = 2, scales = "free_y") +
+    scale_x_continuous(breaks = 1:5, labels = paste0("Q", 1:5)) +
+    scale_colour_manual(values = c("Fine census unit" = "#263746",
+      "Zona censal" = "#263746", "Area de ponderacao" = "#263746",
+      "Seccion" = "#527D93", "Distrito censal" = "#527D93", "Sector" = "#9B6137",
+      "Comuna" = "#9B6137", "Localidad/municipio" = "#718355", "Municipio" = "#A06C7D")) +
+    labs(title = paste(if (design_name == "B_native") "Native B" else design_name,
+                         "- full education-group profiles"),
+      x = if (design_name == "C") "Area education group" else
+        "Individual education quintile",
+      y = "Mean exposure (micrograms per cubic metre)", colour = "Geographic support",
+      caption = if (design_name == "C") paste(
+        "Classification only; finest exposure fixed.",
+        "Empty area groups remain unavailable.",
+        "These groups differ from A/B quintiles.") else
+        paste("Group means use existing person weights;",
+          "consult coverage tables for each population.")) +
+    theme(legend.position = "bottom", plot.caption = element_text(hjust = 0, size = 8),
+          panel.grid.minor = element_blank())
+}
+x <- objects$matrices[!(city_id == "bogota_2018" & level == "localidad")]
+m <- melt(x, id.vars = c("city", "pollutant", "axis"),
+  measure.vars = c("adult_coverage_share", "median_nearest_active_km",
+                   "mean_eligible_stations", "mean_hourly_neff"))
+metric_labels <- c(adult_coverage_share = "Adult population covered\n(share)",
+  median_nearest_active_km = "Nearest active station\n(median km)",
+  mean_eligible_stations = "Eligible stations (mean)",
+  mean_hourly_neff = "Effective stations\n(hourly mean)",
+  nearest_active_km = "Nearest active station (km)",
+  eligible_stations = "Eligible stations", static_neff = "Effective stations\n(static)",
+  hourly_neff_mean = "Effective stations\n(hourly)")
+m[, variable := factor(variable, levels = names(metric_labels), labels = metric_labels)]
+plots$matrix_summary <- ggplot(m, aes(axis, value, colour = pollutant,
+  group = pollutant)) +
+  geom_line(linewidth = .4) + geom_point(size = 1.8) +
+  scale_colour_manual(values = c(PM10 = "#263746", `PM2.5` = "#9B6137")) +
+  facet_wrap(vars(city, variable), ncol = 4, scales = "free") +
+  scale_x_discrete(labels = axis_labels) +
+  labs(title = "Monitoring-matrix sensitivity under Design B", x = "Coarse to fine",
+       y = NULL, colour = NULL,
+       caption = paste("Catalog, active, eligible and contributing",
+         "station counts are distinct in the tables.")) +
+  theme(legend.position = "bottom", axis.text.x = element_text(angle = 35, hjust = 1,
+    size = 8),
+        strip.text = element_text(size = 8), plot.caption = element_text(size = 8,
+          hjust = 0))
+# Unit-level distributions expose coverage and station concentration hidden by averages.
+matrix_units <- rbindlist(lapply(cities, function(city) {
+  rbindlist(lapply(levels[city_id == city, level], function(lv) {
+    rbindlist(lapply(c("pm10", "pm25"), function(poll) {
+      z <- as.data.table(arrow::read_parquet(file.path(dir_in, city, "B", lv,
+        paste0(poll, "_matrix_units.parquet"))))
+      z[, city_id := city]
+      z
+    }))
+  }))
+}), fill = TRUE)
+matrix_units[, city := factor(city_labels[city_id], levels = unname(city_labels))]
+matrix_units[, axis := factor(paste(city_id, level, sep = "/"), levels = axis_order)]
+matrix_units[, eligible_stations := as.numeric(eligible_stations)]
+m <- melt(matrix_units[adult_population > 0],
+  id.vars = c("city", "pollutant", "axis"),
+  measure.vars = c("nearest_active_km", "eligible_stations", "static_neff",
+                   "hourly_neff_mean"))
+m[, variable := factor(variable, levels = names(metric_labels), labels = metric_labels)]
+plots$matrix_distributions <- ggplot(m, aes(axis, value, fill = pollutant)) +
+  geom_boxplot(outlier.shape = NA, linewidth = .3, na.rm = TRUE) +
+  scale_fill_manual(values = c(pm10 = "#7C94A4", pm25 = "#BA926F")) +
+  facet_wrap(vars(city, variable), ncol = 4, scales = "free") +
+  scale_x_discrete(labels = axis_labels) +
+  labs(title = "Monitoring-matrix distributions across populated units",
+    x = "Coarse to fine",
+       y = NULL, fill = NULL,
+       caption = paste("Boxes: unweighted unit quartiles; whiskers: 1.5 IQR.",
+         "Outliers omitted from view only.")) +
+  theme(legend.position = "bottom", axis.text.x = element_text(angle = 35, hjust = 1,
+    size = 8),
+        strip.text = element_text(size = 8), plot.caption = element_text(size = 8,
+          hjust = 0))
+x <- objects$contrasts[design == "A" & grepl("^avg", outcome)]
+plots$covered_units <- ggplot(x, aes(n_clusters, gap, colour = city, group = city)) +
+  geom_point(size = 2) + geom_text(aes(label = level), size = 2.5, vjust = -1,
+                                 check_overlap = TRUE) +
+  scale_x_log10() + facet_wrap(vars(pollutant), scales = "free_y") +
+  scale_colour_manual(values = c(Bogota = "#263746", Santiago = "#9B6137",
+                                 `Sao Paulo` = "#718355")) +
+  labs(title = "Design A: covered-unit counts as a supplementary resolution measure",
+       x = "Covered estimation units (log scale; coarse to fine)", y = "Q1 - Q5",
+         colour = NULL,
+       caption = paste("Unit counts do not harmonize geographic concepts across cities.",
+         "No pooled estimate.")) +
+  theme(legend.position = "bottom", plot.caption = element_text(hjust = 0, size = 8))
+x <- objects$variances[grepl("^avg",
+  outcome) & !(city_id == "bogota_2018" & level == "localidad")]
+plots$variance <- ggplot(x, aes(axis, share_retained, group = 1)) +
+  geom_line(linewidth = .4) + geom_point(size = 2) +
+  facet_wrap(vars(city, pollutant), ncol = 2, scales = "free_x") +
+  scale_x_discrete(labels = axis_labels) +
+  labs(title = "Design A: exposure variance retained", x = "Coarse to fine",
+       y = "Share of finest-level variance",
+       caption = paste("All-adult aggregation weights and fixed covered support.",
+         "Declining variance does not imply a monotone gap.")) +
+  theme(plot.caption = element_text(hjust = 0, size = 8))
+# Save individual vector figures and a single review packet; never export to the manuscript.
+for (name in names(plots)) {
+  ggsave(file.path(dir_out, paste0("resolution_multicity_", name, ".pdf")), plots[[name]],
+         width = 11.7, height = 8.3, units = "in", device = grDevices::cairo_pdf)
+}
+grDevices::cairo_pdf(file.path(dir_out, "resolution_multicity.pdf"), width = 11.7,
+  height = 8.3)
+for (p in plots) print(p)
+grDevices::dev.off()
+fwrite(data.table(figure = names(plots), file = paste0("resolution_multicity_",
+  names(plots),
+  ".pdf")), here::here("results", "tables", "resolution_multicity_figure_index.csv"))
+
+}

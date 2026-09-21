@@ -1,0 +1,4 @@
+city_id,processed_residents,processed_adults,education_reporting_adults,source_residents,source_adults,source_count_status,adult_rule,weights
+bogota_2018,9028674,5693549,5575652,,,not_separately_rebuilt_from_raw,age_25_plus,unit_weights
+santiago_2017,5931919,3930887,3930887,6139087,4037849,read_only_2017_source_query_selected_zones,age_25_plus,unit_weights
+sao_paulo_2010,19683974.999999,12051075.1502981,10147769.491894,,,not_separately_rebuilt_from_raw,age_25_plus,IBGE_expansion_weights

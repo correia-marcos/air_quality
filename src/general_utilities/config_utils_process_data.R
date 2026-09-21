@@ -66,5 +66,7 @@ source(here::here("src", "general_utilities", "process", "diagnostics.R"))
 source(here::here("src", "general_utilities", "process", "exposure_regressions.R"))
 
 
+source(here::here("src", "general_utilities", "process", "resolution_sensitivity.R"))
+
 # Print a success message for when running inside Docker Container
 cat("Config script parsed successfully!\n")

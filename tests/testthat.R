@@ -25,7 +25,7 @@ source(here::here("src", "general_utilities", "process", "geo_ids.R"))
 source(here::here("src", "general_utilities", "process", "idw_exposure.R"))
 source(here::here("src", "general_utilities", "process", "exposure_regressions.R"))
 
-for (file in c("distances.R", "outliers.R", "imputation.R")) {
+for (file in c("distances.R", "outliers.R", "imputation.R", "resolution_sensitivity.R")) {
   source(here::here("src", "general_utilities", "process", file))
 }
 source(here::here("src", "general_utilities", "test_runner.R"))

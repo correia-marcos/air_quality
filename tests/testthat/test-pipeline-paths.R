@@ -57,6 +57,8 @@ test_that("every script path in the Makefile exists on disk", {
 # Scripts that run outside the default pipeline on purpose. Adding a script here is the
 # conscious opt-out; leaving it out is what makes the reverse check fail.
 known_unwired <- c(
+  # Optional methodological preparation is wired only to resolution-multicity.
+  "scripts/process_data/prepare_resolution_inputs.R",
   "scripts/process_data/generate_inegi_lab_inputs.R",
   # Diagnostics that no manuscript figure depends on; see doc/REMAINING_WORK.md.
   "scripts/tables_images/figure_missing_heatmap.R",

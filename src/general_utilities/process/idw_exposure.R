@@ -80,6 +80,7 @@ assign_socio_group <- function(dt, var, wcol, n, out_col) {
 #                            the canonical "geo_id"; override only for legacy inputs.
 #' @param pop_col            string; population or expansion-weight column. Defaults to
 #                            the canonical "person_weight"; override only for legacy.
+#' @param precomputed_group_col optional existing integer group column; no recutting.
 #' @param group_var          string; continuous variable used to define groups
 #                            (e.g. "educ_years" or "income").
 #' @param n_groups           integer; number of equal-population groups (5 or 10).
@@ -163,7 +164,8 @@ aggregate_idw_exposure <- function(
     quiet               = FALSE,
     return_data         = FALSE,
     fail_on_query_error = TRUE,
-    chunk_by_month      = TRUE
+    chunk_by_month      = TRUE,
+    precomputed_group_col = NULL
 ) {
   
   # 0. Dependencies and argument matching
@@ -203,6 +205,16 @@ aggregate_idw_exposure <- function(
     }
   }
   
+  if (!is.null(precomputed_group_col)) {
+    if (!precomputed_group_col %in% names(census_col)) {
+      stop("Precomputed group column missing: ", precomputed_group_col)
+    }
+    groups <- census_col[[precomputed_group_col]]
+    if (!is.numeric(groups) || any(!is.na(groups) & !groups %in% seq_len(n_groups))) {
+      stop("Precomputed groups must be integers from 1 to n_groups, or NA.")
+    }
+  }
+
   # Individual mode requires an adult indicator.
   if (quintile_level == "individual" &&
       !indiv_adult_col %in% names(census_col)) {
@@ -238,7 +250,8 @@ aggregate_idw_exposure <- function(
       out_name        = out_name,
       quiet           = quiet,
       return_data     = return_data,
-      write_exposure  = write_exposure
+      write_exposure  = write_exposure,
+      precomputed_group_col = precomputed_group_col
     )
   }
 
@@ -791,7 +804,8 @@ aggregate_idw_exposure <- function(
 .idw_census_and_write <- function(all_years, census_col, geo_id_col, pop_col,
                                   group_var, n_groups, group_name, quintile_level,
                                   indiv_adult_col, out_path, indiv_path, out_name,
-                                  quiet, return_data, write_exposure = TRUE) {
+                                  quiet, return_data, write_exposure = TRUE,
+                                  precomputed_group_col = NULL) {
 
   census_dt <- data.table::copy(data.table::as.data.table(census_col))
 
@@ -802,7 +816,11 @@ aggregate_idw_exposure <- function(
   if (quintile_level == "geo") {
 
     # Assign groups from the geo-level group_var using population shares.
-    assign_socio_group(census_dt, group_var, pop_col, n_groups, group_name)
+    if (is.null(precomputed_group_col)) {
+      assign_socio_group(census_dt, group_var, pop_col, n_groups, group_name)
+    } else {
+      census_dt[, (group_name) := get(precomputed_group_col)]
+    }
 
     # Repair spelling differences between the spatial and census ID conventions
     # before judging the match. Every repair is verified against the census.
@@ -857,7 +875,11 @@ aggregate_idw_exposure <- function(
     }
 
     # Assign groups from the individual group_var using expansion weights.
-    assign_socio_group(census_dt, group_var, pop_col, n_groups, group_name)
+    if (is.null(precomputed_group_col)) {
+      assign_socio_group(census_dt, group_var, pop_col, n_groups, group_name)
+    } else {
+      census_dt[, (group_name) := get(precomputed_group_col)]
+    }
 
     # Repair spelling differences between the spatial and census ID conventions,
     # exactly as the "geo" branch above does.

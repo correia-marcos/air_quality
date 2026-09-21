@@ -36,7 +36,8 @@ SRC := $(shell find src -name '*.R')
 
 # ---- Phony convenience targets -------------------------------------------------------------
 .PHONY: all download process merra2 distances outliers exposure descriptives \
-        scatter imputed temporal figures tables context-maps resolution validate clean help
+        scatter imputed temporal figures tables context-maps resolution \
+        resolution-multicity validate clean help
 
 all: figures tables
 
@@ -137,12 +138,18 @@ merra2: temporal
 	$(RUN) scripts/tables_images/figure_merra2_vs_stations.R
 	$(RUN) scripts/tables_images/figure_aerosol_composition.R
 
-# Resolution sensitivity re-keys the Bogota exposure to five nested census geographies.
+# Resolution sensitivity re-keys the Bogota exposure to the reference census geographies.
 # Deliberately NOT a prerequisite of `all`: methodological, and not yet cited by the draft.
 resolution: exposure
 	$(RUN) scripts/process_data/build_bogota_localidad_crosswalk.R
 	$(RUN) scripts/process_data/estimate_resolution_sensitivity.R
 	$(RUN) scripts/tables_images/figure_resolution_sensitivity.R
+
+# Three-city sensitivity consumes frozen derived inputs; it never invokes `exposure`.
+resolution-multicity:
+	$(RUN) scripts/process_data/prepare_resolution_inputs.R
+	$(RUN) scripts/process_data/estimate_resolution_sensitivity.R --scope=multicity
+	$(RUN) scripts/tables_images/figure_resolution_sensitivity.R --scope=multicity
 
 # Context maps are not manuscript artifacts; the terrain version may contact Stadia.
 context-maps: process
@@ -168,7 +175,7 @@ clean:
 help:
 	@echo "Targets: all process distances outliers exposure descriptives scatter"
 	@echo "         imputed temporal figures tables"
-	@echo "         merra2 context-maps resolution download validate clean"
+	@echo "         merra2 context-maps resolution resolution-multicity download validate clean"
 	@echo "Add DOCKER=1 to run each step inside the compose \"analysis\" service."
 
 

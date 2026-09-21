@@ -224,3 +224,10 @@ behalf, manufacture a baseline, widen tolerances, or substitute newer inputs sil
 `Imports`, `Depends`, and `LinkingTo`; adding `Suggests` globally would also pull optional
 packages from downstream dependencies. Dependency changes use renv, with analytical versions
 reviewed separately from the testing additions.
+
+## Optional three-city resolution sensitivity
+
+`make resolution-multicity` runs the separate A/B/C methodological analysis for Bogotá,
+Santiago, and São Paulo from existing derived inputs. It does not invoke or export the
+manuscript workflow. Definitions, input requirements, reference verification, outputs,
+and clean-source limitations are in [RESOLUTION_SENSITIVITY.md](RESOLUTION_SENSITIVITY.md).
