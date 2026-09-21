@@ -6,7 +6,7 @@ Edit the shared source once; native wrappers contain discovery metadata and link
 
 | Task | Read |
 |---|---|
-| Every task | [Architecture](architecture.md), [collaboration](collaboration.md) |
+| Every task | [Architecture](architecture.md), [collaboration](collaboration.md), [Git safety](rules/git-safety.md) |
 | R/QMD/Rmd changes | [R style](rules/r-style.md) |
 | Data, src, scripts | [Data and paths](rules/data-and-paths.md) |
 | Container/dependency changes | [Reproducibility](rules/reproducibility.md) |
@@ -20,3 +20,4 @@ Edit the shared source once; native wrappers contain discovery metadata and link
 
 A scoped rule may have documented exceptions. Existing user authorization is retained.
 Changes to methods, source inputs, and dependencies require the corresponding task scope.
+Implementation authorization does not authorize Git mutations; agents recommend commits only.

@@ -97,6 +97,8 @@ fails if you forget.
 
 ## Behavior guidelines (how I want you to work)
 
+- **Git recommendations only.** Follow [Git safety](rules/git-safety.md): inspect and
+  recommend file groupings and commit names; never stage, commit, or push.
 - **Think before coding.** Don't assume, don't hide confusion. State assumptions explicitly.
   If uncertain, say so with a confidence level and cite sources when it applies.
 - **Surface trade-offs.** If multiple interpretations exist, present them — don't silently pick

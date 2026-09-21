@@ -79,8 +79,9 @@ Run with `tar_make()`; inspect with `tar_visnetwork()`; read a result with `tar_
 
 Do this in slices so the repo always works:
 
-1. **Add deps:** `renv::install(c("targets", "tarchetypes"))`, then `renv::snapshot()`. Commit the
-   lockfile change yourself.
+1. **Add deps, only if this dependency change is authorized:**
+   `renv::install(c("targets", "tarchetypes"))`, then `renv::snapshot()`.
+   Recommend a separate lockfile commit for the human; agents do not stage or commit.
 2. **Refactor one stage of one city into a function** in `src/` that returns its output path (start
    with Bogotá `process`). Keep the existing `scripts/` version working in parallel.
 3. **Write a minimal `_targets.R`** covering just that target; confirm `tar_make()` reproduces the
