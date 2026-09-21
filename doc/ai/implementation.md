@@ -1,5 +1,52 @@
 # Implementation and evidence
 
+## Git safety P0 — 16 September 2026
+
+Repository-local implementation based on `4c80f71a8710e9bc913a622ab34b8aa310f97d39`.
+The changes are unstaged. No commits or pushes were made; HEAD and the index are unchanged.
+Analytical files, scientific specifications, source inputs, and dependencies were not edited.
+
+Added the canonical [recommendation-only Git policy](rules/git-safety.md), required by
+both root wrappers and the shared index. Removed standing historical authorization from
+current collaboration guidance. Updated handoffs to recommend human-created commits only.
+Native Codex rules and Claude denials now cover staging, commits, pushes, and common
+history-producing commands. The shared guard rejects additional literal invocation forms,
+unknown aliases/config overrides, and direct checkout .git edits. Adapter code was reused.
+
+Checks performed:
+
+- `python3 -B -m unittest discover -s tests/harness -v`: 10 tests passed. Fixtures include
+  39 forbidden command strings and 13 inspection/documentation strings, each also checked
+  through both adapters. No forbidden command was executed.
+- Native `codex execpolicy check` evaluated plain commit and push strings as `forbidden`;
+  Git status was unmatched. This evaluates policy without executing the supplied command.
+  The CLI printed a sandbox warning about creating PATH aliases; evaluation exited zero.
+- Claude JSON denial checks, root-wrapper equality, guidance paths, and `git diff --check`
+  passed. These are configuration checks, not live Claude execution evidence.
+- `Rscript tests/testthat.R --mode=synthetic` stalled in renv sandbox-lock acquisition
+  before tests and was interrupted. No packages were installed or lockfile changed.
+- The same synthetic suite completed with the existing framework R 4.6.1 installation,
+  `--vanilla`, and the existing project library at
+  `renv/library/macos/R-4.6/aarch64-apple-darwin23`: 222 passed, zero failures, errors,
+  skips, or testthat warnings. Arrow printed sandbox CPU-query diagnostics; exit status
+  was zero. This native run is not container or full scientific reproduction evidence.
+
+Still pending: installed-client hook activation/dispatch tests, host-enforced Git metadata
+protection, publishing-capability restrictions, and the documentation reorganization and
+repository-review refresh. Arbitrary scripts, dynamic shell expansion, Git libraries,
+remote tools, and inactive hooks remain outside this bounded command inspection. See
+[harness verification](harnesses.md#verification-before-enabling-an-implementation-session).
+
+Recommended human-created commit groups (recommendations only):
+
+1. **Define recommendation-only Git policy** — `AGENTS.md`, `CLAUDE.md`,
+   `doc/ai/rules/git-safety.md`, `doc/ai/README.md`, `doc/ai/architecture.md`,
+   `doc/ai/collaboration.md`, `doc/ai/handoff.md`, `doc/TARGETS_MIGRATION_PLAN.md`.
+2. **Deny agent Git mutations and test both adapters** — `tools/harness/guard_policy.py`,
+   `tests/harness/test_guard.py`, `.codex/rules/project.rules`, `.claude/settings.json`,
+   `.claude/hooks/README.md`, `doc/CLAUDE_CODE_SETUP.md`, `doc/ai/harnesses.md`,
+   `doc/ai/evidence.md`, `doc/ai/implementation.md`.
+
 ## Container remediation — 9–10 September 2026
 
 The accepted remediation prepares geography inside existing city processors, preserves

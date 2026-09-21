@@ -1,4 +1,9 @@
-prefix_rule(pattern=["git", "push"], decision="forbidden",
-            justification="Publishing requires an authorized destination and scope. \n           Humans should make the decision to push changes after reviewing them.")
+prefix_rule(pattern=["git", ["add", "commit", "push", "merge", "rebase",
+                            "cherry-pick", "am", "commit-tree", "update-ref",
+                            "send-pack", "fast-import"]], decision="forbidden",
+            justification="Agents recommend commit names and file groupings only. Humans stage, commit, and push; do not request a bypass.",
+            match=["git commit -m example", "git commit --amend", "git push",
+                   "git push origin main", "git add file", "git merge branch"],
+            not_match=["git status", "git diff", "git log"])
 prefix_rule(pattern=["git", "reset", "--hard"], decision="forbidden",
             justification="Preserve work; use a scoped reversible change instead.")
