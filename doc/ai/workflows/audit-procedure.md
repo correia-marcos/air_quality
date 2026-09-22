@@ -7,7 +7,7 @@ do not modify analysis code; surface findings and let Marcos decide.
 ## Gather the three inputs (ask me for any you cannot locate)
 
 1. **Paper spec** — the relevant appendix/section of the draft. Read the local copy under
-   `doc/paper/` (synced from Overleaf; see `doc/PROCEDURE_AUDIT_WORKFLOW.md`). If it is not there,
+   `doc/paper/` (synced by the researcher; see [the human guide](../../guides/procedure-audit.md)). If it is not there,
    ask me for the section text or the file — don't guess the method.
 2. **Legacy code** — the original script(s), which live **outside this repo**. They must be exposed
    via `--add-dir` or `permissions.additionalDirectories` (see the workflow doc). If you cannot read
@@ -39,10 +39,13 @@ the difference can be toggled and quantified in the Step 0-4 framework.
 
 ## Output
 
-Write to `doc/audits/<procedure>/procedure.md`, where `<procedure>` is the short slug for the
-procedure under audit (e.g. `idw`, `distance_matrices`, `outlier_procedure`). Run
-`ls doc/audits/` first and reuse the existing subdirectory that matches; create it only if
-this is the first audit of that procedure. The report contains: a one-line verdict, the
+Use the [procedure report template](../../reviews/procedure-template.md). Record the audit
+kind, workflow revision, input/code hashes, author/model/harness, date, actual checks,
+review status, and limitations. Write a new report to
+`doc/audits/procedures/<procedure>/<YYYY-MM-DD>-<run-id>.md`, where `<procedure>` is the
+short slug and `<run-id>` distinguishes repeated runs. Never overwrite an earlier report.
+Existing reports keep their historical paths; use the [catalog](../../reviews/README.md)
+to find them. The report contains: a one-line verdict, the
 Goal-1 parameter table, Goal-2 findings (grouped Blocker / Should-fix / Nit with
 `file:line`), the Goal-3 deviation/toggle table, and a short TL;DR. Do not edit analysis
 code. End by asking me which findings to act on.

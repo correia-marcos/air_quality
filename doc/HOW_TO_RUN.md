@@ -1,5 +1,8 @@
 # Run, verify and export
 
+Navigation: [documentation index](README.md) · [first run](guides/first-run.md) ·
+[data dictionary](reference/data_dictionary.md) · [resolution sensitivity](RESOLUTION_SENSITIVITY.md).
+
 This is the operational guide for the repository. The analytical methods are unchanged by
 the infrastructure work. Passing tests, a completed pipeline, reviewed numerical parity, and
 independent researcher reproduction are different forms of evidence. Complete scientific

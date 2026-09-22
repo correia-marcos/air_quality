@@ -1,134 +1,146 @@
-# Repo review: structure and style against the scientific-computing literature
+# Repository review and implementation status
 
-An external-style assessment of this repository's organization and code style,
-benchmarked against the canonical reproducible-research literature. Requested by
-Marcos; prepared by Claude Code (kimi-k3) on 2026-08-08. Read-only review — no code
-was changed. Facts asserted about the repo were verified the same day (e.g. no
-`tests/`, no `.github/workflows`, no testthat in `DESCRIPTION`).
+Review date: **21 September 2026**. Baseline:
+`512e96ea571a24f7e40289e3a4060cbc1cabc230`, plus the unstaged changes described below.
+Prepared with Codex. This is a repository/process assessment, not a scientific procedure
+audit or independent reproduction. Human review of this implementation is pending.
+The [8 August assessment](reviews/repository/2026-08-08.md) is preserved byte-for-byte.
 
-**Verdict:** the repo is a research compendium in the sense of Marwick, Boettiger &
-Mullen (2018) and satisfies all three of its principles; several of its conventions
-(named scripts, the enforced read-only ratchet, the Step 0–4 validation track) are at
-or beyond the current literature. The clearest gaps, by the same literature, are the
-absence of an automated test suite and the dual source of truth for the pipeline DAG.
+## Findings and diagnosis
 
-## 1. Benchmarks used
+The historical Git boundary was incomplete. At revision `4c80f71`:
 
-| Reference | What it contributes here |
+- `.codex/rules/project.rules:1–4` forbade plain push and hard reset, but not commit.
+- `.claude/settings.json:35–48` placed add, commit, and push under **ask**, not deny.
+- `tools/harness/guard_policy.py:39–47` prompted on destructive commands/force-push but
+  returned no restriction for ordinary commit or push.
+- Root/shared instructions did not consistently encode the requested recommendation-only
+  boundary. The process could treat reviewable commit batches as execution authorization.
+  A permission prompt is not a prohibition.
+
+These gaps explain how the behavior was possible; they do not prove which permission source
+authorized the historical execution. The earlier investigation identified an agent commit
+and broad Git escalation request, but exact approval provenance remains unknown. The evidence
+does not establish a model-specific cause or show that using a different model would prevent it.
+
+The P0 corrections are in user-created revisions `b8c2611` and `57b9023`:
+[Git safety](ai/rules/git-safety.md) prohibits staging, `git commit`, `git push`, and equivalent
+indirect actions; [shared policy](../tools/harness/guard_policy.py),
+[Codex rules](../.codex/rules/project.rules), and [Claude permissions](../.claude/settings.json)
+encode denials. Tests or approval of file groupings do not authorize Git mutations.
+
+**Live activation is no longer pending for the tested Codex client.** Its project hook was
+enabled/trusted and blocked a harmless invalid Git option before execution. No activation
+change was needed. [Host enforcement](ai/host-enforcement.md) records the version, scope,
+fixture results, and remaining deployment work. Claude live behavior is unverified because
+the client was not found on PATH.
+
+| Earlier concern/claim | Current assessment |
 |---|---|
-| Wilson et al. 2014, *Best Practices for Scientific Computing*, PLOS Biology | The eight practices; esp. #1 (write for people), #5 (plan for mistakes), #7 (document design, not mechanics) |
-| Wilson et al. 2017, *Good Enough Practices in Scientific Computing*, PLOS Comput Biol | Box 4 project layout (`doc/`, `data/`, `results/`, `src/`; README/LICENSE; avoid sequential-number filenames) |
-| Marwick, Boettiger & Mullen 2018, *Packaging Data Analytical Work Reproducibly Using R (and Friends)*, The American Statistician | The research-compendium principles: community conventions; separation of data, method, output; data read-only |
-| Sandve et al. 2013, *Ten Simple Rules for Reproducible Computational Research*, PLOS Comput Biol | Provenance; record intermediate results |
-| Boettiger 2015, *An introduction to Docker for reproducible research*, ACM SIGOPS OSR | Containerized bit-for-bit environments |
-| Landau 2021, *The targets R package*, JOSS | R-native pipeline DAG; up-to-date targets as "tangible evidence of reproducibility" |
-| AEA Data and Code Availability Policy (+ DCAS) | Economics replication-package baseline: master script, README mapping programs to outputs, trusted-repository archiving |
+| No tests or CI | No longer a problem: `tests/testthat/` and `.github/workflows/synthetic.yml` exist. Preserve and use them. |
+| Hooks guarantee protected inputs | Too strong: text inspection has coverage limits. Host filesystem controls need separate evidence. |
+| Docker/renv establish full bit-for-bit reproduction | Unsupported as a blanket claim. Declared inputs, fresh execution, comparisons, and researcher review are still required. |
+| A targets migration is required | Not established. The Makefile and R orchestrator need coordinated maintenance and have path tests. Keep the targets document as a proposal. |
+| Every audit folder should move | Unnecessary. Preserve historical local reports and classify future reports by method and purpose. |
 
-## 2. Where the repo is exemplary — textbook or better
+## Priorities and model delegation
 
-- **Layout.** `src/` (functions only) / `scripts/` (execution) / `data/` (layered) /
-  `results/` / `doc/` is exactly Wilson 2017 Box 4 and the Marwick compendium
-  principles. All three compendium principles hold; most published compendia manage
-  two.
-- **The read-only ratchet is enforced, not just recommended.** Marwick's "treat data
-  as read-only" is stated in the literature as *discipline*; here a PreToolUse hook
-  mechanically stops writes to `data/raw/` and `data/_legacy/`. The literature's
-  consistent finding is that discipline-only norms fail under time pressure —
-  mechanization is the known fix, and this repo applies it.
-- **Named scripts + `run_pipeline.R` instead of numbered scripts.** Wilson 2017 says
-  avoid sequential-number filenames because they desynchronize; the economics norm
-  (`01_`, `02_`, …) ignores this. Meaningful names + one orchestrator holding the run
-  order is the correct reading of that advice.
-- **Comment policy.** Wilson 2014 #7 ("document design and purpose, not mechanics")
-  is operationalized as a hard rule: rationale lives once in `@Description`/`@Details`;
-  body comments are ≤ 2 lines and say what happens *to the data*. Rarely seen this
-  strictly enforced outside of style-guide exemplars.
-- **Environment.** renv + Docker + `.Rproj` is the Boettiger container pattern with
-  pinned packages — the bit-for-bit tier, above the "good enough" tier. Meets the AEA
-  baseline (master script, README, program→output mapping, Zenodo archiving of data).
-- **Parquet checkpoints.** Sandve's "record intermediate results" rule, implemented
-  with an out-of-core stack (Arrow/DuckDB) so any stage's output can be opened and
-  inspected without rerunning anything upstream.
-- **"The reader is a human" as the top constraint.** This is Wilson 2014 #1 verbatim.
-  Every idiosyncrasy (named scripts, one-home comments, inspectable intermediates)
-  derives from that single principle — which is why the structure feels coherent.
+Assignments below reflect task risk, not measured model benchmarks. Every model receives
+the same no-stage/no-commit/no-push boundary. No subagents were used in this continuation.
 
-## 3. Where the repo goes beyond the literature
+| Step | Disposition / acceptance | Context and reasoning | Delegation |
+|---|---|---|---|
+| P0 Git instructions/denials | Existing corrections retained; fixtures must deny commit and push as strings | Repository-wide authorization/tool semantics | Astra owns policy; Terra can implement bounded adapters/tests |
+| P1 Live Codex hook | Enabled/trusted; benign denial observed; inspection allowed | Client-specific evidence | Terra repeats prescribed checks; Astra assesses coverage |
+| P1 Machine enforcement | Tested bundle prepared; admin installation and effective-policy checks pending | Cross-tool publishing, permissions, Git/common-directory topology | Astra retains design and acceptance; Terra can run a fixed fixture |
+| P2 Moves and redirects | Implemented with a checksum ledger and historical copies | Mechanical once the map is fixed | Luna or Terra with exact file ownership and content comparison |
+| P2 Audience routes/taxonomy | Implemented; review status separate from audit method/provenance | Repository-wide information organization | Terra drafts; Astra reviews architecture/scientific terminology |
+| P2 Current repository assessment | This page replaces stale current claims; original archived | Reconcile revisions, evidence, literature | Astra |
+| P2 Link checks and CI | Offline checker and negative fixtures added | Bounded software engineering | Terra; Luna can update approved links and run checks |
+| P3 Scientific reproduction | Existing outstanding requirement; not completed here | City definitions, provenance, numerical/visual evidence | Astra and researcher retain decisions; Terra executes an approved protocol; Luna inventories/formats results |
 
-- **The Step 0–4 validation track.** Differential testing against a legacy reference
-  implementation, decomposed by input layer (metro definitions → station data → census
-  → code), has no real analogue in the reproducibility literature. The closest concepts
-  are regression testing and "turn bugs into test cases" (Wilson 2014 #5), but those
-  catch *future* bugs in *your* code; Step 0–4 quantifies *which input update moves
-  which published number*. That is closer to a lab notebook than to a replication
-  package, and it is what makes per-procedure audits (`doc/audits/`) cheap to run.
-- **The audit trail.** `doc/audits/`, `REMAINING_WORK.md`, and
-  `deletion_candidates.md` record negative results and pending decisions — the Turing
-  Way's "record what didn't work" norm, again usually aspirational rather than actual.
-- **The `.claude/` harness.** Rules, agents, skills, and the procedure-audit workflow
-  codify reviewer discipline for AI-assisted work. The literature has not caught up
-  with this yet; it is a genuine strength, with one caveat — it concentrates process
-  knowledge in a single assistant's configuration. Mitigation is already in place:
-  the same rules are written as plain markdown that humans can read without any tool.
+Changes to estimands, missingness, geographic definitions, Design A/B/C interpretation,
+legacy comparability, pipeline architecture, or manuscript artifact selection remain outside
+this documentation task. They need researcher-owned specifications and separate validation.
 
-## 4. Where the literature would push back
+## Documentation architecture
 
-1. **No automated tests.** Wilson 2014 #5 ("plan for mistakes": assertions, unit
-   tests, bugs→test cases) is the clearest gap — verified: no `tests/`, no testthat,
-   no CI workflow. The validation track is a *system-level* substitute but cannot
-   catch a regression introduced today in, say, `assign_socio_group()`. The
-   literature distinguishes defensive input validation (rightly banned here as bloat)
-   from correctness tests of scientific logic (prescribed). Minimal move: a small
-   testthat suite of golden-value regression tests on tiny fixtures — e.g. a
-   3-station × 2-geo-unit IDW toy whose hourly and annual answers are computable by
-   hand. That is the cheapest referee-confidence available.
-2. **Two sources of truth for the DAG.** Run order lives in `run_pipeline.R`,
-   dependencies in the `Makefile`; they can drift. The R-native fix is `targets`
-   (Landau 2021), where the dependency graph *is* the code and freshness checks are
-   the reproducibility evidence. `doc/TARGETS_MIGRATION_PLAN.md` already exists; the
-   literature strongly endorses finishing it.
-3. **Long orchestrator functions.** `aggregate_idw_exposure()` (~680 lines) violates
-   the classic modularization rule (Wilson 2014 #4). Defensible for a referee-facing
-   compendium — linear step-through is the point — but it compounds gap #1: long
-   functions are exactly what unit tests cannot reach. The right middle path is the
-   one already started: extract pure data-transform helpers (`assign_socio_group`),
-   keep the I/O orchestration linear.
-4. **Style pluralism (nit).** data.table + dplyr and `%>%` + `|>` coexist.
-   Style-guide literature values consistency above the specific choice; within-stage
-   consistency, which the repo has, is what a reader actually needs. Nit-level only.
+[The documentation index](README.md) routes students, reviewers, contributors, auditors,
+and agent users to maintained pages:
 
-## 5. TL;DR
+```text
+doc/
+  README.md                     Audience and topic navigation
+  HOW_TO_RUN.md                 Stable operational entry point
+  REPO_REVIEW.md                Current dated assessment
+  RESOLUTION_SENSITIVITY.md     Stable supporting-analysis guide
+  guides/                      First run, contributing, procedure-audit guide
+  reference/                   Data dictionary and IDW worked reference
+  planning/                    Remaining work, deletion candidates, targets proposal
+  reviews/                     Catalog, report template, move ledger
+    repository/                Preserved historical assessments/guides
+  ai/                          Canonical shared agent guidance and evidence
+  audits/                      Local reports; only README public
+  notes/                       Local research explanations; only README public
+  paper/                       Local manuscript sources; only README public
+```
 
-| Dimension | Literature benchmark | This repo |
+Former dictionary, IDW, planning, setup, and procedure-guide paths retain redirects and
+explicit anchors. Root README, operational navigation, shared architecture/index,
+methods/tests map, canonical procedure workflow, manuscript README, and Claude hook README
+point to maintained locations. The hook README had a pre-existing extra `../`; it is fixed.
+No static-site framework or new documentation dependency was introduced.
+
+[Report types](reviews/README.md#report-types) distinguish procedure audits, repository
+reviews, reproducibility audits, focused investigations, and research explanations. A report
+is **workflow-produced** only when provenance identifies the workflow/version followed.
+Three-way content alone cannot establish which tool invocation produced it. New procedure
+reports use unique dated filenames and [metadata](reviews/procedure-template.md). Existing
+local names and contents remain intact. Finding disposition and human review remain separate
+fields in [the evidence index](ai/evidence.md).
+
+## Preservation and verification
+
+[The move ledger](reviews/document-moves.csv) records the original revision/hash and target
+hash at migration. Five maintained documents retain their content, with only relative-link
+adjustments where needed. Three archived documents are exact copies. Their relative links
+are historical and explicitly excluded from the current-navigation check. The ledger records
+this migration; maintained documents may subsequently evolve through reviewed changes.
+
+No analytical R code, city configurations, source data, dependency declarations, orchestration,
+artifact manifest, or resolution-sensitivity scientific guide is changed. The operational
+guide receives navigation only. Design A/B/C qualifications, city-specific comparability,
+Step 0–4 interpretation, and uncertainty retain their stated scope. Moving a reference does
+not approve a new method.
+
+Check harness/Markdown fixtures, local links and anchors, and the synthetic R suite. Validate
+the distributed file inventory separately from ignored local evidence. Compare moved content
+and scientific-file hashes, check whitespace, and confirm unchanged HEAD/index. Release
+verification, external acquisition, manuscript rendering, and scientific reproduction are
+separate tasks. Actual outcomes and exact recommended file groups are in the
+[implementation record](ai/implementation.md#documentation-and-host-policy-continuation--21-september-2026).
+
+## Sources and recommendation basis
+
+| Area / source | Recommendation supported | Limit |
 |---|---|---|
-| Layout | Wilson 2017 Box 4 / Marwick compendium | Matches, plus named-scripts improvement |
-| Raw-data integrity | "read-only" discipline | Mechanically enforced (hook) |
-| Environment | renv/Docker (Boettiger 2015) | Full bit-for-bit tier |
-| Orchestration | One authoritative DAG | ⚠️ run_pipeline.R + Makefile can drift → finish targets migration |
-| Tests | Wilson 2014 #5 | ⚠️ None — add golden-value regression tests |
-| Validation | — (no real benchmark exists) | Step 0–4 differential framework — beyond the literature |
+| AI safety: [NIST least privilege](https://csrc.nist.gov/glossary/term/least_privilege); [OWASP excessive agency](https://genai.owasp.org/llmrisk/llm062025-excessive-agency/) | Separate editing from publishing authority; enforce boundaries outside prompts | General principles do not certify a client configuration |
+| AI tools: [OpenAI permissions](https://learn.chatgpt.com/docs/permissions), [managed configuration](https://learn.chatgpt.com/docs/enterprise/managed-configuration), [hooks](https://learn.chatgpt.com/docs/hooks) | Supported profiles, host requirements, explicit trust/dispatch checks | Version/platform-specific; local evidence has bounded coverage |
+| Git: [official hooks reference](https://git-scm.com/docs/githooks), [configuration](https://git-scm.com/docs/git-config) | Git hooks/configuration need an independent enforcement boundary | Protecting metadata alone does not prevent pushing existing commits |
+| Engineering/research: [Wilson et al. (2017), PLOS Computational Biology](https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1005510) | Readable organization, versioned documentation, small reviewable changes, automated checks | Does not require wholesale refactoring or a targets migration |
+| Reproducible research: [Sandve et al. (2013), PLOS Computational Biology](https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1003285); [AEA Data Editor guidance](https://aeadataeditor.github.io/aea-de-guidance/preparing-for-data-deposit) | Preserve input/code versions, intermediate evidence, access conditions, and program/output mapping | Hashes, tests, and historical parity are not independent reproduction |
+| Information organization: [Diátaxis](https://diataxis.fr/start-here/) | Distinct reader routes for learning, tasks, reference, and explanation | Design framework; does not require four literal folder names |
 
-## Sources
+## Assumptions, risks, and remaining questions
 
-- Wilson G, Bryan J, Cranston K, Kitzes J, Nederbragt L, Teal TK (2017).
-  [Good enough practices in scientific computing](https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1005510).
-  PLOS Comput Biol 13(6): e1005510.
-- Wilson G, Aruliah DA, Brown CT, et al. (2014).
-  [Best practices for scientific computing](https://journals.plos.org/plosbiology/article?id=10.1371/journal.pbio.1001745).
-  PLOS Biology 12(1): e1001745.
-- Marwick B, Boettiger C, Mullen L (2018).
-  [Packaging data analytical work reproducibly using R (and friends)](https://www.tandfonline.com/doi/abs/10.1080/00031305.2017.1375986).
-  The American Statistician 72(1): 80–88.
-  ([free PDF](https://faculty.washington.edu/bmarwick/PDFs/Marwick-Boettiger-Mullen-2018-TAS-research-compendia.pdf))
-- Sandve GK, Nekrutenko A, Taylor J, Hovig E (2013).
-  [Ten simple rules for reproducible computational research](https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1003285).
-  PLOS Comput Biol 9(10): e1003285.
-- Boettiger C (2015).
-  [An introduction to Docker for reproducible research](https://doi.org/10.1145/2723872.2723882).
-  ACM SIGOPS Operating Systems Review 49(1): 71–79.
-- Landau W (2021).
-  [The targets R package: a dynamic Make-like function-oriented pipeline toolkit for
-  reproducibility and high-performance computing](https://joss.theoj.org/papers/10.21105/joss.02959.pdf).
-  JOSS 6(57): 2959. [User manual](https://books.ropensci.org/targets/index.html).
-- [AEA Data and Code Availability Policy](https://www.aeaweb.org/journals/data/data-code-policy)
-  and [AEA Data Editor guidance](https://aeadataeditor.github.io/aea-de-guidance/).
+- The user authorized implementation after reviewing P0 and selected all Codex projects
+  on this Mac. This does not authorize staging, commits, pushes, or analytical changes.
+- Administrator authentication is still needed for deployment. Current hook success is not
+  machine-wide or Claude evidence. Cloud/MDM requirements may override system policy.
+- Nested/bare repositories and linked-worktree common directories require exact registration.
+  The tested client rejects general read-access globs. See the host guide before relying on it.
+- Historical audits/drafts may be absent or restricted in a clone; their omission is intentional.
+- The link checker covers inline Markdown links and heading/explicit-ID anchors. It does not
+  check remote availability, arbitrary HTML, PDF internals, or rendered scientific content.
+- Scientific reproduction and review of earlier findings remain open. This reorganization
+  neither resolves them nor invalidates their existing evidence.

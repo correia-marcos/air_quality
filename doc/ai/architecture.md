@@ -134,10 +134,11 @@ Each city renders one self-contained Quarto report under
 - `doc/ai/workflows/` — `/new-process-script`, `/new-figure`, `/add-city`, `/validate-city`,
   `/reproduce`, `/review-r`.
 - `doc/ai/roles/` — `r-reproducibility-reviewer`, `legacy-validation-auditor`.
-- `doc/CLAUDE_CODE_SETUP.md` — what every piece of this setup is and why it exists.
-- `doc/REMAINING_WORK.md` — which of the paper's figures and tables the default pipeline
+- `doc/README.md` — routes for students, reviewers, and contributors.
+- `doc/ai/harnesses.md` — client setup and its verified boundaries.
+- `doc/planning/remaining-work.md` — which of the paper's figures and tables the default pipeline
   cannot yet produce, and why. Read this before assuming a missing figure is a bug.
-- `doc/deletion_candidates.md` — functions with no caller, kept pending Marcos's decision.
+- `doc/planning/deletion-candidates.md` — functions with no caller, kept pending Marcos's decision.
 
 
 Python/shell are permitted for harness adapters and local orchestration; analytical and

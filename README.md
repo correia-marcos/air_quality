@@ -16,6 +16,11 @@ Choose a route:
 
 | Goal | Start here |
 |---|---|
+| Find documentation by audience or topic | [Documentation index](doc/README.md) |
+| Learn the repository as a student | [First run](doc/guides/first-run.md) |
+| Contribute changes | [Contributor guide](doc/guides/contributing.md) |
+| Assess repository evidence and limitations | [Current review](doc/REPO_REVIEW.md), [review catalog](doc/reviews/README.md) |
+| Study resolution sensitivity | [Supporting analysis guide](doc/RESOLUTION_SENSITIVITY.md) |
 | Reproduce manuscript outputs | [Run and verify](doc/HOW_TO_RUN.md#manuscript-pipeline) |
 | Run optional satellite comparisons | [Supporting analyses](doc/HOW_TO_RUN.md#supporting-analyses) |
 | Develop or acquire inputs | [Development and acquisition](doc/HOW_TO_RUN.md#development-and-acquisition) |

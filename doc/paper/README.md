@@ -1,20 +1,15 @@
 # doc/paper/ — local manuscript draft (NOT committed)
 
-This folder holds a **local copy of the paper draft** used by the `/audit-procedure` workflow.
-Its contents are intentionally git-ignored (see `.gitignore`): the manuscript never enters the
-code repo's history. Only this README is tracked, so the convention travels with the repo.
+This directory holds local paper sections used by the
+[procedure-audit workflow](../ai/workflows/audit-procedure.md). Only this README is tracked.
+The draft is not distributed with the code repository or included in the Docker build.
 
-Put the draft here in whichever way suits you:
+The researcher can manually export the relevant TeX from Overleaf, or synchronize a separate
+manuscript checkout and copy the required sections here. Do not clone into `doc/paper/`:
+it already contains this README. Record the draft version and hashes used by each audit;
+refreshing a draft does not update the evidence in an older report. Keep authentication
+tokens out of commands, reports, and tracked files. Agents do not stage, commit, or push.
 
-- **Overleaf git bridge:** `git clone https://git@git.overleaf.com/<project-id> doc/paper`
-  (username `git`, password = your Overleaf auth token). Because this folder is git-ignored, the
-  nested clone is harmless — the outer repo won't try to track it. Run `git -C doc/paper pull`
-  before an audit to refresh.
-- **Manual export:** download the relevant `.tex` (e.g. the spatial-aggregation appendix) from
-  Overleaf and drop it here.
-
-See `doc/PROCEDURE_AUDIT_WORKFLOW.md` for the full workflow.
-
-For which of this draft's figures and tables the default pipeline can and cannot produce, see
-[`doc/REMAINING_WORK.md`](../REMAINING_WORK.md). It is written against the `.tex` in this
-folder, so refresh the draft before trusting its counts.
+See [the human audit guide](../guides/procedure-audit.md) for access and reporting steps.
+[Remaining work](../planning/remaining-work.md) was assessed against the draft available
+at its recorded date; verify the draft and code revision before relying on its counts.

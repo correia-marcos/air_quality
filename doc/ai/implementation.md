@@ -1,5 +1,91 @@
 # Implementation and evidence
 
+## Documentation and host-policy continuation — 21 September 2026
+
+Implemented as unstaged changes from `512e96ea571a24f7e40289e3a4060cbc1cabc230` after
+the user reviewed P0. The user selected every Codex project on this Mac for machine policy.
+No staging, commits, or pushes were performed. Earlier records below describe their dates;
+their pending items are not overwritten retrospectively.
+
+Completed: audience navigation, five content-preserving document relocations with redirects,
+three exact historical copies, current repository review, audit taxonomy/template, local-only
+storage READMEs, and an offline link checker with CI integration. `doc/ai/` remains canonical.
+The scientific resolution-sensitivity guide and all analytical code/configuration are unchanged.
+
+Live Codex activation needed no change: `hooks/list` reported the existing project hook
+enabled/trusted; a harmless invalid Git option was denied before dispatch. A machine bundle
+adds administrator-owned requirements and a Git-only hook, with explicit commit/push denials,
+an offline workspace profile, credential restrictions, and external publishing tools disabled.
+See [host enforcement](host-enforcement.md) for exact scope and limitations.
+
+Checks actually performed:
+
+- Harness suite: **13 tests passed**, including the existing 39 forbidden command strings
+  and 13 inspection/documentation strings, plus the new managed adapter. No forbidden
+  command was executed.
+- Documentation checker fixtures: **8 tests passed**, including missing targets/anchors,
+  repository escape, local-only evidence, redirect anchors, and untracked-file masking.
+- Candidate macOS sandbox: **10 checks passed**, protected dummy files unchanged. Explicitly
+  registered nested/common paths are protected; unregistered nested metadata was writable
+  in an earlier diagnostic fixture. Read-access globs were rejected by the client.
+- Installer shell syntax and TOML parsing checked. Privileged installation was not performed:
+  `sudo -n /usr/bin/true` reported that an administrator password is required.
+- Standard `Rscript tests/testthat.R --mode=synthetic` stalled in renv sandbox-lock acquisition
+  and was interrupted before tests. The existing framework R/library route below passed
+  **279 checks**, zero failures/errors/skips/testthat warnings. Arrow printed sandbox CPU
+  query diagnostics; exit status was zero. No package install or lockfile change.
+
+```sh
+R_LIBS_USER="$PWD/renv/library/macos/R-4.6/aarch64-apple-darwin23" /Library/Frameworks/R.framework/Versions/4.6/Resources/bin/Rscript --vanilla tests/testthat.R --mode=synthetic
+```
+
+- Final navigation: **235 local links, zero errors**; four explicitly local-only targets
+  reported and three exact historical pages excluded. A disposable public-documentation
+  simulation copied candidate Markdown files and used placeholders for other distributed
+  files, with ignored evidence absent: the same 235 links passed. This was not an actual
+  fresh Git clone; the new files remain unstaged. CI uses the tracked-only inventory.
+- Eight ledger rows matched original Git blobs and recorded target hashes; the five moved
+  references/plans differed only by relative-link adjustments in two files. Three
+  archives were byte-identical. Baseline hash comparison found no scientific/runtime file
+  changes. `git diff --check` passed, HEAD remained at the baseline, and the index was unchanged.
+- Native Codex rule evaluation classified commit/push as forbidden and inspection as
+  unmatched. This evaluates command strings without executing them.
+
+These checks do not establish container execution, full source-to-manuscript reproduction,
+or independent review.
+Remaining deployment: the researcher installs the bundle locally with administrator
+authentication, restarts clients, and verifies effective requirements, managed hooks, tool
+availability, and all actual/common Git-directory paths. Live Claude checks are pending
+because that client was not found on PATH.
+
+Recommended human-created commit groups, in this order (recommendations only):
+
+1. **Prepare machine-wide Codex Git and publishing restrictions**:
+   `tools/harness/managed-requirements.toml`, `tools/harness/managed_git_guard.py`,
+   `tools/harness/install_managed_policy.sh`, `tools/harness/verify_host_profile.py`,
+   `tests/harness/test_managed_guard.py`, `doc/ai/host-enforcement.md`, `doc/ai/harnesses.md`,
+   `.claude/hooks/README.md`.
+2. **Organize research documentation and preserve historical evidence**:
+   `.gitignore`, `.dockerignore`, `README.md`, `doc/README.md`, `doc/HOW_TO_RUN.md`,
+   `doc/REPO_REVIEW.md`, `doc/CLAUDE_CODE_SETUP.md`, `doc/PROCEDURE_AUDIT_WORKFLOW.md`,
+   `doc/REMAINING_WORK.md`, `doc/TARGETS_MIGRATION_PLAN.md`, `doc/data_dictionary.md`,
+   `doc/deletion_candidates.md`, `doc/idw_golden_test.md`, `doc/paper/README.md`,
+   `doc/audits/README.md`, `doc/notes/README.md`, `doc/guides/first-run.md`,
+   `doc/guides/contributing.md`, `doc/guides/procedure-audit.md`,
+   `doc/reference/data_dictionary.md`, `doc/reference/idw_golden_test.md`,
+   `doc/planning/remaining-work.md`, `doc/planning/deletion-candidates.md`,
+   `doc/planning/targets-migration.md`, `doc/reviews/README.md`,
+   `doc/reviews/procedure-template.md`, `doc/reviews/document-moves.csv`,
+   `doc/reviews/repository/2026-08-08.md`,
+   `doc/reviews/repository/claude-setup-before-2026-09-21.md`,
+   `doc/reviews/repository/procedure-guide-before-2026-09-21.md`,
+   `doc/ai/README.md`, `doc/ai/architecture.md`, `doc/ai/methods-tests.md`,
+   `doc/ai/workflows/audit-procedure.md`, `doc/ai/evidence.md`, `doc/ai/implementation.md`,
+   `tools/docs/check_links.py`, `tests/docs/test_links.py`, `.github/workflows/synthetic.yml`.
+
+Do not include ignored audits, notes, manuscript sources, data, or temporary fixture files.
+The second group includes the checker so new contributor links and CI become valid together.
+
 ## Git safety P0 — 16 September 2026
 
 Repository-local implementation based on `4c80f71a8710e9bc913a622ab34b8aa310f97d39`.

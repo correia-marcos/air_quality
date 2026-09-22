@@ -1,6 +1,6 @@
 # Methods to tests
 
-This is a coverage map, not a claim of exhaustive correctness. All new checks refer to the structural-migration working tree based on 720f6412761bbfdcdaba008a8909bc2ce71b4889. Existing tests keep their original numerical explanations in tests/testthat/ and doc/idw_golden_test.md.
+This is a coverage map, not a claim of exhaustive correctness. All new checks refer to the structural-migration working tree based on 720f6412761bbfdcdaba008a8909bc2ce71b4889. Existing tests keep their original numerical explanations in tests/testthat/ and [the IDW reference](../reference/idw_golden_test.md).
 
 | Procedure / code in src/ | Independent evidence | Remaining limitation |
 |---|---|---|

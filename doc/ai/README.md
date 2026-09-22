@@ -15,6 +15,8 @@ Edit the shared source once; native wrappers contain discovery metadata and link
 | Independent reviewer | The matching file in [roles](roles/) |
 | Scientific decisions | [Evidence index](evidence.md), [methods/tests](methods-tests.md) |
 | Client setup and hooks | [Harnesses](harnesses.md) |
+| Host permission boundary | [Host enforcement](host-enforcement.md) |
+| Human documentation and report types | [Documentation index](../README.md), [review catalog](../reviews/README.md) |
 | Implementation status | [Migration evidence](implementation.md) |
 | Session transition | [Handoff](handoff.md) |
 

@@ -86,6 +86,9 @@ tests/_out/
 doc/paper/*
 doc/audits/*
 !doc/paper/README.md
+!doc/audits/README.md
+doc/notes/*
+!doc/notes/README.md
 
 
 # ---------------------------------------------------------------------------
