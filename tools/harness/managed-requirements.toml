@@ -1,0 +1,64 @@
+# Machine-wide Codex policy. Install as root at /etc/codex/requirements.toml.
+# Requires a supported current client; verify again after client upgrades.
+default_permissions = "research_no_publish"
+allowed_approval_policies = ["never"]
+additional_developer_instructions = "Agents may inspect Git and recommend commit subjects and file groupings only. Never stage, run git commit or git push, or perform equivalent actions through another tool, script, library, or agent."
+
+[allowed_permission_profiles]
+research_no_publish = true
+
+[permissions.research_no_publish]
+description = "Edit project files; Git recommendations only; no publishing capabilities."
+extends = ":workspace"
+
+[permissions.research_no_publish.filesystem]
+# Existing research tools and external legacy inputs need filesystem read access.
+# Credential denials below override this broad read baseline.
+":root" = "read"
+# Register additional Git/common directories here as exact read paths. Read-access
+# globs are rejected by the current client. Workspace .git is protected below.
+"/etc/codex" = "read"
+"/private/etc/codex" = "read"
+
+[permissions.research_no_publish.filesystem.":workspace_roots"]
+".git" = "read"
+".codex" = "read"
+".agents" = "read"
+
+[permissions.research_no_publish.network]
+enabled = false
+dangerously_allow_all_unix_sockets = false
+
+# Deny credential-file reads independently of the selected permission profile.
+[permissions.filesystem]
+deny_read = ["~/.ssh", "~/.netrc", "~/.git-credentials", "~/.config/gh",
+             "~/.codex/auth.json", "~/.aws", "~/.azure", "~/.config/gcloud",
+             "~/.docker", "~/Library/Keychains", "/**/.env", "/**/.Renviron", "/**/.netrc"]
+
+# External tools can publish without invoking Git or touching local Git metadata.
+[features]
+hooks = true
+apps = false
+plugins = false
+browser_use = false
+browser_use_external = false
+browser_use_full_cdp_access = false
+in_app_browser = false
+computer_use = false
+
+[mcp_servers]
+
+# Project hooks continue to run alongside this host-owned Git-only hook.
+[hooks]
+managed_dir = "/etc/codex/hooks"
+[[hooks.PreToolUse]]
+matcher = "^(Bash|apply_patch)$"
+[[hooks.PreToolUse.hooks]]
+type = "command"
+command = "/usr/bin/python3 -B /etc/codex/hooks/managed_git_guard.py"
+timeout = 5
+
+[rules]
+prefix_rules = [
+  { pattern = [{ token = "git" }, { any_of = ["add", "commit", "push", "merge", "rebase", "cherry-pick", "am", "commit-tree", "update-ref", "send-pack", "fast-import"] }], decision = "forbidden", justification = "Agents recommend commit subjects and file groups only; never stage, commit, or push." },
+]

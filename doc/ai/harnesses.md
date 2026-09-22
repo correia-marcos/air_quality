@@ -2,14 +2,22 @@
 
 Root AGENTS.md and CLAUDE.md route to the same doc/ai/ sources. Claude commands, rules and role files retain discovery metadata. Codex workflows are skills under .agents/skills/, not a proprietary .codex/skills directory. Codex configuration, two read-only reviewer agents, command rules and the hook adapter live under .codex/.
 
-Project config uses workspace-write and on-request approval. Context7 and DeepWiki preserve the existing npx package pins. `codex mcp list` discovers both in installed Codex CLI 0.153.0. This machine currently has no npx on PATH, so startup is not verified. Install/use the project's existing Node tooling before treating either server as available; do not change package pins as a workaround.
+Project config uses workspace-write and on-request approval. Context7 and DeepWiki retain
+their package pins. Discovery under CLI 0.153.0 and the missing-npx limitation are historical
+observations in [the implementation record](implementation.md), not current startup evidence.
+The prepared [machine policy](host-enforcement.md) disables external integrations when installed.
 
 The shared guard policy is optional development tooling at `tools/harness/guard_policy.py`; it protects source directories, the dependency lockfile and secrets, while `.env.example` remains editable. Client adapters parse their own payloads.
 
 Codex checks every add/update/delete/rename path in a multi-file apply_patch call and never emits the unsupported pre-tool ask decision. Dangerous shell calls are blocked in Codex; Claude
 retains its prompt decision for non-Git destructive commands. Git mutations are denied in both adapters. Structural setup exceptions produce context rather than blocking ordinary authorized setup.
 
-Shell parsing is supplementary and does not prove that arbitrary shell/Python/R commands cannot write a protected input. Read-only mounts and filesystem permissions are the stronger boundary. Tests exercise adapters; they cannot demonstrate trust in an interactive client's hook system. Review/enable the hooks through the installed client's hook interface and test an innocuous protected-path attempt before describing protection as active. No trust setting was silently granted by this migration.
+Shell parsing does not prove that arbitrary shell/Python/R commands cannot write a protected
+input. Read-only mounts and filesystem permissions are the stronger boundary. Adapter tests
+do not demonstrate client trust. On 21 September 2026, installed Codex CLI 0.154.0-alpha.6.2
+reported this project hook enabled/trusted, and the live shell tool denied a harmless invalid
+Git option before execution. No trust setting was changed. See [measured scope and remaining
+deployment checks](host-enforcement.md). Claude live operation remains unverified.
 
 ## Git boundary
 
