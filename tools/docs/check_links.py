@@ -83,15 +83,23 @@ def check(root, files, archives=()):
     return errors, local, checked
 
 
+def working_files(root, tracked_only=False):
+    """Inventory the working tree, including deletions that have not been staged."""
+    command = ["git", "ls-files", "-z", "--cached"]
+    if not tracked_only:
+        command += ["--others", "--exclude-standard"]
+    files = set(subprocess.check_output(command, cwd=root).decode().split("\0"))
+    deleted = set(subprocess.check_output(
+        ["git", "ls-files", "-z", "--deleted"], cwd=root).decode().split("\0"))
+    return files - deleted - {""}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--tracked-only", action="store_true",
                         help="Exclude unstaged new files (CI/fresh-clone inventory).")
     args = parser.parse_args()
-    command = ["git", "ls-files", "-z", "--cached"]
-    if not args.tracked_only:
-        command += ["--others", "--exclude-standard"]
-    files = subprocess.check_output(command, cwd=ROOT).decode().rstrip("\0").split("\0")
+    files = working_files(ROOT, args.tracked_only)
     ledger = ROOT / "doc/reviews/document-moves.csv"
     archives = {row["new_path"] for row in csv.DictReader(ledger.open())
                 if row["new_path"].startswith("doc/reviews/repository/")}

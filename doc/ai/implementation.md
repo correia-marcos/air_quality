@@ -1,5 +1,42 @@
 # Implementation and evidence
 
+## Redirect cleanup — 22 September 2026
+
+Implemented from clean baseline `4c063cb`, after user authorization. Removed the seven
+root redirect pages: `CLAUDE_CODE_SETUP.md`, `PROCEDURE_AUDIT_WORKFLOW.md`,
+`REMAINING_WORK.md`, `TARGETS_MIGRATION_PLAN.md`, `data_dictionary.md`,
+`deletion_candidates.md`, and `idw_golden_test.md`. Maintained navigation already used
+their destinations. Corrected two dictionary references and one remaining-work reference
+in R-test comments, and updated the documentation index and current review descriptions.
+Historical reports, earlier implementation entries, and the migration ledger retain their
+original paths. External bookmarks are unknown. `doc/RESOLUTION_SENSITIVITY.md` stays in place.
+
+The link checker now excludes working-tree deletions from its source inventory without
+requiring staging. Incoming links to deleted targets still fail. A regression fixture
+covers both inventory modes and the incoming-link failure.
+
+Checks actually performed:
+
+- Both default and tracked-only link checks: **162 local links, zero errors**, four
+  declared local-only targets, three historical pages excluded.
+- Python documentation suite: nine tests attempted; ten cleanup errors (including two
+  subtests) because the managed environment denied removal of temporary directories.
+  The same restriction occurred with `/private/tmp`; a clean suite pass remains unverified.
+- Standard R command stalled acquiring the renv sandbox lock and was interrupted.
+  The existing framework R/library command recorded below completed with **279 passed**,
+  zero test failures/errors/skips/warnings. Environment diagnostics included Arrow CPU
+  queries and denied temporary-directory cleanup; process exit status was zero.
+- Non-comment R lines match the baseline exactly. Git comparison confirms unchanged
+  scientific/runtime files, maintained references/plans, historical records, and ledger.
+  Whitespace checks passed; HEAD and index unchanged. No staging, commits, or pushes.
+
+Recommended human-created commit: **Remove unused documentation redirects and update references**.
+Group the seven deletions with `doc/README.md`, `doc/REPO_REVIEW.md`, this record,
+`tests/testthat/test-canonical-schema.R`, `tests/testthat/test-pipeline-paths.R`,
+`tools/docs/check_links.py`, and `tests/docs/test_links.py`.
+Re-run the Python suite in an environment permitting fixture cleanup. These checks do
+not constitute scientific reproduction.
+
 ## Documentation and host-policy continuation — 21 September 2026
 
 Implemented as unstaged changes from `512e96ea571a24f7e40289e3a4060cbc1cabc230` after

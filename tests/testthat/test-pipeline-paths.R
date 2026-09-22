@@ -60,7 +60,7 @@ known_unwired <- c(
   # Optional methodological preparation is wired only to resolution-multicity.
   "scripts/process_data/prepare_resolution_inputs.R",
   "scripts/process_data/generate_inegi_lab_inputs.R",
-  # Diagnostics that no manuscript figure depends on; see doc/REMAINING_WORK.md.
+  # Diagnostics that no manuscript figure depends on; see doc/planning/remaining-work.md.
   "scripts/tables_images/figure_missing_heatmap.R",
   "scripts/tables_images/figure_pollution_stations_by_hour.R",
   "scripts/tables_images/figure_stations_on_metro_area.R"

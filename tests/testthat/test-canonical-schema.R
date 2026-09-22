@@ -1,7 +1,7 @@
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-#' @Goal: Turn doc/data_dictionary.md from prose into an enforced claim.
+#' @Goal: Turn doc/reference/data_dictionary.md from prose into an enforced claim.
 #
 #' @Description: Asserts that every processed census Parquet carries the canonical columns
 #   with the right types, that the education shares partition the reporting population, and
@@ -47,7 +47,7 @@ canonical_census_files <- function() {
   )
 }
 
-# Columns doc/data_dictionary.md promises at each level.
+# Columns doc/reference/data_dictionary.md promises at each level.
 required_cols <- list(
   micro = c("geo_id", "geo_level", "person_weight", "educ_years"),
   geo   = c("geo_id", "geo_level", "pop_total", "pop_educ_known", "n_records",

@@ -1,12 +1,13 @@
 import importlib.util
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
 SPEC = importlib.util.spec_from_file_location(
     "check_links", Path(__file__).resolve().parents[2] / "tools/docs/check_links.py")
-LINKS = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(LINKS)
+LINKS = importlib.util.module_from_spec(SPEC) # type: ignore
+SPEC.loader.exec_module(LINKS) # type: ignore
 
 
 class LinkTests(unittest.TestCase):
@@ -51,6 +52,23 @@ class LinkTests(unittest.TestCase):
     def test_missing_tracked_non_markdown_target(self):
         errors, _, _ = self.check_text('[x](missing.csv)', files={"README.md", "missing.csv"})
         self.assertIn("missing public target", errors[0])
+
+    def test_deleted_redirect_is_excluded_but_incoming_link_fails(self):
+        for tracked_only in (False, True):
+            with self.subTest(tracked_only=tracked_only), tempfile.TemporaryDirectory() as folder:
+                root = Path(folder)
+                source = root / "README.md"
+                source.write_text("No obsolete links.\n")
+                with patch.object(LINKS.subprocess, "check_output", side_effect=[
+                    b"README.md\0old.md\0", b"old.md\0"
+                ]):
+                    files = LINKS.working_files(root, tracked_only)
+                self.assertEqual(files, {"README.md"})
+                self.assertEqual(LINKS.check(root, files)[0], [])
+                source.write_text("[old](old.md)\n")
+                errors = LINKS.check(root, files)[0]
+                self.assertEqual(len(errors), 1)
+                self.assertIn("missing public target: old.md", errors[0])
 
 
 if __name__ == "__main__":

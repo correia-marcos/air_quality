@@ -30,6 +30,8 @@ qualifications. Recheck their evidence before acting. Historical findings are no
 promoted to current specifications.
 
 `HOW_TO_RUN.md`, `REPO_REVIEW.md`, and `RESOLUTION_SENSITIVITY.md` retain stable entry paths.
-Other former root pages retain anchor redirects. The [move ledger](reviews/document-moves.csv)
-records source revisions and checksums. Local evidence links may be unavailable in a clone;
+Use the maintained destinations linked above; the seven former root redirect pages were
+removed on 22 September 2026. The [move ledger](reviews/document-moves.csv) preserves source
+paths, revisions, and checksums as historical evidence, not current navigation. Local
+evidence links may be unavailable in a clone;
 they are not a claim that restricted data or unpublished drafts are distributed.

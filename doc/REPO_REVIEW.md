@@ -53,7 +53,7 @@ the same no-stage/no-commit/no-push boundary. No subagents were used in this con
 | P0 Git instructions/denials | Existing corrections retained; fixtures must deny commit and push as strings | Repository-wide authorization/tool semantics | Astra owns policy; Terra can implement bounded adapters/tests |
 | P1 Live Codex hook | Enabled/trusted; benign denial observed; inspection allowed | Client-specific evidence | Terra repeats prescribed checks; Astra assesses coverage |
 | P1 Machine enforcement | Tested bundle prepared; admin installation and effective-policy checks pending | Cross-tool publishing, permissions, Git/common-directory topology | Astra retains design and acceptance; Terra can run a fixed fixture |
-| P2 Moves and redirects | Implemented with a checksum ledger and historical copies | Mechanical once the map is fixed | Luna or Terra with exact file ownership and content comparison |
+| P2 Document moves | Implemented with a checksum ledger and historical copies; unused redirects removed 22 September 2026 | Mechanical once the map is fixed | Luna or Terra with exact file ownership and content comparison |
 | P2 Audience routes/taxonomy | Implemented; review status separate from audit method/provenance | Repository-wide information organization | Terra drafts; Astra reviews architecture/scientific terminology |
 | P2 Current repository assessment | This page replaces stale current claims; original archived | Reconcile revisions, evidence, literature | Astra |
 | P2 Link checks and CI | Offline checker and negative fixtures added | Bounded software engineering | Terra; Luna can update approved links and run checks |
@@ -85,8 +85,11 @@ doc/
   paper/                       Local manuscript sources; only README public
 ```
 
-Former dictionary, IDW, planning, setup, and procedure-guide paths retain redirects and
-explicit anchors. Root README, operational navigation, shared architecture/index,
+Navigation update, **22 September 2026**: the seven former dictionary, IDW, planning, setup,
+and procedure-guide redirect pages were removed after checking maintained links and
+correcting three R-test comment references. Historical paths in archived reports and the
+move ledger are preserved. External bookmarks cannot be established by repository inspection.
+Root README, operational navigation, shared architecture/index,
 methods/tests map, canonical procedure workflow, manuscript README, and Claude hook README
 point to maintained locations. The hook README had a pre-existing extra `../`; it is fixed.
 No static-site framework or new documentation dependency was introduced.
