@@ -1,100 +1,67 @@
-# ============================================================================================
+# =======================================================================================
 # IDB: Air monitoring
-# ============================================================================================
+# =======================================================================================
 #' @Goal: Download all required data for the metro area of Bogota
-# 
-#' @Description: This functions uses previous created functions on city specific src  utilities 
-# to download all the necessary data for the project. It is based on download three major 
-# sources:
+#
+#' @Description: Use Bogotá's acquisition functions to preserve source files.
+# Download three groups of inputs:
 #     1 - Geo-referenced administrative data to construct the metro area of Bogotá
-#           obs: This function download data for the country and then filter metro area
+#           Preserve national sources; the processing script builds the metro layers.
 #     2 - All ground station air pollution data inside the metro area
 #     3 - CENSUS microdata for the country
-# 
+#
 #' @Summary:
-#   I.   Load all the sources in the correct order (order matters) for functions and variables
-#   II.  Use the named list in city_specific/bogota.R to define parameters for functions
-#   III. Download all data (metro area -> stations -> census)
-# 
+#   I. Import data.
+#   II. Download data.
+#   III. Check acquisition outputs.
+#
 #' @Date: August 2025
 #' @Author: Marcos
-# ============================================================================================
+# =======================================================================================
 
+# =======================================================================================
+# I: Import data
+# =======================================================================================
 # Get all libraries and functions - config_utils_plot_tables to generate one LaTeX table
 source(here::here("src", "general_utilities", "config_utils_download_data.R"))
 source(here::here("src", "general_utilities", "config_utils_plot_tables.R"))
 source(here::here("src","city_specific", "registry.R"))
-source(here::here("src","city_specific", "bogota.R"))
+load_city_modules()
 
-# ============================================================================================
-# I: Import data
-# ============================================================================================
+# Set location of required folders
+dir_geography       <- here::here(bogota_cfg$dl_dir, "metro_area")
+file_municipalities <- here::here(dir_geography, "SHP_MGN2018_INTGRD_MPIO.zip")
+file_localities     <- here::here(dir_geography, "bogota_loca.gpkg")
+
 colombia <- ne_states(country = "Colombia", returnclass = "sf")
 
 # Show parameters imported on src/city_specific_bogota.R
-print(bogota_cfg$base_url_shp)
-print(bogota_cfg$base_url_census)
-print(bogota_cfg$base_url_rmcab)
-print(bogota_cfg$url_station_shp)
-print(bogota_cfg$years)
+print(bogota_cfg$which_states)
 
-# ============================================================================================
-# I: Download data
-# ============================================================================================
-# Apply function to download shapefiles for Bogotá metro area - municipality + comunas level
-metro_area_2005 <- bogota_download_metro_area(
-  level        = "mpio_localidad",
-  mgn_year     = 2005,
-  base_url     = bogota_cfg$base_url_shp,
-  download_dir = here::here(bogota_cfg$dl_dir, "metro_area"),
-  out_file     = here::here("data", "interim", "geospatial_data", "bogota",
-                            "bogota_area_metro_2005.gpkg"))
+# =======================================================================================
+# II: Download data
+# =======================================================================================
+# Acquire the source archives and locality layer; processing saves the metro layers.
+geography_sources <- bogota_download_geography(base_url     = bogota_cfg$base_url_shp,
+                                               download_dir = dir_geography)
 
-# Apply function to download shapefiles for Bogotá metro area - municipality level
-metro_area_mpio_2005 <- bogota_download_metro_area(
-  level        = "mpio",
-  mgn_year     = 2005,
-  base_url     = bogota_cfg$base_url_shp,
-  download_dir = here::here(bogota_cfg$dl_dir, "metro_area"),
-  out_file     = here::here("data", "interim", "geospatial_data", "bogota",
-                            "bogota_area_metro_municipalities_2005.gpkg"))
-
-# Apply function to download shapefiles for Bogotá metro area - Urban block + rural sections
-metro_area_mzn_2005 <- bogota_download_metro_area(
-  level        = "manzana",
-  mgn_year     = 2005,
-  base_url     = bogota_cfg$base_url_shp,
-  download_dir = here::here(bogota_cfg$dl_dir, "metro_area"),
-  out_file     = here::here("data", "interim", "geospatial_data", "bogota",
-                            "bogota_area_metro_census_tracts_2005.gpkg"))
-
-# Apply function to download shapefiles for Bogotá metro area - munici. level 2018
-metro_area_2018 <- bogota_download_metro_area(
-  level             = "mpio_localidad",
-  mgn_year          = 2018,
-  base_url          = bogota_cfg$base_url_shp,
-  download_dir      = here::here(bogota_cfg$dl_dir, "metro_area"),
-  out_file          = here::here("data", "interim", "geospatial_data", "bogota",
-                                 "bogota_area_metro_2018.gpkg"))
-
-# Apply function to download shapefiles for Bogotá metro area - Urban block 2018
-metro_area_mzn_2018 <- bogota_download_metro_area(
-  level             = "manzana",
-  mgn_year          = 2018,
-  base_url          = bogota_cfg$base_url_shp,
-  download_dir      = here::here(bogota_cfg$dl_dir, "metro_area"),
-  out_file          = here::here("data", "interim", "geospatial_data", "bogota",
-                                 "bogota_area_metro_census_tracts_2018.gpkg"))
+# Prepare only the footprint needed to review which station-source regions to acquire.
+metro_area_2018 <- bogota_prepare_metro_area(
+    source_zips        = file_municipalities,
+    level              = "mpio_localidad",
+    mgn_year           = 2018,
+    municipality_codes = bogota_cfg$city_code_metro,
+    localities_file    = file_localities)
 
 # Apply function to save a LaTeX table of the states that we must download stations data
 table_states_to_download <- table_state_metro_distances(
   national_states_sf = colombia,
-  metro_area_sf = metro_area_2018,
-  save_latex_table = TRUE,
-  caption = "Administrative states and distance to metropolitan area (in Km)",
-  out_file = here::here("results", "tables", "station_source_regions_bogota.tex"),
-  overwrite_tex = TRUE
-) # change cdmx_cfg$which_states if necessary! Depending on result
+  metro_area_sf      = metro_area_2018,
+  save_latex_table   = TRUE,
+  caption            = "Administrative states and distance to metropolitan area (in Km)",
+  out_file           = here::here("results", "tables", "station_source_regions_bogota.tex"),
+  overwrite_tex      = TRUE
+) # Review bogota_cfg$which_states against this diagnostic if needed.
 
 # Apply function to generate and save dataframe with stations and their location in Bogota
 rmcab_dir <- bogota_scrape_rmcab_station_table(
@@ -144,17 +111,26 @@ census_basico   <- bogota_download_census_data(
   download_folder = here::here(bogota_cfg$dl_dir, "census"))
 
 # Apply function to download the 2005 Census data for the metro area - Extended one
-census_ampliado <- bogota_download_census_data(
+census_ampliado_2005 <- bogota_download_census_data(
   year            = 2005,
   type            = "AMPLIADO",
   url             = bogota_cfg$base_url_census,
   download_folder = here::here(bogota_cfg$dl_dir, "census"))
 
 # Apply function to download the 2018 Census data for the metro area - Extended one
-census_ampliado <- bogota_download_census_data(
+census_ampliado_2018 <- bogota_download_census_data(
   year            = 2018,
   url             = bogota_cfg$base_new_census,
   download_folder = here::here(bogota_cfg$dl_dir, "census"))
 
-# Print a success message for when running inside Docker Container
-cat("Script from the IDB projected executed successfully in the Docker container!\n")
+# =======================================================================================
+# III: Check acquisition outputs
+# =======================================================================================
+acquisition_results <- list(
+  geography_sources = geography_sources,
+  download_logs_station_bogota = download_logs_station_bogota,
+  download_logs_stations_metro_bogota = download_logs_stations_metro_bogota,
+  census_basico = census_basico,
+  census_ampliado_2005 = census_ampliado_2005,
+  census_ampliado_2018 = census_ampliado_2018)
+str(acquisition_results, max.level = 1)

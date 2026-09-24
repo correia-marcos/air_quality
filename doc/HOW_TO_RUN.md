@@ -117,9 +117,73 @@ dates are not invented. The verifier's `preparation-inputs.csv` reports these ge
 package-managed census prerequisites; it is not an exhaustive analytical-input certification.
 Use the isolated verifier to create fresh derived directories without deleting existing work.
 
+## Inspect the analysis in RStudio
+
+Open `Coding.Rproj`, then `scripts/process_data/generate_distance_matrices.R`.
+Section I shows the source functions, shared settings and nine geographic input files.
+Run those lines to create the station and geographic `sf` objects. Section II makes five
+calls to `compute_distance_matrices()`; each result has `station_matrix` and
+`geo_station_matrix` tables. Section III saves those results in the same order.
+
+For Bogotá, inspect `bogota_stations_2018_sf`, `bogota_metro_2018_sf`, and then
+`bogota_distances$geo_station_matrix`. The calculation is defined in
+`src/general_utilities/process/distances.R`; the method choices are named in
+`config/analysis_settings.R`. No targets cache or registry lookup is needed.
+
+The saved station matrix feeds outlier detection; the geographic matrix feeds IDW.
+Both are written under `data/processed/distances_matrices/bogota_2018/`, with the same
+structure for the other contexts. See the [small first-run example](guides/first-run.md)
+if you do not have the prepared city inputs. The
+[complete workflow inventory](planning/remaining-work.md) is a maintainer reference.
+
+The four city-processing scripts now follow the same three-section layout. For example,
+`process_bogota_data.R` exposes `station_locations`, `metro_2018`, and `stations_2018`.
+Section III saves the spatial objects. Pollution and census functions write during
+processing; their returned `pollution` and `census_2018` objects remain available.
+The 20 km station radius and UTC processing timezone are named in each city's configuration.
+All declared sources must be present; processing never downloads missing files.
+
+For Bogotá, `download_bogota_data.R` acquires the geographic source files.
+`process_bogota_data.R` lists their paths in Section I, calls
+`bogota_prepare_metro_area()` in Section II, and saves the five layers in Section III.
+The download recipe prepares one temporary footprint for its source-region diagnostic;
+it does not write the processing workflow's geographic products.
+
+Other inspection routes still awaiting simplification:
+
+- Analysis: inspect missingness and station-count objects in `compute_descriptive_tables.R`,
+  and `estimates_by_buffer` in `estimate_exposure.R`.
+- Figures: inspect input tables and the named plot collections in `figure_station_scatter.R`.
+- Optional resolution: select the reference or multicity scope in the resolution recipes;
+  inspect `prepared` or `results_by_city`. Their input checks never refresh manuscript inputs.
+- Validation: `compare_bogota.R` exposes comparison objects; `bogota_report.qmd` reads named
+  artifacts in narrative chunks. Missing comparison files remain pending evidence.
+
+After running Bogotá's pollution function, `pollution` is already an Arrow Dataset.
+To inspect a few rows without loading the whole dataset:
+
+```r
+preview <- pollution |>
+  dplyr::filter(year == 2023L) |>
+  utils::head(10L) |>
+  dplyr::collect()
+```
+
+Likewise, read a saved census summary using its returned path when you need it:
+
+```r
+census_2018_summary <- arrow::read_parquet(census_2018[["collapsed"]])
+```
+
+Functions that write while processing say so in their contract. Do not rerun a whole recipe
+merely to inspect an existing file. Use the visible reading calls with existing products.
+Actual RStudio walkthroughs and full scientific parity remain acceptance requirements.
+
 ## Manuscript pipeline
 
-From the repository root, use either maintained entry point after inputs are available:
+The following entry points are transitional until scientific acceptance of the targets
+candidate. They share scientific functions with it and are not independent baselines.
+From the repository root, after inputs are available:
 
 ```sh
 make all
@@ -133,11 +197,27 @@ Both routes execute city processing, the core station/census analysis, preserved
 preparation, and manuscript figures and tables. `make` uses stage stamps; after changing or
 reacquiring source data, force a rebuild with `make -B all`.
 
+The candidate's direct command is `Rscript scripts/run_targets.R all`. Inspect the ordinary
+declarations in `_targets.R`; cached station counts, missingness, census summaries,
+exposure tables and figure inputs have named data targets. After scientific acceptance,
+targets becomes the sole manuscript scheduler: remove Makefile and RStudio's Make build
+setting, and reduce `run_pipeline.R` to a compatibility launcher. This cutover is pending.
+
+Distance targets now separate input reading, calculation and file writing. For example,
+`bogota_2018_distance_matrices` stores the computed tables and `bogota_2018_distances`
+owns the two Parquet files. The `distances` selection still requests all five contexts.
+The candidate graph retains upstream city preparation: an existing derived file alone
+does not bypass missing preserved sources in a fresh targets run.
+
 The temporal manuscript figures intentionally retain the legacy station panels and MERRA-2
 timestamp support. This preserves their historical time support and sample. It does not claim
 that the figures are independent of that preparation.
 
 ## Supporting analyses
+
+The inventory records direct commands and prerequisites for every optional workflow,
+including resolution, manual diagnostics and legacy validation. These commands remain
+separate from manuscript targets. Existing optional Make commands are transitional aliases.
 
 Run optional satellite comparisons separately:
 
@@ -227,6 +307,54 @@ behalf, manufacture a baseline, widen tolerances, or substitute newer inputs sil
 `Imports`, `Depends`, and `LinkingTo`; adding `Suggests` globally would also pull optional
 packages from downstream dependencies. Dependency changes use renv, with analytical versions
 reviewed separately from the testing additions.
+
+## Candidate manuscript migration to targets
+
+The candidate graph is available alongside the current default runner. Scientific acceptance
+and default cutover remain pending. It uses the same reusable transformations as the manual
+scripts, tracks files and directory membership, and never downloads inputs or installs packages.
+Restore the full project environment before execution; installing `targets` alone is insufficient.
+
+```sh
+make targets STAGE=bogota_geography  # pilot; writes derived geography
+make targets STAGE=bogota_pollution_parquet  # prerequisites included
+make targets                       # manuscript export and all its prerequisites
+make targets-outdated              # inspect the manuscript selection without processing
+Rscript scripts/verification/verify.R --full --targets
+```
+
+Development and image-baked Compose services mount `_targets/` as the persistent cache.
+The verification service uses a fresh per-run cache, read-only sources and isolated output roots.
+`AIR_TARGETS_STORE` overrides the cache location, not the data/output roots. Selecting a different
+cache does **not** isolate data writes; use verification Compose for comparison runs.
+The complete graph requires canonical data roots because downstream analytical readers use
+that layout. A noncanonical city output root is rejected; manual city wrappers can use separate
+configured roots for city-level comparisons.
+
+The four manual interfaces are complete:
+
+```r
+source(here::here("src", "pipeline", "load.R"))
+load_manuscript_functions(kind = "process", packages = TRUE)
+processed <- city_process("bogota")
+geography <- city_process("santiago", steps = "geography")
+```
+
+Common stages are `geography`, `stations_filter`, `pollution_parquet`, and `census`; prerequisites
+run first. `inputs = NULL` resolves configured local sources. An explicit input list overrides
+whole named stages; inspect `city_processing_inputs("bogota", city_cfg("bogota"))` for the shape.
+Bogotá's `census_2005` and `census_2018` selectors remain available. Missing inputs fail preflight,
+and required stage failures stop processing. Results contain named path vectors for every stage.
+Reusable transformation functions retain manageable data returns and named local inspection
+points. Stage adapters return paths; large partitioned datasets are reopened by their consumers.
+
+The graph keeps pollution years together and serializes each city/vintage's IDW buffers and
+income reuse. It includes imputation, descriptions, scatter inputs and temporal MERRA-2 inputs.
+Optional resolution, acquisition, context maps, satellite comparison and validation retain their
+existing entry points. Frozen resolution inputs are not regenerated by this graph.
+
+The public development record in `doc/planning/targets-migration.md` lists acceptance gaps and
+model responsibility; that planning file is deliberately excluded from runtime images.
 
 ## Optional three-city resolution sensitivity
 

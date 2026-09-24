@@ -11,8 +11,10 @@ Scientific definitions and protected inputs remain unchanged.
 
 ## Executable recipes
 
-Default sections: I. Import data (including sources, settings and paths), II. Process
-data, III. Save outputs. Save named results in the same order as their computations.
+Default sections: I. Import data (including sources, settings and all input, extraction
+and output paths), II. Process data, III. Save outputs. Save named results in the same
+order as their computations. Section III contains saving calls, not previews, file
+inventories or reads of results just written.
 Do not add an "Inspect before saving" block. Use a fourth section when preparing data and
 estimating or rendering are distinct. Operational launchers use accurate headings such
 as Settings, Checks, Execute and Report. Quarto reports retain their narrative structure.
@@ -21,7 +23,9 @@ The header summary must match the executable sections. Do not add empty sections
 Assign useful data, estimates and plots to named objects. Keep results from repeated
 city/pollutant runs in named lists. Intentional logging, directory creation and other
 pure side effects do not require assignments. Functions that also write must say so;
-report their existing files rather than write them twice merely to fill a Save section.
+keep their returned objects or paths without writing them twice or adding a report merely
+to fill a Save section. Optional inspection examples belong in the guide and reuse those
+returns; do not reconstruct paths or reopen an existing Arrow Dataset handle.
 
 Scripts source the required scientific definitions directly, read explicit files, and
 call the same scientific functions as targets with named arguments and breathing space.
@@ -47,7 +51,7 @@ separate closing parenthesis. Use `<-` with spaces; align assignments within a s
 related group when helpful, without padding unrelated statements. Leave blank lines
 between operations so the reader can follow one step at a time.
 
-Keep every R line within 90 characters, including comments and section dividers.
+Keep every R line within 92 characters, including comments and section dividers.
 If aligning arguments under the opening parenthesis exceeds that limit, use a shorter,
 consistent continuation indent. Move the first argument to the next line when needed.
 Preserve meaningful names; adjust alignment and wrapping rather than exceed the limit.
@@ -67,12 +71,15 @@ they help the reader. Polish the English without replacing this voice with boile
   `src/` function; those are the designated home and are long by design.
 - **Paths are always `here::here(...)`.** No absolute paths, no `setwd()`, no `~`.
 - **Setup belongs in Section I.** Source the required subject modules and settings
-  explicitly. Attach necessary installed packages there, or use qualified calls.
+  explicitly. Modules may declare and attach their required installed packages at the
+  top, as in `src/city_specific/bogota.R`; callers need not repeat those package calls.
+  Prefer qualified calls when attachment is unnecessary.
   Do not load the targets graph or install packages during analysis. Existing broad
   loaders are transitional, not templates. Dependency changes require separate approval
   and the reviewed `DESCRIPTION`/`renv.lock` workflow.
 - **Set a seed** (`set.seed(...)`) in any script with randomness (sampling, jitter, bootstraps).
-- **`src/` holds functions only.** No top-level side-effects there. Runnable code lives in `scripts/`.
+- **`src/` defines reusable logic.** Top-level package requirements and configuration are
+  setup exceptions; analytical execution and file writes belong in `scripts/`.
 
 ## Every script starts with this header
 

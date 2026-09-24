@@ -1,5 +1,170 @@
 # Implementation and evidence
 
+## Bogotá geography separation — 24 September 2026
+
+`bogota_download_geography()` acquires preserved source files and returns paths.
+`bogota_prepare_metro_area()` consumes explicit local archive/locality paths and returns
+an `sf` object; it has no network or analytical-output arguments. `write_geopackage()`
+owns saving. The recipe, targets and complete `city_process()` interface use that split.
+The former combined `bogota_download_metro_area()` API and its repository callers were
+replaced. Bogotá's module now declares its dplyr requirement rather than its recipe.
+
+The download recipe no longer writes the five derived layers. It still prepares the 2018
+footprint explicitly for its existing source-region diagnostic. Provider URLs and archive
+choices are retained. Locality acquisition metadata no longer labels that source with a
+DANE census year: its vintage is unknown, and its archived provider URL remains recorded.
+Existing sources and metadata were not changed. The other cities' separation is pending.
+
+Evidence under `data/verification/geography-separation-20260924-133511/`:
+
+- Saved the pre-refactor definitions and callers. The geographic transformation block is
+  unchanged apart from its heading; acquisition, extraction and saving were separated.
+- `compare.R` reproduces all five products from small provider-shaped archives, comparing
+  the preserved function, manual recipe calls, target commands and convenience wrapper.
+  In-memory results agree in attributes, row order, binary geometry and CRS; saved old/new
+  products also agree. GeoPackage serialization's existing polygon promotion/CRS text
+  normalization is handled by comparing saved products separately from computed objects.
+- `compare-real-2018.R` rebuilds the 2018 municipality/locality layer from existing DANE
+  sources: all **40 units** are identical as `sf` objects; both input hashes are unchanged.
+- Synthetic suite: **376 passed; zero failures, errors, skips or test warnings**. New
+  fixtures check all five products, explicit alternate paths, missing inputs, source
+  immutability and preparation with HTTP requests blocked. An initial fixture used the
+  wrong rural identifier; corrected it to the existing `SECR_CCNCT` contract.
+- Recipe/new-function lines fit 90 characters; no old combined-function callers remain
+  in active code. All 545 reader/inventory assertions pass after the documentation update.
+  The module loads dplyr in a clean session; 20 unrelated function definitions are unchanged.
+
+The suite uses the framework R executable and existing project library with `--vanilla`.
+Sandbox CPU-probe/temporary-directory cleanup diagnostics remain outside the test report.
+Live acquisition, the remaining full geographic products, full city processing, RStudio GUI
+and release reproduction were not run. No source inputs or lockfile were rewritten.
+
+Suggested commit: `refactor: separate Bogota geographic acquisition and preparation`.
+Exact code group: `src/city_specific/bogota.R`, `src/city_specific/preparation.R`,
+`src/city_specific/registry.R`, `scripts/download_data/download_bogota_data.R`,
+`scripts/process_data/process_bogota_data.R`, `_targets.R`,
+`tests/check-targets-contracts.R`, `tests/check-targets-engine.R`,
+`tests/testthat/test-offline-preparation.R`, `tests/testthat/test-bogota-geography.R`.
+Documentation group: `doc/HOW_TO_RUN.md`, `doc/ai/architecture.md`,
+`doc/ai/implementation.md`, `doc/planning/targets-migration.md`,
+`doc/planning/remaining-work.md`. Staging, committing and pushing remain human actions.
+
+## City recipe correction — 24 September 2026
+
+All four city recipes now declare census extraction/output paths in Section I. Section III
+only saves the spatial objects, in processing order. Removed automatic pollution previews,
+reconstructed census inventories and summary reads. The guide's optional inspection uses
+the returned Arrow Dataset and census paths. Following Marcos's correction, `bogota.R`
+declares and attaches its dplyr requirement; the recipe has no `library(dplyr)` call.
+
+Geographic acquisition/preparation remains coupled in the existing functions. Their
+processing calls still pass `allow_download = FALSE`; scientific function bodies and the target
+graph were not changed in this correction. Separating those responsibilities is pending.
+
+Checks: all four recipes parse, their setup runs with the framework R executable, and their
+processing/writer expressions and moved path expressions match the pre-edit versions.
+Every recipe line is at most 90 characters. The synthetic suite reports **356 passed**, with
+zero failures, errors, skips or test warnings. It used the existing project library with
+`--vanilla`; sandbox temporary-directory cleanup messages remain outside the test report.
+No full city processing, downloads, RStudio GUI or release reproduction was run.
+
+Suggested review groups (human staging/committing only):
+
+- `fix: keep city recipe saving sections focused`: the four files
+  `scripts/process_data/process_bogota_data.R`, `process_cdmx_data.R`,
+  `process_santiago_data.R`, and `process_sao_paulo_data.R` in that folder, plus
+  `src/city_specific/bogota.R` for its package requirement.
+- `docs: clarify saving and optional inspection`: `doc/ai/rules/r-style.md`,
+  `doc/ai/architecture.md`, `doc/HOW_TO_RUN.md`, `doc/planning/targets-migration.md`,
+  and `doc/ai/implementation.md`.
+
+## City preparation — 23 September 2026
+
+Continued after Marcos accepted the distance pilot and confirmed the strict 90-character
+limit. The four city recipes now source their scientific modules directly, declare local
+inputs, retain named spatial objects, and save them in processing order. Large census
+functions can return saved paths; scripts read the smaller geographic summaries.
+
+The manuscript graph calls those same scientific functions directly. Spatial computations
+and their GeoPackage writers are separate targets. Existing public stage names, output
+paths and `city_process()` capabilities are retained. City configurations now name the
+existing 20 km station-selection radius and UTC processing timezone.
+
+Checks and evidence:
+
+- Preserved 186 code/documentation files before editing under the ignored local directory
+  `data/verification/readable-cities-20260923-215652/before/`.
+- `compare-stations.R` compares the old preparation functions with the actual new recipe
+  calls and target commands, using the same existing prepared geography and station sources.
+  Attributes, ordering, geometries and CRS agree exactly for all five selections:
+  Bogotá 2018 and 2005: 58 each; CDMX: 79; Santiago: 14; São Paulo: 43.
+  Outputs were written only to isolated comparison directories.
+- `check-algorithms.R` confirms unchanged bodies for the six census transformations after
+  excluding the new path-return branch, and unchanged bodies/signatures for six pollution
+  functions/engines. Existing city configuration entries also compare identically.
+  This source comparison does not establish complete numerical census/pollution parity.
+- Synthetic suite: **356 passed; zero failures, errors, skips or test warnings**.
+  Geographic fixtures exercise in-memory returns, preserved-source checks and membership.
+  A weighted census fixture compares data returns with reopened file returns.
+  Production CDMX spatial target commands exercise no-write computation, no-op reruns,
+  deleted-output regeneration, setting/input/writer changes, and overwrite refusal.
+- The graph now sources definitions/settings with `local = TRUE`. This makes the writer
+  and settings visible to dependency analysis in an isolated targets environment.
+  The dependency check uses the official
+  [tar_deps_raw() interface](https://docs.ropensci.org/targets/reference/tar_deps.html),
+  so local assignments are not mistaken for upstream targets.
+- All 19 recorded original geographic-product/lockfile hashes are unchanged. The four
+  city recipes, new spatial writer, preparation module, new test and graph fit 90 characters.
+- All 87 non-city target commands are unchanged; the graph has 144 declarations.
+  Documentation links and working-tree whitespace checks pass.
+
+The suite used the same framework R executable and inherited project library as the
+distance pilot's successful command below. Arrow CPU probes and temporary-directory
+cleanup still emit sandbox diagnostics outside the test reporter; the suite exits zero.
+
+Limits: the comparison uses existing prepared geography. The complete city scripts,
+full census/pollution rebuilds, full manuscript export, Docker release and RStudio UI were
+not executed. Three Santiago 2017 responses and São Paulo's weighting-area source remain
+absent; the comparison manifest has no reviewed baseline and the manuscript appendix is
+unavailable. Full verification and default cutover remain pending. Other analytical
+recipes, pipeline-adapter removal and operational-tool relocation remain to be implemented.
+
+### City-preparation review groups
+
+These groups describe this batch relative to its preserved working tree. Earlier pending
+changes in these files must also be reviewed. Agents did not stage, commit or push.
+
+Suggested subject: `refactor: expose city preparation objects and saved checkpoints`
+
+```text
+scripts/process_data/process_bogota_data.R
+scripts/process_data/process_cdmx_data.R
+scripts/process_data/process_santiago_data.R
+scripts/process_data/process_sao_paulo_data.R
+src/city_specific/bogota.R
+src/city_specific/cdmx.R
+src/city_specific/santiago.R
+src/city_specific/sao_paulo.R
+src/city_specific/preparation.R
+src/general_utilities/process/spatial_files.R
+_targets.R
+tests/check-targets-contracts.R
+tests/check-targets-engine.R
+tests/testthat/test-city-preparation-targets.R
+tests/testthat/test-offline-preparation.R
+tests/testthat/test-numerical-contracts.R
+```
+
+Suggested subject: `docs: record readable city recipes and verification limits`
+
+```text
+doc/HOW_TO_RUN.md
+doc/ai/architecture.md
+doc/ai/implementation.md
+doc/planning/targets-migration.md
+doc/planning/remaining-work.md
+```
+
 ## Distance pilot — 23 September 2026
 
 Implemented the first reviewable batch of the approved readable-script revision.

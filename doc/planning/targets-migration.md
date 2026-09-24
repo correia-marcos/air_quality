@@ -1,7 +1,8 @@
 # Readable R scripts and a simpler targets pipeline
 
 Approved revision, 23 September 2026. **The distance pilot is implemented and its
-readability accepted by Marcos; repository-wide rollout remains pending.** This replaces
+readability accepted by Marcos; the four city recipes and their targets are now revised.**
+Remaining analytical recipes, tooling and scientific cutover are pending. This replaces
 the earlier requirements for analytical scripts to use pipeline loaders, specification
 tables, stage adapters and input/output dictionaries. The collapsed historical record
 below is superseded, including its earlier commit groups and environment status.
@@ -47,18 +48,55 @@ computation and file-writing targets; Santiago shares its station-reading target
 `bogota_2018_distance_matrices`, for example, holds data while `bogota_2018_distances`
 owns the two Parquet files. Existing distance-stage selections remain available.
 The graph factory, custom declaration parser and distance adapters have been removed.
-Other stages still use the transitional `src/pipeline/` loader and adapters.
+The graph loader and remaining analytical adapters are transitional.
+
+## City preparation — implemented
+
+The four city scripts now show local sources and station reads in Section I, scientific
+calls and named spatial objects in Section II, and ordered saves in Section III.
+They source the required modules directly. All script and graph lines fit 92 characters.
+
+Bogotá's geographic preparation returns spatial objects without an output argument.
+Other geographic and station functions accept `out_file = NULL`; `write_geopackage()` saves
+their results. Census functions retain their existing data-return mode and add
+`return_data = FALSE` for file-backed processing. Optional summary reads are shown in the
+guide, using returned paths. The 20 km radius and UTC processing timezone have named city
+configuration entries; their values and all previous configuration entries are unchanged.
+
+The 24 September correction places census extraction/output paths in Section I and keeps
+Section III for saving alone. Previews and reconstructed output inventories were removed
+from all four recipes. Targets still checks its owned files independently.
+
+Bogotá now separates `bogota_download_geography()` (acquire sources) from
+`bogota_prepare_metro_area()` (read local sources and return geography). Scripts, targets
+and `city_process()` use the latter; separate writers own the derived GeoPackages. The
+download recipe retains an explicit preparation call for its source-region diagnostic.
+The old `bogota_download_metro_area()` API was removed and repository callers updated:
+external callers must choose acquisition, preparation and saving explicitly.
+
+CDMX, Santiago and São Paulo still combine acquisition and preparation behind
+`allow_download`; their separation remains a follow-up. Preserve each city's specific
+source handling and selection rules when applying the Bogotá pattern.
+
+Targets calls the scientific functions directly and caches spatial objects separately
+from file writers. The complete `city_process()` interface remains available. Public
+geography, station, pollution and census stage names and output filenames are unchanged.
+
+All five real station selections agree with the preserved implementation and the target
+commands. Synthetic checks cover offline geographic fixtures, file-backed census returns,
+spatial caching and writer behavior. Full source-to-output city parity remains unverified;
+see [the city-preparation evidence](../ai/implementation.md#city-preparation--23-september-2026).
 
 ## Remaining implementation
 
-1. Apply the accepted recipe to city preparation, outliers/IDW/exposure, summaries and
+1. Apply the accepted recipe to outliers/IDW/exposure, summaries and
    rendering, then optional analysis and validation. Keep short repeated calls; share
    transformations, not script-shaped orchestration. Use meaningful names, named arguments
    and space between operations. Follow the author's call layout and step comments,
    recorded in [R style](../ai/rules/r-style.md#spacing-calls-and-comments).
    Computations return manageable objects; writers return
-   actual files. Large streaming/partitioned datasets may compute and write together and
-   report those files in Section III without saving twice.
+   actual files. Large streaming/partitioned datasets may compute and write together;
+   retain their returned objects or paths without adding duplicate saves or reports.
 2. Move genuine scientific operations into existing subject modules, put paths and reads
    back in scripts, and retire remaining pipeline machinery after its callers migrate.
    Retain complete `city_process()` convenience wrappers, registry consumers, offline
@@ -113,6 +151,9 @@ resolved by updating its API call. No raw/download/legacy inputs, dependency ver
 lockfile were changed. Optional resolution definitions and frozen checksums remain intact.
 
 ## Pilot review groups
+
+The city-preparation batch has its own review groups in
+[the implementation record](../ai/implementation.md#city-preparation-review-groups).
 
 The subsequent readability/style follow-up belongs in these same review groups.
 If reviewed separately, the suggested subject is `docs: adopt the author's R script style`:

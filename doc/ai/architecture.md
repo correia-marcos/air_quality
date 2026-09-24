@@ -14,8 +14,9 @@ length, eliminating every repeated function call, or abstracting orchestration.
 Scientific definitions and protected inputs remain unchanged.
 
 - Analytical scripts are executable recipes with three or four meaningful sections.
-- Section I shows sources, settings, paths and reads. Section II computes named objects;
-  Section III saves them in the same order. No separate inspection block is needed.
+- Section I shows sources, settings, all input/output paths and reads. Section II computes
+  named objects; Section III only saves them in the same order. Optional inspection belongs
+  in the guide and reuses returned objects, without a separate script inspection block.
 - Keep tables, spatial objects, estimates and plots in named objects where useful.
 - A script must run from declared files and sourced functions without a targets cache.
 - Shared functions define transformations; targets alone will schedule the accepted
@@ -87,23 +88,33 @@ Makefile and sequential runner remain transitional and their paths must also sta
 After acceptance, remove Makefile and its RStudio build setting; make `run_pipeline.R`
 a compatibility launcher for targets. Optional analyses remain explicit separate commands.
 
-The distance recipe calls computation and saving directly. Other recipes still need
+The distance and four city recipes call scientific functions directly. Other recipes need
 simplification; their heading counts do not establish readability. The migration candidate
 shares transformation functions with the interactive recipes. The new
 graph declares concrete city functions, configurations and upstream file targets; it does not
 dispatch an opaque `city_process(id)` target. `city_process()` remains a convenience dispatcher, running prerequisites in order.
-Reader-facing city scripts expose each stage and the spatial/census objects it produces. Registry configuration remains available to validation.
+Reader-facing city scripts expose source paths, geographic objects, selected stations and
+census output paths. Bogotá's geographic preparation consumes explicit local archives and
+returns `sf` objects; acquisition is a separate function. Other cities still use the
+transitional `allow_download = FALSE`, `out_file = NULL` interface. Section III saves spatial
+objects with `write_geopackage()`. Large census calls use `return_data = FALSE`
+and expose saved paths rather than retain individual records. Registry configuration
+remains available to validation.
 All four wrappers prepare geography, stations, partitioned pollution, and all supported census
 variants. Acquisition remains separate. `read_raw` and `normalize` registry slots were removed.
 
 One target owns each complete station dataset and city/vintage IDW family. File targets retain
-Parquet directories; consumers reopen data. File targets discard vector names, so migrated
-read commands select explicit filenames. Older city adapters still reconstruct path roles.
+Parquet directories; consumers reopen data. File targets discard vector names, so manuscript
+city commands select explicit filenames. Named stage contracts remain in the manual
+`city_process()` convenience interface. Targets caches the spatial computations separately
+from their writers, and sources definitions/settings into its own environment.
 Whole source directories track membership and sidecars.
 The default runner changes only after isolated scientific acceptance; see the development
 record in `doc/planning/targets-migration.md` (excluded from runtime images).
 
-`src/` holds functions; `scripts/` executes them. Never put runnable side-effects in `src/`.
+`src/` defines functions and configuration; `scripts/` executes the analysis. Modules may
+attach their required installed packages at the top, as in `bogota.R`. Sourcing a module
+must not install packages, acquire data or run an analysis.
 
 ## How to run
 
@@ -138,8 +149,8 @@ record in `doc/planning/targets-migration.md` (excluded from runtime images).
   function blocks use roxygen's `@param` / `@return` / `@details`. Match the existing style
   exactly — see any file in `scripts/process_data/`.
 - Paths are **always** `here::here(...)`. Never hard-code absolute paths or `setwd()`.
-- Scripts source required subject modules and plain settings in Section I; necessary
-  package attachment belongs there. Do not require a targets loader or install packages
+- Scripts source required subject modules and plain settings in Section I. Modules may
+  attach their own package requirements. Do not require a targets loader or install packages
   during analysis. Existing broad setup loaders are transitional, not new-script templates.
 - New cities are added through `src/city_specific/registry.R`, not by copy-pasting scripts.
 

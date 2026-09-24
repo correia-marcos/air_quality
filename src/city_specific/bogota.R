@@ -4,16 +4,17 @@
 #' @Goal  : Bogotá-specific parameters, download/process wrappers, and any site-specific code
 #' @Date   : Aug 2025
 #' @Author : Marcos Paulo
-# Obs: Expect the caller to have already sourced:
-#   - src/config_utils_download_data.R  (selenium helpers, waits, clicking helpers, etc.)
-#   - src/config_utils_process_data.R   (merge, tidy, QA, parquet writing, etc.)
-#   - src/cities/registry.R
+# Source src/city_specific/registry.R before this module.
+# The calling recipe sources its other helpers; this module loads its dplyr requirement.
 # 
 # Others obs:
 # Definition of the metropolitan area comes from SDP (2022):
 # — Secretaría Distrital de Planeacion (2022). Bogotá región: Un solo territorio. Dirección de 
 # Integración Regional, Nacional e Internacional.
 # ============================================================================================
+
+# Package required by this module's data transformations and %>% calls.
+library(dplyr)
 
 # Parameters (single source)
 bogota_cfg <- list(
@@ -33,6 +34,8 @@ bogota_cfg <- list(
     "https://datosabiertos.bogota.gov.co/dataset/localidad-bogota-d-c"),
   # Processing parameters
   years           = 2000L:2023L,
+  station_buffer_km = 20,
+  processing_tz    = "UTC",
   dl_dir          = here::here("data", "downloads", "bogota"),
   out_dir         = here::here("data", "interim"),
   which_states    = c("Bogotá D.C.", "Cundinamarca", "Huila", "Meta", "Tolima"),
@@ -70,120 +73,93 @@ bogota_cfg <- list(
 #  Bogotá-specific functions - downloading and its helpers
 # ============================================================================================
 # --------------------------------------------------------------------------------------------
-# Function: bogota_download_metro_area
-#' @param allow_download Permit source acquisition; FALSE requires preserved local files.
-#' @param level                     character; "mpio", "depto", "manzana", or "mpio_localidad".
-#' @param mgn_year                  numeric; 2018 or 2005.
-#' @param base_url                  string; base URL of DANE geoportal files.
-#' @param municipality_codes        character vector of 5-digit codes (e.g. "11001").
-#' @param download_dir              character; where to save the ZIP.
-#' @param out_file                  character; where to write the cropped GeoPackage.
-#' @param overwrite_zip             logical; re-download if ZIP exists.
-#' @param overwrite_gpkg            logical; overwrite output GeoPackage if exists.
-#' @param quiet                     logical; suppress progress.
-# 
-#' @return     Writes a GeoPackage; returns sf object invisibly.
-#' @Purpose   : Download admin boundaries and crop to Bogota metro.
-#              "mpio_localidad" replaces Bogota with a clipped
-#              version of the official Localities GPKG.
-#' @details    The layer keeps whatever CRS DANE shipped, so data/raw/ stays faithful
-#              to the source: MGN 2005 is EPSG:4326, MGN 2018 is EPSG:4686. Both are
-#              ITRF-aligned (sub-metre apart) and every consumer reprojects, so the
-#              split is harmless. The 2005 tracts carry 3 ring self-intersections,
-#              repaired at the point of use.
-#' @Written_on: 20/08/2025
-#' @Written_by: Marcos Paulo
-# --------------------------------------------------------------------------------------------
-bogota_download_metro_area <- function(
-    level              = c("mpio", "depto", "manzana", "mpio_localidad"),
-    mgn_year           = c(2018, 2005),
-    base_url           = bogota_cfg$base_url_shp,
-    municipality_codes = bogota_cfg$city_code_metro,
-    download_dir       = here::here("data", "downloads", "Administrative", "Colombia"),
-    out_file           = here::here("data", "interim", "geospatial_data", "admin", "Colombia", "bogota.gpkg"),
-    overwrite_zip      = FALSE,
-    overwrite_gpkg     = TRUE,
-    quiet              = FALSE,
-    allow_download = TRUE
-) {
-  
-  level <- match.arg(
-    tolower(level), c("mpio", "depto", "manzana", "mpio_localidad")
-  )
+# Function: bogota_download_geography
+#' @param zip_names DANE archives to acquire; defaults cover the five metro layers.
+#' @param base_url DANE archive URL prefix.
+#' @param download_dir Folder for preserved provider files.
+#' @param localities Also acquire the Bogotá locality GeoPackage.
+#' @param overwrite Replace existing source files; FALSE reuses them without a request.
+#' @param quiet Suppress progress messages.
+#' @return Named paths to preserved files; no geographic preparation or derived output.
+#' @details Acquisition only. Existing files are left unchanged unless overwrite is TRUE.
+#' Download explicitly before running processing; processing never calls this function.
+bogota_download_geography <- function(
+    zip_names = c("SHP_MGN2005_COLOMBIA.zip", "SHP_MGN2018_INTGRD_MPIO.zip",
+                  "SHP_MGN2018_INTGRD_MANZ.zip", "SHP_MGN2018_INTGRD_SECCR.zip"),
+    base_url = bogota_cfg$base_url_shp,
+    download_dir = here::here(bogota_cfg$dl_dir, "metro_area"),
+    localities = TRUE, overwrite = FALSE, quiet = FALSE) {
+  paths <- file.path(download_dir, zip_names)
+  urls <- file.path(base_url, zip_names)
+  years <- ifelse(grepl("2005", zip_names), 2005, 2018)
+
+  if (localities) {
+    paths <- c(paths, file.path(download_dir, "bogota_loca.gpkg"))
+    urls <- c(urls, paste0(
+      "https://web.archive.org/web/20251018145049/https://",
+      "datosabiertos.bogota.gov.co/dataset/856cb657-8ca3-4ee8-857f-",
+      "37211173b1f8/resource/b6c3fbda-1281-4735-8063-260e75ad95f8/",
+      "download/loca.gpkg"))
+    years <- c(years, NA_integer_)
+  }
+
+  dir.create(download_dir, recursive = TRUE, showWarnings = FALSE)
+  for (i in seq_along(paths)) {
+    if (file.exists(paths[i]) && !overwrite) {
+      if (!quiet) message("Source already present: ", basename(paths[i]))
+      next
+    }
+    if (!quiet) message("Downloading ", basename(paths[i]), " ...")
+    response <- httr::RETRY("GET", urls[i],
+        httr::write_disk(paths[i], overwrite = TRUE),
+        times = 5, httr::timeout(3600))
+    if (httr::status_code(response) != 200L) stop("Download failed: ", urls[i])
+    record_source_acquisition(paths[i], urls[i], years[i])
+  }
+  stats::setNames(paths, basename(paths))
+}
+
+# ----------------------------------------------------------------------------------------
+# Function: bogota_prepare_metro_area
+#' @param source_zips Local DANE archives: one for 2005 or 2018 municipalities;
+#' two (MANZ and SECCR) for 2018 tracts. Paths are consumed exactly as supplied.
+#' @param level Geographic level: mpio, depto, manzana, or mpio_localidad.
+#' @param mgn_year Geographic vintage: 2005 or 2018.
+#' @param municipality_codes Metropolitan municipality codes to retain.
+#' @param localities_file Local Bogotá locality GeoPackage; required for mpio_localidad.
+#' @param quiet Suppress progress messages.
+#' @return An sf object. No downloads or saved analytical outputs.
+#' @details Reads preserved archives into temporary extraction folders. Municipality and
+#' locality preparation retains GEO_ID; tracts combine the original urban/rural classes.
+#' Provider CRS, identifiers, membership and clipping rules are preserved. Use
+#' write_geopackage() separately to save the result. Missing sources are an error.
+bogota_prepare_metro_area <- function(source_zips,
+    level = c("mpio", "depto", "manzana", "mpio_localidad"),
+    mgn_year = c(2018, 2005), municipality_codes = bogota_cfg$city_code_metro,
+    localities_file = NULL, quiet = FALSE) {
+  level <- match.arg(tolower(level), c("mpio", "depto", "manzana", "mpio_localidad"))
   mgn_year <- as.numeric(match.arg(as.character(mgn_year), c("2018", "2005")))
-  
-  # 1) Define ZIP names and URLs
-  # ---------------------------------------------------------------------------
-  if (level == "mpio_localidad") {
-    zip_names <- if (mgn_year == 2018) "SHP_MGN2018_INTGRD_MPIO.zip" else 
-      "SHP_MGN2005_COLOMBIA.zip"
-  } else if (mgn_year == 2018) {
-    if (level == "manzana") {
-      zip_names <- c("SHP_MGN2018_INTGRD_MANZ.zip",   
-                     "SHP_MGN2018_INTGRD_SECCR.zip")  
-    } else {
-      zip_names <- switch(level,
-                          "mpio"  = "SHP_MGN2018_INTGRD_MPIO.zip",
-                          "depto" = "SHP_MGN2018_INTGRD_DEPTO.zip")
-    }
-  } else {
-    zip_names <- "SHP_MGN2005_COLOMBIA.zip"
+  expected <- if (mgn_year == 2018 && level == "manzana") 2L else 1L
+  if (length(source_zips) != expected) {
+    stop("Expected ", expected, " source archive(s) for ", level, " ", mgn_year)
   }
-  
-  loc_url <- paste0(
-    "https://web.archive.org/web/20251018145049/https://",
-    "datosabiertos.bogota.gov.co/dataset/856cb657-8ca3-4ee8-857f-",
-    "37211173b1f8/resource/b6c3fbda-1281-4735-8063-260e75ad95f8/",
-    "download/loca.gpkg"
-  )
-  loc_path <- file.path(download_dir, "bogota_loca.gpkg")
-  
-  if (!allow_download) {
-    required <- file.path(download_dir, zip_names)
-    if (level == "mpio_localidad") required <- c(required, loc_path)
-    require_local_sources(required, "geographic acquisition in scripts/download_data/download_bogota_data.R")
-    if (overwrite_zip) stop("overwrite_zip requires allow_download = TRUE")
+  if (level == "mpio_localidad" && length(localities_file) != 1L) {
+    stop("localities_file is required for mpio_localidad")
   }
-  if (allow_download) dir.create(download_dir, recursive = TRUE, showWarnings = FALSE)
-  dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
-  exdir <- file.path(tempdir(), paste0("col_shp_", level, "_", mgn_year))
-  if (dir.exists(exdir)) unlink(exdir, recursive = TRUE)
+  loc_path <- localities_file
+  required <- c(source_zips, if (level == "mpio_localidad") loc_path)
+  require_local_sources(required,
+    "geographic acquisition in scripts/download_data/download_bogota_data.R")
+
+  exdir <- tempfile(paste0("col_shp_", level, "_", mgn_year, "_"))
   dir.create(exdir)
-  
-  # 2) Loop Download & Extract
-  # ---------------------------------------------------------------------------
-  for (zip_name in zip_names) {
-    zip_url  <- file.path(base_url, zip_name)
-    zip_path <- file.path(download_dir, zip_name)
-    
-    if (file.exists(zip_path) && !overwrite_zip) {
-      if (!quiet) message("↪︎ ZIP already present: ", zip_name)
-    } else {
-      if (!quiet) message("⬇️  Downloading ", zip_name, " ...")
-      req <- httr::RETRY("GET", zip_url, 
-                         httr::write_disk(zip_path, overwrite = TRUE), 
-                         times = 5, httr::timeout(3600))
-      if (httr::status_code(req) != 200L) stop("Download failed.")
-      record_source_acquisition(zip_path, zip_url, mgn_year)
-    }
-    if (!quiet) message("📦 Extracting ", zip_name, "...")
+  on.exit(unlink(exdir, recursive = TRUE), add = TRUE)
+  for (zip_path in source_zips) {
+    if (!quiet) message("Extracting ", basename(zip_path), " ...")
     archive::archive_extract(zip_path, dir = exdir)
   }
-  
-  if (level == "mpio_localidad") {
-    if (file.exists(loc_path) && !overwrite_zip) {
-      if (!quiet) message("↪︎ GPKG already present: bogota_loca.gpkg")
-    } else {
-      if (!quiet) message("⬇️  Downloading bogota_loca.gpkg ...")
-      req_loc <- httr::RETRY("GET", loc_url, 
-                             httr::write_disk(loc_path, overwrite = TRUE), 
-                             times = 5, httr::timeout(3600))
-      if (httr::status_code(req_loc) != 200L) stop("GPKG Download failed.")
-      record_source_acquisition(loc_path, loc_url, mgn_year)
-    }
-  }
-  
-  # 3) Processing Logic
+
+  # Prepare the requested geographic level.
   # ---------------------------------------------------------------------------
   if (level == "mpio_localidad") {
     if (!quiet) message("🧩 Merging Mpios with Clipped GPKG Localities...")
@@ -377,17 +353,11 @@ bogota_download_metro_area <- function(
     }
   }
   
-  # 4) Export
-  # ---------------------------------------------------------------------------
-  if (!quiet) message("💾 Writing GeoPackage → ", basename(out_file))
-  sf::st_write(g_sel, out_file, delete_dsn = overwrite_gpkg, quiet = TRUE)
-  
-  unlink(exdir, recursive = TRUE)
-  invisible(g_sel)
+  g_sel
 }
 
 
-# --------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------
 # Function: bogota_scrape_rmcab_station_table
 #' @param page_url               string; the url of the page to scrape
 #' @param parse_coords           logical; parse DMS lat/lon to decimal degrees
@@ -2045,7 +2015,7 @@ bogota_download_census_data <- function(
 #' @param metro_area              sf polygon of the metropolitan area
 #' @param radius_km               numeric; max distance to keep (default 20)
 #' @param stations_epsg           EPSG for lon/lat (default 4326)
-#' @param out_file                output GeoPackage path
+#' @param out_file GeoPackage path; NULL returns the sf object without saving it.
 #' @param overwrite_gpkg          logical; overwrite if exists
 #' @param dissolve                logical; TRUE unions metro polygons
 # 
@@ -2080,7 +2050,9 @@ bogota_filter_stations_in_metro <- function(
   if (!dir.exists(metadata_dir))
     stop("Metadata dir not found: ", metadata_dir)
   
-  dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
+  if (!is.null(out_file)) {
+    dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
+  }
   
   # Stations confirmed to be in RMCAB but absent from the scraped
   # geolocation CSV (web-scrape gap). They arrive via SISAIRE metadata
@@ -2264,6 +2236,8 @@ bogota_filter_stations_in_metro <- function(
     " (Dropped ",        nrow(stations_sf) - nrow(stations_final), ")"
   )
   
+  if (is.null(out_file)) return(stations_final)
+
   # PART V: Save GeoPackage
   # ---------------------------------------------------------------------------
   if (file.exists(out_file) && !overwrite_gpkg) {
@@ -3038,7 +3012,8 @@ bogota_filter_census_2005 <- function(
 #' @param out_dir        Where to save the processed individual and collapsed data
 #' @param quiet        Suppress progress messages
 #
-#' @return     list(individual, collapsed); returns the processed dataframes. Also writes
+#' @param return_data TRUE returns individual/collapsed tables; FALSE returns saved paths.
+#' @return Individual/collapsed tables, or named paths when return_data is FALSE.
 #              census_metro_individual_<prefix>.parquet and
 #              collapse_metro_area_<prefix>.parquet, where prefix is basic or extended.
 #              Parquet keeps GEO_ID character; a CSV roundtrip drops its leading zeros.
@@ -3052,7 +3027,8 @@ bogota_harmonize_census_2005_data <- function(
     is_extended  = TRUE,
     metro_codes  = bogota_cfg$city_code_metro,
     out_dir      = here::here("data", "working_data"),
-    quiet        = FALSE
+    quiet        = FALSE,
+    return_data = TRUE
 ) {
   
   if (!requireNamespace("dplyr", quietly = TRUE)) stop("dplyr required.")
@@ -3313,6 +3289,12 @@ bogota_harmonize_census_2005_data <- function(
     file.path(out_dir, paste0("collapse_metro_area_", prefix, ".parquet"))
   )
   
+  if (!return_data) {
+    return(c(
+      individual = file.path(out_dir,
+        paste0("census_metro_individual_", prefix, ".parquet")),
+      collapsed = file.path(out_dir, paste0("collapse_metro_area_", prefix, ".parquet"))))
+  }
   return(list(individual = all_census, collapsed = collapse_data))
 }
 
@@ -3438,7 +3420,8 @@ bogota_filter_census_2018 <- function(
 #' @param out_dir      string; output folder for processed data.
 #' @param quiet        logical; suppress progress messages. Default FALSE.
 #
-#' @return  list(individual, collapsed); processed census data. Also writes
+#' @param return_data TRUE returns individual/collapsed tables; FALSE returns saved paths.
+#' @return Individual/collapsed tables, or named paths when return_data is FALSE.
 #           census_2018_metro_individual.parquet and census_2018_metro_collapsed.parquet.
 #           Parquet keeps GEO_ID character; a CSV roundtrip drops its leading zeros.
 #
@@ -3466,7 +3449,8 @@ bogota_harmonize_census_2018_data <- function(
     extract_paths,
     metro_codes = bogota_cfg$city_code_metro,
     out_dir     = here::here("data", "working_data"),
-    quiet       = FALSE
+    quiet       = FALSE,
+    return_data = TRUE
 ) {
   
   # Check required packages
@@ -3663,6 +3647,11 @@ bogota_harmonize_census_2018_data <- function(
     collapse_data, file.path(out_dir, "census_2018_metro_collapsed.parquet"),
     c(bog_meta, list(table_level = "geo")))
 
+  if (!return_data) {
+    return(c(
+      individual = file.path(out_dir, "census_2018_metro_individual.parquet"),
+      collapsed = file.path(out_dir, "census_2018_metro_collapsed.parquet")))
+  }
   return(list(individual = all_census, collapsed = collapse_data))
 }
 
@@ -3720,30 +3709,11 @@ bogota_download <- function(
     )
   }
   
-  # 1. Metropolitan area shapefiles (four levels × two census years)
+  # 1. Acquire preserved geography; processing builds the five derived layers.
   .step("metro_area", {
-    configs <- list(
-      list(level = "mpio_localidad", yr = 2005,
-           out = "bogota_area_metro_2005.gpkg"),
-      list(level = "mpio",           yr = 2005,
-           out = "bogota_area_metro_municipalities_2005.gpkg"),
-      list(level = "manzana",        yr = 2005,
-           out = "bogota_area_metro_census_tracts_2005.gpkg"),
-      list(level = "mpio_localidad", yr = 2018,
-           out = "bogota_area_metro_2018.gpkg"),
-      list(level = "manzana",        yr = 2018,
-           out = "bogota_area_metro_census_tracts_2018.gpkg")
-    )
-    lapply(configs, function(x) {
-      bogota_download_metro_area(
-        level        = x$level,
-        mgn_year     = x$yr,
-        base_url     = cfg$base_url_shp,
-        download_dir = file.path(cfg$dl_dir, "metro_area"),
-        out_file     = here::here("data", "interim", "geospatial_data",
-                                  "bogota", x$out)
-      )
-    })
+    bogota_download_geography(base_url = cfg$base_url_shp,
+        download_dir = here::here(cfg$dl_dir, "metro_area"),
+        quiet = quiet)
   })
   
   # 2. Station geo-location (RMCAB scrape + SISAIRE metadata)
@@ -3822,166 +3792,17 @@ bogota_download <- function(
 }
 
 
-# --------------------------------------------------------------------------------------------
-# Function: bogota_process
-#' @param cfg             bogota_cfg list. Default: bogota_cfg.
-#' @param steps           character vector; which steps to run. Default: all.
-#              Options: "stations_filter", "pollution_parquet", "census_2005", "census_2018"
-#' @param quiet           logical; suppress step banners. Default FALSE.
-#
-#' @Purpose   : Run every processing step for Bogotá in the correct order.
-#              Steps mirror scripts/process_data/process_bogota_data.R.
-#' @return     named list; one entry per step.
-#' @Written_on: 01/02/2026
-#' @Written_by: Marcos Paulo
-# --------------------------------------------------------------------------------------------
+#' @param cfg City configuration; output roots are respected by every stage.
+#' @param steps Offline stages; prerequisites run before selected stages.
+#' @param inputs Named source paths grouped by stage, or NULL for configured sources.
+#' @param quiet Suppress progress messages.
+#' @return Named stage lists of all generated file paths.
 bogota_process <- function(
-    cfg   = bogota_cfg,
-    steps = c("stations_filter", "pollution_parquet",
-              "census_2005",     "census_2018"),
-    quiet = FALSE
-) {
-  outdir_pollution  <- here::here(cfg$out_dir, "monitoring_stations")
-  outdir_geospatial <- here::here(cfg$out_dir, "geospatial_data")
-  outdir_stations   <- file.path(cfg$dl_dir,
-                                 "ground_stations_geolocation")
-  outdir_metadata   <- file.path(cfg$dl_dir, "stations_metadata")
-  
-  dir.create(outdir_pollution,  recursive = TRUE,
-             showWarnings = FALSE)
-  dir.create(outdir_geospatial, recursive = TRUE,
-             showWarnings = FALSE)
-  
-  results <- list()
-  
-  .step <- function(name, expr) {
-    if (!name %in% steps) return(invisible(NULL))
-    if (!quiet) message("\n--- [bogota] ", name, " ---")
-    results[[name]] <<- tryCatch(
-      expr,
-      error = function(e) {
-        warning("[bogota] step '", name, "' failed: ", e$message)
-        e
-      }
-    )
-  }
-  
-  # 1. Filter stations spatially (2005 and 2018 metro boundaries)
-  .step("stations_filter", {
-    stations_bogota <- read.csv(
-      file.path(outdir_stations, "bogota_stations_location.csv")
-    )
-    metro_2018 <- sf::st_read(
-      here::here(outdir_geospatial, "bogota",
-                 "bogota_area_metro_2018.gpkg"),
-      quiet = TRUE
-    )
-    metro_2005 <- sf::st_read(
-      here::here(outdir_geospatial, "bogota",
-                 "bogota_area_metro_2005.gpkg"),
-      quiet = TRUE
-    )
-    bogota_filter_stations_in_metro(
-      rmcab_df     = stations_bogota,
-      metadata_dir = outdir_metadata,
-      radius_km    = 20,
-      metro_area   = metro_2018,
-      out_file     = here::here(outdir_geospatial, "bogota",
-                                "bogota_2018_stations_buffer_metro.gpkg")
-    )
-    bogota_filter_stations_in_metro(
-      rmcab_df     = stations_bogota,
-      metadata_dir = outdir_metadata,
-      radius_km    = 20,
-      metro_area   = metro_2005,
-      out_file     = here::here(outdir_geospatial, "bogota",
-                                "bogota_2005_stations_buffer_metro.gpkg")
-    )
-  })
-  
-  # 2. Merge raw XLSX / CSV downloads → Parquet Arrow dataset
-  .step("pollution_parquet", {
-    # Re-read stations_kept from the 2018 buffer (the canonical one)
-    stations_kept <- sf::st_read(
-      here::here(outdir_geospatial, "bogota",
-                 "bogota_2018_stations_buffer_metro.gpkg"),
-      quiet = TRUE
-    )
-    bogota_process_stations_data_to_parquet(
-      rmcab_folder   = file.path(cfg$dl_dir, "ground_stations"),
-      sisaire_folder = file.path(cfg$dl_dir,
-                                 "metro_ground_stations_hourly"),
-      stations_sf    = stations_kept,
-      tz             = "UTC",
-      out_dir        = outdir_pollution,
-      out_name       = "bogota_metro"
-    )
-  })
-  
-  # 3. Census 2005 (Basic + Extended)
-  .step("census_2005", {
-    extracted_census <- here::here("data", "interim", "census_extracted", "bogota")
-    
-    ext <- bogota_filter_census_2005(
-      census_zip = file.path(cfg$dl_dir, "census",
-                             "CG2005_AMPLIADO.zip"),
-      out_dir    = file.path(extracted_census, "CG2005_EXTENDED"),
-      overwrite  = TRUE,
-      quiet      = quiet
-    )
-    bogota_harmonize_census_2005_data(
-      extract_list = ext,
-      metro_codes  = cfg$city_code_metro,
-      out_dir      = here::here("data", "interim", "census",
-                                "bogota_extended_2005")
-    )
-    
-    bas <- bogota_filter_census_2005(
-      census_zip = file.path(cfg$dl_dir, "census",
-                             "CG2005_BASICO.zip"),
-      out_dir    = file.path(extracted_census, "CG2005_BASIC"),
-      overwrite  = FALSE,
-      quiet      = quiet
-    )
-    bogota_harmonize_census_2005_data(
-      extract_list = bas,
-      is_extended  = FALSE,
-      metro_codes  = cfg$city_code_metro,
-      out_dir      = here::here("data", "interim", "census",
-                                "bogota_basic_2005")
-    )
-  })
-  
-  # 4. Census 2018
-  .step("census_2018", {
-    extracted_census <- here::here("data", "interim", "census_extracted", "bogota")
-    
-    paths <- bogota_filter_census_2018(
-      census_folder = file.path(cfg$dl_dir, "census"),
-      out_dir       = file.path(extracted_census, "CNPV_2018"),
-      overwrite     = FALSE,
-      quiet         = quiet
-    )
-    bogota_harmonize_census_2018_data(
-      extract_paths = paths,
-      metro_codes   = cfg$city_code_metro,
-      out_dir       = here::here("data", "interim", "census",
-                                 "bogota_2018")
-    )
-  })
-  
-  if (!quiet) message("\n[bogota] processing complete.")
-  invisible(results)
+    cfg = bogota_cfg,
+    steps = c("geography", "stations_filter", "pollution_parquet", "census"),
+    inputs = NULL, quiet = FALSE) {
+  run_city_processing("bogota", cfg, steps, inputs, quiet)
 }
 
-# ============================================================================================
-#  Bogota's register options
-# ============================================================================================
-
-# ------------------------------- Register this city in the registry --------------------------
-register_city(
-  id       = bogota_cfg$id,
-  cfg      = bogota_cfg,
-  download = bogota_download,
-  process  = bogota_process
-)
+register_city("bogota", cfg = bogota_cfg,
+              download = bogota_download, process = bogota_process)

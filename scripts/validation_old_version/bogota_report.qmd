@@ -19,70 +19,49 @@ params:
 
 ```{r setup}
 #| include: false
-library(here); library(arrow); library(dplyr)
-library(ggplot2); library(knitr); library(kableExtra)
-library(scales); library(lubridate); library(sf); library(leaflet)
+source(here::here("src", "general_utilities", "validation", "report_helpers.R"))
+load_validation_report_packages()
 
-source(here("src", "general_utilities",
+source(here::here("src", "general_utilities",
             "config_utils_validation_old_version.R"))
-source(here("src", "city_specific", "registry.R"))
-source(here("src", "city_specific", "bogota.R"))
-
-`%||%` <- function(a, b) if (!is.null(a)) a else b
+source(here::here("src", "city_specific", "registry.R"))
+load_city_modules()
 
 cfg      <- city_cfg(params$city_id)
 cmp      <- cfg$compare
 city_dir <- file.path(params$out_root, params$city_id)
 
-# Helper: read a Parquet from a named subdirectory
-read_pq <- function(subdir, name) {
-  f <- file.path(city_dir, subdir, paste0(name, ".parquet"))
-  if (file.exists(f)) arrow::read_parquet(f) else NULL
-}
-
 # Ground station artefacts
-gs_diff_sum  <- read_pq("ground_station_comparison", "diff_summary")
-gs_diffs     <- read_pq("ground_station_comparison", "diffs_long")
-gs_only_leg  <- read_pq("ground_station_comparison", "only_legacy")
-gs_only_new  <- read_pq("ground_station_comparison", "only_new")
-gs_sta_audit <- read_pq("ground_station_comparison", "station_audit")
+gs_diff_sum  <- read_validation_parquet(city_dir, "ground_station_comparison", "diff_summary")
+gs_diffs     <- read_validation_parquet(city_dir, "ground_station_comparison", "diffs_long")
+gs_only_leg  <- read_validation_parquet(city_dir, "ground_station_comparison", "only_legacy")
+gs_only_new  <- read_validation_parquet(city_dir, "ground_station_comparison", "only_new")
+gs_sta_audit <- read_validation_parquet(city_dir, "ground_station_comparison", "station_audit")
 
 focus_pol <- cmp$focus_pollutants %||% cmp$value_cols
 yr_label  <- paste(cmp$compare_years, collapse = ", ")
 
 # Metro area artefacts
-metro_summary <- read_pq("metro_area_comparison", "metro_summary")
+metro_summary <- read_validation_parquet(city_dir, "metro_area_comparison", "metro_summary")
 metro_dir     <- file.path(city_dir, "metro_area_comparison")
 metro_has_sf  <- file.exists(file.path(metro_dir, "new_metro.gpkg"))
 
 # Census artefacts
-cen_col_sum  <- read_pq("census_comparison", "collapsed_summary")
-cen_col_diff <- read_pq("census_comparison", "collapsed_diffs")
-cen_geo_cov  <- read_pq("census_comparison", "geo_coverage")
-cen_ind_sum  <- read_pq("census_comparison", "individual_summary")
+cen_col_sum  <- read_validation_parquet(city_dir, "census_comparison", "collapsed_summary")
+cen_col_diff <- read_validation_parquet(city_dir, "census_comparison", "collapsed_diffs")
+cen_geo_cov  <- read_validation_parquet(city_dir, "census_comparison", "geo_coverage")
+cen_ind_sum  <- read_validation_parquet(city_dir, "census_comparison", "individual_summary")
 
 # Distance matrix artefacts
-idw_sta_sum  <- read_pq("distance_comparison", "station_dist_summary")
-idw_sta_diff <- read_pq("distance_comparison", "station_dist_diffs")
-idw_geo_sum  <- read_pq("distance_comparison", "geo_dist_summary")
+idw_sta_sum  <- read_validation_parquet(city_dir, "distance_comparison", "station_dist_summary")
+idw_sta_diff <- read_validation_parquet(city_dir, "distance_comparison", "station_dist_diffs")
+idw_geo_sum  <- read_validation_parquet(city_dir, "distance_comparison", "geo_dist_summary")
 
 # Outlier detection artefacts
-out_step_sum <- read_pq("outlier_comparison", "step_summary")
-out_compare  <- read_pq("outlier_comparison", "outlier_comparison")
+out_step_sum <- read_validation_parquet(city_dir, "outlier_comparison", "step_summary")
+out_compare  <- read_validation_parquet(city_dir, "outlier_comparison", "outlier_comparison")
 
-# Status badge helper: green = done, grey = pending
-status_badge <- function(ok, label_ok = "Complete",
-                          label_pending = "Pending") {
-  if (ok) {
-    sprintf(
-      '<span style="background:#2e7d32;color:white;padding:2px 8px;border-radius:4px;font-size:.85em">%s</span>', label_ok
-    )
-  } else {
-    sprintf(
-      '<span style="background:#9e9e9e;color:white;padding:2px 8px;border-radius:4px;font-size:.85em">%s</span>', label_pending
-    )
-  }
-}
+
 ```
 
 ## Executive Summary
@@ -247,7 +226,7 @@ checks <- list(
 tibble::tibble(
   `Data layer` = sapply(checks, function(x)
     sprintf('<a href="%s">%s</a>', x$section, x$name)),
-  Status = sapply(checks, function(x) status_badge(x$done))
+  Status = sapply(checks, function(x) validation_status_badge(x$done))
 ) |>
   kable(format = "html", escape = FALSE, align = "ll") |>
   kable_styling(bootstrap_options = c("striped", "condensed"),
@@ -341,7 +320,7 @@ cat(paste0(
 if (is.null(gs_diff_sum)) {
   cat(
     '<div style="background:#f5f5f5;padding:12px;border-radius:4px">',
-    status_badge(FALSE, label_pending = "Not yet run"),
+    validation_status_badge(FALSE, label_pending = "Not yet run"),
     ' Run <code>compare_bogota.R</code> to generate results.</div>'
   )
   knitr::knit_exit()
@@ -1073,7 +1052,7 @@ artefacts from the expansion factor.
 ```{r cen_geo, echo=FALSE, results='asis'}
 if (is.null(cen_geo_cov)) {
   cat(paste0(
-    status_badge(FALSE, label_pending = "Not yet run"),
+    validation_status_badge(FALSE, label_pending = "Not yet run"),
     '\n\nRun `compare_census()` in `compare_bogota.R` to generate results.\n\n'
   ))
 } else {
@@ -1184,7 +1163,7 @@ between the two pipelines and visualises the station networks within each bounda
 ```{r metro_summary, echo=FALSE, results='asis'}
 if (is.null(metro_summary)) {
   cat(paste0(
-    status_badge(FALSE, label_pending = "Not yet run"),
+    validation_status_badge(FALSE, label_pending = "Not yet run"),
     '\n\nRun `compare_metro_area()` in `compare_bogota.R` to generate results.\n\n'
   ))
 } else {
@@ -1328,7 +1307,7 @@ ensuring maximum spatial fidelity for exposure calculations.
 ```{r idw_sta, echo=FALSE, results='asis'}
 if (is.null(idw_sta_sum)) {
   cat(paste0(
-    status_badge(FALSE, label_pending = "Not yet run"),
+    validation_status_badge(FALSE, label_pending = "Not yet run"),
     '\n\nRun `compare_idw()` in `compare_bogota.R` to generate results.\n\n'
   ))
 } else {
@@ -1439,7 +1418,7 @@ Flagged observations that remain unreasonable or lack a benchmark are set to NA.
 ```{r outlier_step, echo=FALSE, results='asis'}
 if (is.null(out_step_sum)) {
   cat(paste0(
-    status_badge(FALSE, label_pending = "Not yet run"),
+    validation_status_badge(FALSE, label_pending = "Not yet run"),
     '\n\nRun `compare_outlier_procedure()` in `compare_bogota.R` to generate results.\n\n'
   ))
 } else {
