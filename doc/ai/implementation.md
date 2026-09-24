@@ -1,5 +1,72 @@
 # Implementation and evidence
 
+## Distance pilot — 23 September 2026
+
+Implemented the first reviewable batch of the approved readable-script revision.
+`generate_distance_matrices.R` now exposes paths, reads, five named calculations and
+five saves in matching order. The scientific function returns objects; its separate
+writer returns paths and rejects existing destinations when overwrite is disabled.
+INEGI and resolution callers use the new API. The latter retains returned points and
+fixed-CRS behavior. No compatibility wrapper or dependency change was introduced.
+
+`_targets.R` contains ordinary declarations, with separate distance reads, calculations
+and writers. The former graph factory/parser and distance adapters were removed.
+Other adapters/loaders and Make remain transitional, pending the remaining migration and
+scientific acceptance. Guidance now uses the distance recipe and hand-worked examples;
+the main migration record marks the previous architecture superseded.
+
+Checks performed:
+
+- Preserved the pre-edit working code and rebuilt old distance outputs in the ignored
+  `data/verification/distance-pilot-20260923-192149/` directory before editing.
+- Executed all three recipe sections in a clean R process, changing only its output root
+  for isolation. All five contexts agree exactly with the preserved implementation:
+  11,846 station pairs and 3,363,768 geographic pairs; maximum numerical difference zero.
+  Identifier/order/schema, 0/3/5/20 km membership, points/CRS and Parquet round-trip checks pass.
+- Executed the actual production distance target commands with existing prepared inputs
+  and isolated outputs/store. Results agree with the recipe; no targets remain outdated.
+  This replaces upstream preparation with declared prepared files and is not source reproduction.
+- Portable tests exercise the 3–4–5 km triangle, all distance metrics, file contracts,
+  no-op runs, deletion of either output, configuration/function/input changes,
+  unaffected-city caching and failed writes. The synthetic suite passes **326 checks**,
+  with zero failures, errors, skips or test warnings.
+- All 29 recorded geographic/product/lock hashes are unchanged. Original source trees
+  were not written. INEGI/resolution full analyses, manuscript rendering/export and
+  isolated full release verification were not executed in this pilot.
+- All 104 non-distance target commands and formats are unchanged by moving declarations.
+  The launcher resolves `distances --outdated` against an empty isolated store. That CLI
+  check used the inherited project library and disabled the renv sandbox for the process.
+- The documentation check passes: 253 local links, zero errors; four declared local-only
+  targets and three historical pages excluded. Working-tree whitespace checks pass.
+  All three first-run R examples execute with their output redirected to the isolated
+  directory and reproduce the expected station table.
+
+Environment: the normal framework-R command stalled in renv sandbox-lock acquisition
+and was interrupted. An initial vanilla run passed 325 checks but failed one subprocess
+runner assertion because the child lacked the project library. Rerunning with the same
+installed library inherited through `R_LIBS_USER` passed:
+
+```sh
+R_LIBS_USER="$PWD/renv/library/macos/R-4.6/aarch64-apple-darwin23" \
+  /Library/Frameworks/R.framework/Resources/bin/Rscript --vanilla \
+  tests/testthat.R --mode=synthetic
+```
+
+This is an environment-specific verification command, not a replacement dependency
+setup. Arrow CPU probes and temporary-directory cleanup produced sandbox diagnostics
+outside the test reporter; the successful suite exited zero. No packages or lockfiles
+were altered to resolve them. The automated checks did not exercise the RStudio UI.
+Marcos subsequently verified the pilot and accepted its readability, clearing that gate
+for repository-wide rollout. His revised step comments and R layout are now the style
+reference; shared guidance records that preference. Full source reproduction still
+requires the four missing geographic sources, reviewed baseline and manuscript appendix.
+
+The style follow-up changes comments and whitespace only in the distance recipe.
+R parsing confirms identical executable expressions before and after those edits;
+the documentation check passes 259 local links, with zero errors. The first-run guide
+and lockfile are unchanged. The analytical tests and full reproduction were not rerun
+for this presentation-only change.
+
 ## Redirect cleanup — 22 September 2026
 
 Implemented from clean baseline `4c063cb`, after user authorization. Removed the seven
@@ -254,3 +321,101 @@ The first local inventory/check/export report is [data/verification/20260907T201
 - **New image/CI and Quarto rendering have not been executed.** Their configurations parse, but runtime operation requires their declared environment. Scientific rendering review, human review of new numerical evidence, input redistribution/access review and independent researcher reproduction remain separate recorded actions.
 
 The repository now distinguishes a passing local test suite, successful copying of existing exhibits, and a verified clean reproduction. Only the first two have been established here. Use [HOW_TO_RUN](../HOW_TO_RUN.md) for commands and the clean-room protocol; use [evidence.md](evidence.md) to record reviewed scientific decisions.
+
+## Manuscript targets migration candidate — 2026-09-23
+
+The authorized migration now has complete four-city offline interfaces and a 96-target
+manuscript graph. Twenty-eight main scripts call shared reusable stages. The registry retains
+configuration/manual entry points; target commands expose concrete functions and upstream files.
+Whole station datasets and city/vintage IDW families have one owner. The graph preserves temporal,
+imputation, descriptive and scatter branches; optional workflows remain separate.
+
+The target engine exposed two integration issues that were corrected: file targets discard path
+names, and separate-process selections need literal names. File roles are reconstructed from
+explicit contracts. The CLI inspection route succeeds and selects 90 manuscript targets/ancestors.
+Processing targets pin the original s2 setting. CDMX rebuilds remove obsolete year partitions;
+census extraction refreshes derived checkpoints. Writers expose required outputs, and missing
+required plot objects now fail instead of accepting stale files.
+
+Current evidence: 109 portable contract assertions and 24 engine assertions passed; all 21
+extracted downstream bodies matched the reference after normalizing input/output plumbing;
+145 R files parsed; three Compose configurations parsed. All 128 manifest producers and existing
+artifacts resolve. The manuscript scanner reports no unmapped/unused destinations, but the absent
+`data_appendix.tex` still prevents complete coverage. These checks do not establish regeneration,
+numerical parity, rendered-output quality, or an executed container image.
+
+The full synthetic command crashed in native `brio` code before assertions. Isolated full targets
+verification crashed loading a compiled `sf` dependency before rebuilding; normal renv activation
+also waited on a sandbox lock. Successful fixture processes emitted cleanup permission messages
+at exit. Four preserved geographic inputs and a reviewed comparison baseline remain absent.
+
+The user installed targets 1.12.0, but their concurrent lockfile change reduced the package set
+from 175 to 48. Its intent was queried; the agent left the protected lockfile untouched. Restore
+the complete scientific environment before interpreting any migration as accepted. The existing
+default runner is retained pending parity. No data acquisition, scientific result regeneration,
+Git staging, commit or push was performed.
+
+Commands are in [HOW_TO_RUN](../HOW_TO_RUN.md#candidate-manuscript-migration-to-targets).
+The public development [migration record](../planning/targets-migration.md) contains acceptance
+criteria, model responsibility and recommended review groups; it is excluded from runtime images.
+## Reader-first targets revision — 2026-09-23
+
+This entry supersedes the earlier thin-script candidate's structural design and check counts.
+The governing requirement is now first in architecture/R style and in the four creation/review
+workflows and reviewer guidance. Twenty-eight manuscript scripts expose individual operations
+and named objects. All 56 R scripts have three/four ordered sections; the Quarto report keeps
+its narrative organization and explicitly reads its comparison objects. Optional resolution,
+satellite, acquisition and validation workflows remain separate from manuscript targets.
+
+The graph has **109 literal target declarations**, including **13 rendering-data checkpoints**.
+City preparation, whole station datasets and city/vintage IDW families retain their ownership.
+Small tables, plot collections and distance objects are inspectable; large partitioned datasets
+remain file-backed. Shared functions read supplied input roots instead of discarding them for
+canonical roots. Renderers recreate their theme/directories when cached input objects are reused.
+Render commands also reference their actual upstream files: a path-only checkpoint can
+stay identical after file contents change. Public aggregate selections use file storage
+to preserve content hashes; they forward files and never write competing products.
+Scientific settings were preserved at source level; executed parity remains pending.
+
+The [workflow inventory](../planning/remaining-work.md) covers **57 entry points** with commands,
+prerequisites, target mappings/separation reasons, principal inputs/outputs/consumers, readiness
+and next actions. Tests use that inventory instead of a hard-coded unwired list. It is the one
+planning file included in the runtime image, because runtime checks consume it; verification
+provenance includes its hash. Other planning material remains excluded. The deletion record
+distinguishes current evidence from its preserved August claims. No optional analysis was deleted.
+
+Checks actually run for this revision:
+
+| Check | Evidence and limit |
+|---|---|
+| Portable reader contracts | 545 assertions passed: exact inventory coverage/links/target names, section/header structure, cache-independent recipes, alternate input roots, and mocked manual/render agreement with missing outputs. Mocked rendering does not establish numerical or graphical parity. |
+| Portable city/targets contracts | 111 assertions passed, including offline geography contracts, aliases, missing inputs, failure propagation, output roles and acyclic dependency checks. |
+| Targets engine fixtures | 32 assertions passed: selection, no-op reuse, changed files/functions/settings, source membership changes, missing-output regeneration, separately cached computation/rendering and unaffected branches. An additional fixture checks changes through a file selection and an unchanged path-only checkpoint. The real graph's city/outlier/render-data edges were inspected. |
+| Source/structure checks | 151 R files plus Quarto R chunks parsed. Revised script/pipeline/resolution R code has no code lines above 90 characters. Formatting was separately checked for unchanged parsed expressions across 86 files. |
+| Extraction audit | Compared manuscript operation statements with the pre-edit working-tree snapshot and optional resolution call expressions with their original scripts. Reviewed differences are explicit paths, retained result collections, setup/reporting, and explicit replacement of name-based checkpoint lookup. A missing cross-operation resolution collection was corrected. Static comparison is not executed scientific parity. |
+| Transitional scheduler | Make dry run and active sequential runner cover the same 28 manuscript scripts; acquisition remains disabled. No analyses were run by this check. |
+| Required synthetic suite | `Rscript tests/testthat.R --mode=synthetic`, with renv sandbox activation disabled, stopped because the project library lacks `here`. A vanilla fallback found `here` but lacks `testthat`; the full suite did not execute. |
+| Required isolated verification | `Rscript scripts/verification/verify.R --full --targets`, with renv sandbox activation disabled, stopped on missing `here` before Docker execution. No release verification or scientific rebuild occurred. |
+| Manuscript references | No unmapped references or unused manifest destinations for the available draft; check fails on missing `doc/paper/data_appendix.tex`. |
+| Public documentation | 252 local links checked, zero errors; four explicitly local-only targets and three historical pages excluded. Git whitespace check passed. |
+| Preservation | No acquisition or analytical execution occurred. renv.lock SHA-256 remains `272bc378fb6c415c74da9c0742e79acfa3f40360c69c535f7986ac724307ce41`, matching the pre-edit working tree. No dependency installation/upgrade or lockfile regeneration was performed. |
+
+Portable checks used existing installed libraries, not a restored release environment. Base-R
+checks used `Rscript --vanilla`; engine checks added the existing Homebrew site library to the
+activated project library so `here` and `targets` could coexist. Some successful R processes
+printed temporary-directory cleanup permission errors at exit. These accommodations are bounded
+development evidence, not a portable environment or image certification.
+
+Rechecked blockers: three Santiago 2017 geographic responses and São Paulo's weighting-area
+source are absent; `config/verification_comparisons.csv` still has zero baseline entries; the
+manuscript appendix is absent. The package environment remains incomplete. Historical native
+`brio`/`sf` failures are not claimed fixed; this run stopped earlier on missing packages.
+
+**Scientific acceptance and cutover remain pending.** A real clean-RStudio walkthrough, isolated
+pre/post numerical and rendered-output comparisons, fresh offline four-city execution, real
+pipeline invalidation checks and container/release inspection have not been performed. The
+pre-edit snapshot is a candidate-code comparison aid, not an approved independent baseline.
+Makefile, its RStudio build setting and the sequential runner therefore remain transitional.
+After acceptance, remove Makefile, translate its optional commands using the inventory, and
+replace the sequential body with a targets compatibility launcher. Do not upgrade dependencies
+or substitute missing scientific inputs as part of this structural change.

@@ -1,5 +1,12 @@
 # New process-data script
 
+First acceptance criterion: follow the reader-first requirement in
+[architecture](../architecture.md#the-reader-is-a-human-not-just-a-machine) and
+[R style](../rules/r-style.md). The reader can run a few lines in RStudio, inspect
+named intermediate objects, and locate the applied function without learning targets.
+Use three or four meaningful executable sections; do not hide the analysis in one call.
+
+
 Create `scripts/process_data/short_name.R` that follows this project's conventions exactly.
 
 Before writing, confirm with me (one line each) if unclear:
@@ -12,15 +19,19 @@ Then generate the file:
 1. Standard header block (`@Goal / @Description / @Summary / @Date / @Author`) with `#'` on the
    `@tag` lines and plain `#` on continuations — copy the exact style from an existing
    `scripts/process_data/*.R`. `@Goal` = "output_description" if given.
-2. Setup section sourcing the utilities it needs:
-   `source(here::here("src","general_utilities","config_utils_process_data.R"))`
-   plus `registry.R` and the city module if city-specific.
+2. Follow `scripts/process_data/generate_distance_matrices.R`: source required subject
+   modules and `config/analysis_settings.R`, show paths and reads, then call scientific
+   functions with named arguments. Section II computes named results; Section III saves
+   them in the same order. No extra inspection block or pack/unpack wrapper. City scripts
+   expose the underlying operations; `city_process()` remains a convenience command.
 3. Numbered sections (`# I:`, `# II:`, ...) with `# ===` dividers.
 4. All paths via `here::here(...)`. Write output as Parquet to the correct data layer.
-5. Respect `doc/ai/rules/r-style.md`: line length ≤ 90, and rationale in `@Description` /
-   `@Details` rather than in long in-body comment blocks.
+5. Follow the spacing, call layout and concrete step comments in
+   [R style](../rules/r-style.md#spacing-calls-and-comments). Keep function rationale in
+   `@Description` / `@details` rather than long in-body comment blocks.
 
-Do **not** add it to `run_pipeline.R` yet — show me the script first, tell me where in the
+Do **not** add it to the manuscript graph or `run_pipeline.R` yet — show me the script first,
+declare its upstream targets and owned files, tell me where in the
 pipeline order it belongs, and let me confirm before wiring it in.
 
 Authorization already given in the conversation satisfies a workflow confirmation.

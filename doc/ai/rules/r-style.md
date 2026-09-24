@@ -1,11 +1,60 @@
 # R style
 
-Applies whenever you write or edit R. The overriding goal: a referee or student can read
-the code top-to-bottom and understand what happens **to the data**.
+A reader must be able to open RStudio, execute a few lines of a script—including
+sourcing functions and reading files—inspect meaningful intermediate objects, identify
+the function applied, and understand the analysis without first learning the pipeline's
+internal machinery.
+
+This is the highest structural priority. It takes precedence over minimizing script
+length, eliminating every repeated function call, or abstracting orchestration.
+Scientific definitions and protected inputs remain unchanged.
+
+## Executable recipes
+
+Default sections: I. Import data (including sources, settings and paths), II. Process
+data, III. Save outputs. Save named results in the same order as their computations.
+Do not add an "Inspect before saving" block. Use a fourth section when preparing data and
+estimating or rendering are distinct. Operational launchers use accurate headings such
+as Settings, Checks, Execute and Report. Quarto reports retain their narrative structure.
+The header summary must match the executable sections. Do not add empty sections.
+
+Assign useful data, estimates and plots to named objects. Keep results from repeated
+city/pollutant runs in named lists. Intentional logging, directory creation and other
+pure side effects do not require assignments. Functions that also write must say so;
+report their existing files rather than write them twice merely to fill a Save section.
+
+Scripts source the required scientific definitions directly, read explicit files, and
+call the same scientific functions as targets with named arguments and breathing space.
+Shared choices live as plain named values in `config/analysis_settings.R`; city-specific
+definitions remain in the city configurations. Do not hide reads or settings in a
+pack/unpack helper, replace a readable workflow with one orchestration call, dump a
+function environment, or require tar_read() to inspect an ordinary processing script.
+Return manageable data; retain paths for large partitioned datasets and show a bounded
+read when inspection helps. Split functions by scientific operation, not line count.
+
+For every new or changed function, document its transformation, return type, important
+identifiers, and writing or in-place effects. Arguments must determine actual inputs.
+For every structural change, demonstrate the path from declared inputs to a named
+intermediate object and its defining function. Preserve the analytical specification.
+
+## Spacing, calls and comments
+
+Follow the author-edited `scripts/process_data/generate_distance_matrices.R`.
+Keep short calls on one line. For longer calls, put the first argument on the same
+line as the function when readable, align continuation arguments, and close the call
+after its last argument. Do not force every call into one argument per line with a
+separate closing parenthesis. Use `<-` with spaces; align assignments within a small
+related group when helpful, without padding unrelated statements. Leave blank lines
+between operations so the reader can follow one step at a time.
+
+Aim for 90 characters, but allow a slightly longer call when further wrapping would
+obscure it. Preserve meaningful names and the author's layout over formatter defaults.
+Script comments use short, concrete descriptions: set the paths, read the stations,
+compute distances, save the tables. Explain geographic vintages or other choices where
+they help the reader. Polish the English without replacing this voice with boilerplate.
 
 ## Hard rules
 
-- **Line length ≤ 90 characters.** Break long calls onto aligned argument lines.
 - **Comments: one home for rationale.** *Why* a function does what it does belongs in its
   `@Description` / `@details` block — written once, updated in place. Comments **inside** a
   function body are at most **2 lines** and say only what happens *to the data* here, or point
@@ -14,9 +63,11 @@ the code top-to-bottom and understand what happens **to the data**.
   paragraph mid-function. *Exempt:* the file header block and the `# ---` doc block above a
   `src/` function; those are the designated home and are long by design.
 - **Paths are always `here::here(...)`.** No absolute paths, no `setwd()`, no `~`.
-- **No scattered `library()` calls.** Packages load through the stage's
-  `src/general_utilities/config_utils_*.R`. If a script needs a new package, add it there and
-  to `DESCRIPTION`, then, only when the dependency change is authorized, `renv::snapshot()`.
+- **Setup belongs in Section I.** Source the required subject modules and settings
+  explicitly. Attach necessary installed packages there, or use qualified calls.
+  Do not load the targets graph or install packages during analysis. Existing broad
+  loaders are transitional, not templates. Dependency changes require separate approval
+  and the reviewed `DESCRIPTION`/`renv.lock` workflow.
 - **Set a seed** (`set.seed(...)`) in any script with randomness (sampling, jitter, bootstraps).
 - **`src/` holds functions only.** No top-level side-effects there. Runnable code lives in `scripts/`.
 
@@ -32,9 +83,9 @@ the code top-to-bottom and understand what happens **to the data**.
 # <continuation lines keep the plain # prefix>
 #
 #' @Summary:
-#   I.   Setup: load dependencies, utilities, city config
-#   II.  <stage>
-#   III. <stage>
+#   I.   Import data: source functions and settings, declare paths, read files.
+#   II.  Process data: compute named results.
+#   III. Save outputs: save results in the same order.
 #
 #' @Date: <Month Year>
 #' @Author: <name>
@@ -46,7 +97,7 @@ The `#'` prefix is for RStudio only — it colours the tags and is what makes th
 scannable. roxygen2 never runs here (no `R/`, no `NAMESPACE`, `DESCRIPTION` is `Type: Project`,
 `Coding.Rproj` is `BuildType: Makefile`), so the custom `@Goal` / `@Summary` tags cost nothing.
 
-Match the existing files exactly (see `scripts/process_data/estimate_exposure.R`). Section
+Use `scripts/process_data/generate_distance_matrices.R` as the processing example. Section
 dividers inside the script reuse the same `# ===` rule with a `# I:` / `# II:` label. Banner
 rules are 94 characters wide throughout.
 
@@ -95,3 +146,11 @@ takes the name then the description, with no colon between them. `@Purpose`, `@W
 
 Exceptions: established 94-character banners; .Rprofile container startup setwd;
 explicit stage setup loaders and registry initialization; helper definitions in tests/.
+`_targets.R` declares ordinary scientific calls and their saved-file targets. A computation
+returns manageable objects; a writer returns the files it actually wrote. Large streaming
+datasets can compute and write together, with that behavior documented. Temporary GDAL
+geometry-conversion files are not analytical checkpoints.
+
+Explain methods like `doc/reference/idw_golden_test.md`: a scientific question, a small
+example, the expected result, and its connection to the function. Keep operational and
+agent instructions out of the teaching path.
