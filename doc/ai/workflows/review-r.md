@@ -6,7 +6,6 @@ First acceptance criterion: follow the reader-first requirement in
 named intermediate objects, and locate the applied function without learning targets.
 Use three or four meaningful executable sections; do not hide the analysis in one call.
 
-
 Review the requested path or staged diff (a path, or the staged diff if "staged"/empty) against project standards. This
 is a read-and-report pass — propose fixes, don't apply them until I approve.
 
@@ -14,7 +13,7 @@ Check, and cite line numbers:
 
 - **Style:** follow the author's spacing, call layout and step comments in
   [R style](../rules/r-style.md#spacing-calls-and-comments), rather than formatter defaults;
-  enforce the 90-character maximum, including comments and banners; header block present
+  enforce the 92-character maximum, including comments and banners; header block present
   and correctly formatted; numbered `# ===` sections.
   **Comments** per `doc/ai/rules/r-style.md` — flag any in-body comment block over
   2 lines, and any rationale duplicated between the body and `@Description` / `@details`.

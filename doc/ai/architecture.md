@@ -26,12 +26,13 @@ Scientific definitions and protected inputs remain unchanged.
   criterion, not something inferred from heading counts or passing automated tests.
 - Write inspectable intermediate files to data/interim/ and data/processed/.
 
-Use `scripts/process_data/generate_distance_matrices.R` as the structural reference and
-`doc/reference/idw_golden_test.md` as the model for explanations. Explicit calls with named
+Use the author-edited Bogotá download and processing scripts as the layout references,
+and `scripts/process_data/generate_distance_matrices.R` for computation followed by saving.
+Use `doc/reference/idw_golden_test.md` as the model for explanations. Explicit calls with named
 arguments and blank lines are preferable to specification tables and nested adapters.
 Shared choices live in `config/analysis_settings.R`; city definitions stay in city modules.
 Marcos accepted the distance pilot's readability on 23 September 2026. Use his edited
-recipe and the [R style guidance](rules/r-style.md#spacing-calls-and-comments) for the
+recipes and the [R style guidance](rules/r-style.md#spacing-calls-and-comments) for the
 remaining migration. Scientific acceptance and default cutover remain separate.
 
 ## What this project is
@@ -140,7 +141,7 @@ must not install packages, acquire data or run an analysis.
 
 - **R only.** Stack: renv, Docker, DuckDB, Arrow, data.table, dplyr, sf/terra (geospatial).
 - **R layout:** follow the author-edited distance recipe and shared R style. The maximum
-  line length is 90 characters; use shorter indentation or wrap arguments to fit.
+  line length is 92 characters; use shorter indentation or wrap arguments to fit.
 - **Comments: rationale lives in `@Description` / `@details`, once.** Comments inside a function
   body are ≤ 2 lines and say what happens *to the data* here, or point back to that block. Full
   rule (with the header/doc-block exemption) in `doc/ai/rules/r-style.md`.

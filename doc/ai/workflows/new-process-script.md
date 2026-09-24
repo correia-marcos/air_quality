@@ -19,7 +19,8 @@ Then generate the file:
 1. Standard header block (`@Goal / @Description / @Summary / @Date / @Author`) with `#'` on the
    `@tag` lines and plain `#` on continuations — copy the exact style from an existing
    `scripts/process_data/*.R`. `@Goal` = "output_description" if given.
-2. Follow `scripts/process_data/generate_distance_matrices.R`: source required subject
+2. Use the author-edited Bogotá recipes for layout, as specified in [R style](../rules/r-style.md).
+   Follow `scripts/process_data/generate_distance_matrices.R` for separate saving: source subject
    modules and `config/analysis_settings.R`, show paths and reads, then call scientific
    functions with named arguments. Section II computes named results; Section III saves
    them in the same order. No extra inspection block or pack/unpack wrapper. City scripts

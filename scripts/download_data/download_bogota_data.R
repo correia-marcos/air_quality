@@ -1,14 +1,14 @@
 # =======================================================================================
 # IDB: Air monitoring
 # =======================================================================================
-#' @Goal: Download all required data for the metro area of Bogota
+#' @Goal: Download the required data for Bogotá's metropolitan area.
 #
 #' @Description: Use Bogotá's acquisition functions to preserve source files.
 # Download three groups of inputs:
-#     1 - Geo-referenced administrative data to construct the metro area of Bogotá
+#     1 - Georeferenced administrative data to construct the metro area of Bogotá
 #           Preserve national sources; the processing script builds the metro layers.
-#     2 - All ground station air pollution data inside the metro area
-#     3 - CENSUS microdata for the country
+#     2 - Ground-station air pollution data for the metropolitan area
+#     3 - National census microdata
 #
 #' @Summary:
 #   I. Import data.
@@ -22,20 +22,20 @@
 # =======================================================================================
 # I: Import data
 # =======================================================================================
-# Get all libraries and functions - config_utils_plot_tables to generate one LaTeX table
+# Load the acquisition functions and the plotting helpers for the source-region table.
 source(here::here("src", "general_utilities", "config_utils_download_data.R"))
 source(here::here("src", "general_utilities", "config_utils_plot_tables.R"))
 source(here::here("src","city_specific", "registry.R"))
 load_city_modules()
 
-# Set location of required folders
+# Set the geographic source folder and the files used by the source-region diagnostic.
 dir_geography       <- here::here(bogota_cfg$dl_dir, "metro_area")
 file_municipalities <- here::here(dir_geography, "SHP_MGN2018_INTGRD_MPIO.zip")
 file_localities     <- here::here(dir_geography, "bogota_loca.gpkg")
 
 colombia <- ne_states(country = "Colombia", returnclass = "sf")
 
-# Show parameters imported on src/city_specific_bogota.R
+# Show the station-source regions specified in bogota_cfg.
 print(bogota_cfg$which_states)
 
 # =======================================================================================
@@ -53,7 +53,7 @@ metro_area_2018 <- bogota_prepare_metro_area(
     municipality_codes = bogota_cfg$city_code_metro,
     localities_file    = file_localities)
 
-# Apply function to save a LaTeX table of the states that we must download stations data
+# Save a LaTeX table to review which regions should supply station data.
 table_states_to_download <- table_state_metro_distances(
   national_states_sf = colombia,
   metro_area_sf      = metro_area_2018,
@@ -63,7 +63,7 @@ table_states_to_download <- table_state_metro_distances(
   overwrite_tex      = TRUE
 ) # Review bogota_cfg$which_states against this diagnostic if needed.
 
-# Apply function to generate and save dataframe with stations and their location in Bogota
+# Download and save the RMCAB station locations.
 rmcab_dir <- bogota_scrape_rmcab_station_table(
   page_url      = bogota_cfg$url_station_shp,
   parse_coords  = TRUE,
@@ -72,16 +72,16 @@ rmcab_dir <- bogota_scrape_rmcab_station_table(
   verbose       = TRUE,
   out_dir       = here::here(bogota_cfg$dl_dir, "ground_stations_geolocation"),
   out_name      = "bogota_stations_location",
-  write_csv     = TRUE,
+  write_csv     = TRUE
 )
 
-# Apply function to download excel files with stations and their geo-location metro area
+# Download the SISAIRE Excel files containing station locations and metadata.
 logs_sisaire_metadata_boundary <- sisaire_download_department_metadata(
   base_url     = bogota_cfg$base_url_sisaire,
   timeout_page = 25,
   subdir       = file.path("bogota", "stations_metadata"))
 
-# Apply function to create Selenium server and download the data for Bogota
+# Use Selenium to download the RMCAB hourly measurements for Bogotá.
 download_logs_station_bogota <- bogota_download_station_data(
   base_url      = bogota_cfg$base_url_rmcab,
   start_year    = min(bogota_cfg$years),
@@ -92,7 +92,7 @@ download_logs_station_bogota <- bogota_download_station_data(
   subdir        = file.path("bogota", "ground_stations")
 )
 
-# Apply function to create Selenium server and download the data for metro bogota
+# Use Selenium to download SISAIRE measurements for the surrounding regions.
 download_logs_stations_metro_bogota <- sisaire_download_hourly_data(
   base_url     = bogota_cfg$base_url_sisaire,
   target_depts = bogota_cfg$which_states,
@@ -103,21 +103,21 @@ write.csv(download_logs_stations_metro_bogota,
           file = here::here(bogota_cfg$dl_dir, "metro_stations_log.csv"),
           row.names = FALSE)
 
-# Apply function to download the 2005 Census data for the metro area - Basic one
+# Download the basic 2005 census archive.
 census_basico   <- bogota_download_census_data(
   year            = 2005,
   type            = "BASICO",
   url             = bogota_cfg$base_url_census,
   download_folder = here::here(bogota_cfg$dl_dir, "census"))
 
-# Apply function to download the 2005 Census data for the metro area - Extended one
+# Download the extended 2005 census archive.
 census_ampliado_2005 <- bogota_download_census_data(
   year            = 2005,
   type            = "AMPLIADO",
   url             = bogota_cfg$base_url_census,
   download_folder = here::here(bogota_cfg$dl_dir, "census"))
 
-# Apply function to download the 2018 Census data for the metro area - Extended one
+# Download the 2018 census archives.
 census_ampliado_2018 <- bogota_download_census_data(
   year            = 2018,
   url             = bogota_cfg$base_new_census,

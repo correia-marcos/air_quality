@@ -19,7 +19,7 @@
 # ========================================================================================
 # I: Import data
 # ========================================================================================
-# Get all libraries and functions
+# Load the functions and their required packages.
 source(here::here("src", "general_utilities", "base_utils.R"))
 source(here::here("src", "general_utilities", "reproducibility.R"))
 source(here::here("src", "general_utilities", "process", "geo_ids.R"))
@@ -27,12 +27,12 @@ source(here::here("src", "general_utilities", "process", "spatial_files.R"))
 source(here::here("src", "city_specific", "registry.R"))
 source(here::here("src", "city_specific", "processing.R"))
 
-# Get the config lists and define the sf behavior
+# Load the city configurations and use spherical geometry for sf operations.
 load_city_modules()
 sf::sf_use_s2(TRUE)
 cfg <- bogota_cfg
 
-# Set the source folders; city definitions remain in the configuration cfg
+# Set the source folders using the city configuration.
 dir_sources    <- cfg$dl_dir
 dir_geography  <- here::here(dir_sources, "metro_area")
 dir_census     <- here::here(dir_sources, "census")
@@ -40,17 +40,19 @@ dir_pollution  <- here::here(dir_sources, "ground_stations")
 dir_metadata   <- here::here(dir_sources, "stations_metadata")
 dir_sisaire    <- here::here(dir_sources, "metro_ground_stations_hourly")
 
-# Set the output folders; city definitions remain in the configuration cfg
+# Set the output folders for geography, pollution and each census variant.
 out_geography        <- here::here(cfg$out_dir, "geospatial_data", "bogota")
 out_pollution        <- here::here(cfg$out_dir, "monitoring_stations")
-out_extract_extended <- here::here(cfg$out_dir, "census_extracted", "bogota", "CG2005_EXTENDED")
+out_extract_extended <- here::here(cfg$out_dir, "census_extracted", "bogota",
+                                   "CG2005_EXTENDED")
 out_census_extended  <- here::here(cfg$out_dir, "census", "bogota_extended_2005")
-out_extract_basic    <- here::here(cfg$out_dir, "census_extracted", "bogota", "CG2005_BASIC")
+out_extract_basic    <- here::here(cfg$out_dir, "census_extracted", "bogota",
+                                   "CG2005_BASIC")
 out_census_basic     <- here::here(cfg$out_dir, "census", "bogota_basic_2005")
 out_extract_2018     <- here::here(cfg$out_dir, "census_extracted", "bogota", "CNPV_2018")
 out_census_2018      <- here::here(cfg$out_dir, "census", "bogota_2018")
 
-# Set the specific files' location - easier to apply in functions
+# Name the input files so their role is clear in the function calls below.
 file_census_extended <- here::here(dir_census, "CG2005_AMPLIADO.zip")
 file_census_basic    <- here::here(dir_census, "CG2005_BASICO.zip")
 file_geography_2005  <- here::here(dir_geography, "SHP_MGN2005_COLOMBIA.zip")
@@ -61,12 +63,13 @@ file_localities      <- here::here(dir_geography, "bogota_loca.gpkg")
 file_stations        <- here::here(dir_sources, "ground_stations_geolocation",
                                    "bogota_stations_location.csv")
 
-# Check every preserved source before processing starts; missing files are not downloaded.
+# Check the sources before processing writes any output; missing files are not downloaded.
 required_sources <- c(file_geography_2005,  file_municipalities, file_urban_tracts,
                       file_rural_tracts,    file_localities,     file_stations,
                       dir_metadata,         dir_pollution,       dir_sisaire,
                       file_census_extended, file_census_basic)
 processing_files(required_sources, "Bogotá sources")
+# The 2018 census needs both Bogotá and Cundinamarca archives.
 preflight_census_inputs("bogota", c(census_2018 = dir_census))
 
 # Read the monitoring-station locations.
@@ -117,7 +120,7 @@ stations_2005 <- bogota_filter_stations_in_metro(rmcab_df     = station_location
                                                  radius_km    = cfg$station_buffer_km,
                                                  out_file     = NULL)
 
-# Apply function to build pollution data; pollution already save dataset into memory
+# Build and save the pollution dataset; pollution is an Arrow connection to files on disk.
 pollution <- bogota_process_stations_data_to_parquet(rmcab_folder   = dir_pollution,
                                                      sisaire_folder = dir_sisaire,
                                                      stations_sf    = stations_2018,
@@ -126,7 +129,7 @@ pollution <- bogota_process_stations_data_to_parquet(rmcab_folder   = dir_pollut
                                                      out_dir        = out_pollution,
                                                      out_name       = "bogota_metro")
 
-# Apply functions to build census data (extraction and processing) - save to memory as well
+# Extract and process the extended 2005 census; these functions save files and return paths.
 extracted_extended <- bogota_filter_census_2005(census_zip = file_census_extended,
                                                 out_dir    = out_extract_extended,
                                                 overwrite  = TRUE)
@@ -136,7 +139,7 @@ census_extended    <- bogota_harmonize_census_2005_data(extract_list = extracted
                                                         out_dir      = out_census_extended,
                                                         return_data  = FALSE)
 
-# Apply functions to build census data (extraction and processing) - save to memory as well
+# Extract and process the basic 2005 census; these functions save files and return paths.
 extracted_basic <- bogota_filter_census_2005(census_zip = file_census_basic,
                                              out_dir    = out_extract_basic,
                                              overwrite  = TRUE)
@@ -146,7 +149,7 @@ census_basic    <- bogota_harmonize_census_2005_data(extract_list = extracted_ba
                                                      out_dir      = out_census_basic,
                                                      return_data  = FALSE)
 
-# Apply functions to build census data (extraction and processing) - save to memory as well
+# Extract and process the 2018 census; these functions save files and return paths.
 extracted_2018 <- bogota_filter_census_2018(census_folder = dir_census,
                                             out_dir       = out_extract_2018,
                                             overwrite     = TRUE)
@@ -159,13 +162,13 @@ census_2018    <- bogota_harmonize_census_2018_data(extract_paths = extracted_20
 # III: Save outputs
 # ========================================================================================
 # Save the geographic layers and selected stations in their processing order.
-metro_2005_file          <- write_geopackage(
-  x    = metro_2005,
-  path = here::here(out_geography, "bogota_area_metro_2005.gpkg")
-  )
 municipalities_2005_file <- write_geopackage(
   x    = municipalities_2005,
   path = here::here(out_geography, "bogota_area_metro_municipalities_2005.gpkg")
+  )
+metro_2005_file          <- write_geopackage(
+  x    = metro_2005,
+  path = here::here(out_geography, "bogota_area_metro_2005.gpkg")
   )
 tracts_2005_file         <- write_geopackage(
   x    = tracts_2005,

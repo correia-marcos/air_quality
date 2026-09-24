@@ -22,7 +22,7 @@ so your review matches the house style, not generic R advice.
 
 1. **Style & headers** — follow the author's
    [spacing, call layout and step comments](../rules/r-style.md#spacing-calls-and-comments),
-   rather than formatter defaults. Enforce the 90-character maximum, including comments
+   rather than formatter defaults. Enforce the 92-character maximum, including comments
    and banners. The `@Goal/@Description/@Summary/@Date/@Author` header is present and
    correct, with `#'` on the `@tag` lines and plain `#` on continuations; numbered
    `# ===` sections. `src/` function blocks use `@param` /

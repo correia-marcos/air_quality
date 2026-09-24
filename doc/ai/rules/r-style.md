@@ -43,13 +43,21 @@ intermediate object and its defining function. Preserve the analytical specifica
 
 ## Spacing, calls and comments
 
-Follow the author-edited `scripts/process_data/generate_distance_matrices.R`.
+Follow the author-edited `scripts/download_data/download_bogota_data.R` and
+`scripts/process_data/process_bogota_data.R` for grouped paths, aligned arguments and
+step comments. The distance recipe remains an example of separate computation and saving.
 Keep short calls on one line. For longer calls, put the first argument on the same
 line as the function when readable, align continuation arguments, and close the call
-after its last argument. Do not force every call into one argument per line with a
-separate closing parenthesis. Use `<-` with spaces; align assignments within a small
+after its last argument, or on its own line for a multiline call like the Bogotá writers.
+Use `<-` with spaces; align assignments within a small
 related group when helpful, without padding unrelated statements. Leave blank lines
 between operations so the reader can follow one step at a time.
+
+Group Section I into sources, settings, source folders, output folders, input files and
+reads, as appropriate. Keep paths visible without naming every single-use path fragment.
+Use short step comments to explain what happens to the data; distinguish objects in
+memory, connections to on-disk data and returned filenames. Keep early source checks when
+they prevent partial output or incomplete samples; they are not a targets requirement.
 
 Keep every R line within 92 characters, including comments and section dividers.
 If aligning arguments under the opening parenthesis exceeds that limit, use a shorter,
@@ -61,7 +69,7 @@ they help the reader. Polish the English without replacing this voice with boile
 
 ## Hard rules
 
-- **Maximum line length: 90 characters.** Call alignment must fit within this limit.
+- **Maximum line length: 92 characters.** Call alignment must fit within this limit.
 - **Comments: one home for rationale.** *Why* a function does what it does belongs in its
   `@Description` / `@details` block — written once, updated in place. Comments **inside** a
   function body are at most **2 lines** and say only what happens *to the data* here, or point
@@ -109,7 +117,7 @@ scannable. roxygen2 never runs here (no `R/`, no `NAMESPACE`, `DESCRIPTION` is `
 
 Use `scripts/process_data/generate_distance_matrices.R` as the processing example. Section
 dividers inside the script reuse the same `# ===` rule with a `# I:` / `# II:` label. Banner
-rules must also fit within 90 characters.
+rules must also fit within 92 characters.
 
 ## Every `src/` function has a doc block
 
