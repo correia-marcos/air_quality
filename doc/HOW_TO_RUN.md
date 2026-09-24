@@ -148,6 +148,11 @@ For Bogotá, `download_bogota_data.R` acquires the geographic source files.
 `bogota_prepare_metro_area()` in Section II, and saves the five layers in Section III.
 The download recipe prepares one temporary footprint for its source-region diagnostic;
 it does not write the processing workflow's geographic products.
+The other cities follow the same acquisition/preparation split. Geographic preparation
+reads explicit local sources and returns spatial objects; saving is a separate call.
+For the optional administrative-commune Santiago boundary formerly built during download,
+run `Rscript scripts/process_data/prepare_santiago_alternative_geography.R`.
+This does not rebuild manuscript inputs or start acquisition.
 
 Other inspection routes still awaiting simplification:
 

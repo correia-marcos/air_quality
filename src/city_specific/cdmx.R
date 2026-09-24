@@ -15,12 +15,17 @@
 # Metrópolis de México 2020. Secretaría de Desarrollo Agrario, Territorial y Urbano.
 # ============================================================================================
 
+# Package required by this module.
+library(dplyr)
+
 # Parameters (single source)
 
 cdmx_cfg <- list(
   id               = "Mexico City",
   tz               = "America/Mexico_City",
   years            = 2000L:2023L,
+  station_buffer_km = 20,
+  processing_tz    = "UTC",
   dl_dir           = here::here("data", "downloads", "cdmx"),
   out_dir          = here::here("data", "interim"),
   cities_in_metro  = c(09002, 09003, 09004, 09005, 09006, 09007, 09008, 09009, 09010, 09011,
@@ -1758,53 +1763,16 @@ inegi_census_2020_ampliado_links <- function() {
 # ============================================================================================
 
 # --------------------------------------------------------------------------------------------
-# Function: cdmx_download_metro_area
-#' @param allow_download Permit source acquisition; FALSE requires preserved local files.
-#' @param base_url                 ficha URL (with ?upc=...) OR direct .zip URL
-#' @param level                    "municipality" (default) or "ageb"
-#' @param keep_municipality        vector of municipality CVEGEO keys to keep
-#' @param download_dir             where to save the ZIP
-#' @param out_file                 where to write the cropped GeoPackage
-#' @param overwrite_zip            logical; re-download if ZIP exists
-#' @param overwrite_gpkg           logical; overwrite output GeoPackage if any
-#' @param quiet                    logical; suppress progress
-#' @return     Writes a GeoPackage with CDMX metro units; returns the sf.
-#' @Purpose   : Download INEGI MGI 2024, read the requested layer (municipal or
-#              AGEB), filter by municipality CVEGEO (ENT+MUN), and save it.
-#' @details    The layer keeps INEGI's own CRS, EPSG:6372 (Mexico ITRF2008 / LCC) —
-#              the only projected metro layer in the project, so data/raw/ stays
-#              faithful to the source. Nothing downstream may reuse it as a metric
-#              CRS: its scale factor is 0.99712 at 19.4N, which would stretch a
-#              20 km ring to 20 058 m. The AGEB layer carries 1 ring
-#              self-intersection, repaired at the point of use.
-#' @Written_on: 02/09/2025
-#' @Written_by: Marcos Paulo
-# --------------------------------------------------------------------------------------------
-cdmx_download_metro_area <- function(
-    base_url          = cdmx_cfg$base_url_shp,
-    level             = c("municipality", "ageb"),
-    keep_municipality = cdmx_cfg$cities_in_metro,
-    download_dir      = here::here("data", "downloads", "Administrative",
-                                   "Mexico"),
-    out_file          = here::here("data", "interim", "geospatial_data", "admin", "Mexico",
-                                   "cdmx_metro.gpkg"),
-    overwrite_zip     = FALSE,
-    overwrite_gpkg    = TRUE,
-    quiet             = FALSE,
-    allow_download = TRUE
-) {
-  # 0) Resolve level and locale (UTF-8-friendly filename handling)
-  level <- match.arg(level)
-  Sys.setlocale("LC_CTYPE", "en_US.UTF-8")
-  
-  # 1) Guarantee folders exist
-  if (allow_download) dir.create(download_dir, recursive = TRUE, showWarnings = FALSE)
-  dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
-  
-  # 2) Normalize target municipality CVEGEO keys (digits only, 5 chars)
-  keep_chr <- sprintf("%05d", keep_municipality)
-  keep_chr <- gsub("[^0-9]", "", as.character(keep_chr))
-  
+# Function: cdmx_download_geography
+#' @param base_url INEGI catalogue page or direct integrated ZIP URL.
+#' @param download_dir Folder for the preserved source archive.
+#' @param overwrite_zip Explicitly refresh an existing archive.
+#' @param quiet Suppress progress messages.
+#' @return Source archive path; no preparation or derived output.
+cdmx_download_geography <- function(base_url = cdmx_cfg$base_url_shp,
+    download_dir = here::here(cdmx_cfg$dl_dir, "metro_area"),
+    overwrite_zip = FALSE, quiet = FALSE) {
+  dir.create(download_dir, recursive = TRUE, showWarnings = FALSE)
   # 3) Small helper to probe HTTP existence quickly
   .url_exists <- function(u) {
     ua <- httr::user_agent(
@@ -1861,11 +1829,6 @@ cdmx_download_metro_area <- function(
     basename(base_url)
   } else "mg_2024_integrado.zip"
   zip_path <- file.path(download_dir, zip_name)
-  if (!allow_download) {
-    require_local_sources(zip_path, "geographic acquisition in scripts/download_data/download_cdmx_data.R")
-    if (overwrite_zip) stop("overwrite_zip requires allow_download = TRUE")
-  }
-  
   # 5) Download integrated ZIP (robust with retry)
   if (!file.exists(zip_path) || isTRUE(overwrite_zip)) {
     zip_url <- get_zip_url(base_url)
@@ -1890,9 +1853,32 @@ cdmx_download_metro_area <- function(
     message("ZIP already present (skip): ", zip_path)
   }
   
+  zip_path
+}
+
+
+# ------------------------------------------------------------------------------------------
+# Function: cdmx_prepare_metro_area
+#' @param source_zip Preserved INEGI 2024 archive; consumed exactly as supplied.
+#' @param level Municipality or AGEB layer.
+#' @param keep_municipality Municipality CVEGEO identifiers to retain.
+#' @param quiet Suppress progress messages.
+#' @return An sf object; no acquisition or analytical output writes.
+#' @details Retains INEGI CRS EPSG:6372 and padded municipality identifiers.
+#' This provider CRS is not the metric CRS for distance calculations. Extraction
+#' uses a temporary directory; save separately with write_geopackage().
+cdmx_prepare_metro_area <- function(source_zip, level = c("municipality", "ageb"),
+    keep_municipality = cdmx_cfg$cities_in_metro, quiet = FALSE) {
+  require_local_sources(source_zip,
+    "geographic acquisition in scripts/download_data/download_cdmx_data.R")
+  level <- match.arg(level)
+  Sys.setlocale("LC_CTYPE", "en_US.UTF-8")
+  keep_chr <- sprintf("%05d", keep_municipality)
+  keep_chr <- gsub("[^0-9]", "", as.character(keep_chr))
+  zip_path <- source_zip
   # 6) Prepare extraction directory
-  exdir <- file.path(tempdir(), tools::file_path_sans_ext(zip_name))
-  if (dir.exists(exdir)) unlink(exdir, recursive = TRUE, force = TRUE)
+  exdir <- tempfile("cdmx_geography_")
+  on.exit(unlink(exdir, recursive = TRUE), add = TRUE)
   dir.create(exdir, recursive = TRUE, showWarnings = FALSE)
   
   # 7) List entries (avoid extracting files with bad encodings)
@@ -1999,29 +1985,11 @@ cdmx_download_metro_area <- function(
                     CVE_AGEB, AMBITO, geometry)
   }
   
-  # 12) Write GeoPackage
-  if (file.exists(out_file) && !overwrite_gpkg) {
-    if (!quiet) {
-      message("Output exists and overwrite_gpkg=FALSE: ", out_file)
-    }
-  } else {
-    if (!quiet) message("Writing GeoPackage -> ", out_file)
-    if (file.exists(out_file) && overwrite_gpkg) {
-      unlink(out_file, force = TRUE)
-    }
-    suppressMessages(sf::st_write(g_sel, out_file, quiet = TRUE))
-  }
-  
-  # 13) Friendly summary
-  if (!quiet) {
-    message("Done. Selected ", nrow(g_sel), " features (", level, ").")
-  }
-  
   invisible(g_sel)
 }
 
 
-# --------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------------------
 # Function: cdmx_scrape_station_catalog
 #' @param page_url             string; page that contains the "Catálogo estaciones" link
 #' @param harmonize_map        named chr vec (optional) to rename station display names
@@ -4501,6 +4469,8 @@ cdmx_download_census_data <- function(
   # Naive hourly grid; no AT TIME ZONE (see DATETIME CONVENTION).
   parquet_codec <- "SNAPPY"
   base <- file.path(out_dir, paste0(out_name, "_dataset"))
+  # A complete rebuild must not retain partitions from removed years or source files.
+  if (dir.exists(base)) unlink(base, recursive = TRUE)
   dir.create(base, recursive = TRUE, showWarnings = FALSE)
   
   yrs <- sort(unique(years))
@@ -4655,6 +4625,16 @@ cdmx_merge_pollution_data <- function(
 }
 
 
+# Correct the documented catalog spelling differences without merging real stations.
+#' @param locations Station-location table with a station column.
+#' @param corrections Named vector mapping catalog spellings to measurement spellings.
+#' @return A corrected table; all other names, rows and columns remain unchanged.
+cdmx_correct_station_names <- function(locations, corrections) {
+  matched <- match(locations$station, names(corrections))
+  locations$station[!is.na(matched)] <- corrections[matched[!is.na(matched)]]
+  locations
+}
+
 # --------------------------------------------------------------------------------------------
 # Function: cdmx_filter_stations_in_metro
 #' @param station_location        data.frame/tibble with lon/lat columns
@@ -4663,7 +4643,7 @@ cdmx_merge_pollution_data <- function(
 #' @param lon_col                 name of longitude column (default "lon")
 #' @param lat_col                 name of latitude column  (default "lat")
 #' @param stations_epsg           EPSG for lon/lat (default 4326 WGS84)
-#' @param out_file                 where to write the cropped GeoPackage
+#' @param out_file GeoPackage path; NULL returns the sf object without saving it.
 #' @param overwrite_gpkg           logical; overwrite output GeoPackage if exists
 #' @param dissolve                logical; TRUE unions metro polygons (default TRUE)
 #' @param verbose                 logical; TRUE prints summary (default TRUE)
@@ -4694,7 +4674,9 @@ cdmx_filter_stations_in_metro <- function(
     stop("Columns ", lon_col, " and ", lat_col, " not found in stations.")
 
   # Guarantee output directory exists
-  dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
+  if (!is.null(out_file)) {
+    dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
+  }
   
   # 1) drop NA coords; convert stations → sf POINT (lon/lat) ------------------
   st_df <- station_location[
@@ -4739,6 +4721,8 @@ cdmx_filter_stations_in_metro <- function(
   # 7) return in original lon/lat CRS (often handy) -----------------
   out <- sf::st_transform(out, stations_epsg)
   
+  if (is.null(out_file)) return(out)
+
   # 8) Write GeoPackage
   if (file.exists(out_file) && !overwrite_gpkg) {
     if (!verbose) message("↪︎ Output exists and overwrite_gpkg=FALSE: ", out_file)
@@ -4894,7 +4878,8 @@ mexico_filter_census <- function(
 #' @param out_dir      string; output folder for processed data.
 #' @param quiet        logical; suppress progress messages. Default FALSE.
 #
-#' @return  list(individual, collapsed); processed census data. Also writes
+#' @param return_data TRUE returns individual/collapsed tables; FALSE returns saved paths.
+#' @return Individual/collapsed tables, or named paths when return_data is FALSE.
 #           census_metro_individual_2020.parquet and collapse_metro_area_2020.parquet.
 #           Parquet stores the column types instead of leaving them to a CSV reader's
 #           guess. CVE_MUN is deliberately numeric here, matching cfg$cities_in_metro;
@@ -4914,7 +4899,8 @@ mexico_harmonize_census_data <- function(
     extract_index,
     metro_codes = NULL,
     out_dir     = here::here("data", "working_data", "Mexico_2020"),
-    quiet       = FALSE
+    quiet       = FALSE,
+    return_data = TRUE
 ) {
   
   # Check required packages
@@ -5187,16 +5173,26 @@ mexico_harmonize_census_data <- function(
     collapse_data, file.path(out_dir, "collapse_metro_area_2020.parquet"),
     c(cdmx_meta, list(table_level = "geo")))
   
+  if (!return_data) {
+    return(c(
+      individual = file.path(out_dir, "census_metro_individual_2020.parquet"),
+      collapsed = file.path(out_dir, "collapse_metro_area_2020.parquet")))
+  }
   return(list(individual = all_census, collapsed = collapse_data))
 }
 
 
-# --------------------------------------------------------------------------------------------
-# Register this city so city_cfg() can find it. Registered under the slug the scripts use,
-# not cfg$id, which is a display name for some cities. No download/process wrappers exist
-# for this city yet, so only the config is exposed.
-# --------------------------------------------------------------------------------------------
-register_city(
-  id  = "cdmx",
-  cfg = cdmx_cfg
-)
+#' @param cfg City configuration; output roots are respected by every stage.
+#' @param steps Offline stages; prerequisites run before selected stages.
+#' @param inputs Named source paths grouped by stage, or NULL for configured sources.
+#' @param quiet Suppress progress messages.
+#' @return Named stage lists of all generated file paths.
+cdmx_process <- function(
+    cfg = cdmx_cfg,
+    steps = c("geography", "stations_filter", "pollution_parquet", "census"),
+    inputs = NULL, quiet = FALSE) {
+  run_city_processing("cdmx", cfg, steps, inputs, quiet)
+}
+
+register_city("cdmx", cfg = cdmx_cfg,
+              process = cdmx_process)

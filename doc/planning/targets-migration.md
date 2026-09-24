@@ -56,9 +56,9 @@ The four city scripts now show local sources and station reads in Section I, sci
 calls and named spatial objects in Section II, and ordered saves in Section III.
 They source the required modules directly. All script and graph lines fit 92 characters.
 
-Bogotá's geographic preparation returns spatial objects without an output argument.
-Other geographic and station functions accept `out_file = NULL`; `write_geopackage()` saves
-their results. Census functions retain their existing data-return mode and add
+Every city's geographic preparation returns spatial objects from explicit local sources,
+without acquisition or analytical output arguments. Station filters accept `out_file = NULL`;
+`write_geopackage()` saves the returned spatial objects. Census functions retain their existing data-return mode and add
 `return_data = FALSE` for file-backed processing. Optional summary reads are shown in the
 guide, using returned paths. The 20 km radius and UTC processing timezone have named city
 configuration entries; their values and all previous configuration entries are unchanged.
@@ -74,9 +74,30 @@ download recipe retains an explicit preparation call for its source-region diagn
 The old `bogota_download_metro_area()` API was removed and repository callers updated:
 external callers must choose acquisition, preparation and saving explicitly.
 
-CDMX, Santiago and São Paulo still combine acquisition and preparation behind
-`allow_download`; their separation remains a follow-up. Preserve each city's specific
-source handling and selection rules when applying the Bogotá pattern.
+The 24 September follow-up applies this split to CDMX, Santiago and São Paulo.
+Acquisition uses `cdmx_download_geography()`, `santiago_download_geography_2017()`,
+`santiago_download_geography_2024()`, `sao_paulo_download_geography()` and
+`sao_paulo_download_weighting_areas()`. They return preserved source paths.
+Preparation uses `cdmx_prepare_metro_area()`, `santiago_prepare_metro_area_2017()`,
+`santiago_prepare_metro_area_2024()`, `sao_paulo_prepare_metro_area()` and
+`sao_paulo_prepare_weighting_areas()`. They return `sf` objects. External callers of the
+removed combined APIs must move acquisition and saving to separate calls; the weighting-area
+download function now returns an unfiltered source path, not prepared geography.
+
+`prepare_santiago_alternative_geography.R` retains the former download recipe's optional
+Metro Santiago boundary. It remains outside targets; manuscript preparation still uses
+Gran Santiago for 2024 and the 2017 station selection. The maintainer inventory records it.
+
+The author-edited Bogotá acquisition and processing recipes are the layout references.
+Keep grouped paths, concrete comments and a 92-character line limit. Early source checks
+remain useful for manual runs, especially to require both Bogotá and Cundinamarca census
+archives before extraction can skip a missing department. They check availability, not
+scientific validity or provenance.
+
+Five available real geographic products agree across the preserved functions, revised
+recipe calls and target commands. Ten fixture comparisons also agree; the synthetic suite
+passes 402 checks. See [the separation evidence](../ai/implementation.md#city-geography-separation-and-recipe-style--24-september-2026)
+for exact coverage and remaining limits.
 
 Targets calls the scientific functions directly and caches spatial objects separately
 from file writers. The complete `city_process()` interface remains available. Public

@@ -16,6 +16,9 @@
 # Grande São Paulo, cria o respectivo Conselho de Desenvolvimento e dá providências correlatas.
 # ============================================================================================
 
+# Package required by this module.
+library(dplyr)
+
 # Parameters (single source)
 sao_paulo_cfg <- list(
   id               = "Sao_Paulo",
@@ -23,6 +26,8 @@ sao_paulo_cfg <- list(
   base_url_shp     = "https://www.ibge.gov.br/geociencias/downloads-geociencias.html",
   base_url_qualar  = "https://qualar.cetesb.sp.gov.br/",
   years            = 2000L:2023L,
+  station_buffer_km = 20,
+  processing_tz    = "UTC",
   dl_dir           = here::here("data", "downloads", "sao_paulo"),
   out_dir          = here::here("data", "interim"),
   which_states     = c("São_Paulo"), 
@@ -390,53 +395,19 @@ map_qualar_metadata <- function(base_url, search_url, login, password, container
 # ============================================================================================
 
 # --------------------------------------------------------------------------------------------
-# Function: sao_paulo_download_metro_area
-#' @param allow_download Permit source acquisition; FALSE requires preserved local files.
-#
-#' @param level                    string; "mpio" (Municipality) or
-#                                  "setor_censitario" (Census Tract).
-#' @param base_url                 string; IBGE Downloads page URL.
-#' @param keep_municipality        character vector; List of municipality codes (CD_GEOCODM)
-#                                  to filter. Defaults to sao_paulo_cfg$cities_in_metro.
-#' @param download_dir             string; Local path to save the raw ZIP file.
-#' @param out_file                 string; Local path to save the processed GeoPackage.
-#' @param overwrite_zip            logical; If TRUE, re-downloads ZIP even if it exists.
-#' @param overwrite_gpkg           logical; If TRUE, overwrites the output .gpkg file.
-#' @param container                logical; TRUE if running inside Docker Selenium.
-#' @param quiet                    logical; If TRUE, suppresses progress messages.
-#
-#' @return     An sf object (invisible) containing the filtered spatial data.
-#              Side effect: Writes a .gpkg file to disk.
-#
-#' @Purpose   : - Scrapes the IBGE Geociências website for Census 2010 Shapefiles.
-#              - "mpio": Downloads sp_municipio.zip (Municipal Boundaries 2010).
-#              - "setor_censitario": Downloads sp_setores_censitarios.zip (Tracts 2010).
-#              - Filters for the metro area of São Paulo.
-#              - Fixes encoding (LATIN1) and saves as .gpkg.
-#
-#' @details    The layer keeps IBGE's own CRS, EPSG:4674 (SIRGAS 2000), so data/raw/
-#              stays faithful to the source. The 2010 tracts carry 25 ring
-#              self-intersections and 29 duplicate vertices, repaired at the point
-#              of use — see sp_filter_stations_in_metro().
-#
-#' @Written_by: Marcos Paulo
-#' @Updated_on: 05/12/2025
-# --------------------------------------------------------------------------------------------
-sao_paulo_download_metro_area <- function(
-    level             = c("mpio", "setor_censitario"),
-    base_url          = sao_paulo_cfg$base_url_shp,
-    keep_municipality = sao_paulo_cfg$cities_in_metro,
-    download_dir      = here::here("data", "downloads", "Administrative", "Brazil"),
-    out_file          = here::here("data", "interim", "geospatial_data", "admin", "Brazil", "sao_paulo_metro.gpkg"),
-    overwrite_zip     = FALSE,
-    overwrite_gpkg    = TRUE,
-    container         = TRUE,
-    quiet             = FALSE,
-    allow_download = TRUE
-) {
-  
+# Function: sao_paulo_download_geography
+#' @param level Municipality or census-tract source archive.
+#' @param base_url IBGE download portal.
+#' @param download_dir Folder for the preserved archive.
+#' @param overwrite_zip Explicitly refresh an existing archive.
+#' @param container Use the configured Selenium container.
+#' @param quiet Suppress progress messages.
+#' @return Source archive path; no preparation or derived output.
+sao_paulo_download_geography <- function(level = c("mpio", "setor_censitario"),
+    base_url = sao_paulo_cfg$base_url_shp,
+    download_dir = here::here(sao_paulo_cfg$dl_dir, "metro_area"),
+    overwrite_zip = FALSE, container = TRUE, quiet = FALSE) {
   level <- match.arg(level)
-  
   # 1) Setup Paths & Filenames ---------------------------------------------------
 
   # Both levels use the same tree path to get to the 2010 Census folder
@@ -458,20 +429,12 @@ sao_paulo_download_metro_area <- function(
   
   root_dl_dir <- Sys.getenv("DOWNLOADS_DIR", here::here("data", "downloads"))
   
-  if (allow_download && !dir.exists(download_dir)) {
+  if (!dir.exists(download_dir)) {
     dir.create(download_dir, recursive = TRUE)
   }
-  if (!dir.exists(dirname(out_file))) dir.create(dirname(out_file), recursive = TRUE)
-  
   zip_landing_path <- file.path(root_dl_dir, target_file_name) 
   zip_target_path  <- file.path(download_dir, target_file_name)
   
-  # 2) Selenium Download Logic ---------------------------------------------------
-  if (!allow_download) {
-    require_local_sources(zip_target_path,
-      "geographic acquisition in scripts/download_data/download_sao_paulo_data.R")
-    if (overwrite_zip) stop("overwrite_zip requires allow_download = TRUE")
-  }
   if (!file.exists(zip_target_path) || isTRUE(overwrite_zip)) {
     if (!quiet) message("⬇️  Starting Selenium to scrape IBGE Data (Census 2010)...")
     
@@ -597,12 +560,32 @@ sao_paulo_download_metro_area <- function(
     if (!quiet) message("↪︎ ZIP already present: ", basename(zip_target_path))
   }
   
+  zip_target_path
+}
+
+
+# ------------------------------------------------------------------------------------------
+# Function: sao_paulo_prepare_metro_area
+#' @param source_zip Preserved IBGE 2010 archive; consumed exactly as supplied.
+#' @param level Municipality or census-tract layer.
+#' @param keep_municipality IBGE municipality codes to retain.
+#' @param quiet Suppress progress messages.
+#' @return An sf object; no acquisition or analytical output writes.
+#' @details Preserves LATIN1 reading, provider CRS, identifiers and selection.
+#' Extraction uses a temporary directory; save separately with write_geopackage().
+sao_paulo_prepare_metro_area <- function(source_zip,
+    level = c("mpio", "setor_censitario"),
+    keep_municipality = sao_paulo_cfg$cities_in_metro, quiet = FALSE) {
+  require_local_sources(source_zip,
+    "geographic acquisition in scripts/download_data/download_sao_paulo_data.R")
+  level <- match.arg(level)
+  zip_target_path <- source_zip
   # 3) Extraction --------------------------------------------------------------
   if (!quiet) message("📦 Extracting Data...")
   
   # Create a specific temp dir for this extraction to avoid collisions
-  exdir <- file.path(tempdir(), paste0("sp_carto_2010_", level))
-  if (dir.exists(exdir)) unlink(exdir, recursive = TRUE, force = TRUE)
+  exdir <- tempfile(paste0("sp_carto_2010_", level, "_"))
+  on.exit(unlink(exdir, recursive = TRUE), add = TRUE)
   dir.create(exdir)
   
   utils::unzip(zip_target_path, exdir = exdir)
@@ -648,66 +631,21 @@ sao_paulo_download_metro_area <- function(
   
   if (!quiet) message("🔎 Matched ", nrow(sf_out), " features (Level: ", level, ")")
   
-  # 5) Save --------------------------------------------------------------------
-  if (file.exists(out_file) && !overwrite_gpkg) {
-    if (!quiet) message("↪︎ Output GPKG exists. Skipping write.")
-  } else {
-    if (!quiet) message("💾 Writing GeoPackage → ", out_file)
-    if (file.exists(out_file)) unlink(out_file)
-    sf::st_write(sf_out, out_file, quiet = TRUE)
-  }
-  
   invisible(sf_out)
 }
 
 
-
-# --------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------------------
 # Function: sao_paulo_download_weighting_areas
-#' @param download_dir Persistent unfiltered weighting-area source.
-#' @param overwrite_source Explicitly refresh the preserved source.
-#' @param allow_download Permit source acquisition; FALSE requires preserved local files.
-#
-#' @param keep_municipality        vector; IBGE municipality codes to keep.
-#' @param year                     numeric; Census year (default 2010).
-#' @param out_file                 string; Output GeoPackage path.
-#' @param overwrite_gpkg           logical; Overwrite if exists?
-#' @param quiet                    logical; Suppress console messages?
-#
-#' @return     sf dataframe
-#
-#' @Purpose   : Downloads Census Weighting Areas (Áreas de Ponderação) via geobr.
-#              Filters for specific municipalities and saves to disk.
-# --------------------------------------------------------------------------------------------
-sao_paulo_download_weighting_areas <- function(
-    keep_municipality,
-    year           = 2010,
-    out_file       = here::here("data", "interim", "geospatial_data", "admin", "Brazil",
-                                "sp_weighting_areas.gpkg"),
-    overwrite_gpkg = TRUE,
-    quiet          = FALSE,
-    allow_download = TRUE,
-    download_dir = here::here("data", "downloads", "sao_paulo", "metro_area"),
-    overwrite_source = FALSE
-) {
-  
-  # 1) Check Dependencies
-  req_pkgs <- c("sf", "dplyr", if (allow_download) "geobr")
-  for(p in req_pkgs) {
-    if (!requireNamespace(p, quietly = TRUE)) {
-      stop(paste("Package", p, "required."))
-    }
-  }
-  
-  # 3) Download Data
-  if (!quiet) message("Reading preserved weighting areas (acquiring only if allowed).")
-  
+#' @param year Census vintage; 2010 in the manuscript workflow.
+#' @param download_dir Folder for the unfiltered weighting-area source.
+#' @param overwrite_source Explicitly refresh an existing preserved source.
+#' @param quiet Suppress progress messages.
+#' @return Path to the unfiltered RDS source; no preparation of metro subsets.
+sao_paulo_download_weighting_areas <- function(year = 2010,
+    download_dir = here::here(sao_paulo_cfg$dl_dir, "metro_area"),
+    overwrite_source = FALSE, quiet = FALSE) {
   source_path <- file.path(download_dir, paste0("sp_weighting_areas_", year, ".rds"))
-  if (!allow_download) {
-    require_local_sources(source_path,
-      "geographic acquisition in scripts/download_data/download_sao_paulo_data.R")
-    if (overwrite_source) stop("overwrite_source requires allow_download = TRUE")
-  }
   if (!file.exists(source_path) || overwrite_source) {
     data_sf <- geobr::read_weighting_area(
       code_weighting = "SP", year = year, showProgress = !quiet)
@@ -717,15 +655,21 @@ sao_paulo_download_weighting_areas <- function(
     record_source_acquisition(source_path, "geobr::read_weighting_area(SP)",
       paste(year, "geobr", utils::packageVersion("geobr")))
   }
-  data_sf <- readRDS(source_path)
+  source_path
+}
 
-  # Preserve/refresh the source even when retaining an existing derived output.
-  # 2) Check for Existing File
-  if (allow_download && file.exists(out_file) && !overwrite_gpkg) {
-    if (!quiet) message("↪︎ Output GPKG exists. Loading from disk...")
-    return(sf::st_read(out_file, quiet = TRUE))
-  }
 
+# ------------------------------------------------------------------------------------------
+# Function: sao_paulo_prepare_weighting_areas
+#' @param source_file Local unfiltered weighting-area RDS file.
+#' @param keep_municipality IBGE municipality codes to retain.
+#' @param quiet Suppress progress messages.
+#' @return An sf object with code_muni as character; no downloads or output writes.
+sao_paulo_prepare_weighting_areas <- function(source_file,
+    keep_municipality = sao_paulo_cfg$cities_in_metro, quiet = FALSE) {
+  require_local_sources(source_file,
+    "geographic acquisition in scripts/download_data/download_sao_paulo_data.R")
+  data_sf <- readRDS(source_file)
   # 4) Process and Filter
   if (!quiet) message("🗺️  Filtering Spatial Data...")
   
@@ -744,19 +688,11 @@ sao_paulo_download_weighting_areas <- function(
     message("🔎 Matched ", nrow(sf_out), " weighting areas.")
   }
   
-  # 5) Save Output
-  if (!quiet) message("💾 Writing GeoPackage → ", out_file)
-  
-  dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
-  if (file.exists(out_file)) unlink(out_file)
-  
-  sf::st_write(sf_out, out_file, quiet = TRUE)
-  
-  return(sf_out)
+  sf_out
 }
 
 
-# --------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------------------
 # Function: sao_paulo_download_pollution
 #
 #' @param base_url          string; Login URL for QUALAR.
@@ -1097,7 +1033,7 @@ sao_paulo_download_metadata <- function(
 #' @param metro_area            sf polygon of the metropolitan area
 #' @param radius_km             numeric; max distance to keep (default 20)
 #' @param stations_esri         ESRI for UTM Zone 23S (default 103213 for UTM 23S)
-#' @param out_file              output GeoPackage path
+#' @param out_file GeoPackage path; NULL returns the sf object without saving it.
 #' @param overwrite_gpkg        logical; overwrite if exists
 #' @param dissolve              logical; TRUE unions metro polygons
 #' @return     sf POINT data.frame
@@ -1119,7 +1055,9 @@ sp_filter_stations_in_metro <- function(
   # 0) Dependency Checks
   if (!inherits(metro_area, "sf")) stop("'metro_area' must be an sf object.")
   
-  dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
+  if (!is.null(out_file)) {
+    dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
+  }
   message("🔄 Starting São Paulo Data Cleaning...")
   
   # PART I: Clean Data & Fix Column Shifts
@@ -1199,6 +1137,8 @@ sp_filter_stations_in_metro <- function(
           " -> Output=", nrow(stations_final), 
           " (Dropped ", nrow(stations_sf) - nrow(stations_final), ")")
   
+  if (is.null(out_file)) return(stations_final)
+
   # PART IV: Save
   # ---------------------------------------------------------------------------
   if (file.exists(out_file) && !overwrite_gpkg) {
@@ -1580,7 +1520,8 @@ sp_process_stations_data_to_parquet <- function(
 #' @param out_dir  string; output folder for the two processed Parquet files.
 #' @param quiet    logical; suppress messages. Default FALSE.
 #
-#' @return  list(individual, collapsed); processed census data. Also writes
+#' @param return_data TRUE returns individual/collapsed tables; FALSE returns saved paths.
+#' @return Individual/collapsed tables, or named paths when return_data is FALSE.
 #           census_sp_individual_2010.parquet and census_sp_collapsed_2010.parquet.
 #           Parquet stores whatever type censobr returned for code_weighting instead
 #           of leaving it to a CSV reader's guess, which is what turned the 13-digit
@@ -1608,7 +1549,8 @@ sp_process_census_2010 <- function(
     out_dir   = here::here("data", "processed", "sao_paulo", "census"),
     quiet     = FALSE,
     source_file = here::here("data", "downloads", "sao_paulo", "census",
-                             "2010_population.parquet")
+                             "2010_population.parquet"),
+    return_data = TRUE
 ) {
   
   # Check required packages and spatial input
@@ -1829,19 +1771,30 @@ sp_process_census_2010 <- function(
     collapse_df, file.path(out_dir, "census_sp_collapsed_2010.parquet"),
     c(sp_meta, list(table_level = "geo")))
   
+  if (!return_data) {
+    return(c(
+      individual = file.path(out_dir, "census_sp_individual_2010.parquet"),
+      collapsed = file.path(out_dir, "census_sp_collapsed_2010.parquet")))
+  }
   return(list(individual = indiv_df, collapsed = collapse_df))
 }
 
 
-# --------------------------------------------------------------------------------------------
-# Register this city so city_cfg() can find it. Registered under the slug the scripts use,
-# not cfg$id, which is a display name for some cities. No download/process wrappers exist
-# for this city yet, so only the config is exposed.
-# --------------------------------------------------------------------------------------------
-register_city(
-  id  = "sao_paulo",
-  cfg = sao_paulo_cfg
-)
+#' @param cfg City configuration; output roots are respected by every stage.
+#' @param steps Offline stages; prerequisites run before selected stages.
+#' @param inputs Named source paths grouped by stage, or NULL for configured sources.
+#' @param quiet Suppress progress messages.
+#' @return Named stage lists of all generated file paths.
+sao_paulo_process <- function(
+    cfg = sao_paulo_cfg,
+    steps = c("geography", "stations_filter", "pollution_parquet", "census"),
+    inputs = NULL, quiet = FALSE) {
+  run_city_processing("sao_paulo", cfg, steps, inputs, quiet)
+}
+
+register_city("sao_paulo", cfg = sao_paulo_cfg,
+              process = sao_paulo_process)
+
 
 # --------------------------------------------------------------------------------------------
 # Function: sao_paulo_acquire_census_2010

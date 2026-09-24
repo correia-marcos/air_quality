@@ -15,6 +15,9 @@
 # — DECRETO 337 (17 de noviembre de 2023) CONSTITUYE ÁREA METROPOLITANA DE SANTIAGO
 # ============================================================================================
 
+# Package required by this module.
+library(dplyr)
+
 # Parameters (single source)
 santiago_cfg <- list(
   id               = "santiago",
@@ -25,6 +28,8 @@ santiago_cfg <- list(
   base_url_census  = "https://www.ine.gob.cl/docs/default-source",
   base_new_census  = "https://storage.googleapis.com/bktdescargascenso2024/",
   years            = 2000L:2023L,
+  station_buffer_km = 20,
+  processing_tz    = "UTC",
   dl_dir           = here::here("data", "downloads", "santiago"),
   out_dir          = here::here("data", "interim"),
   which_states     = c("Libertador General Bernardo O'Higgimns", "Metropolitana de Santiago",
@@ -77,201 +82,21 @@ santiago_cfg <- list(
 # ============================================================================================
 
 # --------------------------------------------------------------------------------------------
-# Function: santiago_download_metro_area_2024
-#' @param allow_download Permit source acquisition; FALSE requires preserved local files.
-#
-#' @param type             string; "metro_santiago" or "gran_santiago".
-#' @param level            string; "mpio" or "manzana".
-#' @param base_url         string; INE Census 2024 results URL.
-#' @param keep_municipality character vector; municipalities to keep.
-#' @param download_dir     string; local path to save the raw ZIP file.
-#' @param out_file         string; local path to save the processed GeoPackage.
-#' @param dissolve_by      string or NULL; id column whose repeated values are
-#                          merged into one polygon. Default NULL (no merging).
-#' @param overwrite_zip    logical; re-download ZIP if it exists. Default FALSE.
-#' @param overwrite_gpkg   logical; overwrite output GeoPackage. Default TRUE.
-#' @param container        logical; TRUE if running with Docker Selenium.
-#' @param quiet            logical; suppress messages. Default FALSE.
-#
-#' @return  sf object containing the filtered spatial data.
-#' @details
-#   Downloads the INE 2024 census cartography, filters the requested Santiago
-#   spatial definition, linearizes curved geometries, repairs validity, and
-#   saves the result as a GeoPackage. Linearization is required because the INE
-#   layer can contain MULTISURFACE/CURVEPOLYGON geometries that may fail in
-#   st_make_valid() and downstream distance calculations.
-#
-#   When `dissolve_by` is supplied, rows sharing that id are unioned into a
-#   single polygon. INE splits some comunas into several "entidades" — Lampa
-#   (CUT 13302) arrives as CHICAUMA - VALLE GRANDE plus ESTACIÓN COLINA — so the
-#   layer carries more rows than the census, which is one row per comuna. Left
-#   unmerged, the comuna gets two representative points and appears twice in the
-#   geo-to-station distance matrix. Attributes that disagree across the merged
-#   rows are set to NA, because no single value describes the merged unit.
-#
-#   The layer keeps INE's own CRS, EPSG:4674 (SIRGAS 2000), so data/raw/ stays
-#   faithful to the source. The 2017 zonas arrive in EPSG:4326 instead; both are
-#   ITRF-aligned and every consumer reprojects, so the split is harmless.
-#
-#' @Written_on : 25/10/2025
-#' @Written_by : Marcos Paulo
-# --------------------------------------------------------------------------------------------
-santiago_download_metro_area_2024 <- function(
-    type              = c("metro_santiago", "gran_santiago"),
-    level             = c("mpio", "manzana"),
-    base_url          = santiago_cfg$base_url_shp,
-    keep_municipality = santiago_cfg$cities_in_metro,
-    download_dir      = here::here("data", "downloads", "Administrative", "Chile"),
-    out_file          = here::here("data", "interim", "geospatial_data", "admin", "Chile",
-                                   "santiago_metro.gpkg"),
-    dissolve_by       = NULL,
-    overwrite_zip     = FALSE,
-    overwrite_gpkg    = TRUE,
-    container         = TRUE,
-    quiet             = FALSE,
-    allow_download = TRUE
-) {
-  
-  # 0. Match arguments and check packages
-  # -----------------------------------------------------------------------
-  type  <- match.arg(tolower(type), c("metro_santiago", "gran_santiago"))
-  level <- match.arg(tolower(level), c("mpio", "manzana"))
-  
-  pkgs <- if (allow_download) c("sf", "selenium") else "sf"
-  
-  for (p in pkgs) {
-    if (!requireNamespace(p, quietly = TRUE)) {
-      stop("Package '", p, "' required. Add to renv.")
-    }
-  }
-  
-  # 1. Define paths
-  # -----------------------------------------------------------------------
+# Function: santiago_download_geography_2024
+#' @param base_url INE census 2024 results portal.
+#' @param download_dir Folder for the preserved source archive.
+#' @param overwrite_zip Explicitly refresh an existing archive.
+#' @param container Use the configured Selenium container.
+#' @param quiet Suppress progress messages.
+#' @return Source archive path; no preparation or derived output.
+santiago_download_geography_2024 <- function(base_url = santiago_cfg$base_url_shp,
+    download_dir = here::here(santiago_cfg$dl_dir, "metro_area"),
+    overwrite_zip = FALSE, container = TRUE, quiet = FALSE) {
   root_dl_dir <- here::here("data", "downloads")
-  
-  if (allow_download) dir.create(download_dir, recursive = TRUE, showWarnings = FALSE)
-  dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
-  
+  dir.create(download_dir, recursive = TRUE, showWarnings = FALSE)
   zip_browser_name <- "Cartografia_censo2024_Pais.zip"
   zip_landing_path <- file.path(root_dl_dir, zip_browser_name)
-  zip_target_path  <- file.path(download_dir, zip_browser_name)
-  
-  # 2. Helpers
-  # -----------------------------------------------------------------------
-  # Normalize Spanish municipality names for matching.
-  .norm_name <- function(x) {
-    x <- toupper(x)
-    x <- chartr("áéíóúÁÉÍÓÚñÑ", "AEIOUAEIOUnN", x)
-    trimws(x)
-  }
-  
-  # Linearize curved geometries and repair validity.
-  .regularize_polygon_geometry <- function(x) {
-    
-    # Remove Z/M dimensions if present.
-    x <- sf::st_zm(x, drop = TRUE, what = "ZM")
-    
-    # Detect curved or surface geometry types.
-    geom_types <- as.character(sf::st_geometry_type(x, by_geometry = TRUE))
-    
-    has_curves <- any(
-      grepl("CURVE|SURFACE|CIRCULAR|COMPOUND", geom_types,
-            ignore.case = TRUE)
-    )
-    
-    # GDAL linearization is safer than st_make_valid() for CURVEPOLYGON.
-    if (has_curves) {
-      tmp_in  <- tempfile("santiago_curved_", fileext = ".gpkg")
-      tmp_out <- tempfile("santiago_linear_", fileext = ".gpkg")
-      
-      on.exit(unlink(c(tmp_in, tmp_out), recursive = TRUE, force = TRUE),
-              add = TRUE)
-      
-      sf::st_write(
-        x,
-        tmp_in,
-        layer = "geo",
-        delete_dsn = TRUE,
-        quiet = TRUE
-      )
-      sf::gdal_utils(
-        util = "vectortranslate",
-        source = tmp_in,
-        destination = tmp_out,
-        options = c(
-          "-f", "GPKG",
-          "-nlt", "CONVERT_TO_LINEAR",
-          "-nln", "geo"
-        )
-      )
-      x <- sf::st_read(tmp_out, layer = "geo", quiet = TRUE)
-    }
-    
-    # Repair validity after linearization.
-    x <- sf::st_make_valid(x)
-    
-    # Keep polygonal components if validation returns geometry collections.
-    x <- suppressWarnings(sf::st_collection_extract(x, "POLYGON"))
-    
-    # Use MULTIPOLYGON for stable downstream processing.
-    x <- suppressWarnings(sf::st_cast(x, "MULTIPOLYGON", warn = FALSE))
-
-    return(x)
-  }
-  # Merge rows that share an id into one polygon, so the geometry unit matches the census unit. 
-  .dissolve_by_id <- function(x, id_col) {
-
-    if (!id_col %in% names(x)) {
-      stop("Column '", id_col, "' not found; cannot dissolve.")
-    }
-
-    ids     <- as.character(x[[id_col]])
-    dup_ids <- unique(ids[duplicated(ids)])
-
-    if (length(dup_ids) == 0L) {
-      return(x)
-    }
-
-    if (!quiet) {
-      message("[santiago_area] Dissolving ", length(dup_ids), " repeated ",
-              id_col, " value(s): ", paste(dup_ids, collapse = ", "))
-    }
-
-    attr_names <- setdiff(names(x), attr(x, "sf_column"))
-
-    # Rebuild one row per id, keeping the layer's original id order.
-    parts <- lapply(unique(ids), function(id) {
-
-      rows <- x[ids == id, ]
-
-      if (nrow(rows) == 1L) {
-        return(rows)
-      }
-
-      # Union the parts into a single geometry for this id.
-      merged <- rows[1, ]
-      sf::st_geometry(merged) <- sf::st_union(sf::st_geometry(rows))
-
-      # Drop attributes that differ across the merged rows: issue otherwise
-      for (nm in attr_names) {
-        if (length(unique(rows[[nm]])) > 1L) merged[[nm]][1] <- NA
-      }
-
-      merged
-    })
-
-    out <- do.call(rbind, parts)
-
-    suppressWarnings(sf::st_cast(out, "MULTIPOLYGON", warn = FALSE))
-  }
-
-  # 3. Download ZIP with Selenium, if needed
-  # -----------------------------------------------------------------------
-  if (!allow_download) {
-    require_local_sources(zip_target_path,
-      "geographic acquisition in scripts/download_data/download_santiago_data.R")
-    if (overwrite_zip) stop("overwrite_zip requires allow_download = TRUE")
-  }
+  zip_target_path <- file.path(download_dir, zip_browser_name)
   if (!file.exists(zip_target_path) || isTRUE(overwrite_zip)) {
     
     if (!quiet) {
@@ -484,23 +309,169 @@ santiago_download_metro_area_2024 <- function(
     }
   }
   
+  zip_target_path
+}
+
+
+# ------------------------------------------------------------------------------------------
+# Function: santiago_prepare_metro_area_2024
+#' @param source_zip Preserved INE archive; consumed exactly as supplied.
+#' @param type Metro Santiago or Gran Santiago spatial definition.
+#' @param level Municipality or census-block layer.
+#' @param keep_municipality Municipality names for Metro Santiago.
+#' @param dissolve_by Optional identifier to merge repeated geographic units.
+#' @param quiet Suppress progress messages.
+#' @return An sf object; no acquisition or analytical output writes.
+#' @details
+#   Reads the preserved INE 2024 census cartography, filters the requested Santiago
+#   spatial definition, linearizes curved geometries, repairs validity, and
+#   returns an sf object for separate saving. Linearization is required because the INE
+#   layer can contain MULTISURFACE/CURVEPOLYGON geometries that may fail in
+#   st_make_valid() and downstream distance calculations.
+#
+#   When `dissolve_by` is supplied, rows sharing that id are unioned into a
+#   single polygon. INE splits some comunas into several "entidades" — Lampa
+#   (CUT 13302) arrives as CHICAUMA - VALLE GRANDE plus ESTACIÓN COLINA — so the
+#   layer carries more rows than the census, which is one row per comuna. Left
+#   unmerged, the comuna gets two representative points and appears twice in the
+#   geo-to-station distance matrix. Attributes that disagree across the merged
+#   rows are set to NA, because no single value describes the merged unit.
+#
+#   The layer keeps INE's own CRS, EPSG:4674 (SIRGAS 2000), so data/raw/ stays
+#   faithful to the source. The 2017 zonas arrive in EPSG:4326 instead; both are
+#   ITRF-aligned and every consumer reprojects, so the split is harmless.
+#
+santiago_prepare_metro_area_2024 <- function(source_zip,
+    type = c("metro_santiago", "gran_santiago"), level = c("mpio", "manzana"),
+    keep_municipality = santiago_cfg$cities_in_metro, dissolve_by = NULL, quiet = FALSE) {
+  require_local_sources(source_zip,
+    "geographic acquisition in scripts/download_data/download_santiago_data.R")
+  type <- match.arg(tolower(type), c("metro_santiago", "gran_santiago"))
+  level <- match.arg(tolower(level), c("mpio", "manzana"))
+  zip_target_path <- source_zip
+  # 2. Helpers
+  # -----------------------------------------------------------------------
+  # Normalize Spanish municipality names for matching.
+  .norm_name <- function(x) {
+    x <- toupper(x)
+    x <- chartr("áéíóúÁÉÍÓÚñÑ", "AEIOUAEIOUnN", x)
+    trimws(x)
+  }
+
+  # Linearize curved geometries and repair validity.
+  .regularize_polygon_geometry <- function(x) {
+
+    # Remove Z/M dimensions if present.
+    x <- sf::st_zm(x, drop = TRUE, what = "ZM")
+
+    # Detect curved or surface geometry types.
+    geom_types <- as.character(sf::st_geometry_type(x, by_geometry = TRUE))
+
+    has_curves <- any(
+      grepl("CURVE|SURFACE|CIRCULAR|COMPOUND", geom_types,
+            ignore.case = TRUE)
+    )
+
+    # GDAL linearization is safer than st_make_valid() for CURVEPOLYGON.
+    if (has_curves) {
+      tmp_in  <- tempfile("santiago_curved_", fileext = ".gpkg")
+      tmp_out <- tempfile("santiago_linear_", fileext = ".gpkg")
+
+      on.exit(unlink(c(tmp_in, tmp_out), recursive = TRUE, force = TRUE),
+              add = TRUE)
+
+      sf::st_write(
+        x,
+        tmp_in,
+        layer = "geo",
+        delete_dsn = TRUE,
+        quiet = TRUE
+      )
+      sf::gdal_utils(
+        util = "vectortranslate",
+        source = tmp_in,
+        destination = tmp_out,
+        options = c(
+          "-f", "GPKG",
+          "-nlt", "CONVERT_TO_LINEAR",
+          "-nln", "geo"
+        )
+      )
+      x <- sf::st_read(tmp_out, layer = "geo", quiet = TRUE)
+    }
+
+    # Repair validity after linearization.
+    x <- sf::st_make_valid(x)
+
+    # Keep polygonal components if validation returns geometry collections.
+    x <- suppressWarnings(sf::st_collection_extract(x, "POLYGON"))
+
+    # Use MULTIPOLYGON for stable downstream processing.
+    x <- suppressWarnings(sf::st_cast(x, "MULTIPOLYGON", warn = FALSE))
+
+    return(x)
+  }
+  # Merge rows with the same id so each geometry matches one census unit.
+  .dissolve_by_id <- function(x, id_col) {
+
+    if (!id_col %in% names(x)) {
+      stop("Column '", id_col, "' not found; cannot dissolve.")
+    }
+
+    ids     <- as.character(x[[id_col]])
+    dup_ids <- unique(ids[duplicated(ids)])
+
+    if (length(dup_ids) == 0L) {
+      return(x)
+    }
+
+    if (!quiet) {
+      message("[santiago_area] Dissolving ", length(dup_ids), " repeated ",
+              id_col, " value(s): ", paste(dup_ids, collapse = ", "))
+    }
+
+    attr_names <- setdiff(names(x), attr(x, "sf_column"))
+
+    # Rebuild one row per id, keeping the layer's original id order.
+    parts <- lapply(unique(ids), function(id) {
+
+      rows <- x[ids == id, ]
+
+      if (nrow(rows) == 1L) {
+        return(rows)
+      }
+
+      # Union the parts into a single geometry for this id.
+      merged <- rows[1, ]
+      sf::st_geometry(merged) <- sf::st_union(sf::st_geometry(rows))
+
+      # Drop attributes that differ across the merged rows: issue otherwise
+      for (nm in attr_names) {
+        if (length(unique(rows[[nm]])) > 1L) merged[[nm]][1] <- NA
+      }
+
+      merged
+    })
+
+    out <- do.call(rbind, parts)
+
+    suppressWarnings(sf::st_cast(out, "MULTIPOLYGON", warn = FALSE))
+  }
+
   # 4. Extract ZIP and locate GeoPackage
   # -----------------------------------------------------------------------
   if (!quiet) {
     message("[santiago_area] Extracting cartography ZIP.")
   }
-  
-  exdir <- file.path(tempdir(), "santiago_carto_2024")
-  
-  if (dir.exists(exdir)) {
-    unlink(exdir, recursive = TRUE, force = TRUE)
-  }
-  
+
+  exdir <- tempfile("santiago_carto_2024_")
+  on.exit(unlink(exdir, recursive = TRUE), add = TRUE)
+
   dir.create(exdir)
   utils::unzip(zip_target_path, exdir = exdir)
-  
+
   gpkg_found <- file.path(exdir, "Cartografia_censo2024_Pais.gpkg")
-  
+
   if (!file.exists(gpkg_found)) {
     candidates <- list.files(
       exdir,
@@ -508,95 +479,95 @@ santiago_download_metro_area_2024 <- function(
       full.names = TRUE,
       recursive = TRUE
     )
-    
+
     if (length(candidates) > 0L) {
       gpkg_found <- candidates[1]
     } else {
       stop("Could not find 'Cartografia_censo2024_Pais.gpkg' in ZIP.")
     }
   }
-  
+
   if (!quiet) {
     message("[santiago_area] Found GeoPackage: ", basename(gpkg_found))
   }
-  
+
   # 5. Process requested spatial definition
   # -----------------------------------------------------------------------
   sf_out <- NULL
-  
+
   if (type == "gran_santiago") {
-    
+
     # Gran Santiago uses the urban-limit layer.
     layer_admin <- "Limite_Urbano_CPV24"
-    
+
     if (!quiet) {
       message("[santiago_area] Reading layer: ", layer_admin)
     }
-    
+
     sf_admin <- sf::st_read(gpkg_found, layer = layer_admin, quiet = TRUE)
-    
+
     # INE has multiple LOCALIDAD-like columns; the second matched the earlier code.
     loc_cols <- grep("LOCALIDAD", names(sf_admin), value = TRUE,
                      ignore.case = TRUE)
-    
+
     if (length(loc_cols) == 0L) {
       stop("No LOCALIDAD-like column found in layer ", layer_admin)
     }
-    
+
     col_loc <- if (length(loc_cols) >= 2L) loc_cols[2] else loc_cols[1]
-    
+
     sf_filtered <- sf_admin[sf_admin[[col_loc]] == "GRAN SANTIAGO", ]
-    
+
     if (nrow(sf_filtered) == 0L) {
       stop("Could not find 'GRAN SANTIAGO' in ", layer_admin)
     }
-    
+
     if (level == "mpio") {
       sf_out <- sf_filtered
-      
+
     } else {
       target_ids <- unique(as.character(sf_filtered$ID_ENTIDAD))
-      
+
       if (!quiet) {
         message("[santiago_area] Reading Manzanas_CPV24 by ID_ENTIDAD.")
       }
-      
+
       query <- sprintf(
         "SELECT * FROM Manzanas_CPV24 WHERE ID_ENTIDAD IN ('%s')",
         paste(target_ids, collapse = "','")
       )
-      
+
       sf_out <- sf::st_read(gpkg_found, query = query, quiet = TRUE)
     }
-    
+
   } else {
-    
+
     # Metro Santiago uses administrative districts.
     layer_admin <- "Distrital_CPV24"
-    
+
     if (!quiet) {
       message("[santiago_area] Reading layer: ", layer_admin)
     }
-    
+
     sf_admin <- sf::st_read(gpkg_found, layer = layer_admin, quiet = TRUE)
-    
+
     col_comuna <- grep("COMUNA", names(sf_admin), value = TRUE,
                        ignore.case = TRUE)[1]
-    
+
     if (is.na(col_comuna)) {
       stop("Column 'COMUNA' missing in layer ", layer_admin)
     }
-    
+
     target_comunas_norm <- .norm_name(keep_municipality)
-    
+
     sf_filtered <- sf_admin[
       .norm_name(sf_admin[[col_comuna]]) %in% target_comunas_norm,
     ]
-    
+
     if (nrow(sf_filtered) == 0L) {
       stop("No communes matched for Metro Santiago.")
     }
-    
+
     if (!quiet) {
       message(
         "[santiago_area] Matched ",
@@ -604,32 +575,32 @@ santiago_download_metro_area_2024 <- function(
         " commune(s)."
       )
     }
-    
+
     if (level == "mpio") {
       sf_out <- sf_filtered
-      
+
     } else {
       target_ids <- unique(as.character(sf_filtered$ID_DISTRITO))
-      
+
       if (!quiet) {
         message("[santiago_area] Reading Manzanas_CPV24 by ID_DISTRITO.")
       }
-      
+
       query <- sprintf(
         "SELECT * FROM Manzanas_CPV24 WHERE ID_DISTRITO IN ('%s')",
         paste(target_ids, collapse = "','")
       )
-      
+
       sf_out <- sf::st_read(gpkg_found, query = query, quiet = TRUE)
     }
   }
-  
+
   # 6. Regularize geometry before saving
   # -----------------------------------------------------------------------
   if (!quiet) {
     message("[santiago_area] Regularizing polygon geometries.")
   }
-  
+
   sf_out <- .regularize_polygon_geometry(sf_out)
 
   # 6b. Merge rows sharing an id (runs after repair so the union gets valid input)
@@ -644,29 +615,11 @@ santiago_download_metro_area_2024 <- function(
     }
   }
 
-  # 7. Save output GeoPackage
-  # -----------------------------------------------------------------------
-  if (file.exists(out_file) && !overwrite_gpkg) {
-    if (!quiet) {
-      message("[santiago_area] Output exists and overwrite_gpkg = FALSE.")
-    }
-  } else {
-    if (!quiet) {
-      message("[santiago_area] Writing GeoPackage: ", out_file)
-    }
-    
-    if (file.exists(out_file)) {
-      unlink(out_file)
-    }
-    
-    sf::st_write(sf_out, out_file, quiet = TRUE)
-  }
-  
-  return(invisible(sf_out))
+  invisible(sf_out)
 }
 
 
-# ----------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------------------
 # Function: santiago_download_pollution
 #
 #' @param states                 character vector; List of states (Regiones) to scrape.
@@ -1484,7 +1437,7 @@ santiago_download_census_data <- function(
 #' @param stations_df   data.frame; raw SINCA station-location data.
 #' @param metro_area    sf POLYGON/MULTIPOLYGON; metropolitan area boundary.
 #' @param radius_km     numeric; max distance from metro area to keep. Default 20.
-#' @param out_file      string; output GeoPackage path.
+#' @param out_file GeoPackage path; NULL returns the sf object without saving it.
 #' @param overwrite_gpkg logical; overwrite output GeoPackage if exists. Default TRUE.
 #' @param dissolve      logical; union metro polygons before filtering. Default TRUE.
 #' @param correct_sinca logical; apply documented SINCA metadata corrections.
@@ -1534,7 +1487,9 @@ santiago_filter_stations_in_metro <- function(
   }
   
   # Ensure output directory exists.
-  dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
+  if (!is.null(out_file)) {
+    dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
+  }
   
   if (!quiet) {
     message("[santiago_stations] Starting station integration.")
@@ -1767,6 +1722,8 @@ santiago_filter_stations_in_metro <- function(
     )
   }
   
+  if (is.null(out_file)) return(stations_final)
+
   # 8. Save output
   # -----------------------------------------------------------------------
   if (file.exists(out_file) && !isTRUE(overwrite_gpkg)) {
@@ -1790,57 +1747,18 @@ santiago_filter_stations_in_metro <- function(
 
 
 # --------------------------------------------------------------------------------------------
-# Function: santiago_download_metro_area_2017
-#' @param download_dir Persistent, unfiltered ArcGIS responses for offline preparation.
-#' @param overwrite_source Explicitly refresh the complete source response set.
-#' @param allow_download Permit source acquisition; FALSE requires preserved local files.
-#
-#' @param base_url              string; INE 2017 DPA ArcGIS services root.
-#' @param conurbacion           string; conurbation name delimiting the metro area.
-#' @param region_prefix         string; CUT prefix of the region holding it.
-#' @param out_file              string; GeoPackage to write.
-#' @param overwrite_gpkg        logical; overwrite output GeoPackage. Default TRUE.
-#' @param quiet                 logical; suppress messages. Default FALSE.
-#
-#' @return     sf object of zona censal polygons, one row per `zona_id`.
-#
-#' @Purpose   : Downloads the 2017 metropolitan area of Santiago at census-zone level,
-#              which is the geography the 2017 census microdata identifies. Two REST
-#              calls: the conurbation polygon that delimits the area, and the census
-#              zones of the region, keeping the zones that fall inside it.
-#
-#' @details    `zona_id` is CUT(5) + distrito(2) + area(1) + zona(3), the same
-#              11-character code the census reports as `geocodigo`, so this layer and
-#              santiago_process_census_2017() join exactly. The area digit is 1
-#              because Zona_Censal holds urban zones only; rural residents live
-#              outside the conurbation and are not part of the metropolitan area.
-#              The 2017 delimitation covers 813.9 km2 against 821.6 km2 for the 2024
-#              one, so the two vintages agree to under one per cent.
-#
-#              The layer is written in EPSG:4326, the CRS the ArcGIS service returns
-#              (`outSR=4326`), so data/raw/ stays faithful to the source. Every
-#              polygon is GEOS-valid, but 976 of the 1,655 zones carry edges shorter
-#              than 1 cm (4,154 in total, the shortest 3.2 mm). That is below s2's
-#              rebuild grid, so any st_make_valid()/st_union() run on this layer in
-#              lon/lat collapses them into duplicate vertices and aborts. Consumers
-#              must repair it on a projected CRS: see santiago_filter_stations_in_metro().
-#
-#' @Written_on: July 2026
-#' @Written_by: Marcos Paulo
-# --------------------------------------------------------------------------------------------
-santiago_download_metro_area_2017 <- function(
-    base_url       = santiago_cfg$base_url_dpa_17,
-    conurbacion    = "GRAN SANTIAGO",
-    region_prefix  = "13",
-    out_file       = here::here("data", "interim", "geospatial_data", "santiago",
-                                "gran_santiago_zonas_2017.gpkg"),
-    overwrite_gpkg = TRUE,
-    quiet          = FALSE,
-    allow_download = TRUE,
-    download_dir = here::here("data", "downloads", "santiago", "metro_area", "2017"),
-    overwrite_source = FALSE
-) {
-
+# Function: santiago_download_geography_2017
+#' @param base_url INE 2017 ArcGIS services root.
+#' @param conurbacion Conurbation to query.
+#' @param region_prefix CUT prefix for the source region.
+#' @param download_dir Folder for the three unfiltered provider responses.
+#' @param overwrite_source Explicitly refresh the complete response set.
+#' @param quiet Suppress progress messages.
+#' @return Named paths to metro, zones and count responses; no derived outputs.
+santiago_download_geography_2017 <- function(base_url = santiago_cfg$base_url_dpa_17,
+    conurbacion = "GRAN SANTIAGO", region_prefix = "13",
+    download_dir = here::here(santiago_cfg$dl_dir, "metro_area", "2017"),
+    overwrite_source = FALSE, quiet = FALSE) {
   # Build an ArcGIS query URL. sf reads GeoJSON straight from the endpoint.
   .query <- function(service, where, fields, geom = "true") {
     paste0(base_url, "/", service, "/FeatureServer/0/query",
@@ -1859,12 +1777,7 @@ santiago_download_metro_area_2017 <- function(
   stem <- paste0(gsub("[^A-Za-z0-9]", "_", conurbacion), "_", region_prefix)
   paths <- stats::setNames(file.path(download_dir,
     paste0(stem, c("_metro.geojson", "_zonas.geojson", "_count.json"))), names(urls))
-  if (!allow_download) {
-    require_local_sources(paths,
-      "geographic acquisition in scripts/download_data/download_santiago_data.R")
-    if (overwrite_source) stop("overwrite_source requires allow_download = TRUE")
-  }
-  if (allow_download && (overwrite_source || any(!file.exists(paths)))) {
+  if (overwrite_source || any(!file.exists(paths))) {
     dir.create(download_dir, recursive = TRUE, showWarnings = FALSE)
     if (any(file.exists(paths)) && !overwrite_source) {
       stop("Incomplete source set; explicitly refresh all three ArcGIS responses.")
@@ -1874,23 +1787,48 @@ santiago_download_metro_area_2017 <- function(
       record_source_acquisition(paths[[name]], urls[[name]], "2017")
     }
   }
-  metro <- sf::st_read(paths[["metro"]], quiet = TRUE)
-  zonas <- sf::st_read(paths[["zonas"]], quiet = TRUE)
-  n_expected <- as.integer(jsonlite::fromJSON(paths[["count"]])$count)
+  paths
+}
+
+
+# ------------------------------------------------------------------------------------------
+# Function: santiago_prepare_metro_area_2017
+#' @param metro_file Preserved conurbation GeoJSON response.
+#' @param zones_file Preserved regional census-zone GeoJSON response.
+#' @param count_file Preserved provider count response; detects truncated queries.
+#' @param quiet Suppress progress messages.
+#' @return An sf object with zona_id; no acquisition or analytical output writes.
+#' @details    `zona_id` is CUT(5) + distrito(2) + area(1) + zona(3), the same
+#              11-character code the census reports as `geocodigo`, so this layer and
+#              santiago_process_census_2017() join exactly. The area digit is 1
+#              because Zona_Censal holds urban zones only; rural residents live
+#              outside the conurbation and are not part of the metropolitan area.
+#              The 2017 delimitation covers 813.9 km2 against 821.6 km2 for the 2024
+#              one, so the two vintages agree to under one per cent.
+#
+#              The layer retains EPSG:4326, the CRS the ArcGIS service returns
+#              (`outSR=4326`), so data/raw/ stays faithful to the source. Every
+#              polygon is GEOS-valid, but 976 of the 1,655 zones carry edges shorter
+#              than 1 cm (4,154 in total, the shortest 3.2 mm). That is below s2's
+#              rebuild grid, so any st_make_valid()/st_union() run on this layer in
+#              lon/lat collapses them into duplicate vertices and aborts. Consumers
+#              must repair it on a projected CRS: see santiago_filter_stations_in_metro().
+#
+santiago_prepare_metro_area_2017 <- function(metro_file, zones_file, count_file,
+    quiet = FALSE) {
+  require_local_sources(c(metro_file, zones_file, count_file),
+    "geographic acquisition in scripts/download_data/download_santiago_data.R")
+  metro <- sf::st_read(metro_file, quiet = TRUE)
+  zonas <- sf::st_read(zones_file, quiet = TRUE)
+  n_expected <- as.integer(jsonlite::fromJSON(count_file)$count)
   if (nrow(metro) == 0L) {
-    stop("Conurbation '", conurbacion, "' not found in Conurbaciones_2017.")
+    stop("Empty conurbation source: ", metro_file)
   }
   if (length(n_expected) != 1L || is.na(n_expected)) stop("Missing zone count.")
 
   if (nrow(zonas) != n_expected) {
     stop("Zona_Censal returned ", nrow(zonas), " of ", n_expected,
          " features; the query was truncated.")
-  }
-
-  # Preserve/refresh the source even when retaining an existing derived output.
-  if (allow_download && file.exists(out_file) && !isTRUE(overwrite_gpkg)) {
-    if (!quiet) message("[santiago_2017_area] Output exists and overwrite = FALSE.")
-    return(sf::st_read(out_file, quiet = TRUE))
   }
 
   # 3. Keep the zones inside the conurbation. GEOS predicates are planar.
@@ -1919,21 +1857,11 @@ santiago_download_metro_area_2017 <- function(
             data.table::uniqueN(zonas$CUT), " commune(s).")
   }
 
-  dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
-
-  if (file.exists(out_file)) {
-    unlink(out_file)
-  }
-
-  sf::st_write(zonas, out_file, quiet = TRUE, append = FALSE)
-
-  if (!quiet) message("[santiago_2017_area] Saved GeoPackage: ", out_file)
-
-  return(zonas)
+  zonas
 }
 
 
-# --------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------------------
 # Function: santiago_process_stations_data_to_parquet
 #
 #' @param data_folder          string; folder with the station .txt files.
@@ -2222,12 +2150,13 @@ dt <- tryCatch(
 #' @param work_dir Writable location for a fresh copy of that database.
 #
 #' @param sf_data           sf object; metro-area census zones, from
-#                           santiago_download_metro_area_2017().
+#                           santiago_prepare_metro_area_2017().
 #' @param match_col         string; zone-id column in sf_data (default "zona_id").
 #' @param out_dir           string; Directory for the two output Parquet files.
 #' @param quiet             logical; Suppress progress messages?
 #
-#' @return     list(individual, collapsed); Returns tibbles of the data. Also writes
+#' @param return_data TRUE returns individual/collapsed tables; FALSE returns saved paths.
+#' @return Individual/collapsed tables, or named paths when return_data is FALSE.
 #              census_individual_2017.parquet and census_collapsed_2017.parquet.
 #              Parquet keeps zona_id character; a CSV roundtrip would not.
 #
@@ -2256,7 +2185,8 @@ santiago_process_census_2017 <- function(
     quiet     = FALSE,
     source_db = here::here("data", "downloads", "santiago", "census", "2017",
                            "censo2017.duckdb"),
-    work_dir = here::here("data", "interim", "census_extracted", "santiago", "2017")
+    work_dir = here::here("data", "interim", "census_extracted", "santiago", "2017"),
+    return_data = TRUE
 ) {
 
   # Validate spatial inputs
@@ -2361,8 +2291,7 @@ santiago_process_census_2017 <- function(
   if (!quiet) message("[santiago_2017] Collecting individual data into memory...")
   
   individual_df <- processed_db %>% 
-    dplyr::collect() %>% 
-    dplyr::filter(!is.na(educ_years))
+    dplyr::collect()
   
   if (!quiet) message("[santiago_2017] Collapsing to zona censal (Adults 25+)...")
 
@@ -2431,6 +2360,12 @@ santiago_process_census_2017 <- function(
     collapsed_df, file.path(out_dir, "census_collapsed_2017.parquet"),
     c(s17_meta, list(table_level = "geo")))
   
+  if (!return_data) {
+    return(c(
+      working_copy = work_db,
+      individual = file.path(out_dir, "census_individual_2017.parquet"),
+      collapsed = file.path(out_dir, "census_collapsed_2017.parquet")))
+  }
   return(list(individual = individual_df, collapsed = collapsed_df))
 }
 
@@ -2445,7 +2380,8 @@ santiago_process_census_2017 <- function(
 #' @param overwrite logical; re-extract ZIP if file exists. Default FALSE.
 #' @param quiet     logical; suppress messages. Default FALSE.
 #
-#' @return  list(individual, collapsed); processed census data. Also writes
+#' @param return_data TRUE returns individual/collapsed tables; FALSE returns saved paths.
+#' @return Individual/collapsed tables, or named paths when return_data is FALSE.
 #           census_santiago_individual_2024.parquet and
 #           census_santiago_collapsed_2024.parquet. Parquet keeps CUT character;
 #           a CSV roundtrip drops the leading zero on region-1 communes.
@@ -2463,7 +2399,8 @@ santiago_process_census_2024 <- function(
     match_col  = "CUT",
     out_dir    = here::here("data", "processed", "santiago", "census_2024"),
     overwrite  = FALSE,
-    quiet      = FALSE
+    quiet      = FALSE,
+    return_data = TRUE
 ) {
   
   # Check required packages and spatial input
@@ -2655,19 +2592,31 @@ santiago_process_census_2024 <- function(
     df_collapse, file.path(out_dir, "census_santiago_collapsed_2024.parquet"),
     c(s24_meta, list(table_level = "geo")))
   
+  if (!return_data) {
+    return(c(
+      extracted = dest_csv,
+      individual = file.path(out_dir, "census_santiago_individual_2024.parquet"),
+      collapsed = file.path(out_dir, "census_santiago_collapsed_2024.parquet")))
+  }
   return(list(individual = df_harm, collapsed = df_collapse))
 }
 
 
-# --------------------------------------------------------------------------------------------
-# Register this city so city_cfg() can find it. Registered under the slug the scripts use,
-# not cfg$id, which is a display name for some cities. No download/process wrappers exist
-# for this city yet, so only the config is exposed.
-# --------------------------------------------------------------------------------------------
-register_city(
-  id  = "santiago",
-  cfg = santiago_cfg
-)
+#' @param cfg City configuration; output roots are respected by every stage.
+#' @param steps Offline stages; prerequisites run before selected stages.
+#' @param inputs Named source paths grouped by stage, or NULL for configured sources.
+#' @param quiet Suppress progress messages.
+#' @return Named stage lists of all generated file paths.
+santiago_process <- function(
+    cfg = santiago_cfg,
+    steps = c("geography", "stations_filter", "pollution_parquet", "census"),
+    inputs = NULL, quiet = FALSE) {
+  run_city_processing("santiago", cfg, steps, inputs, quiet)
+}
+
+register_city("santiago", cfg = santiago_cfg,
+              process = santiago_process)
+
 
 # --------------------------------------------------------------------------------------------
 # Function: santiago_acquire_census_2017

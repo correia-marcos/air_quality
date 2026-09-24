@@ -52,12 +52,6 @@ check_targets_contracts <- function() {
   fake_geography <- function(...) {
     args <- list(...)
     calls[[length(calls) + 1L]] <<- args
-    dir.create(dirname(args$out_file), recursive = TRUE, showWarnings = FALSE)
-    writeLines("derived fixture", args$out_file)
-    data.frame(value = 1)
-  }
-  e$bogota_prepare_metro_area <- function(...) {
-    calls[[length(calls) + 1L]] <<- list(...)
     data.frame(value = 1)
   }
   e$write_geopackage <- function(x, path, ...) {
@@ -65,9 +59,9 @@ check_targets_contracts <- function() {
     writeLines("derived fixture", path)
     path
   }
-  builders <- c("cdmx_download_metro_area",
-    "santiago_download_metro_area_2017", "santiago_download_metro_area_2024",
-    "sao_paulo_download_metro_area", "sao_paulo_download_weighting_areas")
+  builders <- c("bogota_prepare_metro_area", "cdmx_prepare_metro_area",
+    "santiago_prepare_metro_area_2017", "santiago_prepare_metro_area_2024",
+    "sao_paulo_prepare_metro_area", "sao_paulo_prepare_weighting_areas")
   for (name in builders) assign(name, fake_geography, envir = e)
   expected_counts <- c(bogota = 5L, cdmx = 2L, santiago = 2L, sao_paulo = 3L)
   for (city in cities) {
@@ -82,9 +76,13 @@ check_targets_contracts <- function() {
     outputs <- prepare(cfg, inputs, quiet = TRUE)
     check(length(outputs) == expected_counts[city])
     check(length(calls) == expected_counts[city])
-    check(all(vapply(calls, function(x) if (city == "bogota") {
-      is.null(x$allow_download) && all(file.exists(x$source_zips))
-    } else identical(x$allow_download, FALSE), logical(1))))
+    check(all(vapply(calls, function(x) {
+      source_names <- intersect(names(x), c("source_zips", "source_zip", "source_file",
+        "metro_file", "zones_file", "count_file", "localities_file"))
+      paths <- unlist(x[source_names], use.names = FALSE)
+      length(paths) > 0L && all(file.exists(paths)) &&
+        is.null(x$allow_download) && is.null(x$out_file)
+    }, logical(1))))
     check(all(file.exists(outputs)))
     check(identical(tools::md5sum(inputs), before))
     if (city == "bogota") {

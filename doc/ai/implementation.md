@@ -1,5 +1,89 @@
 # Implementation and evidence
 
+## City geography separation and recipe style — 24 September 2026
+
+The author-edited Bogotá download/processing recipes are the layout references. Shared
+guidance now requires **92 characters**, grouped paths in Section I, concrete step comments,
+named results and ordered saving. English corrections preserve that layout. Removed an
+empty trailing argument from the Bogotá station-catalog call. Early source checks remain:
+the 2018 census extractor otherwise skips a missing department archive. Availability checks
+do not verify provenance, schemas or scientific completeness.
+
+CDMX, Santiago and São Paulo now have separate geographic acquisition and preparation APIs.
+Acquisition returns preserved sources; preparation consumes explicit local paths and returns
+spatial objects; writers save derived GeoPackages. The recipes, `city_process()` convenience
+interface and seven target commands use these functions. Removed the unused helper that
+required geographic sources to share a folder. Santiago's optional administrative boundary
+has its own preparation recipe; it remains outside the manuscript graph. The inventory now
+covers **58 entry points**. These changes supersede the pending-separation status below.
+
+Evidence under `data/verification/city-geography-20260924-183629/`:
+
+- `before/` preserves the incoming working-tree definitions and callers, including the
+  author's Bogotá edits. `compare.R` checks 111 unchanged shared function definitions and
+  all four city configurations; only seven of 144 target declarations changed.
+- Ten fixture comparisons are identical to the preserved implementation. Cases include
+  Santiago 2017 representative-point membership and keys, both Santiago 2024 boundary
+  definitions at commune/block levels, São Paulo tract-key derivation and weighting codes.
+- `compare-real.R` compares old computations, current recipe calls and target commands on
+  existing sources: CDMX municipalities (63) and AGEBs (5,913), Santiago 2024 communes (39),
+  São Paulo municipalities (39) and census tracts (30,815). Attributes, order, geometry and
+  CRS agree exactly. Separate old/new GeoPackage round trips agree; source hashes are
+  unchanged. Only isolated comparison outputs were written.
+- Final synthetic suite: **402 passed; zero failures, errors, skips or test warnings**,
+  using the framework R executable and existing project library with `--vanilla`.
+  An initial run caught a misplaced São Paulo script section (fixed) and a fixture that
+  compared pre-serialization rings with Shapefile rings (fixed to read the preserved
+  source). The isolated comparison harness also required a namespaced-call parsing fix.
+- Target tests exercise no-op reruns, deleted outputs, changed inputs/configuration and
+  writer changes. Fixture tests cover missing local inputs, source immutability, truncated
+  Santiago responses and separate preparation/saving. Cached acquisition-source reuse was
+  exercised; live downloads were not.
+- Final static checks preserve 37 station/pollution/census/writer assignments, confirm
+  that all nine city recipes and the graph parse within 92 characters, and pass all
+  555 inventory/reader assertions. Checked local documentation links resolve. Whitespace
+  checks pass for this batch; protected-source and lockfile Git paths have no changes.
+
+Real comparisons execute geography calls, not whole city pipelines. Section I availability
+checks for unrelated census/pollution branches were skipped only in that comparison harness.
+No full census/pollution reproduction, GUI RStudio review, live acquisition, container build
+or release verification was run. Three Santiago 2017 sources, the São Paulo weighting source,
+a reviewed comparison baseline and the manuscript appendix remain unavailable. The optional
+Santiago boundary has fixture parity; its real-source comparison remains pending. Existing
+download setup helpers can still install missing packages; removing that legacy behavior
+remains part of the broader loader cleanup. They were not executed in this verification.
+No packages, lockfile, protected inputs or production analytical outputs were changed.
+
+Sandbox CPU probes and temporary-directory cleanup emitted diagnostics outside the passing
+test report. The old Santiago builder also warned about its fixed temporary directory during
+repeated fixture comparisons; the new preparation function uses a unique temporary directory.
+
+Suggested review/commit groups (recommendations only; no staging, `git commit` or `git push`):
+
+1. `style: adopt Bogota recipe layout and the 92-character limit`:
+   `scripts/download_data/download_bogota_data.R`,
+   `scripts/process_data/process_bogota_data.R`, `doc/ai/architecture.md`,
+   `doc/ai/rules/r-style.md`, `doc/ai/workflows/new-process-script.md`,
+   `doc/ai/workflows/review-r.md`, `doc/ai/roles/r-reproducibility-reviewer.md`.
+2. `refactor: separate geographic acquisition and preparation across cities`:
+   `src/city_specific/cdmx.R`, `src/city_specific/santiago.R`,
+   `src/city_specific/sao_paulo.R`, `src/city_specific/preparation.R`,
+   `src/city_specific/processing.R`, `_targets.R`,
+   `scripts/download_data/download_cdmx_data.R`,
+   `scripts/download_data/download_santiago_data.R`,
+   `scripts/download_data/download_sao_paulo_data.R`,
+   `scripts/process_data/process_cdmx_data.R`,
+   `scripts/process_data/process_santiago_data.R`,
+   `scripts/process_data/process_sao_paulo_data.R`,
+   `scripts/process_data/prepare_santiago_alternative_geography.R`,
+   `tests/check-targets-contracts.R`, `tests/testthat/test-offline-preparation.R`,
+   `tests/testthat/test-geography-separation.R`, `doc/HOW_TO_RUN.md`,
+   `doc/planning/remaining-work.md`, `doc/planning/targets-migration.md`,
+   `doc/ai/implementation.md`.
+
+These are review groups for this batch, not instructions to include every earlier diff in
+those files. Keep the pre-existing migration changes with their corresponding review groups.
+
 ## Bogotá geography separation — 24 September 2026
 
 `bogota_download_geography()` acquires preserved source files and returns paths.

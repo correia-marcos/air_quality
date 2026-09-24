@@ -1,71 +1,66 @@
-# ============================================================================================
+# ==========================================================================================
 # IDB: Air monitoring
-# ============================================================================================
+# ==========================================================================================
 #' @Goal: Download all required data for the metro area of São Paulo
-# 
-#' @Description: This functions uses previous created functions on city specific src  utilities 
-# to download all the necessary data for the project. It is based on downloading three major 
-# sources:
-#     1 - Geo-referenced administrative data to construct the metro area of São Paulo
-#           obs: This function download data for the country and then filter metro area
+#
+#' @Description: Use the city acquisition functions to preserve source files.
+# Download geographic sources, station measurements and census microdata.
+#     1 - Georeferenced administrative data to construct the metro area of São Paulo
+#           Preserve source files; processing builds the metropolitan layers.
 #     2 - All ground station air pollution data inside the metro area
-#     3 - CENSUS microdata for the country
-# 
-#' @Summary: 
-#   I.   Load all the sources in the correct order (order matters) for functions and variables
-#   II.  Use the named list in city_specific/sao_paulo.R to define parameters for functions
-#   III. Download all data (metro area -> stations -> census)
-# 
+#     3 - Census microdata for the country
+#
+#' @Summary:
+#   I. Import data.
+#   II. Download data.
+#   III. Check acquisition outputs.
+#
 #' @Date: November 2025
 #' @Author: Marcos
-# ============================================================================================
+# ==========================================================================================
 
-# Get all libraries and functions - config_utils_plot_tables to generate one LaTeX table
+# Load acquisition functions and plotting helpers for the source-region table.
+# ==========================================================================================
+# I: Import data
+# ==========================================================================================
 source(here::here("src", "general_utilities", "config_utils_download_data.R"))
 source(here::here("src", "general_utilities", "config_utils_plot_tables.R"))
 source(here::here("src", "city_specific", "registry.R"))
-source(here::here("src", "city_specific", "sao_paulo.R"))
+load_city_modules()
 
-# ============================================================================================
-# I: Import data
-# ============================================================================================
+# Set the folder for preserved geographic sources.
+dir_geography <- here::here(sao_paulo_cfg$dl_dir, "metro_area")
+
+# Load the boundaries of Brazilian states - rnaturalearth
 brazil <- rnaturalearth::ne_states(country = "Brazil", returnclass = "sf")
 
-# Show parameters imported on src/city_specific_sao_paulo.R
-print(sao_paulo_cfg$base_url_shp)
-print(sao_paulo_cfg$years)
-print(sao_paulo_cfg$dl_dir)
-print(sao_paulo_cfg$out_dir)
+# Show the settings from the city configuration.
+print(sao_paulo_cfg$which_states)
 
-# ============================================================================================
-# I: Download data
-# ============================================================================================
-# Apply function to download shapefiles for São Paulo metro area - municipalities
-sao_paulo_metro_2010 <- sao_paulo_download_metro_area(
-  level              = "mpio",
-  base_url          = sao_paulo_cfg$base_url_shp,
-  keep_municipality = sao_paulo_cfg$cities_in_metro,
-  download_dir      = here::here(sao_paulo_cfg$dl_dir, "metro_area"),
-  out_file          = here::here(sao_paulo_cfg$out_dir, "geospatial_data",
-                                 "sao_paulo", "sao_paulo_metro_2010.gpkg"))
+# ==========================================================================================
+# II: Download data
+# ==========================================================================================
+# Acquire the 2010 municipality and census-tract archives.
+municipality_source <- sao_paulo_download_geography(
+    level        = "mpio",
+    base_url     = sao_paulo_cfg$base_url_shp,
+    download_dir = dir_geography)
 
-# Apply function to download shapefiles for São Paulo metro area - census tracts
-sao_paulo_metro_2010_census_tracts <- sao_paulo_download_metro_area(
-  level             = "setor_censitario",
-  base_url          = sao_paulo_cfg$base_url_shp,
-  keep_municipality = sao_paulo_cfg$cities_in_metro,
-  download_dir      = here::here(sao_paulo_cfg$dl_dir, "metro_area"),
-  out_file          = here::here(sao_paulo_cfg$out_dir, "geospatial_data",
-                                 "sao_paulo", "sao_paulo_metro_2010_census_tracts.gpkg"))
+tract_source <- sao_paulo_download_geography(level        = "setor_censitario",
+                                             base_url     = sao_paulo_cfg$base_url_shp,
+                                             download_dir = dir_geography)
 
-# Apply function to download shapefiles for São Paulo metro area - weighting areas
-sao_paulo_metro_2010_weighting <- sao_paulo_download_weighting_areas(
-  keep_municipality = sao_paulo_cfg$cities_in_metro,
-  year              = 2010,
-  out_file          = here::here(sao_paulo_cfg$out_dir, "geospatial_data",
-                                 "sao_paulo", "sao_paulo_metro_2010_weighting_areas.gpkg"))
+# Preserve the full weighting-area source; processing selects the metro subset.
+weighting_source <- sao_paulo_download_weighting_areas(year         = 2010,
+                                                      download_dir = dir_geography)
 
-# Apply function to save a LaTeX table of the states that we must download stations data
+# Prepare only the footprint used to review the station-source regions.
+sao_paulo_metro_2010 <- sao_paulo_prepare_metro_area(
+    source_zip        = municipality_source,
+    level             = "mpio",
+    keep_municipality = sao_paulo_cfg$cities_in_metro)
+
+# Save a LaTeX table to review which regions should supply station data.
 table_states_to_download <- table_state_metro_distances(
   national_states_sf = brazil,
   metro_area_sf = sao_paulo_metro_2010,
@@ -74,7 +69,7 @@ table_states_to_download <- table_state_metro_distances(
   out_file = here::here("results", "tables", "station_source_regions_sao_paulo.tex"),
   overwrite_tex = TRUE)
 
-# Apply function to create Selenium server and download station data + save logs
+# Use Selenium to download hourly station data and save the acquisition log.
 logs_qualar_stations_hourly_data <- sao_paulo_download_pollution(
   base_url = sao_paulo_cfg$base_url_qualar,
   subdir   = file.path("sao_paulo", "ground_stations"),
@@ -82,7 +77,7 @@ logs_qualar_stations_hourly_data <- sao_paulo_download_pollution(
 write.csv(logs_qualar_stations_hourly_data, row.names = FALSE,
           file = here::here(sao_paulo_cfg$dl_dir, "log_qualar_ground_stations.csv"))
 
-# Apply function to create Selenium server and download the stations metadata
+# Use Selenium to download the station metadata.
 logs_qualar_stations_metadata <- sao_paulo_download_metadata(
   base_url   = sao_paulo_cfg$base_url_qualar,
   search_url = sao_paulo_cfg$metadata_url_qualar,
@@ -90,7 +85,16 @@ logs_qualar_stations_metadata <- sao_paulo_download_metadata(
                           "stations_metadata", "stations_metadata.csv"))
 
 # Preserve the package-managed census source before analytical filtering.
-sao_paulo_acquire_census_2010()
+census_source <- sao_paulo_acquire_census_2010()
 
-# Print a success message for when running inside Docker Container
-cat("Script from the IDB projected executed successfully in the Docker container!\n")
+# ==========================================================================================
+# III: Check acquisition outputs
+# ==========================================================================================
+acquisition_results <- list(
+  municipality_source = municipality_source,
+  tract_source = tract_source,
+  weighting_source = weighting_source,
+  logs_qualar_stations_hourly_data = logs_qualar_stations_hourly_data,
+  logs_qualar_stations_metadata = logs_qualar_stations_metadata,
+  census_source = census_source)
+str(acquisition_results, max.level = 1)

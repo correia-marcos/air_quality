@@ -1,100 +1,117 @@
-# ============================================================================================
+# ========================================================================================
 # IDB: Air monitoring
-# ============================================================================================
-#' @Goal: Process and standardize air quality and census data for Mexico City (CDMX).
-# The goal here is to transform CDMX's raw data into a common format shared across all four
-# cities. Raw data for each city has its own peculiarities and quirks.
-# 
-#' @Description: This script transforms raw monitoring, geospatial, and census data into a 
-#   project-standard format. It includes: (1) Spatial filtering of ground stations within a 
-#   20km metropolitan buffer; (2) Consolidation of SIMAT and SINAICA raw measurements into 
-#   Parquet format; (3) Extraction and harmonization of 2020 Mexican Census microdata (
-#   Extended) to integrate socio-economic indicators into the analysis.
-# 
-#' @Summary: 
-#   I.   Setup: Load dependencies, utility functions, and city-specific config.
-#   II.  Import: Read raw geospatial boundaries and station location files.
-#   III. Pollution: Filter stations by buffer and convert data to Parquet.
-#   IV.  Census: Extract and harmonize the Extended 2020 microdata.
-# 
-#' @Date: Oct 2025
+# ========================================================================================
+#' @Goal: Prepare geography, stations, pollution and census data for CDMX.
+#
+#' @Description: Use 2024 geography with the extended 2020 census.
+# Geography and station selection return spatial objects. Pollution and census functions
+# also write their large datasets while processing. All sources must be available locally.
+#
+#' @Summary:
+#   I.   Import data: source functions, declare paths and read station locations.
+#   II.  Process data: prepare geography, select stations and harmonize measurements.
+#   III. Save outputs: save geographic layers and selected stations.
+#
+#' @Date: January 2026
 #' @Author: Marcos
-# ============================================================================================
+# ========================================================================================
 
-# Get all libraries and functions
-source(here::here("src", "general_utilities", "config_utils_process_data.R"))
-source(here::here("src","city_specific", "registry.R"))
-source(here::here("src","city_specific", "cdmx.R"))
+# ========================================================================================
+# I: Import data
+# ========================================================================================
+# Load the functions and their required packages.
+source(here::here("src", "general_utilities", "base_utils.R"))
+source(here::here("src", "general_utilities", "reproducibility.R"))
+source(here::here("src", "general_utilities", "process", "geo_ids.R"))
+source(here::here("src", "general_utilities", "process", "spatial_files.R"))
+source(here::here("src", "city_specific", "registry.R"))
+source(here::here("src", "city_specific", "processing.R"))
 
-# ============================================================================================
-# Geographic preparation: local sources only; acquisition is a separate first step.
-# ============================================================================================
-for (spec in list(
-  c("municipality", "cdmx_area_metro_municipalities_2024.gpkg"),
-  c("ageb", "cdmx_area_metro_2024.gpkg"))) {
-  cdmx_download_metro_area(
-    level = spec[1], base_url = cdmx_cfg$base_url_shp,
-    keep_municipality = cdmx_cfg$cities_in_metro,
-    download_dir = here::here(cdmx_cfg$dl_dir, "metro_area"),
-    out_file = here::here(cdmx_cfg$out_dir, "geospatial_data", "cdmx", spec[2]),
-    allow_download = FALSE)
-}
+# Load the city configurations and use spherical geometry for sf operations.
+load_city_modules()
+sf::sf_use_s2(TRUE)
+cfg <- cdmx_cfg
 
-# ============================================================================================
-# I: Import  data
-# ============================================================================================
-# Define the output general folders
-outdir_pollution  <- here::here(cdmx_cfg$out_dir, "monitoring_stations")
-outdir_geospatial <- here::here(cdmx_cfg$out_dir, "geospatial_data")
-outdir_stations   <- here::here(cdmx_cfg$dl_dir, "ground_stations_geolocation")
+# Set the source folders using the city configuration.
+dir_sources   <- cfg$dl_dir
+dir_geography <- here::here(dir_sources, "metro_area")
+dir_census    <- here::here(dir_sources, "census")
+dir_pollution <- here::here(dir_sources, "ground_stations")
+dir_secondary <- here::here(dir_sources, "ground_stations_raw_missing_data")
 
-# Define the file's specific location
-all_station_csv   <- here::here(outdir_stations, "all_station_location.csv")
-cdmx_metro        <- here::here(outdir_geospatial, "cdmx", "cdmx_area_metro_2024.gpkg")
+# Set the output folders for geography, pollution and the extended 2020 census.
+out_geography <- here::here(cfg$out_dir, "geospatial_data", "cdmx")
+out_pollution <- here::here(cfg$out_dir, "monitoring_stations")
+out_extracted <- here::here(cfg$out_dir, "census_extracted", "cdmx", "CPV2020_EXTENDED")
+out_census    <- here::here(cfg$out_dir, "census", "cdmx_extended_2020")
 
-# Open station location and other spatial data
-station_location <- read.csv(all_station_csv)
-metro_area       <- sf::st_read(cdmx_metro)
+# Name the input files used by the preparation functions.
+file_geography <- here::here(dir_geography, "mg_2024_integrado.zip")
+file_stations  <- here::here(dir_sources, "ground_stations_geolocation",
+                             "all_station_location.csv")
 
-# Three catalog spellings never match the hourly data, so those stations lose their
-# coordinates downstream. Repair them before the station geopackage is written.
-hit <- match(station_location$station, names(cdmx_cfg$station_nme_map))
-station_location$station[!is.na(hit)] <- cdmx_cfg$station_nme_map[hit[!is.na(hit)]]
+# Check the sources before processing writes any output.
+processing_files(c(file_geography, file_stations, dir_pollution, dir_secondary),
+                 "CDMX sources")
+preflight_census_inputs("cdmx", c(census_2020 = dir_census))
 
-# ============================================================================================
-# II: Process  data
-# ============================================================================================
-# Apply function to filter the stations in the metro area + 20 km radius
-stations_kept <- cdmx_filter_stations_in_metro(
-  station_location = station_location,
-  metro_area       = metro_area,
-  radius_km        = 20,             # change if needed
-  dissolve         = TRUE,
-  verbose          = TRUE,
-  out_file         = here::here(outdir_geospatial, "cdmx", "cdmx_stations_buffer_metro.gpkg"))
+# Read station locations before correcting the documented spelling differences.
+station_locations <- read.csv(file_stations)
 
-# Apply function to merge all downloaded file into a single tidy dataframe
-cdmx_stations_data <- cdmx_merge_pollution_data(
-  primary_data_dir     = here::here(cdmx_cfg$dl_dir, "ground_stations"),
-  secondary_data_dir   = here::here(cdmx_cfg$dl_dir, "ground_stations_raw_missing_data"),
-  stations_sf          = stations_kept,
-  tz                   = "UTC",
-  years                = cdmx_cfg$years,
-  out_dir              = outdir_pollution,
-  out_name             = "cdmx_metro",
-)
+# ========================================================================================
+# II: Process data
+# ========================================================================================
+# Prepare the municipality and AGEB layers from the same 2024 archive.
+municipalities <- cdmx_prepare_metro_area(source_zip        = file_geography,
+                                          level             = "municipality",
+                                          keep_municipality = cfg$cities_in_metro)
 
-# Apply function to unpack the census data (unzip and filter) then read and process
-process_cdmx_census <- mexico_filter_census(
-  census_dir = here::here(cdmx_cfg$dl_dir, "census"),
-  out_dir    = here::here("data", "interim", "census_extracted", "cdmx", "CPV2020_EXTENDED"),
-  overwrite  = FALSE,
-  quiet      = FALSE
-)
-process_harmonize_census <- mexico_harmonize_census_data(
-  extract_index = process_cdmx_census,
-  metro_codes  = cdmx_cfg$cities_in_metro,
-  out_dir      = here::here("data", "interim", "census", "cdmx_extended_2020"))
+metro_area     <- cdmx_prepare_metro_area(source_zip        = file_geography,
+                                          level             = "ageb",
+                                          keep_municipality = cfg$cities_in_metro)
 
-# Print a success message for when running inside Docker Container
-cat("Script from the IDB projected executed successfully in the Docker container!\n")
+# Correct only the configured station spellings; retain distinct real stations.
+station_locations <- cdmx_correct_station_names(locations   = station_locations,
+                                                corrections = cfg$station_nme_map)
+stations <- cdmx_filter_stations_in_metro(station_location = station_locations,
+                                          metro_area       = metro_area,
+                                          radius_km        = cfg$station_buffer_km,
+                                          dissolve         = TRUE,
+                                          out_file         = NULL)
+
+# Merge pollution sources without deleting either source; outputs stay partitioned.
+pollution <- cdmx_merge_pollution_data(primary_data_dir   = dir_pollution,
+                                       secondary_data_dir = dir_secondary,
+                                       stations_sf        = stations,
+                                       tz                 = cfg$processing_tz,
+                                       years              = cfg$years,
+                                       cleanup            = FALSE,
+                                       out_dir            = out_pollution,
+                                       out_name           = "cdmx_metro")
+
+# Extract and harmonize the extended census; these calls also write the census files.
+extracted <- mexico_filter_census(census_dir = dir_census,
+                                  out_dir    = out_extracted,
+                                  overwrite  = TRUE)
+archives <- list.files(dir_census, pattern = "Censo2020_CA_.*_csv\\.zip$",
+                       ignore.case = TRUE)
+census <- mexico_harmonize_census_data(extract_index = extracted,
+                                       metro_codes   = cfg$cities_in_metro,
+                                       out_dir       = out_census,
+                                       return_data   = FALSE)
+
+# ========================================================================================
+# III: Save outputs
+# ========================================================================================
+municipalities_file <- write_geopackage(
+  x    = municipalities,
+  path = here::here(out_geography, "cdmx_area_metro_municipalities_2024.gpkg"))
+
+metro_area_file <- write_geopackage(
+  x    = metro_area,
+  path = here::here(out_geography, "cdmx_area_metro_2024.gpkg"))
+
+stations_file <- write_geopackage(
+  x    = stations,
+  path = here::here(out_geography, "cdmx_stations_buffer_metro.gpkg"))
+

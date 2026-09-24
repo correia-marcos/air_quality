@@ -1,96 +1,108 @@
-# ============================================================================================
+# ========================================================================================
 # IDB: Air monitoring
-# ============================================================================================
-#' @Goal: Process and standardize air quality and census data for São Paulo (SP).
-# The goal here is to transform SP's raw data into a common format shared across all four
-# cities. Raw data for each city has its own peculiarities and quirks.
-# 
-#' @Description: This script transforms raw monitoring, geospatial, and census data into a 
-#   project-standard format. It includes: (1) Spatial filtering of ground stations within a 
-#   20km metropolitan buffer; (2) Consolidation of QUALAR raw measurements into 
-#   Parquet format; (3) Extraction and harmonization of 2010 Brazilian Census microdata 
-#   to integrate socio-economic indicators into the analysis.
-# 
-#' @Summary: 
-#   I.   Setup: Load dependencies, utility functions, and city-specific config.
-#   II.  Import: Read raw geospatial boundaries and station location files.
-#   III. Pollution: Filter stations by buffer and convert data to Parquet.
-#   IV.  Census: Extract and harmonize the 2010 census microdata.
-# 
+# ========================================================================================
+#' @Goal: Prepare geography, stations, pollution and census data for São Paulo.
+#
+#' @Description: Use the 2010 municipalities, tracts and weighting areas.
+# Geography and station selection return spatial objects. Pollution and census functions
+# also write their large datasets while processing. All sources must be available locally.
+#
+#' @Summary:
+#   I.   Import data: source functions, declare paths and read station locations.
+#   II.  Process data: prepare geography, select stations and harmonize measurements.
+#   III. Save outputs: save geographic layers and selected stations.
+#
 #' @Date: January 2026
 #' @Author: Marcos
-# ============================================================================================
+# ========================================================================================
 
-# Get all libraries and functions
-source(here::here("src", "general_utilities", "config_utils_process_data.R"))
-source(here::here("src","city_specific", "registry.R"))
-source(here::here("src","city_specific", "sao_paulo.R"))
+# ========================================================================================
+# I: Import data
+# ========================================================================================
+# Load the functions and their required packages.
+source(here::here("src", "general_utilities", "base_utils.R"))
+source(here::here("src", "general_utilities", "reproducibility.R"))
+source(here::here("src", "general_utilities", "process", "geo_ids.R"))
+source(here::here("src", "general_utilities", "process", "spatial_files.R"))
+source(here::here("src", "city_specific", "registry.R"))
+source(here::here("src", "city_specific", "processing.R"))
 
-# ============================================================================================
-# Geographic preparation: local sources only; acquisition is a separate first step.
-# ============================================================================================
-for (spec in list(
-  c("mpio", "sao_paulo_metro_2010.gpkg"),
-  c("setor_censitario", "sao_paulo_metro_2010_census_tracts.gpkg"))) {
-  sao_paulo_download_metro_area(
-    level = spec[1], base_url = sao_paulo_cfg$base_url_shp,
-    keep_municipality = sao_paulo_cfg$cities_in_metro,
-    download_dir = here::here(sao_paulo_cfg$dl_dir, "metro_area"),
-    out_file = here::here(sao_paulo_cfg$out_dir, "geospatial_data", "sao_paulo", spec[2]),
-    allow_download = FALSE)
-}
-sao_paulo_download_weighting_areas(
-  keep_municipality = sao_paulo_cfg$cities_in_metro, year = 2010,
-  out_file = here::here(sao_paulo_cfg$out_dir, "geospatial_data", "sao_paulo",
-                        "sao_paulo_metro_2010_weighting_areas.gpkg"),
-  allow_download = FALSE)
+# Load the city configurations and use spherical geometry for sf operations.
+load_city_modules()
+sf::sf_use_s2(TRUE)
+cfg <- sao_paulo_cfg
 
-# ============================================================================================
-# I: Import  data
-# ============================================================================================
-# Define the output general folders
-downloaded_data   <- here::here(sao_paulo_cfg$dl_dir, "ground_stations")
-outdir_pollution  <- here::here(sao_paulo_cfg$out_dir, "monitoring_stations")
-outdir_geospatial <- here::here(sao_paulo_cfg$out_dir, "geospatial_data")
-outdir_metadata   <- here::here(sao_paulo_cfg$dl_dir, "stations_metadata")
+# Set the source folders using the city configuration.
+dir_sources   <- cfg$dl_dir
+dir_geography <- here::here(dir_sources, "metro_area")
+dir_census    <- here::here(dir_sources, "census")
+dir_pollution <- here::here(dir_sources, "ground_stations")
 
-# Define the file's specific location
-sao_paulo_stations_csv <- here::here(outdir_metadata, "stations_metadata.csv")
-sao_paulo_metro_gpkg   <- here::here(outdir_geospatial, "sao_paulo",
-                                     "sao_paulo_metro_2010.gpkg")
-sao_paulo_tracts_gpkg  <- here::here(outdir_geospatial, "sao_paulo",
-                                     "sao_paulo_metro_2010_weighting_areas.gpkg")
-# Read the geospatial data
-stations_sp     <- read.csv(sao_paulo_stations_csv)
-metro_area      <- st_read(sao_paulo_metro_gpkg)
-weighting_areas <- st_read(sao_paulo_tracts_gpkg)
+# Set the output folders for geography, pollution and the 2010 census.
+out_geography <- here::here(cfg$out_dir, "geospatial_data", "sao_paulo")
+out_pollution <- here::here(cfg$out_dir, "monitoring_stations")
+out_census    <- here::here(cfg$out_dir, "census", "sao_paulo_2010")
 
-# ============================================================================================
-# II: Process  data
-# ============================================================================================
-# Apply function to filter the stations in the metro area + 20 km radius
-stations_kept <- sp_filter_stations_in_metro(
-  stations_sp   = stations_sp,
-  radius_km     = 20,
-  metro_area    = metro_area,
-  out_file      = here::here(outdir_geospatial, "sao_paulo",
-                             "sao_paulo_stations_buffer_metro_2010.gpkg"))
+# Name the preserved IBGE, geobr, census and station files.
+file_municipalities <- here::here(dir_geography, "sp_municipios.zip")
+file_tracts         <- here::here(dir_geography, "sp_setores_censitarios.zip")
+file_weights        <- here::here(dir_geography, "sp_weighting_areas_2010.rds")
+file_census         <- here::here(dir_census, "2010_population.parquet")
+file_stations       <- here::here(dir_sources, "stations_metadata", "stations_metadata.csv")
 
-# Apply function to merge all downloaded file of Bogota metro area into DUCKDB database
-sao_paulo_stations_data <- sp_process_stations_data_to_parquet(
-  data_folder    = downloaded_data,
-  stations_sf    = stations_kept,
-  tz             = "UTC",    # Important to be UTC so DuckDB don't misbehaves
-  out_dir        = outdir_pollution,
-  out_name       = "sao_paulo_metro",
-  years          = sao_paulo_cfg$years
-)
+# Check the sources before processing writes any output.
+processing_files(c(file_municipalities, file_tracts, file_weights, file_stations,
+                   dir_pollution), "São Paulo sources")
+preflight_census_inputs("sao_paulo", c(census_2010 = file_census))
 
-# Apply function to process the census data of 2010 - through a package
-process_harmonize_census <- sp_process_census_2010(
-  out_dir    = here::here("data", "interim", "census", "sao_paulo_2010"),
-  sf_data    = weighting_areas,
-  quiet      = FALSE)
+# Read station locations before selecting stations around the metropolitan area.
+station_locations <- read.csv(file_stations)
 
-# Print a success message for when running inside Docker Container
-cat("Script from the IDB projected executed successfully in the Docker container!\n")
+# ========================================================================================
+# II: Process data
+# ========================================================================================
+# Prepare the municipalities, census tracts and weighting areas from local sources.
+municipalities  <- sao_paulo_prepare_metro_area(source_zip        = file_municipalities,
+                                                level             = "mpio",
+                                                keep_municipality = cfg$cities_in_metro)
+
+tracts          <- sao_paulo_prepare_metro_area(source_zip        = file_tracts,
+                                                level             = "setor_censitario",
+                                                keep_municipality = cfg$cities_in_metro)
+
+weighting_areas <- sao_paulo_prepare_weighting_areas(source_file       = file_weights,
+                                                     keep_municipality = cfg$cities_in_metro)
+
+stations        <- sp_filter_stations_in_metro(stations_sp = station_locations,
+                                               metro_area  = municipalities,
+                                               radius_km   = cfg$station_buffer_km,
+                                               out_file    = NULL)
+
+# These functions write their pollution and census datasets during processing.
+pollution <- sp_process_stations_data_to_parquet(data_folder = dir_pollution,
+                                                 stations_sf = stations,
+                                                 tz          = cfg$processing_tz,
+                                                 years       = cfg$years,
+                                                 out_dir     = out_pollution,
+                                                 out_name    = "sao_paulo_metro")
+
+census    <- sp_process_census_2010(sf_data     = weighting_areas,
+                                    source_file = file_census,
+                                    out_dir     = out_census,
+                                    return_data = FALSE)
+
+# ========================================================================================
+# III: Save outputs
+# ========================================================================================
+municipalities_file <- write_geopackage(
+  x    = municipalities,
+  path = here::here(out_geography, "sao_paulo_metro_2010.gpkg"))
+tracts_file <- write_geopackage(
+  x    = tracts,
+  path = here::here(out_geography, "sao_paulo_metro_2010_census_tracts.gpkg"))
+weighting_areas_file <- write_geopackage(
+  x    = weighting_areas,
+  path = here::here(out_geography, "sao_paulo_metro_2010_weighting_areas.gpkg"))
+stations_file <- write_geopackage(
+  x    = stations,
+  path = here::here(out_geography, "sao_paulo_stations_buffer_metro_2010.gpkg"))

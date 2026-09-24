@@ -5,6 +5,8 @@ offline_city_builders <- function() {
     source(here::here("src", "city_specific", paste0(file, ".R")), local = env)
   }
   source(here::here("src", "general_utilities", "reproducibility.R"), local = env)
+  source(here::here("src", "general_utilities", "process", "spatial_files.R"),
+         local = env)
   env
 }
 
@@ -14,24 +16,28 @@ offline_rectangle <- function(xmin, ymin, xmax, ymax) {
                             c(xmin, ymax), c(xmin, ymin))))
 }
 
-test_that("all geographic builders require preserved sources before acquisition", {
+test_that("geographic preparation requires local sources before creating anything", {
   env <- offline_city_builders()
   old_locale <- Sys.getlocale("LC_CTYPE")
   on.exit(Sys.setlocale("LC_CTYPE", old_locale), add = TRUE)
   work <- tempfile("missing-geography-")
   on.exit(unlink(work, recursive = TRUE), add = TRUE)
-  functions <- c("bogota_download_metro_area", "cdmx_download_metro_area",
-    "santiago_download_metro_area_2024", "santiago_download_metro_area_2017",
-    "sao_paulo_download_metro_area", "sao_paulo_download_weighting_areas")
-  for (name in functions) {
-    args <- list(download_dir = file.path(work, name),
-      out_file = file.path(work, paste0(name, ".gpkg")),
-      allow_download = FALSE, quiet = TRUE)
-    if (name == "sao_paulo_download_weighting_areas") args$keep_municipality <- 3550308
+  expect_error(env$bogota_prepare_metro_area(source_zips = file.path(work, "missing.zip")),
+               "Missing preserved source inputs")
+  expect_false(dir.exists(work))
+  missing <- file.path(work, "absent")
+  functions <- list(
+    cdmx_prepare_metro_area = list(source_zip = missing),
+    santiago_prepare_metro_area_2024 = list(source_zip = missing),
+    santiago_prepare_metro_area_2017 = list(metro_file = missing,
+      zones_file = missing, count_file = missing),
+    sao_paulo_prepare_metro_area = list(source_zip = missing),
+    sao_paulo_prepare_weighting_areas = list(source_file = missing))
+  for (name in names(functions)) {
+    args <- c(functions[[name]], list(quiet = TRUE))
     expect_error(do.call(env[[name]], args), "Missing preserved source inputs",
                  info = name)
-    expect_false(dir.exists(args$download_dir), info = name)
-    expect_false(file.exists(args$out_file), info = name)
+    expect_false(dir.exists(work), info = name)
   }
 })
 
@@ -58,8 +64,8 @@ test_that("Santiago local responses preserve representative-point membership and
   sources <- c(metro_path, zones_path, count_path)
   before <- tools::md5sum(sources)
   output <- file.path(work, "derived", "zones.gpkg")
-  result <- env$santiago_download_metro_area_2017(download_dir = work,
-    out_file = output, allow_download = FALSE, quiet = TRUE)
+  result <- env$santiago_prepare_metro_area_2017(metro_file = metro_path,
+    zones_file = zones_path, count_file = count_path, quiet = TRUE)
   expect_identical(result$zona_id, "13101021007")
   expect_identical(result$d_COMUNA, "inside")
   expect_equal(sf::st_crs(result)$epsg, 4326)
@@ -67,17 +73,19 @@ test_that("Santiago local responses preserve representative-point membership and
   expect_identical(sf::st_as_binary(sf::st_geometry(result)),
                    sf::st_as_binary(sf::st_geometry(original)))
   expect_equal(tools::md5sum(sources), before)
+  expect_false(file.exists(output))
+  env$write_geopackage(result, output)
   expect_equal(sf::st_read(output, quiet = TRUE)$zona_id, result$zona_id)
+  acquired <- env$santiago_download_geography_2017(download_dir = work, quiet = TRUE)
+  expect_setequal(unname(acquired), sources)
 
   writeLines('{"count":4}', count_path)
-  expect_error(env$santiago_download_metro_area_2017(download_dir = work,
-    out_file = output, allow_download = FALSE, quiet = TRUE), "query was truncated")
-  expect_error(env$santiago_download_metro_area_2017(download_dir = work,
-    out_file = output, allow_download = TRUE, overwrite_gpkg = FALSE, quiet = TRUE),
+  expect_error(env$santiago_prepare_metro_area_2017(metro_file = metro_path,
+    zones_file = zones_path, count_file = count_path, quiet = TRUE),
     "query was truncated")
   writeLines('{}', count_path)
-  expect_error(env$santiago_download_metro_area_2017(download_dir = work,
-    out_file = output, allow_download = FALSE, quiet = TRUE), "Missing zone count")
+  expect_error(env$santiago_prepare_metro_area_2017(metro_file = metro_path,
+    zones_file = zones_path, count_file = count_path, quiet = TRUE), "Missing zone count")
 })
 
 test_that("São Paulo local weighting source filters codes without changing geometry", {
@@ -94,15 +102,21 @@ test_that("São Paulo local weighting source filters codes without changing geom
   saveRDS(source_sf, source_path)
   before <- tools::md5sum(source_path)
   output <- file.path(work, "derived", "weights.gpkg")
-  result <- env$sao_paulo_download_weighting_areas(keep_municipality = "3550308",
-    download_dir = work, out_file = output, allow_download = FALSE, quiet = TRUE)
+  result <- env$sao_paulo_prepare_weighting_areas(source_file = source_path,
+    keep_municipality = "3550308", quiet = TRUE)
   expect_identical(result$code_muni, c("3550308", "3550308"))
   expect_identical(result$code_weighting, source_sf$code_weighting[1:2])
   expect_identical(sf::st_geometry(result), sf::st_geometry(source_sf[1:2, ]))
   expect_equal(sf::st_crs(result)$epsg, 4674)
   expect_equal(tools::md5sum(source_path), before)
-  expect_error(env$sao_paulo_download_weighting_areas(keep_municipality = "9999999",
-    download_dir = work, out_file = output, allow_download = FALSE, quiet = TRUE),
+  expect_false(file.exists(output))
+  env$write_geopackage(result, output)
+  expect_identical(sf::st_read(output, quiet = TRUE)$code_weighting,
+                   result$code_weighting)
+  acquired <- env$sao_paulo_download_weighting_areas(download_dir = work, quiet = TRUE)
+  expect_identical(acquired, source_path)
+  expect_error(env$sao_paulo_prepare_weighting_areas(source_file = source_path,
+    keep_municipality = "9999999", quiet = TRUE),
     "No data matched")
 })
 
@@ -132,21 +146,25 @@ test_that("archived Bogotá and CDMX municipality layers rebuild with unchanged 
     zip::zipr(zip_path, files = "conjunto_de_datos", root = sources)
     before <- tools::md5sum(zip_path)
     output <- file.path(work, "derived", paste0(city, ".gpkg"))
-    args <- list(download_dir = sources, out_file = output,
-                 allow_download = FALSE, quiet = TRUE)
+    args <- list(source_zip = zip_path, quiet = TRUE)
     if (city == "bogota") {
-      args$municipality_codes <- "11001"
-      result <- do.call(env$bogota_download_metro_area, args)
+      args <- list(source_zips = zip_path, municipality_codes = "11001", quiet = TRUE)
+      result <- do.call(env$bogota_prepare_metro_area, args)
       expect_identical(result$MPIO_FULL, "11001")
     } else {
       args$keep_municipality <- 9002
-      result <- do.call(env$cdmx_download_metro_area, args)
+      result <- do.call(env$cdmx_prepare_metro_area, args)
       expect_identical(result$CVE_MUN, "09002")
       expect_identical(result$MUN, "002")
     }
     expect_equal(nrow(result), 1L)
     expect_equal(sf::st_crs(result)$epsg, 4326)
     expect_equal(tools::md5sum(zip_path), before)
+    expect_false(file.exists(output))
+    env$write_geopackage(result, output)
     expect_true(file.exists(output))
+    compute <- if (city == "bogota") env$bogota_prepare_metro_area else
+      env$cdmx_prepare_metro_area
+    expect_identical(do.call(compute, args), result)
   }
 })

@@ -1,88 +1,66 @@
-# ============================================================================================
+# ==========================================================================================
 # IDB: Air monitoring
-# ============================================================================================
+# ==========================================================================================
 #' @Goal: Download all required data for the metro area of Santiago
-# 
-#' @Description: This functions uses previous created functions on city specific src  utilities 
-# to download all the necessary data for the project. It is based on downloading three major 
-# sources:
-#     1 - Geo-referenced administrative data to construct the metro area of Santiago
-#           obs: This function download data for the country and then filter metro area
+#
+#' @Description: Use the city acquisition functions to preserve source files.
+# Download geographic sources, station measurements and census microdata.
+#     1 - Georeferenced administrative data to construct the metro area of Santiago
+#           Preserve source files; processing builds the metropolitan layers.
 #     2 - All ground station air pollution data inside the metro area
-#     3 - CENSUS microdata for the country
-# 
-#' @Summary: 
-#   I.   Load all the sources in the correct order (order matters) for functions and variables
-#   II.  Use the named list in city_specific/santiago.R to define parameters for functions
-#   III. Download all data (metro area -> stations -> census)
-# 
+#     3 - Census microdata for the country
+#
+#' @Summary:
+#   I. Import data.
+#   II. Download data.
+#   III. Check acquisition outputs.
+#
 #' @Date: September 2025
 #' @Author: Marcos
-# ============================================================================================
+# ==========================================================================================
 
-# Get all libraries and functions - config_utils_plot_tables to generate one LaTeX table
+# ==========================================================================================
+# I: Import data
+# ==========================================================================================
+# Load acquisition functions and plotting helpers for the source-region table.
 source(here::here("src", "general_utilities", "config_utils_download_data.R"))
 source(here::here("src", "general_utilities", "config_utils_plot_tables.R"))
 source(here::here("src", "city_specific", "registry.R"))
-source(here::here("src", "city_specific", "santiago.R"))
+load_city_modules()
 
-# ============================================================================================
-# I: Import data
-# ============================================================================================
+# Set the folder for preserved geographic sources.
+dir_geography <- here::here(santiago_cfg$dl_dir, "metro_area")
+
+# Load the boundaries of chilean states - rnaturalearth
 chile <- ne_states(country = "Chile", returnclass = "sf")
 
-# Show parameters imported on src/city_specific_santiago.R
-print(santiago_cfg$base_url_shp)
-print(santiago_cfg$years)
-print(santiago_cfg$dl_dir)
-print(santiago_cfg$out_dir)
+# Show the settings from the city configuration.
+print(santiago_cfg$which_states)
 
-# ============================================================================================
-# I: Download data
-# ============================================================================================
-# Apply function to download the 2017 metro area at census-zone level (main sample)
-zonas_2017 <- santiago_download_metro_area_2017(
-  base_url       = santiago_cfg$base_url_dpa_17,
-  conurbacion    = "GRAN SANTIAGO",
-  region_prefix  = "13",
-  out_file       = here::here(santiago_cfg$out_dir, "geospatial_data",
-                              "santiago", "gran_santiago_zonas_2017.gpkg"),
-  overwrite_gpkg = TRUE,
-  quiet          = FALSE)
+# ==========================================================================================
+# II: Download data
+# ==========================================================================================
+# Acquire the complete 2017 response set and the national 2024 archive.
+geography_sources_2017 <- santiago_download_geography_2017(
+    base_url      = santiago_cfg$base_url_dpa_17,
+    conurbacion   = "GRAN SANTIAGO",
+    region_prefix = "13",
+    download_dir  = here::here(dir_geography, "2017"))
 
-# Gran Santiago 2024 at comuna level: robustness check against the 2017 main sample.
-gran_santiago <- santiago_download_metro_area_2024(
-  type              = "gran_santiago",
-  level             = "mpio",
-  base_url          = santiago_cfg$base_url_shp,
-  keep_municipality = santiago_cfg$cities_in_metro,
-  download_dir      = here::here(santiago_cfg$dl_dir, "metro_area"),
-  out_file          = here::here(santiago_cfg$out_dir, "geospatial_data",
-                                 "santiago", "gran_santiago_area_2024.gpkg"),
-  dissolve_by       = "CUT",
-  overwrite_zip     = FALSE,
-  container         = TRUE,
-  overwrite_gpkg    = TRUE,
-  quiet             = FALSE
-)
+geography_source_2024 <- santiago_download_geography_2024(
+    base_url     = santiago_cfg$base_url_shp,
+    download_dir = dir_geography)
 
-# Possible other metro definition (sensitivity on the area definition itself)
-santiago_metro <- santiago_download_metro_area_2024(
-  type              = "metro_santiago",
-  level             = "mpio",
-  base_url          = santiago_cfg$base_url_shp,
-  keep_municipality = santiago_cfg$cities_in_metro,
-  download_dir      = here::here(santiago_cfg$dl_dir, "metro_area"),
-  out_file          = here::here(santiago_cfg$out_dir, "geospatial_data",
-                                 "santiago", "santiago_metro_area_2024.gpkg"),
-  dissolve_by       = "CUT",
-  overwrite_zip     = FALSE,
-  container         = TRUE,
-  overwrite_gpkg    = TRUE,
-  quiet             = FALSE
-)
+# Prepare only the 2017 footprint used to review the station-source regions.
+zonas_2017 <- santiago_prepare_metro_area_2017(
+    metro_file = geography_sources_2017[["metro"]],
+    zones_file = geography_sources_2017[["zonas"]],
+    count_file = geography_sources_2017[["count"]])
 
-# Apply function to save a LaTeX table of the states that we must download stations data
+# The optional alternative boundary has its own preparation recipe:
+# scripts/process_data/prepare_santiago_alternative_geography.R.
+
+# Save a LaTeX table to review which regions should supply station data.
 table_states_to_download <- table_state_metro_distances(
   national_states_sf = chile,
   metro_area_sf = zonas_2017,
@@ -90,34 +68,44 @@ table_states_to_download <- table_state_metro_distances(
   caption = "Administrative states and distance to metropolitan area (in Km)",
   out_file = here::here("results", "tables", "station_source_regions_santiago.tex"),
   overwrite_tex = TRUE
-) # change cdmx_cfg$which_states if necessary! Depending on result
+) # Review santiago_cfg$which_states against this diagnostic.
 
-# Apply function to create Selenium server and download station data + save logs
+# Use Selenium to download hourly station data and save the acquisition log.
 logs_sinca_stations_hourly_data <- santiago_download_pollution(
   base_url = santiago_cfg$base_url_sinca,
   subdir   = file.path("santiago", "ground_stations"))
 write.csv(logs_sinca_stations_hourly_data, row.names = FALSE,
           file = here::here(santiago_cfg$dl_dir, "log_sinca_ground_stations.csv"))
 
-# Apply function to create Selenium server and download the stations metadata
+# Use Selenium to download the station metadata.
 logs_sinca_stations_metadata    <- santiago_download_station_info(
   base_url = santiago_cfg$base_url_sinca,
   subdir   = file.path("santiago", "stations_metadata"))
 
-# Apply function to download the 2017 Census microdata for the metro area
+# Download the 2017 census geographic files.
 census_2017 <- santiago_download_census_data(
   type            = "geo_location",
   year            = 2017,
   download_folder = here::here(santiago_cfg$dl_dir, "census"))
 
-# Apply function to download the 2017 Census microdata for the metro area
+# Download the 2024 census microdata.
 census_2024 <- santiago_download_census_data(
   type = "people",
   year = 2024,
   download_folder = here::here(santiago_cfg$dl_dir, "census"))
 
 # Preserve the package-managed census source before analytical filtering.
-santiago_acquire_census_2017()
+census_source <- santiago_acquire_census_2017()
 
-# Print a success message for when running inside Docker Container
-cat("Script from the IDB projected executed successfully in the Docker container!\n")
+# ==========================================================================================
+# III: Check acquisition outputs
+# ==========================================================================================
+acquisition_results <- list(
+  geography_sources_2017 = geography_sources_2017,
+  geography_source_2024 = geography_source_2024,
+  logs_sinca_stations_hourly_data = logs_sinca_stations_hourly_data,
+  logs_sinca_stations_metadata = logs_sinca_stations_metadata,
+  census_2017 = census_2017,
+  census_2024 = census_2024,
+  census_source = census_source)
+str(acquisition_results, max.level = 1)
