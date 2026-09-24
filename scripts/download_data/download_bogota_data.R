@@ -33,6 +33,7 @@ dir_geography       <- here::here(bogota_cfg$dl_dir, "metro_area")
 file_municipalities <- here::here(dir_geography, "SHP_MGN2018_INTGRD_MPIO.zip")
 file_localities     <- here::here(dir_geography, "bogota_loca.gpkg")
 
+# Load the boundaries of colombian states - rnaturalearth
 colombia <- ne_states(country = "Colombia", returnclass = "sf")
 
 # Show the station-source regions specified in bogota_cfg.
