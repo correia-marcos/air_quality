@@ -1,10 +1,10 @@
-# ============================================================================================
+# ========================================================================================
 # IDB: Air monitoring
-# ============================================================================================
+# ========================================================================================
 #' @Goal: Produce station-to-station and station-to-geo distance matrices for every city.
 #
-#' @Description: This script calculates the spatial distances required for outlier detection
-# and spatial interpolation (IDW). For each city, it computes two types of matrices: the
+#' @Description: This script calculates distances for outlier detection and spatial
+# interpolation (IDW). For each city, it computes two types of matrices: the
 # distance between individual monitoring stations, and the distance from census geographic
 # units to all stations. Results are saved as Parquet files. Santiago is run twice because
 # the 2017 census identifies smaller geographic units than the 2024 census.
@@ -16,11 +16,11 @@
 #
 #' @Date: January 2026
 #' @Author: Marcos
-# ============================================================================================
+# ========================================================================================
 
-# ============================================================================================
+# ========================================================================================
 # I: Import data
-# ============================================================================================
+# ========================================================================================
 source(here::here("src", "general_utilities", "base_utils.R"))
 source(here::here("src", "general_utilities", "process", "distances.R"))
 source(here::here("config", "analysis_settings.R"))
@@ -65,52 +65,53 @@ santiago_zonas_2017_sf <- sf::st_read(gpkg_santiago_2017_zonas)
 santiago_metro_2024_sf <- sf::st_read(gpkg_santiago_2024_metro_area)
 sp_metro_2010_sf       <- sf::st_read(gpkg_sp_2010_metro_area)
 
-# ============================================================================================
+# ========================================================================================
 # II: Process data
-# ============================================================================================
+# ========================================================================================
 # Compute distances for Bogotá (2018 census tracts)
 bogota_distances <- compute_distance_matrices(stations_sf = bogota_stations_2018_sf,
-                                              station_id_col = "station_name",
-                                              geo_sf = bogota_metro_2018_sf,
-                                              geo_id_col = "GEO_ID",
-                                              distance_metric = distance_metric,
-                                              representative_point = distance_representative_point)
+    station_id_col       = "station_name",
+    geo_sf               = bogota_metro_2018_sf,
+    geo_id_col           = "GEO_ID",
+    distance_metric      = distance_metric,
+    representative_point = distance_representative_point)
 
 # Compute distances for CDMX (2024 municipalities, used with the 2020 census)
 cdmx_distances <- compute_distance_matrices(stations_sf = cdmx_stations_sf,
-                                            station_id_col = "station",
-                                            geo_sf = cdmx_metro_sf,
-                                            geo_id_col = "CVE_MUN",
-                                            distance_metric = distance_metric,
-                                            representative_point = distance_representative_point)
+    station_id_col       = "station",
+    geo_sf               = cdmx_metro_sf,
+    geo_id_col           = "CVE_MUN",
+    distance_metric      = distance_metric,
+    representative_point = distance_representative_point)
 
 # Compute distances for Santiago's main specification (2017 census zones)
-santiago_zona_distances <- compute_distance_matrices(stations_sf = santiago_stations_2017_sf,
-                                                     station_id_col = "station_name",
-                                                     geo_sf = santiago_zonas_2017_sf,
-                                                     geo_id_col = "zona_id",
-                                                     distance_metric = distance_metric,
-                                                     representative_point = distance_representative_point)
+santiago_zona_distances <- compute_distance_matrices(
+    stations_sf          = santiago_stations_2017_sf,
+    station_id_col       = "station_name",
+    geo_sf               = santiago_zonas_2017_sf,
+    geo_id_col           = "zona_id",
+    distance_metric      = distance_metric,
+    representative_point = distance_representative_point)
 
 # Compute distances for Santiago's robustness check (2024 communes)
 santiago_distances <- compute_distance_matrices(stations_sf = santiago_stations_2017_sf,
-                                                station_id_col = "station_name",
-                                                geo_sf = santiago_metro_2024_sf,
-                                                geo_id_col = "CUT",
-                                                distance_metric = distance_metric,
-                                                representative_point = distance_representative_point)
+    station_id_col       = "station_name",
+    geo_sf               = santiago_metro_2024_sf,
+    geo_id_col           = "CUT",
+    distance_metric      = distance_metric,
+    representative_point = distance_representative_point)
 
 # Compute distances for São Paulo (2010 weighting areas)
 sao_paulo_distances <- compute_distance_matrices(stations_sf = sp_stations_2010_sf,
-                                                 station_id_col = "station_name",
-                                                 geo_sf = sp_metro_2010_sf,
-                                                 geo_id_col = "code_weighting",
-                                                 distance_metric = distance_metric,
-                                                 representative_point = distance_representative_point)
+    station_id_col       = "station_name",
+    geo_sf               = sp_metro_2010_sf,
+    geo_id_col           = "code_weighting",
+    distance_metric      = distance_metric,
+    representative_point = distance_representative_point)
 
-# ============================================================================================
+# ========================================================================================
 # III: Save outputs
-# ============================================================================================
+# ========================================================================================
 # Save the two distance tables from each result list as Parquet files
 bogota_files <- write_distance_matrices(result = bogota_distances,
                                         out_dir = here::here(outdir_data, "bogota_2018"))
@@ -119,10 +120,10 @@ cdmx_files <- write_distance_matrices(result = cdmx_distances,
                                       out_dir = here::here(outdir_data, "cdmx_2020"))
 
 santiago_zona_files <- write_distance_matrices(result = santiago_zona_distances,
-                                               out_dir = here::here(outdir_data, "santiago_2017"))
+    out_dir = here::here(outdir_data, "santiago_2017"))
 
 santiago_files <- write_distance_matrices(result = santiago_distances,
-                                          out_dir = here::here(outdir_data, "santiago_2024"))
+    out_dir = here::here(outdir_data, "santiago_2024"))
 
 sao_paulo_files <- write_distance_matrices(result = sao_paulo_distances,
-                                           out_dir = here::here(outdir_data, "sao_paulo_2010"))
+    out_dir = here::here(outdir_data, "sao_paulo_2010"))

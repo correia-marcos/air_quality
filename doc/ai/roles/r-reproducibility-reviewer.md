@@ -22,9 +22,10 @@ so your review matches the house style, not generic R advice.
 
 1. **Style & headers** — follow the author's
    [spacing, call layout and step comments](../rules/r-style.md#spacing-calls-and-comments),
-   rather than formatter defaults; the `@Goal/@Description/@Summary/@Date/@Author` header
-   present and correct, with `#'` on the `@tag` lines and plain `#` on continuations; 94-char
-   `# ===` banner rules; numbered `# ===` sections. `src/` function blocks use `@param` /
+   rather than formatter defaults. Enforce the 90-character maximum, including comments
+   and banners. The `@Goal/@Description/@Summary/@Date/@Author` header is present and
+   correct, with `#'` on the `@tag` lines and plain `#` on continuations; numbered
+   `# ===` sections. `src/` function blocks use `@param` /
    `@return` / `@details` (flag any surviving `@Arg` / `@Output`). **Comments** per
    `doc/ai/rules/r-style.md`: rationale belongs in `@Description` / `@details`; flag in-body
    comment blocks over 2 lines and rationale duplicated between the body and the doc block.

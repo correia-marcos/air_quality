@@ -47,14 +47,17 @@ separate closing parenthesis. Use `<-` with spaces; align assignments within a s
 related group when helpful, without padding unrelated statements. Leave blank lines
 between operations so the reader can follow one step at a time.
 
-Aim for 90 characters, but allow a slightly longer call when further wrapping would
-obscure it. Preserve meaningful names and the author's layout over formatter defaults.
+Keep every R line within 90 characters, including comments and section dividers.
+If aligning arguments under the opening parenthesis exceeds that limit, use a shorter,
+consistent continuation indent. Move the first argument to the next line when needed.
+Preserve meaningful names; adjust alignment and wrapping rather than exceed the limit.
 Script comments use short, concrete descriptions: set the paths, read the stations,
 compute distances, save the tables. Explain geographic vintages or other choices where
 they help the reader. Polish the English without replacing this voice with boilerplate.
 
 ## Hard rules
 
+- **Maximum line length: 90 characters.** Call alignment must fit within this limit.
 - **Comments: one home for rationale.** *Why* a function does what it does belongs in its
   `@Description` / `@details` block — written once, updated in place. Comments **inside** a
   function body are at most **2 lines** and say only what happens *to the data* here, or point
@@ -74,9 +77,9 @@ they help the reader. Polish the English without replacing this voice with boile
 ## Every script starts with this header
 
 ```r
-# ============================================================================================
+# ========================================================================================
 # IDB: Air monitoring
-# ============================================================================================
+# ========================================================================================
 #' @Goal: <one line: what this script produces>
 #
 #' @Description: <2-4 lines: inputs, what is done, outputs and where they land>
@@ -89,7 +92,7 @@ they help the reader. Polish the English without replacing this voice with boile
 #
 #' @Date: <Month Year>
 #' @Author: <name>
-# ============================================================================================
+# ========================================================================================
 ```
 
 **The `@tag` line takes `#'`; continuation lines and the `# ===` banner rules stay plain `#`.**
@@ -99,14 +102,14 @@ scannable. roxygen2 never runs here (no `R/`, no `NAMESPACE`, `DESCRIPTION` is `
 
 Use `scripts/process_data/generate_distance_matrices.R` as the processing example. Section
 dividers inside the script reuse the same `# ===` rule with a `# I:` / `# II:` label. Banner
-rules are 94 characters wide throughout.
+rules must also fit within 90 characters.
 
 ## Every `src/` function has a doc block
 
 Same `#'`-on-the-tag-line rule, with roxygen's standard argument tags:
 
 ```r
-# --------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------
 # Function: assign_socio_group
 #
 #' @param dt      data.table; modified in place. Must contain a `geo_id` column.
@@ -119,7 +122,7 @@ Same `#'`-on-the-tag-line rule, with roxygen's standard argument tags:
 #
 #' @Written_on : July 2026
 #' @Written_by : Marcos Paulo
-# --------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------
 ```
 
 Use `@param` / `@return` / `@details` — **not** the old `@Arg` / `@Output` / `@Details`. `@param`
@@ -144,7 +147,7 @@ takes the name then the description, with no colon between them. `@Purpose`, `@W
 - Don't wrap uncertainty in defensive code — if you're unsure what an output looks like, ask
   Marcos to run and check it first.
 
-Exceptions: established 94-character banners; .Rprofile container startup setwd;
+Exceptions: .Rprofile container startup setwd;
 explicit stage setup loaders and registry initialization; helper definitions in tests/.
 `_targets.R` declares ordinary scientific calls and their saved-file targets. A computation
 returns manageable objects; a writer returns the files it actually wrote. Large streaming

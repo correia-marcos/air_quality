@@ -128,8 +128,8 @@ record in `doc/planning/targets-migration.md` (excluded from runtime images).
 ## Conventions (summary — full detail in `doc/ai/rules/`)
 
 - **R only.** Stack: renv, Docker, DuckDB, Arrow, data.table, dplyr, sf/terra (geospatial).
-- **R layout:** follow the author-edited distance recipe and shared R style; aim for
-  90 characters without fragmenting readable calls.
+- **R layout:** follow the author-edited distance recipe and shared R style. The maximum
+  line length is 90 characters; use shorter indentation or wrap arguments to fit.
 - **Comments: rationale lives in `@Description` / `@details`, once.** Comments inside a function
   body are ≤ 2 lines and say what happens *to the data* here, or point back to that block. Full
   rule (with the header/doc-block exemption) in `doc/ai/rules/r-style.md`.

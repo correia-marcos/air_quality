@@ -14,7 +14,8 @@ Check, and cite line numbers:
 
 - **Style:** follow the author's spacing, call layout and step comments in
   [R style](../rules/r-style.md#spacing-calls-and-comments), rather than formatter defaults;
-  header block present and correctly formatted; numbered `# ===` sections.
+  enforce the 90-character maximum, including comments and banners; header block present
+  and correctly formatted; numbered `# ===` sections.
   **Comments** per `doc/ai/rules/r-style.md` — flag any in-body comment block over
   2 lines, and any rationale duplicated between the body and `@Description` / `@details`.
 - **Paths:** every path via `here::here()`; no absolute paths, no `setwd()`.
