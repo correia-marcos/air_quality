@@ -1,5 +1,48 @@
 # Implementation and evidence
 
+## Outliers, IDW and observed-exposure recipes — 24 September 2026
+
+Three recipes now use direct scientific calls and explicit input/output paths. Outlier
+and IDW functions retain their existing streaming writes; their returned paths remain
+named objects. Observed-exposure computation returns inspectable city/buffer tables and
+Section III saves them. The writer creates its own output directory. Shared settings
+retain the existing values: 2023, IDW buffers 3/5/20 km, power 1, regression buffers 3/5 km,
+and the existing temporal/spatial missingness behavior.
+
+Targets calls the same functions and separates exposure computations from writers.
+Individual census/group files remain file-backed. Each IDW target owns a complete
+city/vintage family and serializes buffer/grouping writes. Removed the unused core
+specification/path helpers and observed-exposure adapter; other adapters remain pending.
+
+Evidence: `data/verification/analytical-recipes-20260924/` (local, ignored):
+
+- `before/` preserves the incoming implementations and recipes. `compare.R` redirects
+  input/output folders into isolated fixtures and executes old adapters, new recipes and
+  actual graph commands. All 124 Parquet comparisons passed at tolerance `1e-12`, including
+  schemas, row order and contents. Fixtures cover five contexts, all buffers, income reuse,
+  missing education and station data on both sides of a year boundary. This does not
+  reproduce the production datasets or validate the deferred Santiago 2024 specification.
+- Small fixture outcomes produced covariance-square-root warnings in all three routes;
+  the resulting missing standard errors agreed. Finite regression/golden-value checks
+  remain in the synthetic suite. The comparison is not evidence about real-data inference.
+- The comparison initially exposed a missing output-directory creation after extracting
+  the writer. This was fixed in `save_table_parquet_csv()`; the complete comparison rerun
+  passed. An initial checkpoint test lacked required label columns; its fixture was fixed.
+- `test-exposure-targets.R` executes production writer commands in an isolated targets
+  store. It checks no-op reruns, regeneration of deleted Parquet and CSV outputs without
+  re-estimating tables, input invalidation, file-backed population targets and city-specific
+  dependencies. Existing distance/target tests retain the wider invalidation checks.
+- Final synthetic suite: **418 passed, zero failed/errors/skipped/test warnings**, using
+  the Framework R executable with `--vanilla` and the existing R 4.6 project library.
+  Sandbox CPU-probe and temporary-file-cleanup messages occurred outside test results.
+  The changed recipes, settings, graph and new tests satisfy the 92-character limit.
+
+No production census, IDW, exposure or manuscript outputs were regenerated. No protected
+inputs, frozen resolution inputs, package versions or lockfile were changed. The legal
+metro alternative is not substituted for Gran Santiago. Marcos deferred 2024 geographic
+population alignment in [remaining work](../planning/remaining-work.md); 2017 remains main.
+Imputation, summaries/rendering and tooling migration remain next; cutover remains pending.
+
 ## City geography separation and recipe style — 24 September 2026
 
 The author-edited Bogotá download/processing recipes are the layout references. Shared

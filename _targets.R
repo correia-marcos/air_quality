@@ -1,4 +1,4 @@
-# Manuscript targets. Distance calculations and their saved checkpoints are separate.
+# Manuscript targets. Distance/exposure calculations and saved checkpoints are separate.
 # Remaining analytical stages retain transitional adapters during migration.
 source(here::here("src", "pipeline", "load.R"), local = TRUE)
 load_manuscript_functions()
@@ -637,10 +637,6 @@ list(
     format = "file", packages = c("dplyr", "data.table")),
 
   # City/vintage matrices, complete outlier datasets and IDW families
-  targets::tar_target(bogota_2018_spec,
-    manuscript_city_specs()[1L, , drop = FALSE],
-    format = "rds", packages = pipeline_packages("process")),
-
   targets::tar_target(bogota_distance_stations,
     sf::st_read(
       bogota_stations_filter[basename(bogota_stations_filter) ==
@@ -672,23 +668,48 @@ list(
     format = "file"),
 
   targets::tar_target(bogota_outliers,
-    {
-        suppressMessages(sf::sf_use_s2(TRUE))
-        prepare_outlier_files("bogota", bogota_pollution_parquet, bogota_2018_distances)
-    },
-    format = "file", packages = pipeline_packages("process")),
+    detect_pollution_outliers(
+        arrow_dir = bogota_pollution_parquet[basename(bogota_pollution_parquet) ==
+            "bogota_metro_dataset"],
+        station_dist_path = bogota_2018_distances[basename(bogota_2018_distances) ==
+            "matrix_station_distances.parquet"],
+        on_missing_temporal = outlier_missing_temporal,
+        on_missing_neighbor = outlier_missing_neighbor,
+        out_dir = here::here("data", "processed", "monitoring_stations_outliers"),
+        out_name = "bogota_metro",
+        overwrite = TRUE),
+    format = "file"),
 
   targets::tar_target(bogota_2018_idw,
     {
-        suppressMessages(sf::sf_use_s2(TRUE))
-        prepare_idw_files(bogota_2018_spec, bogota_outliers, bogota_2018_distances,
-            bogota_census)
+      micro <- arrow::read_parquet(bogota_census[
+        basename(bogota_census) == "census_2018_metro_individual.parquet"])
+      geo <- arrow::read_parquet(bogota_census[
+        basename(bogota_census) == "census_2018_metro_collapsed.parquet"])
+      matrix <- bogota_2018_distances[basename(bogota_2018_distances) ==
+        "matrix_geo_station_distances.parquet"]
+      panel <- here::here(bogota_outliers, paste0("year=", analysis_year))
+      dir_idw <- here::here("data", "processed", "idw_estimates")
+      files <- character()
+      for (buffer_km in idw_buffers_km) {
+        education <- run_idw_city(city_label = "Bogota",
+            city_id = "bogota_2018",
+            arrow_dir = panel,
+            geo_sta_pq = matrix,
+            geo_census = geo,
+            micro_census = micro,
+            socio_var = "education",
+            n_groups = 5L,
+            group_name = "edu_quintile",
+            buffer_km = buffer_km,
+            distance_power = idw_distance_power,
+            outdir_exp = dir_idw,
+            return_data = FALSE)
+        files <- c(files, unlist(education, use.names = FALSE))
+      }
+      unique(files)
     },
-    format = "file", packages = pipeline_packages("process")),
-
-  targets::tar_target(cdmx_2020_spec,
-    manuscript_city_specs()[2L, , drop = FALSE],
-    format = "rds", packages = pipeline_packages("process")),
+    format = "file"),
 
   targets::tar_target(cdmx_distance_stations,
     sf::st_read(
@@ -721,23 +742,64 @@ list(
     format = "file"),
 
   targets::tar_target(cdmx_outliers,
-    {
-        suppressMessages(sf::sf_use_s2(TRUE))
-        prepare_outlier_files("cdmx", cdmx_pollution_parquet, cdmx_2020_distances)
-    },
-    format = "file", packages = pipeline_packages("process")),
+    detect_pollution_outliers(
+        arrow_dir = cdmx_pollution_parquet[basename(cdmx_pollution_parquet) ==
+            "cdmx_metro_dataset"],
+        station_dist_path = cdmx_2020_distances[basename(cdmx_2020_distances) ==
+            "matrix_station_distances.parquet"],
+        on_missing_temporal = outlier_missing_temporal,
+        on_missing_neighbor = outlier_missing_neighbor,
+        out_dir = here::here("data", "processed", "monitoring_stations_outliers"),
+        out_name = "cdmx_metro",
+        overwrite = TRUE),
+    format = "file"),
 
   targets::tar_target(cdmx_2020_idw,
     {
-        suppressMessages(sf::sf_use_s2(TRUE))
-        prepare_idw_files(cdmx_2020_spec, cdmx_outliers, cdmx_2020_distances,
-          cdmx_census)
+      micro <- arrow::read_parquet(cdmx_census[
+        basename(cdmx_census) == "census_metro_individual_2020.parquet"])
+      geo <- arrow::read_parquet(cdmx_census[
+        basename(cdmx_census) == "collapse_metro_area_2020.parquet"])
+      matrix <- cdmx_2020_distances[basename(cdmx_2020_distances) ==
+        "matrix_geo_station_distances.parquet"]
+      panel <- here::here(cdmx_outliers, paste0("year=", analysis_year))
+      dir_idw <- here::here("data", "processed", "idw_estimates")
+      files <- character()
+      for (buffer_km in idw_buffers_km) {
+        education <- run_idw_city(city_label = "CDMX",
+            city_id = "cdmx_2020",
+            arrow_dir = panel,
+            geo_sta_pq = matrix,
+            geo_census = geo,
+            micro_census = micro,
+            socio_var = "education",
+            n_groups = 5L,
+            group_name = "edu_quintile",
+            buffer_km = buffer_km,
+            distance_power = idw_distance_power,
+            outdir_exp = dir_idw,
+            return_data = FALSE)
+        files <- c(files, unlist(education, use.names = FALSE))
+        income <- run_idw_city(city_label = "CDMX",
+            city_id = "cdmx_2020",
+            arrow_dir = panel,
+            geo_sta_pq = matrix,
+            geo_census = geo,
+            micro_census = micro,
+            socio_var = "income",
+            n_groups = 5L,
+            group_name = "income_quintile",
+            buffer_km = buffer_km,
+            distance_power = idw_distance_power,
+            outdir_exp = dir_idw,
+            out_suffix = "income",
+            reuse_exposure = TRUE,
+            return_data = FALSE)
+        files <- c(files, unlist(income, use.names = FALSE))
+      }
+      unique(files)
     },
-    format = "file", packages = pipeline_packages("process")),
-
-  targets::tar_target(santiago_2017_spec,
-    manuscript_city_specs()[3L, , drop = FALSE],
-    format = "rds", packages = pipeline_packages("process")),
+    format = "file"),
 
   targets::tar_target(santiago_distance_stations,
     sf::st_read(
@@ -770,25 +832,48 @@ list(
     format = "file"),
 
   targets::tar_target(santiago_outliers,
-    {
-        suppressMessages(sf::sf_use_s2(TRUE))
-        prepare_outlier_files("santiago", santiago_pollution_parquet,
-          santiago_2017_distances)
-    },
-    format = "file", packages = pipeline_packages("process")),
+    detect_pollution_outliers(
+        arrow_dir = santiago_pollution_parquet[basename(santiago_pollution_parquet) ==
+            "santiago_metro_dataset"],
+        station_dist_path = santiago_2017_distances[basename(santiago_2017_distances) ==
+            "matrix_station_distances.parquet"],
+        on_missing_temporal = outlier_missing_temporal,
+        on_missing_neighbor = outlier_missing_neighbor,
+        out_dir = here::here("data", "processed", "monitoring_stations_outliers"),
+        out_name = "santiago_metro",
+        overwrite = TRUE),
+    format = "file"),
 
   targets::tar_target(santiago_2017_idw,
     {
-        suppressMessages(sf::sf_use_s2(TRUE))
-        prepare_idw_files(santiago_2017_spec, santiago_outliers,
-          santiago_2017_distances,
-            santiago_census)
+      micro <- arrow::read_parquet(santiago_census[
+        basename(santiago_census) == "census_individual_2017.parquet"])
+      geo <- arrow::read_parquet(santiago_census[
+        basename(santiago_census) == "census_collapsed_2017.parquet"])
+      matrix <- santiago_2017_distances[basename(santiago_2017_distances) ==
+        "matrix_geo_station_distances.parquet"]
+      panel <- here::here(santiago_outliers, paste0("year=", analysis_year))
+      dir_idw <- here::here("data", "processed", "idw_estimates")
+      files <- character()
+      for (buffer_km in idw_buffers_km) {
+        education <- run_idw_city(city_label = "Santiago (zona 2017)",
+            city_id = "santiago_2017",
+            arrow_dir = panel,
+            geo_sta_pq = matrix,
+            geo_census = geo,
+            micro_census = micro,
+            socio_var = "education",
+            n_groups = 5L,
+            group_name = "edu_quintile",
+            buffer_km = buffer_km,
+            distance_power = idw_distance_power,
+            outdir_exp = dir_idw,
+            return_data = FALSE)
+        files <- c(files, unlist(education, use.names = FALSE))
+      }
+      unique(files)
     },
-    format = "file", packages = pipeline_packages("process")),
-
-  targets::tar_target(santiago_2024_spec,
-    manuscript_city_specs()[4L, , drop = FALSE],
-    format = "rds", packages = pipeline_packages("process")),
+    format = "file"),
 
   targets::tar_target(santiago_2024_distance_geography,
     sf::st_read(
@@ -816,16 +901,34 @@ list(
 
   targets::tar_target(santiago_2024_idw,
     {
-        suppressMessages(sf::sf_use_s2(TRUE))
-        prepare_idw_files(santiago_2024_spec, santiago_outliers,
-          santiago_2024_distances,
-            santiago_census)
+      micro <- arrow::read_parquet(santiago_census[
+        basename(santiago_census) == "census_santiago_individual_2024.parquet"])
+      geo <- arrow::read_parquet(santiago_census[
+        basename(santiago_census) == "census_santiago_collapsed_2024.parquet"])
+      matrix <- santiago_2024_distances[basename(santiago_2024_distances) ==
+        "matrix_geo_station_distances.parquet"]
+      panel <- here::here(santiago_outliers, paste0("year=", analysis_year))
+      dir_idw <- here::here("data", "processed", "idw_estimates")
+      files <- character()
+      for (buffer_km in idw_buffers_km) {
+        education <- run_idw_city(city_label = "Santiago (comuna 2024)",
+            city_id = "santiago_2024",
+            arrow_dir = panel,
+            geo_sta_pq = matrix,
+            geo_census = geo,
+            micro_census = micro,
+            socio_var = "education",
+            n_groups = 5L,
+            group_name = "edu_quintile",
+            buffer_km = buffer_km,
+            distance_power = idw_distance_power,
+            outdir_exp = dir_idw,
+            return_data = FALSE)
+        files <- c(files, unlist(education, use.names = FALSE))
+      }
+      unique(files)
     },
-    format = "file", packages = pipeline_packages("process")),
-
-  targets::tar_target(sao_paulo_2010_spec,
-    manuscript_city_specs()[5L, , drop = FALSE],
-    format = "rds", packages = pipeline_packages("process")),
+    format = "file"),
 
   targets::tar_target(sao_paulo_distance_stations,
     sf::st_read(
@@ -858,21 +961,64 @@ list(
     format = "file"),
 
   targets::tar_target(sao_paulo_outliers,
-    {
-        suppressMessages(sf::sf_use_s2(TRUE))
-        prepare_outlier_files("sao_paulo", sao_paulo_pollution_parquet,
-          sao_paulo_2010_distances)
-    },
-    format = "file", packages = pipeline_packages("process")),
+    detect_pollution_outliers(
+        arrow_dir = sao_paulo_pollution_parquet[basename(sao_paulo_pollution_parquet) ==
+            "sao_paulo_metro_dataset"],
+        station_dist_path = sao_paulo_2010_distances[basename(sao_paulo_2010_distances) ==
+            "matrix_station_distances.parquet"],
+        on_missing_temporal = outlier_missing_temporal,
+        on_missing_neighbor = outlier_missing_neighbor,
+        out_dir = here::here("data", "processed", "monitoring_stations_outliers"),
+        out_name = "sao_paulo_metro",
+        overwrite = TRUE),
+    format = "file"),
 
   targets::tar_target(sao_paulo_2010_idw,
     {
-        suppressMessages(sf::sf_use_s2(TRUE))
-        prepare_idw_files(sao_paulo_2010_spec, sao_paulo_outliers,
-          sao_paulo_2010_distances,
-            sao_paulo_census)
+      micro <- arrow::read_parquet(sao_paulo_census[
+        basename(sao_paulo_census) == "census_sp_individual_2010.parquet"])
+      geo <- arrow::read_parquet(sao_paulo_census[
+        basename(sao_paulo_census) == "census_sp_collapsed_2010.parquet"])
+      matrix <- sao_paulo_2010_distances[basename(sao_paulo_2010_distances) ==
+        "matrix_geo_station_distances.parquet"]
+      panel <- here::here(sao_paulo_outliers, paste0("year=", analysis_year))
+      dir_idw <- here::here("data", "processed", "idw_estimates")
+      files <- character()
+      for (buffer_km in idw_buffers_km) {
+        education <- run_idw_city(city_label = "Sao Paulo",
+            city_id = "sao_paulo_2010",
+            arrow_dir = panel,
+            geo_sta_pq = matrix,
+            geo_census = geo,
+            micro_census = micro,
+            socio_var = "education",
+            n_groups = 5L,
+            group_name = "edu_quintile",
+            buffer_km = buffer_km,
+            distance_power = idw_distance_power,
+            outdir_exp = dir_idw,
+            return_data = FALSE)
+        files <- c(files, unlist(education, use.names = FALSE))
+        income <- run_idw_city(city_label = "Sao Paulo",
+            city_id = "sao_paulo_2010",
+            arrow_dir = panel,
+            geo_sta_pq = matrix,
+            geo_census = geo,
+            micro_census = micro,
+            socio_var = "income",
+            n_groups = 10L,
+            group_name = "income_decile",
+            buffer_km = buffer_km,
+            distance_power = idw_distance_power,
+            outdir_exp = dir_idw,
+            out_suffix = "income",
+            reuse_exposure = TRUE,
+            return_data = FALSE)
+        files <- c(files, unlist(income, use.names = FALSE))
+      }
+      unique(files)
     },
-    format = "file", packages = pipeline_packages("process")),
+    format = "file"),
 
   # Selections forward tracked files, preserving content hashes across these edges.
   # Only the upstream scientific targets write these files.
@@ -937,12 +1083,293 @@ list(
     format = "file", packages = pipeline_packages("process")),
 
   # Analytical products and shared intermediate summaries
-  targets::tar_target(estimate_exposure,
+  targets::tar_target(bogota_2018_exposure_inputs,
+    lapply(setNames(exposure_buffers_km, exposure_buffers_km), function(buffer_km) {
+      arrow::read_parquet(bogota_2018_idw[basename(bogota_2018_idw) ==
+        paste0("bogota_2018_", buffer_km, "km_idw_exposure.parquet")])
+    })),
+
+  targets::tar_target(bogota_2018_education_population,
+    bogota_2018_idw[
+      basename(bogota_2018_idw) == "bogota_2018_indiv_groups.parquet"],
+    format = "file"),
+
+  targets::tar_target(bogota_2018_education_estimates,
     {
-        suppressMessages(sf::sf_use_s2(TRUE))
-        run_estimate_exposure(c(idw, distances))
+      population <- data.table::as.data.table(
+        arrow::read_parquet(bogota_2018_education_population))
+      lapply(setNames(exposure_buffers_km, exposure_buffers_km), function(buffer_km) {
+        run_city_exposure(city = "Bogota",
+            city_id = "bogota_2018",
+            exposure_dt = bogota_2018_exposure_inputs[[as.character(buffer_km)]],
+            individual_dt = population,
+            geo_station_pq = bogota_2018_distances[basename(bogota_2018_distances) ==
+              "matrix_geo_station_distances.parquet"],
+            socio_var = "education",
+            group_col = "edu_quintile",
+            n_groups = 5L,
+            year = analysis_year,
+            buffer_km = buffer_km)
+      })
+    }),
+
+  targets::tar_target(cdmx_2020_exposure_inputs,
+    lapply(setNames(exposure_buffers_km, exposure_buffers_km), function(buffer_km) {
+      arrow::read_parquet(cdmx_2020_idw[basename(cdmx_2020_idw) ==
+        paste0("cdmx_2020_", buffer_km, "km_idw_exposure.parquet")])
+    })),
+
+  targets::tar_target(cdmx_2020_education_population,
+    cdmx_2020_idw[
+      basename(cdmx_2020_idw) == "cdmx_2020_indiv_groups.parquet"],
+    format = "file"),
+
+  targets::tar_target(cdmx_2020_education_estimates,
+    {
+      population <- data.table::as.data.table(
+        arrow::read_parquet(cdmx_2020_education_population))
+      lapply(setNames(exposure_buffers_km, exposure_buffers_km), function(buffer_km) {
+        run_city_exposure(city = "CDMX",
+            city_id = "cdmx_2020",
+            exposure_dt = cdmx_2020_exposure_inputs[[as.character(buffer_km)]],
+            individual_dt = population,
+            geo_station_pq = cdmx_2020_distances[basename(cdmx_2020_distances) ==
+              "matrix_geo_station_distances.parquet"],
+            socio_var = "education",
+            group_col = "edu_quintile",
+            n_groups = 5L,
+            year = analysis_year,
+            buffer_km = buffer_km)
+      })
+    }),
+
+  targets::tar_target(cdmx_2020_income_population,
+    cdmx_2020_idw[
+      basename(cdmx_2020_idw) == "cdmx_2020_income_indiv_groups.parquet"],
+    format = "file"),
+
+  targets::tar_target(cdmx_2020_income_estimates,
+    {
+      population <- data.table::as.data.table(
+        arrow::read_parquet(cdmx_2020_income_population))
+      lapply(setNames(exposure_buffers_km, exposure_buffers_km), function(buffer_km) {
+        run_city_exposure(city = "CDMX",
+            city_id = "cdmx_2020",
+            exposure_dt = cdmx_2020_exposure_inputs[[as.character(buffer_km)]],
+            individual_dt = population,
+            geo_station_pq = cdmx_2020_distances[basename(cdmx_2020_distances) ==
+              "matrix_geo_station_distances.parquet"],
+            socio_var = "income",
+            group_col = "income_quintile",
+            n_groups = 5L,
+            year = analysis_year,
+            buffer_km = buffer_km)
+      })
+    }),
+
+  targets::tar_target(santiago_2017_exposure_inputs,
+    lapply(setNames(exposure_buffers_km, exposure_buffers_km), function(buffer_km) {
+      arrow::read_parquet(santiago_2017_idw[basename(santiago_2017_idw) ==
+        paste0("santiago_2017_", buffer_km, "km_idw_exposure.parquet")])
+    })),
+
+  targets::tar_target(santiago_2017_education_population,
+    santiago_2017_idw[
+      basename(santiago_2017_idw) == "santiago_2017_indiv_groups.parquet"],
+    format = "file"),
+
+  targets::tar_target(santiago_2017_education_estimates,
+    {
+      population <- data.table::as.data.table(
+        arrow::read_parquet(santiago_2017_education_population))
+      lapply(setNames(exposure_buffers_km, exposure_buffers_km), function(buffer_km) {
+        run_city_exposure(city = "Santiago",
+            city_id = "santiago_2017",
+            exposure_dt = santiago_2017_exposure_inputs[[as.character(buffer_km)]],
+            individual_dt = population,
+            geo_station_pq = santiago_2017_distances[basename(santiago_2017_distances) ==
+              "matrix_geo_station_distances.parquet"],
+            socio_var = "education",
+            group_col = "edu_quintile",
+            n_groups = 5L,
+            year = analysis_year,
+            buffer_km = buffer_km)
+      })
+    }),
+
+  targets::tar_target(santiago_2024_exposure_inputs,
+    lapply(setNames(exposure_buffers_km, exposure_buffers_km), function(buffer_km) {
+      arrow::read_parquet(santiago_2024_idw[basename(santiago_2024_idw) ==
+        paste0("santiago_2024_", buffer_km, "km_idw_exposure.parquet")])
+    })),
+
+  targets::tar_target(santiago_2024_education_population,
+    santiago_2024_idw[
+      basename(santiago_2024_idw) == "santiago_2024_indiv_groups.parquet"],
+    format = "file"),
+
+  targets::tar_target(santiago_2024_education_estimates,
+    {
+      population <- data.table::as.data.table(
+        arrow::read_parquet(santiago_2024_education_population))
+      lapply(setNames(exposure_buffers_km, exposure_buffers_km), function(buffer_km) {
+        run_city_exposure(city = "Santiago (comuna, 2024)",
+            city_id = "santiago_2024",
+            exposure_dt = santiago_2024_exposure_inputs[[as.character(buffer_km)]],
+            individual_dt = population,
+            geo_station_pq = santiago_2024_distances[basename(santiago_2024_distances) ==
+              "matrix_geo_station_distances.parquet"],
+            socio_var = "education",
+            group_col = "edu_quintile",
+            n_groups = 5L,
+            year = analysis_year,
+            buffer_km = buffer_km)
+      })
+    }),
+
+  targets::tar_target(sao_paulo_2010_exposure_inputs,
+    lapply(setNames(exposure_buffers_km, exposure_buffers_km), function(buffer_km) {
+      arrow::read_parquet(sao_paulo_2010_idw[basename(sao_paulo_2010_idw) ==
+        paste0("sao_paulo_2010_", buffer_km, "km_idw_exposure.parquet")])
+    })),
+
+  targets::tar_target(sao_paulo_2010_education_population,
+    sao_paulo_2010_idw[
+      basename(sao_paulo_2010_idw) == "sao_paulo_2010_indiv_groups.parquet"],
+    format = "file"),
+
+  targets::tar_target(sao_paulo_2010_education_estimates,
+    {
+      population <- data.table::as.data.table(
+        arrow::read_parquet(sao_paulo_2010_education_population))
+      lapply(setNames(exposure_buffers_km, exposure_buffers_km), function(buffer_km) {
+        run_city_exposure(city = "Sao Paulo",
+            city_id = "sao_paulo_2010",
+            exposure_dt = sao_paulo_2010_exposure_inputs[[as.character(buffer_km)]],
+            individual_dt = population,
+            geo_station_pq = sao_paulo_2010_distances[basename(sao_paulo_2010_distances) ==
+              "matrix_geo_station_distances.parquet"],
+            socio_var = "education",
+            group_col = "edu_quintile",
+            n_groups = 5L,
+            year = analysis_year,
+            buffer_km = buffer_km)
+      })
+    }),
+
+  targets::tar_target(sao_paulo_2010_income_population,
+    sao_paulo_2010_idw[
+      basename(sao_paulo_2010_idw) == "sao_paulo_2010_income_indiv_groups.parquet"],
+    format = "file"),
+
+  targets::tar_target(sao_paulo_2010_income_estimates,
+    {
+      population <- data.table::as.data.table(
+        arrow::read_parquet(sao_paulo_2010_income_population))
+      lapply(setNames(exposure_buffers_km, exposure_buffers_km), function(buffer_km) {
+        run_city_exposure(city = "Sao Paulo",
+            city_id = "sao_paulo_2010",
+            exposure_dt = sao_paulo_2010_exposure_inputs[[as.character(buffer_km)]],
+            individual_dt = population,
+            geo_station_pq = sao_paulo_2010_distances[basename(sao_paulo_2010_distances) ==
+              "matrix_geo_station_distances.parquet"],
+            socio_var = "income",
+            group_col = "income_decile",
+            n_groups = 10L,
+            year = analysis_year,
+            buffer_km = buffer_km)
+      })
+    }),
+
+  targets::tar_target(exposure_group_tables,
+    lapply(setNames(exposure_buffers_km, exposure_buffers_km), function(buffer_km) {
+      key <- as.character(buffer_km)
+      stack_exposure_runs(
+        edu_runs = list(
+          bogota_2018_education_estimates[[key]],
+          cdmx_2020_education_estimates[[key]],
+          santiago_2017_education_estimates[[key]],
+          santiago_2024_education_estimates[[key]],
+          sao_paulo_2010_education_estimates[[key]]),
+        inc_runs = list(
+          cdmx_2020_income_estimates[[key]],
+          sao_paulo_2010_income_estimates[[key]]))
+    })),
+
+  targets::tar_target(exposure_individual_table,
+    {
+      results <- list()
+      result <- compute_exposure_regressions_individual(
+          exposure_dt = bogota_2018_exposure_inputs[[
+            as.character(individual_exposure_buffer_km)]],
+          individual_dt = arrow::read_parquet(bogota_2018_education_population),
+          group_col = "edu_quintile",
+          year_filter = analysis_year)
+      result[, `:=`(city = "Bogota", city_id = "bogota_2018")]
+      results[["bogota_2018"]] <- result
+      result <- compute_exposure_regressions_individual(
+          exposure_dt = cdmx_2020_exposure_inputs[[
+            as.character(individual_exposure_buffer_km)]],
+          individual_dt = arrow::read_parquet(cdmx_2020_education_population),
+          group_col = "edu_quintile",
+          year_filter = analysis_year)
+      result[, `:=`(city = "CDMX", city_id = "cdmx_2020")]
+      results[["cdmx_2020"]] <- result
+      result <- compute_exposure_regressions_individual(
+          exposure_dt = santiago_2017_exposure_inputs[[
+            as.character(individual_exposure_buffer_km)]],
+          individual_dt = arrow::read_parquet(santiago_2017_education_population),
+          group_col = "edu_quintile",
+          year_filter = analysis_year)
+      result[, `:=`(city = "Santiago", city_id = "santiago_2017")]
+      results[["santiago_2017"]] <- result
+      result <- compute_exposure_regressions_individual(
+          exposure_dt = santiago_2024_exposure_inputs[[
+            as.character(individual_exposure_buffer_km)]],
+          individual_dt = arrow::read_parquet(santiago_2024_education_population),
+          group_col = "edu_quintile",
+          year_filter = analysis_year)
+      result[, `:=`(city = "Santiago (comuna, 2024)", city_id = "santiago_2024")]
+      results[["santiago_2024"]] <- result
+      result <- compute_exposure_regressions_individual(
+          exposure_dt = sao_paulo_2010_exposure_inputs[[
+            as.character(individual_exposure_buffer_km)]],
+          individual_dt = arrow::read_parquet(sao_paulo_2010_education_population),
+          group_col = "edu_quintile",
+          year_filter = analysis_year)
+      result[, `:=`(city = "Sao Paulo", city_id = "sao_paulo_2010")]
+      results[["sao_paulo_2010"]] <- result
+      combined <- data.table::rbindlist(results, fill = TRUE)
+      combined[, `:=`(year = analysis_year, buffer_km = individual_exposure_buffer_km,
+                      socioeconomic_var = "education", group_type = "quintile")]
+      combined
+    }),
+
+  targets::tar_target(exposure_group_files,
+    {
+      files <- character()
+      for (buffer_km in exposure_buffers_km) {
+        files <- c(files, save_exposure_tables(
+            tables = exposure_group_tables[[as.character(buffer_km)]],
+            out_dir = here::here("data", "processed", "idw_regressions"),
+            buffer_km = buffer_km,
+            year = analysis_year))
+      }
+      files
     },
-    format = "file", packages = pipeline_packages("process")),
+    format = "file"),
+
+  targets::tar_target(exposure_individual_files,
+    save_exposure_tables(
+        tables = list(ci_estimates_education_individual = exposure_individual_table),
+        out_dir = here::here("data", "processed", "idw_regressions"),
+        buffer_km = individual_exposure_buffer_km,
+        year = analysis_year),
+    format = "file"),
+
+  targets::tar_target(estimate_exposure,
+    c(exposure_group_files, exposure_individual_files),
+    format = "file"),
 
   targets::tar_target(compute_descriptive_tables,
     {

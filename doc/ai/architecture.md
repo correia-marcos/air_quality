@@ -13,7 +13,8 @@ This is the highest structural priority. It takes precedence over minimizing scr
 length, eliminating every repeated function call, or abstracting orchestration.
 Scientific definitions and protected inputs remain unchanged.
 
-- Analytical scripts are executable recipes with three or four meaningful sections.
+- Analytical scripts normally have three or four meaningful sections. Streaming recipes
+  that compute and write together may use Import data, then Process and save data.
 - Section I shows sources, settings, all input/output paths and reads. Section II computes
   named objects; Section III only saves them in the same order. Optional inspection belongs
   in the guide and reuses returned objects, without a separate script inspection block.
@@ -89,15 +90,16 @@ Makefile and sequential runner remain transitional and their paths must also sta
 After acceptance, remove Makefile and its RStudio build setting; make `run_pipeline.R`
 a compatibility launcher for targets. Optional analyses remain explicit separate commands.
 
-The distance and four city recipes call scientific functions directly. Other recipes need
-simplification; their heading counts do not establish readability. The migration candidate
+The distance, city, outlier, IDW and observed-exposure recipes call scientific functions
+directly. Other recipes need simplification; heading counts do not establish readability.
+The migration candidate
 shares transformation functions with the interactive recipes. The new
 graph declares concrete city functions, configurations and upstream file targets; it does not
 dispatch an opaque `city_process(id)` target. `city_process()` remains a convenience dispatcher, running prerequisites in order.
 Reader-facing city scripts expose source paths, geographic objects, selected stations and
 census output paths. Bogotá's geographic preparation consumes explicit local archives and
-returns `sf` objects; acquisition is a separate function. Other cities still use the
-transitional `allow_download = FALSE`, `out_file = NULL` interface. Section III saves spatial
+returns `sf` objects; acquisition is a separate function. The other three cities now use
+the same acquisition/preparation separation. Section III saves spatial
 objects with `write_geopackage()`. Large census calls use `return_data = FALSE`
 and expose saved paths rather than retain individual records. Registry configuration
 remains available to validation.
@@ -110,6 +112,10 @@ city commands select explicit filenames. Named stage contracts remain in the man
 `city_process()` convenience interface. Targets caches the spatial computations separately
 from their writers, and sources definitions/settings into its own environment.
 Whole source directories track membership and sidecars.
+Observed exposure estimates and their writers are separate targets. Individual census/group
+files stay file-backed; consumers read them explicitly. Outlier datasets retain all years,
+and each IDW city/vintage target serializes all buffers and income reuse. Shared year,
+buffer and distance-power choices are in `config/analysis_settings.R`.
 The default runner changes only after isolated scientific acceptance; see the development
 record in `doc/planning/targets-migration.md` (excluded from runtime images).
 

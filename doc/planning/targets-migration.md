@@ -2,7 +2,8 @@
 
 Approved revision, 23 September 2026. **The distance pilot is implemented and its
 readability accepted by Marcos; the four city recipes and their targets are now revised.**
-Remaining analytical recipes, tooling and scientific cutover are pending. This replaces
+Outliers, IDW and observed-exposure recipes are also revised; imputation, summaries,
+rendering, tooling and scientific cutover remain pending. This replaces
 the earlier requirements for analytical scripts to use pipeline loaders, specification
 tables, stage adapters and input/output dictionaries. The collapsed historical record
 below is superseded, including its earlier commit groups and environment status.
@@ -15,8 +16,9 @@ Section II makes five explicit computations. Section III saves those results in 
 order. There is no extra inspection block or targets-cache requirement.
 
 The defining function is in `src/general_utilities/process/distances.R`; shared choices
-are in `config/analysis_settings.R`. The latter currently contains the migrated distance
-choices and target seed. Other shared settings move there with their respective workflows,
+are in `config/analysis_settings.R`. It contains distance choices, the target seed, outlier
+missingness behavior, analysis year, IDW buffers/power and regression buffers.
+Other shared settings move there with their respective workflows,
 without changing their values. City-specific definitions remain in the city modules.
 
 The [first-run guide](../guides/first-run.md) works a 3–4–5 km station triangle by hand.
@@ -108,9 +110,47 @@ commands. Synthetic checks cover offline geographic fixtures, file-backed census
 spatial caching and writer behavior. Full source-to-output city parity remains unverified;
 see [the city-preparation evidence](../ai/implementation.md#city-preparation--23-september-2026).
 
+## Outliers, IDW and observed exposure — 24 September 2026
+
+These three recipes now source scientific modules and show paths and named calls directly.
+Outliers and IDW write their large datasets during processing and return paths; their
+recipes have two meaningful sections. Observed exposure retains each city's estimates
+for both buffers, combines them into tables and saves those tables in Section III.
+
+The graph calls the same functions. Outlier targets depend on their station distances and
+complete pollution datasets. Each IDW city/vintage target owns its complete output family,
+with serial buffers and income reuse. Exposure inputs, estimates and saved files are
+separate targets; individual census/group files remain file-backed. Existing public stage
+selections and output filenames remain unchanged. The unused `core.R` specification/path
+helpers and observed-exposure stage adapter were removed from `src/pipeline/`.
+
+The isolated comparison checked 124 Parquet pairs across preserved adapters, revised
+recipes and target commands. The fixtures include both sides of a year boundary, all
+five city/vintage contexts, income groupings and missing education. These are refactor
+checks, not full scientific reproduction. See [implementation evidence](../ai/implementation.md).
+
+Recommended review groups for a human-created commit:
+
+- `docs: defer Santiago 2024 population alignment`: `doc/planning/remaining-work.md`
+  (deferred item and Santiago row) and `doc/ai/evidence.md`.
+- `refactor: expose outlier IDW and exposure computations`: `_targets.R`,
+  `config/analysis_settings.R`, `scripts/process_data/detect_outliers.R`,
+  `scripts/process_data/estimate_idw.R`, `scripts/process_data/estimate_exposure.R`,
+  `src/general_utilities/process/outliers.R`, `src/general_utilities/process/idw_exposure.R`,
+  `src/general_utilities/process/exposure_regressions.R`, `src/pipeline/load.R`,
+  `src/pipeline/stage_names.R`, `tests/check-reader-workflows.R`,
+  `tests/check-targets-contracts.R`, `tests/testthat/test-exposure-targets.R`,
+  `doc/ai/architecture.md`, `doc/ai/rules/r-style.md`, `doc/ai/implementation.md`,
+  `doc/planning/targets-migration.md` and the three corresponding inventory rows in
+  `doc/planning/remaining-work.md`. The removed adapters were untracked on entry.
+
+These groups describe this batch, not every pre-existing working-tree change. Review
+shared-file hunks alongside their earlier migration prerequisites. Agents do not stage,
+run `git commit` or run `git push`.
+
 ## Remaining implementation
 
-1. Apply the accepted recipe to outliers/IDW/exposure, summaries and
+1. Apply the accepted recipe next to imputation/imputed exposure, summaries and
    rendering, then optional analysis and validation. Keep short repeated calls; share
    transformations, not script-shaped orchestration. Use meaningful names, named arguments
    and space between operations. Follow the author's call layout and step comments,
@@ -165,9 +205,13 @@ verified the pilot, accepted its readability and refined its comments and layout
 That review clears the readability gate for extending the pattern; it does not establish
 full source reproduction.
 
-Full reproduction and cutover remain pending: three Santiago 2017 geographic responses,
-São Paulo's weighting-area source, a reviewed comparison baseline and the manuscript
-appendix are still unavailable. INEGI's 2020/2024 geographic-contract discrepancy is not
+Full reproduction and cutover remain pending. Santiago's three 2017 geographic responses
+are now preserved and audited; its census pair must be rebuilt after the committed
+education-filter correction. São Paulo's weighting-area source needs a fresh availability
+check; a reviewed comparison baseline and the manuscript appendix remain unresolved.
+Santiago 2024 population/geography alignment is deferred in [remaining work](remaining-work.md);
+Gran Santiago remains the preferred definition and 2017 remains the main specification.
+INEGI's 2020/2024 geographic-contract discrepancy is not
 resolved by updating its API call. No raw/download/legacy inputs, dependency versions or
 lockfile were changed. Optional resolution definitions and frozen checksums remain intact.
 
@@ -385,7 +429,7 @@ Implementation: [`processing.R`](../../src/city_specific/processing.R),
 [`preparation.R`](../../src/city_specific/preparation.R),
 [`registry.R`](../../src/city_specific/registry.R),
 `src/pipeline/graph.R` (retired; declarations now in [`_targets.R`](../../_targets.R)),
-[`core.R`](../../src/pipeline/core.R),
+`src/pipeline/core.R` (retired on 24 September; calls now live in scripts and targets),
 [`stages`](../../src/pipeline/stages), [`_targets.R`](../../_targets.R),
 [`runner`](../../scripts/run_targets.R), [`verification`](../../scripts/verification/verify.R).
 Commands: [HOW_TO_RUN](../HOW_TO_RUN.md#candidate-manuscript-migration-to-targets).

@@ -3,9 +3,8 @@
 # ============================================================================================
 #' @Goal: Functions for hourly outlier detection.
 #
-#' @Description: Flags anomalous hourly readings by comparing each station against its own history and
-#   against its nearest neighbours, out-of-core via DuckDB.
-#   Sourced by config_utils_process_data.R; never sourced directly by a script.
+#' @Description: Compare each station with its own history and nearest neighbours,
+# using DuckDB to process the partitioned data. Source base_utils.R for shared helpers.
 #
 #' @Summary:
 #   1. detect_pollution_outliers
@@ -29,6 +28,8 @@
 #' @param neighbor_eligibility string; "with_data" or "all". Default "with_data".
 #' @param overwrite          logical; skip if output exists. Default TRUE.
 #' @param quiet              logical; suppress messages. Default FALSE.
+#' @return Directory of the complete cleaned, year-partitioned dataset, invisibly.
+# Writes the dataset during processing; no separate save is needed.
 #
 #' @details
 #   `neighbor_eligibility` decides which stations may serve as the neighbor:

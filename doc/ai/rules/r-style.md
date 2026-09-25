@@ -24,7 +24,8 @@ Assign useful data, estimates and plots to named objects. Keep results from repe
 city/pollutant runs in named lists. Intentional logging, directory creation and other
 pure side effects do not require assignments. Functions that also write must say so;
 keep their returned objects or paths without writing them twice or adding a report merely
-to fill a Save section. Optional inspection examples belong in the guide and reuse those
+to fill a Save section. A streaming recipe may have two sections: Import data, then
+Process and save data. Optional inspection examples belong in the guide and reuse those
 returns; do not reconstruct paths or reopen an existing Arrow Dataset handle.
 
 Scripts source the required scientific definitions directly, read explicit files, and

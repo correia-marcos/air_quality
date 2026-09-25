@@ -5,7 +5,8 @@
 #
 #' @Description: Interpolates hourly station readings to each geographic unit inside a buffer,
 #   then aggregates to annual exposure and WHO interim-target exceedance hours.
-#   Sourced by config_utils_process_data.R; never sourced directly by a script.
+# Source base_utils.R and geo_ids.R for identifier helpers. Scripts and targets call
+# these functions directly; large outputs are written during processing.
 #
 #' @Summary:
 #   1. assign_socio_group

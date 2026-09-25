@@ -173,10 +173,11 @@ check_targets_contracts <- function() {
     remaining <- setdiff(remaining, ready)
   }
   check(setequal(visited, names(plan)))
-  specs <- e$manuscript_city_specs()
+  main_ids <- c(bogota = "bogota_2018", cdmx = "cdmx_2020", santiago = "santiago_2017",
+                sao_paulo = "sao_paulo_2010")
   for (city in cities) {
-    row <- specs[specs$city == city, , drop = FALSE][1, ]
-    check(paste0(row$id, "_distances") %in% dependencies[[paste0(city, "_outliers")]])
+    check(paste0(main_ids[[city]], "_distances") %in%
+      dependencies[[paste0(city, "_outliers")]])
     check(paste0(city, "_pollution_parquet") %in%
       dependencies[[paste0(city, "_outliers")]])
     command <- all.names(plan[[paste0(city, "_geography")]]$command)
@@ -198,10 +199,22 @@ check_targets_contracts <- function() {
   check(identical(e$manuscript_city_config(cfg), cfg))
   cfg$out_dir <- work
   fails(e$manuscript_city_config(cfg), "canonical data/interim root")
-  check(identical(specs$income_groups, c(0L, 5L, 0L, 0L, 10L)))
-  check(identical(specs$geo_id, c("GEO_ID", "CVE_MUN", "zona_id", "CUT", "code_weighting")))
-  check(length(e$idw_owned_files(specs[1, ], work)) == 7L)
-  check(length(e$idw_owned_files(specs[2, ], work)) == 11L)
+  idw_calls <- function(expr) {
+    if (!is.call(expr)) return(list())
+    if (identical(expr[[1]], as.name("run_idw_city"))) return(list(expr))
+    unlist(lapply(as.list(expr)[-1], idw_calls), recursive = FALSE)
+  }
+  for (id in c(unname(main_ids), "santiago_2024")) {
+    calls <- idw_calls(plan[[paste0(id, "_idw")]]$command)
+    income <- if (id == "cdmx_2020") 5L else if (id == "sao_paulo_2010") 10L else 0L
+    check(length(calls) == if (income > 0L) 2L else 1L)
+    check(identical(calls[[1]][["n_groups"]], 5L))
+    check(identical(calls[[1]][["city_id"]], id))
+    if (income > 0L) {
+      check(identical(calls[[2]][["n_groups"]], income))
+      check(isTRUE(calls[[2]][["reuse_exposure"]]))
+    }
+  }
   manifest <- read.csv(here::here("config", "paper_artifacts.csv"))
   check(all(sub("[.]R$", "", basename(manifest$producer_script)) %in% names(plan)))
   check(identical(manifest$producer_script[

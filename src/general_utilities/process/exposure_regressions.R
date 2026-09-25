@@ -6,8 +6,8 @@
 #' @Description: Weighted exposure summaries by socioeconomic group, the regression gaps
 # relative to the top group with clustered intervals, and the geographic coverage behind
 # each estimate, together with the helpers that name and read the IDW artifacts feeding
-# them and that write the stacked result tables. Sourced by config_utils_process_data.R;
-# never sourced directly by a script.
+# them and that write the stacked result tables. Scripts and targets source these
+# definitions directly; estimation returns tables and saving is explicit.
 #
 #' @Summary:
 #   1. compute_exposure_summaries
@@ -973,7 +973,8 @@ set_meta_cols_first <- function(dt, meta_cols) {
 #' @param name   string; file stem, without extension.
 #' @param quiet  logical; suppress the confirmation message. Default FALSE.
 #
-#' @return  invisible NULL. Writes <out_dir>/<name>.parquet and <name>.csv.
+#' @return Both output paths invisibly: <name>.parquet and <name>.csv.
+# Creates the destination folder if needed, then writes both files.
 #
 #' @details
 #   Parquet is the file of record because it keeps column types; the CSV copy exists so
@@ -983,6 +984,7 @@ set_meta_cols_first <- function(dt, meta_cols) {
 #' @Updated_on : August 2026
 # --------------------------------------------------------------------------------------------
 save_table_parquet_csv <- function(dt, out_dir, name, quiet = FALSE) {
+  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
   arrow::write_parquet(dt, file.path(out_dir, paste0(name, ".parquet")))
   data.table::fwrite(dt, file.path(out_dir, paste0(name, ".csv")))
 
@@ -990,7 +992,7 @@ save_table_parquet_csv <- function(dt, out_dir, name, quiet = FALSE) {
     cat("Saved:", file.path(out_dir, name), "(.parquet and .csv)\n")
   }
 
-  invisible(NULL)
+  invisible(file.path(out_dir, paste0(name, c(".parquet", ".csv"))))
 }
 
 
@@ -1003,7 +1005,7 @@ save_table_parquet_csv <- function(dt, out_dir, name, quiet = FALSE) {
 #' @param buffer_km numeric; buffer this run used, written into every file name.
 #' @param year      integer; analysis year, written into every file name.
 #
-#' @return  invisible NULL. Writes one Parquet and one CSV per element of `tables`, and
+#' @return  Output paths invisibly. Writes one Parquet and one CSV per element, and
 #           reorders each input table's columns by reference.
 #
 #' @details
@@ -1021,14 +1023,15 @@ save_exposure_tables <- function(tables, out_dir, buffer_km, year) {
   meta_cols <- c("city", "city_id", "year", "buffer_km",
                  "socioeconomic_var", "group_type")
 
+  files <- character()
   for (nm in names(tables)) {
     set_meta_cols_first(tables[[nm]], meta_cols)
 
-    save_table_parquet_csv(
+    files <- c(files, save_table_parquet_csv(
       tables[[nm]], out_dir,
       sprintf("exposure_%s_%dkm_%d", nm, buffer_km, year)
-    )
+    ))
   }
 
-  invisible(NULL)
+  invisible(files)
 }
