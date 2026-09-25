@@ -5,7 +5,7 @@ fresh_IDW_anchor,fine,hrs_d_pm10_it2,0,TRUE,bogota_2018
 fresh_IDW_anchor,fine,avg_pm10,7.105427357601e-14,TRUE,bogota_2018
 fresh_IDW_anchor,fine,hrs_d_pm25_it1,0,TRUE,bogota_2018
 fresh_IDW_anchor,fine,hrs_d_pm25_it2,0,TRUE,bogota_2018
-fresh_IDW_anchor,fine,avg_pm25,3.5527136788005e-14,TRUE,bogota_2018
+fresh_IDW_anchor,fine,avg_pm25,3.37507799486048e-14,TRUE,bogota_2018
 A_cell_weight_invariance,fine,hrs_d_pm10_it1,0,TRUE,bogota_2018
 A_cell_weight_invariance,fine,hrs_d_pm10_it2,0,TRUE,bogota_2018
 A_cell_weight_invariance,fine,avg_pm10,0,TRUE,bogota_2018
@@ -46,7 +46,7 @@ fresh_IDW_anchor,fine,hrs_d_pm10_it2,0,TRUE,santiago_2017
 fresh_IDW_anchor,fine,avg_pm10,8.5265128291212e-14,TRUE,santiago_2017
 fresh_IDW_anchor,fine,hrs_d_pm25_it1,0,TRUE,santiago_2017
 fresh_IDW_anchor,fine,hrs_d_pm25_it2,0,TRUE,santiago_2017
-fresh_IDW_anchor,fine,avg_pm25,2.1316282072803e-14,TRUE,santiago_2017
+fresh_IDW_anchor,fine,avg_pm25,1.77635683940025e-14,TRUE,santiago_2017
 A_cell_weight_invariance,fine,hrs_d_pm10_it1,0,TRUE,santiago_2017
 A_cell_weight_invariance,fine,hrs_d_pm10_it2,0,TRUE,santiago_2017
 A_cell_weight_invariance,fine,avg_pm10,0,TRUE,santiago_2017
@@ -70,10 +70,10 @@ A_cell_weight_invariance,comuna,avg_pm25,0,TRUE,santiago_2017
 B_frozen_groups_and_weights,fine,,0,TRUE,sao_paulo_2010
 fresh_IDW_anchor,fine,hrs_d_pm10_it1,0,TRUE,sao_paulo_2010
 fresh_IDW_anchor,fine,hrs_d_pm10_it2,0,TRUE,sao_paulo_2010
-fresh_IDW_anchor,fine,avg_pm10,1.06581410364015e-14,TRUE,sao_paulo_2010
+fresh_IDW_anchor,fine,avg_pm10,7.105427357601e-15,TRUE,sao_paulo_2010
 fresh_IDW_anchor,fine,hrs_d_pm25_it1,0,TRUE,sao_paulo_2010
 fresh_IDW_anchor,fine,hrs_d_pm25_it2,0,TRUE,sao_paulo_2010
-fresh_IDW_anchor,fine,avg_pm25,5.32907051820075e-15,TRUE,sao_paulo_2010
+fresh_IDW_anchor,fine,avg_pm25,7.105427357601e-15,TRUE,sao_paulo_2010
 A_cell_weight_invariance,fine,hrs_d_pm10_it1,0,TRUE,sao_paulo_2010
 A_cell_weight_invariance,fine,hrs_d_pm10_it2,0,TRUE,sao_paulo_2010
 A_cell_weight_invariance,fine,avg_pm10,0,TRUE,sao_paulo_2010

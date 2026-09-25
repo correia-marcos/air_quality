@@ -11,12 +11,12 @@ santiago_2017,matrix_exposure_reconciliation,qualified_threshold_boundaries,8 ch
 santiago_2017,fine_distance_anchor,passed,maximum distance error (km) 0
 santiago_2017,nested_branches,passed,2 directed nesting checks
 santiago_2017,paired_bootstrap,passed,12 paired intervals; 999 draws each
-santiago_2017,preserved_source_geometry,missing_source_snapshots,3 declared source paths absent
+santiago_2017,preserved_source_geometry,available_or_not_declared_missing,0 declared source paths absent
 santiago_2017,matrix_dimensions_normalization_hours,passed,3 supports; both pollutants
 sao_paulo_2010,frozen_population_and_IDW,passed,20 checks
 sao_paulo_2010,matrix_exposure_reconciliation,passed,0 checks require floating-point boundary envelopes
 sao_paulo_2010,fine_distance_anchor,passed,maximum distance error (km) 0
 sao_paulo_2010,nested_branches,passed,1 directed nesting checks
 sao_paulo_2010,paired_bootstrap,descriptive_only,0 paired intervals; 999 draws each
-sao_paulo_2010,preserved_source_geometry,missing_source_snapshots,1 declared source paths absent
+sao_paulo_2010,preserved_source_geometry,available_or_not_declared_missing,0 declared source paths absent
 sao_paulo_2010,matrix_dimensions_normalization_hours,passed,2 supports; both pollutants
