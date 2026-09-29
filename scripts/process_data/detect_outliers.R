@@ -1,96 +1,85 @@
-# ============================================================================================
+# ==========================================================================================
 # IDB: Air monitoring
-# ============================================================================================
-#' @Goal: Identify and flag anomalous hourly air pollution sensor readings across all cities.
-# 
-#' @Description: This script processes applies the outlier detection procedure explained in 
-# detail in our appendix. It uses hive-partitioned Arrow datasets of raw ground station 
-# data (from process_{city}_data.R) alongside the spatial distance matrices (from 
-# generate_distance_matrices.R). It applies temporal and spatial checks to detect and flag 
-# outlier observations without loading the entire datasets into active memory.
-# 
-#' @Summary: 
-#   I.   Import data: Define directory paths for raw Arrow datasets and distance matrices.
-#   II.  Process: Apply the detection algorithm sequentially for Bogotá, CDMX, Santiago, 
-#        and São Paulo using out-of-core data structures.
-#   III. Save: Export the cleaned and flagged datasets as partitioned Parquet files.
-# 
-#' @Date: January 2026
+# ==========================================================================================
+#' @Goal: Flag anomalous hourly pollution readings for each city.
+#
+#' @Description: Read partitioned station data and the station distance matrices.
+# Compare each reading with its temporal and spatial neighbors. The function writes
+# a complete cleaned dataset and returns its directory; years remain together.
+#
+#' @Summary:
+#   I.  Import data: source functions and declare input and output paths.
+#   II. Process and save data: retain the cleaned dataset paths for each city.
+#
+#' @Date: September 2026
 #' @Author: Marcos
-# ============================================================================================
+# ==========================================================================================
 
-# Get all libraries and functions
-source(here::here("src", "general_utilities", "config_utils_process_data.R"))
-
-# ============================================================================================
+# ==========================================================================================
 # I: Import data
-# ============================================================================================
-# Define the output general folders
-dir_pollution    <- here::here("data", "interim", "monitoring_stations")
-outdir_distances <- here::here("data", "processed", "distances_matrices")
-outdir_results   <- here::here("data", "processed", "monitoring_stations_outliers")
+# ==========================================================================================
+# Load the functions and their required packages.
+source(here::here("src", "general_utilities", "base_utils.R"))
+source(here::here("src", "general_utilities", "process", "outliers.R"))
+source(here::here("config", "analysis_settings.R"))
 
-# Arrow (raw hourly) datasets — one hive-partitioned directory per city.
-arrow_bogota_dir   <- here::here(dir_pollution, "bogota_metro_dataset")
-arrow_cdmx_dir     <- here::here(dir_pollution, "cdmx_metro_dataset")
-arrow_santiago_dir <- here::here(dir_pollution, "santiago_metro_dataset")
-arrow_sp_dir       <- here::here(dir_pollution, "sao_paulo_metro_dataset")
+# Set the source folders and the output folder.
+dir_pollution <- here::here("data", "interim", "monitoring_stations")
+dir_distances <- here::here("data", "processed", "distances_matrices")
+dir_outliers  <- here::here("data", "processed", "monitoring_stations_outliers")
 
-# Station-to-station distance Parquets produced by generate_distance_matrices.R
-dist_bogota   <- here::here(outdir_distances, "bogota_2018",
-                            "matrix_station_distances.parquet")
-dist_cdmx     <- here::here(outdir_distances, "cdmx_2020",
-                            "matrix_station_distances.parquet")
-dist_santiago <- here::here(outdir_distances, "santiago_2017",
-                            "matrix_station_distances.parquet")
-dist_sp       <- here::here(outdir_distances, "sao_paulo_2010",
-                            "matrix_station_distances.parquet")
+# Set paths to each complete station dataset and its station-distance matrix.
+pollution_bogota   <- here::here(dir_pollution, "bogota_metro_dataset")
+distances_bogota   <- here::here(dir_distances, "bogota_2018",
+                                 "matrix_station_distances.parquet")
 
-# ============================================================================================
-# II and III: Process and save
-# ============================================================================================
-# Create the folder of the results, if not yet created
-dir.create(outdir_results, recursive = TRUE, showWarnings = FALSE)
+pollution_cdmx     <- here::here(dir_pollution, "cdmx_metro_dataset")
+distances_cdmx     <- here::here(dir_distances, "cdmx_2020",
+                                 "matrix_station_distances.parquet")
 
-# Apply function to calculate outliers for Bogota
-bogota_cleaned <- detect_pollution_outliers(
-  arrow_dir           = arrow_bogota_dir,
-  station_dist_path   = dist_bogota,
-  on_missing_temporal = "continue",
-  on_missing_neighbor = "second",
-  out_dir             = outdir_results,
-  out_name            = "bogota_metro"
-)
+pollution_santiago <- here::here(dir_pollution, "santiago_metro_dataset")
+distances_santiago <- here::here(dir_distances, "santiago_2017",
+                                 "matrix_station_distances.parquet")
 
-# Apply function to calculate outliers for CDMX
-cdmx_cleaned <- detect_pollution_outliers(
-  arrow_dir           = arrow_cdmx_dir,
-  station_dist_path   = dist_cdmx,
-  on_missing_temporal = "continue",
-  on_missing_neighbor = "second",
-  out_dir             = outdir_results,
-  out_name            = "cdmx_metro"
-)
+pollution_sao_paulo <- here::here(dir_pollution, "sao_paulo_metro_dataset")
+distances_sao_paulo <- here::here(dir_distances, "sao_paulo_2010",
+                                  "matrix_station_distances.parquet")
 
-# Apply function to calculate outliers for Santiago
-santiago_cleaned <- detect_pollution_outliers(
-  arrow_dir           = arrow_santiago_dir,
-  station_dist_path   = dist_santiago,
-  on_missing_temporal = "continue",
-  on_missing_neighbor = "second",
-  out_dir             = outdir_results,
-  out_name            = "santiago_metro"
-)
+# ==========================================================================================
+# II: Process and save data
+# ==========================================================================================
+# Flag outliers and save the cleaned, year-partitioned dataset for Bogotá
+cleaned_bogota <- detect_pollution_outliers(arrow_dir = pollution_bogota,
+    station_dist_path    = distances_bogota,
+    on_missing_temporal  = outlier_missing_temporal,
+    on_missing_neighbor  = outlier_missing_neighbor,
+    out_dir              = dir_outliers,
+    out_name             = "bogota_metro",
+    overwrite            = TRUE)
 
-# Apply function to calculate outliers for São Paulo
-sp_cleaned <- detect_pollution_outliers(
-  arrow_dir           = arrow_sp_dir,
-  station_dist_path   = dist_sp,
-  on_missing_temporal = "continue",
-  on_missing_neighbor = "second",
-  out_dir             = outdir_results,
-  out_name            = "sao_paulo_metro"
-)
+# Flag outliers and save the cleaned, year-partitioned dataset for CDMX
+cleaned_cdmx <- detect_pollution_outliers(arrow_dir = pollution_cdmx,
+    station_dist_path    = distances_cdmx,
+    on_missing_temporal  = outlier_missing_temporal,
+    on_missing_neighbor  = outlier_missing_neighbor,
+    out_dir              = dir_outliers,
+    out_name             = "cdmx_metro",
+    overwrite            = TRUE)
 
-# Print a success message for when running inside Docker Container
-cat("Script from the IDB project executed successfully in the Docker container!\n")
+# Flag outliers and save the cleaned, year-partitioned dataset for Santiago
+cleaned_santiago <- detect_pollution_outliers(arrow_dir = pollution_santiago,
+    station_dist_path    = distances_santiago,
+    on_missing_temporal  = outlier_missing_temporal,
+    on_missing_neighbor  = outlier_missing_neighbor,
+    out_dir              = dir_outliers,
+    out_name             = "santiago_metro",
+    overwrite            = TRUE)
+
+# Flag outliers and save the cleaned, year-partitioned dataset for São Paulo
+cleaned_sao_paulo <- detect_pollution_outliers(arrow_dir = pollution_sao_paulo,
+    station_dist_path    = distances_sao_paulo,
+    on_missing_temporal  = outlier_missing_temporal,
+    on_missing_neighbor  = outlier_missing_neighbor,
+    out_dir              = dir_outliers,
+    out_name             = "sao_paulo_metro",
+    overwrite            = TRUE)

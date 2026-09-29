@@ -9,7 +9,7 @@
 #
 #' @Summary:
 #   I.   Import data: source functions, declare paths and read station locations.
-#   II.  Process data: prepare geography, select stations and harmonize measurements.
+#   II.  Process data: prepare geography, select stations and process pollution/census.
 #   III. Save outputs: save geographic layers and selected stations.
 #
 #' @Date: January 2026
@@ -71,7 +71,7 @@ tracts          <- sao_paulo_prepare_metro_area(source_zip        = file_tracts,
                                                 keep_municipality = cfg$cities_in_metro)
 
 weighting_areas <- sao_paulo_prepare_weighting_areas(source_file       = file_weights,
-                                                     keep_municipality = cfg$cities_in_metro)
+    keep_municipality = cfg$cities_in_metro)
 
 stations        <- sp_filter_stations_in_metro(stations_sp = station_locations,
                                                metro_area  = municipalities,

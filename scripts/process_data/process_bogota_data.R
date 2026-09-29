@@ -9,7 +9,7 @@
 #
 #' @Summary:
 #   I.   Import data: source functions, declare paths and read station locations.
-#   II.  Process data: prepare geography, select stations and harmonize measurements.
+#   II.  Process data: prepare geography, select stations and process pollution/census.
 #   III. Save outputs: save geographic layers and selected stations.
 #
 #' @Date: January 2026

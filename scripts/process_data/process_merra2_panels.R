@@ -7,14 +7,17 @@
 # Compute station correlations and compare country estimates with NASA reference data.
 #
 #' @Summary:
-#   I.   Read prepared city series and country inputs.
-#   II.  Compute station correlations.
-#   III. Compare country estimates with NASA.
+#   I. Import data.
+#   II. Compute station correlations.
+#   III. Compare country estimates and save.
 #
 #' @Date: September 2026
 #' @Author: Marcos Paulo
 # ============================================================================================
 
+# ============================================================================================
+# I: Import data
+# ============================================================================================
 source(here::here("src", "general_utilities", "config_utils_process_data.R"))
 
 dir_series <- here::here("data", "processed", "merra2_stations_pm25")
@@ -49,6 +52,9 @@ south_america <- ne_countries(continent = "South America", returnclass = "sf")
 north_america <- ne_countries(continent = "North America", returnclass = "sf")
 
 
+# ============================================================================================
+# II: Compute station correlations
+# ============================================================================================
 # Correlations at hourly, daily and monthly scales: agreement improves with aggregation,
 # which is the argument for using MERRA-2 monthly rather than hourly.
 city_pollution_list <- list(
@@ -64,7 +70,7 @@ write.csv(correlation_results,
           row.names = FALSE)
 
 
-# IV: Compare the country-level monthly aggregate against NASA
+# III: Compare country estimates and save
 # ============================================================================================
 # Same MERRA-2 processing chain applied to whole countries, where NASA publishes a monthly
 # figure we can check against. Extraction is parallel; num_cores = NULL uses all but one.

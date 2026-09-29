@@ -3,13 +3,13 @@
 # ========================================================================================
 #' @Goal: Prepare geography, stations, pollution and census data for Santiago.
 #
-#' @Description: Keep separate 2017 zones and 2024 communes.
+#' @Description: Prepare Gran Santiago using 2017 zones and 2024 urban commune parts.
 # Geography and station selection return spatial objects. Pollution and census functions
 # also write their large datasets while processing. All sources must be available locally.
 #
 #' @Summary:
 #   I.   Import data: source functions, declare paths and read station locations.
-#   II.  Process data: prepare geography, select stations and harmonize measurements.
+#   II.  Process data: prepare geography, select stations and process pollution/census.
 #   III. Save outputs: save geographic layers and selected stations.
 #
 #' @Date: January 2026
@@ -74,6 +74,7 @@ zones_2017 <- santiago_prepare_metro_area_2017(metro_file = file_metro_2017,
                                                zones_file = file_zones_2017,
                                                count_file = file_count_2017)
 
+# Gran Santiago follows INE urban limits; keep_municipality applies to Metro Santiago.
 metro_2024 <- santiago_prepare_metro_area_2024(source_zip        = file_geography_2024,
                                                type              = "gran_santiago",
                                                level             = "mpio",
@@ -93,7 +94,7 @@ pollution   <- santiago_process_stations_data_to_parquet(data_folder = dir_pollu
                                                          out_dir     = out_pollution,
                                                          out_name    = "santiago_metro")
 
-# The two census files
+# Process each census vintage; both calls save individual records and summaries.
 census_2017 <- santiago_process_census_2017(sf_data     = zones_2017,
                                             match_col   = "zona_id",
                                             source_db   = file_census_2017,
