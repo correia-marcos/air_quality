@@ -1,5 +1,5 @@
 level,outcome,units,max_error,differing_units,exact,boundary_reconciled,passed,city_id
-fine,avg_pm10,42213,5.54223333892878e-13,0,TRUE,TRUE,TRUE,bogota_2018
+fine,avg_pm10,42213,5.61328761250479e-13,0,TRUE,TRUE,TRUE,bogota_2018
 fine,hrs_d_pm10_it1,42213,0,0,TRUE,TRUE,TRUE,bogota_2018
 fine,hrs_d_pm10_it2,42213,0,0,TRUE,TRUE,TRUE,bogota_2018
 fine,avg_pm25,42111,2.43360886997834e-13,0,TRUE,TRUE,TRUE,bogota_2018

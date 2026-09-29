@@ -6,7 +6,9 @@
 #' @Description: Default reference mode preserves the historical Bogota A/joint-C
 # calculation and 500-draw bootstrap. --scope=multicity runs exposure aggregation A,
 # reconstructed IDW B, and classification-only C for Bogota, Santiago, and Sao Paulo.
-# --buffer-km=20 repeats multicity at another IDW distance in its own output folder.
+# --buffer-km=20 repeats multicity at another IDW distance in its own output folder;
+# --city=<id> runs one city, and the combined tables then cover every completed city.
+# --duckdb-mem-gb=<n> raises the DuckDB memory limit of the B rebuild (default 4).
 # Definitions, populations, inference, outputs, and limitations are documented in
 # doc/RESOLUTION_SENSITIVITY.md.
 #
@@ -29,15 +31,24 @@ resolution_scope <- sub("^--scope=", "", grep("^--scope=", resolution_args, valu
 if (!length(resolution_scope)) resolution_scope <- "reference"
 if (length(resolution_scope) != 1L ||
     !resolution_scope %in% c("reference", "multicity")) stop("Invalid --scope.")
-if (any(!grepl("^--scope=|^--output-dir=|^--reuse-b$|^--buffer-km=[0-9]+$",
-               resolution_args))) {
+all_cities <- c("bogota_2018", "santiago_2017", "sao_paulo_2010")
+if (any(!grepl(paste0("^--scope=|^--output-dir=|^--reuse-b$|^--buffer-km=[0-9]+$|",
+                      "^--city=|^--duckdb-mem-gb=[0-9]+$"), resolution_args))) {
   stop("Supported options: --scope=reference|multicity, --output-dir=, --reuse-b, ",
-       "--buffer-km=<km> (multicity only)")
+       "--buffer-km=<km>, --city=<id>, --duckdb-mem-gb=<n> (multicity only)")
 }
+mem_gb <- as.numeric(sub("^--duckdb-mem-gb=", "",
+                         grep("^--duckdb-mem-gb=", resolution_args, value = TRUE)))
+if (!length(mem_gb)) mem_gb <- 4
+cities <- sub("^--city=", "", grep("^--city=", resolution_args, value = TRUE))
+if (!length(cities)) cities <- all_cities
+if (!all(cities %in% all_cities)) stop("Unknown --city.")
 buffer_km <- as.numeric(sub("^--buffer-km=", "",
                             grep("^--buffer-km=", resolution_args, value = TRUE)))
 if (!length(buffer_km)) buffer_km <- 3
-if (buffer_km != 3 && resolution_scope != "multicity") stop("--buffer-km needs multicity.")
+if ((buffer_km != 3 || !setequal(cities, all_cities)) && resolution_scope != "multicity") {
+  stop("--buffer-km and --city need --scope=multicity.")
+}
 set.seed(20260910)
 
 # ============================================================================================
@@ -151,7 +162,6 @@ if (resolution_scope == "reference") {
     ladder_check = ladder_check)
 
 } else {
-  cities <- c("bogota_2018", "santiago_2017", "sao_paulo_2010")
   reuse_b <- "--reuse-b" %in% resolution_args
   all_tables <- list()
   results_by_city <- list()
@@ -202,7 +212,8 @@ if (resolution_scope == "reference") {
         source_dir = source_dir,
         checks = checks,
         matrix_root = matrix_root,
-        buffer_km = buffer_km)
+        buffer_km = buffer_km,
+        mem_gb = mem_gb)
       k <- rebuild_b_result$k
       bdir <- rebuild_b_result$bdir
       checks <- rebuild_b_result$checks
@@ -291,7 +302,8 @@ if (resolution_scope == "reference") {
       contrasts = contrasts,
       variances = variances,
       movements = movements,
-      oc = oc)
+      oc = oc,
+      good_keys = good_keys)
     nesting <- verify_city_result$nesting
     direct <- verify_city_result$direct
     all_tables <- verify_city_result$all_tables
@@ -300,17 +312,23 @@ if (resolution_scope == "reference") {
 
   }
   # The historical Bogota anchor exists only for the 3 km specification.
-  if (buffer_km == 3) {
+  if (buffer_km == 3 && "bogota_2018" %in% cities) {
     reference_anchor_result <- resolution_multicity_reference_anchor(
       z = z,
       direct = direct)
     z <- reference_anchor_result$z
   }
 
+  # Combined tables cover every city whose run at this buffer is complete.
+  complete_cities <- all_cities[vapply(all_cities, function(x) {
+    status <- file.path(resolution_buffer_root(buffer_km), x, "STATUS.txt")
+    file.exists(status) && readLines(status, n = 1L) == "complete"
+  }, logical(1))]
+
   save_tables_result <- resolution_multicity_save_tables(
     city = city,
     lv = lv,
-    cities = cities,
+    cities = complete_cities,
     exposure = exposure,
     z = z,
     boot = boot,
