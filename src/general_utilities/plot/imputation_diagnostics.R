@@ -1,21 +1,22 @@
-# ============================================================================================
+# ==========================================================================================
 # IDB: Air monitoring — imputation diagnostics figures
-# ============================================================================================
+# ==========================================================================================
 #' @Goal: Functions for the figures that show what the hourly imputation predicted.
 #
 #' @Description: Two views of the fitted values written by impute_missing_hourly.R. The
-#   first puts the prediction against the observed series, station by station, to show
-#   that the model tracks the data. The second asks whether the hours the model had to
-#   fill were unusual ones, and whether that differs by the education of the area a
-#   station sits in. Sourced by config_utils_plot_tables.R; never sourced directly.
+#   first puts the prediction against the observed series, station by station, to inspect
+#   how closely the fitted series follows the observations. The second asks whether the
+#   missing-hour predictions differ from observed-hour means across stations ordered
+#   by nearby education. These functions return tables or plots; the caller saves figures.
 #
 #' @Summary:
 #   1. plot_imputation_series
-#   2. plot_imputation_ratio_by_station
+#   2. summarize_imputation_ratios
+#   3. plot_imputation_ratio_by_station
 #
 #' @Date: August 2026
 #' @Author: Marcos Paulo
-# ============================================================================================
+# ==========================================================================================
 
 # --------------------------------------------------------------------------------------
 # Function: plot_imputation_series
@@ -24,39 +25,24 @@
 #                    datetime, station_id, pollutant, observed, predicted, was_missing.
 #' @param pollutant  string; the pollutant to draw, "pm10" or "pm25".
 #' @param city_label string; city name for the panel title.
-#' @param out_file   string; where to write the figure.
 #' @param n_stations integer or NULL; draw only this many stations, the ones with the
 #                    most observed readings. NULL draws all of them.
 #' @param obs_color  string; colour of the observed series.
 #' @param pred_color string; colour of the fitted series.
-#' @param width      numeric; figure width in inches.
-#' @param height     numeric; figure height in inches.
-#' @param dpi        numeric; raster resolution.
 #
-#' @return  ggplot object; also written to out_file.
+#' @return ggplot object; no files are written.
 #
 #' @details
-#   One small panel per station, observed in dark grey and the linear prediction over it.
-#   The prediction is drawn at every hour, including the hours the station reported, which
-#   is the point: a model that only appeared where data was missing could not be judged.
-#   Panels are free-scaled, because a station's level says nothing about whether its own
-#   series is tracked.
+#   Each panel overlays observed readings and predictions, including predictions at
+#   observed hours. Separate y scales make within-station patterns easier to see.
+#   Agreement at fitted observations is not evidence of out-of-sample prediction accuracy.
 #
 #' @Written_on : August 2026
 #' @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------
-plot_imputation_series <- function(
-    pred_dt,
-    pollutant,
-    city_label,
-    out_file,
-    n_stations  = NULL,
-    obs_color   = "grey25",
-    pred_color  = "#4C9BE8",
-    width       = 12,
-    height      = 8,
-    dpi         = 300
-) {
+plot_imputation_series <- function(pred_dt, pollutant, city_label,
+                                  n_stations = NULL, obs_color = "grey25",
+                                  pred_color = "#4C9BE8") {
 
   # `pollutant` names both the argument and a column; the local keeps them apart.
   poll <- pollutant
@@ -89,52 +75,25 @@ plot_imputation_series <- function(
     ggplot2::theme(strip.text = ggplot2::element_text(size = 6),
                    axis.text = ggplot2::element_text(size = 5))
 
-  ggplot2::ggsave(filename = out_file, plot = p, width = width, height = height,
-                  dpi = dpi, device = grDevices::cairo_pdf, limitsize = FALSE,
-                  bg = "white")
-
   return(p)
 }
 
-
 # --------------------------------------------------------------------------------------
-# Function: plot_imputation_ratio_by_station
+# Function: summarize_imputation_ratios
+# 
+# Compute the missing-hour prediction / observed-hour mean ratio for each station.
+#' @param pred_dt Fitted values: station_id, pollutant, observed, predicted, was_missing.
+#' @param station_dt Station socioeconomic table: station_id and education_mean.
+#' @param pollutant Pollutant to summarize, such as "pm10".
 #
-#' @param pred_dt    data.table; fitted values, as for plot_imputation_series().
-#' @param station_dt data.table; station-level socioeconomic data carrying station_id
-#                    and education_mean.
-#' @param pollutant  string; the pollutant to draw.
-#' @param city_label string; city name for the panel title.
-#' @param out_file   string; where to write the figure.
-#' @param point_color string; colour of the station points.
-#' @param width      numeric; figure width in inches.
-#' @param height     numeric; figure height in inches.
-#' @param dpi        numeric; raster resolution.
-#
-#' @return  ggplot object; also written to out_file.
-#
-#' @details
-#   For each station, the mean prediction over the hours it did not report, divided by the
-#   mean of the hours it did. A value of one says the missing hours looked like the
-#   observed ones. Stations are ordered by the mean years of schooling of the area they
-#   sit in, lowest first, so that a systematic relationship between missingness and
-#   education would appear as a trend rather than as scatter.
-#
+#' @return data.table with means, missing-hour counts, ratio and education rank.
+#' @details Retain stations with missing hours, finite means and positive observed means.
+# Missing education is ranked last. No files are written and inputs are not modified.
+# 
 #' @Written_on : August 2026
 #' @Written_by : Marcos Paulo
 # --------------------------------------------------------------------------------------
-plot_imputation_ratio_by_station <- function(
-    pred_dt,
-    station_dt,
-    pollutant,
-    city_label,
-    out_file,
-    point_color = "darkblue",
-    width       = 8.5,
-    height      = 5.8,
-    dpi         = 300
-) {
-
+summarize_imputation_ratios <- function(pred_dt, station_dt, pollutant) {
   # `pollutant` names both the argument and a column; the local keeps them apart.
   poll <- pollutant
   dt <- data.table::as.data.table(pred_dt)[pollutant == poll]
@@ -161,6 +120,31 @@ plot_imputation_ratio_by_station <- function(
   data.table::setorder(ratio_dt, education_mean, na.last = TRUE)
   ratio_dt[, education_rank := seq_len(.N)]
 
+  ratio_dt
+}
+
+# --------------------------------------------------------------------------------------
+# Function: plot_imputation_ratio_by_station
+#
+#' @param ratio_dt Station summaries returned by summarize_imputation_ratios().
+#' @param pollutant  string; the pollutant to draw.
+#' @param city_label string; city name for the panel title.
+#' @param point_color string; colour of the station points.
+#
+#' @return ggplot object; no files are written.
+#
+#' @details
+#   Divide the predicted mean during missing hours by the mean during observed hours.
+#   For example, means of 30 and 15 give a ratio of 2. A ratio of 1 means the two means
+#   agree; it does not validate the unobserved values. Order stations by nearby education,
+#   lowest first, to show how this ratio varies along that ranking.
+#
+#' @Written_on : August 2026
+#' @Written_by : Marcos Paulo
+# --------------------------------------------------------------------------------------
+plot_imputation_ratio_by_station <- function(ratio_dt, pollutant, city_label,
+                                           point_color = "darkblue") {
+
   p <- ggplot2::ggplot(ratio_dt,
                        ggplot2::aes(x = education_rank, y = ratio)) +
     ggplot2::geom_hline(yintercept = 1, linetype = "dashed", color = "grey40") +
@@ -171,10 +155,6 @@ plot_imputation_ratio_by_station <- function(
                         "; stations ordered from lowest to highest education"),
       x = "Station, ordered by mean years of schooling of its area",
       y = "Mean predicted (missing) / mean observed")
-
-  ggplot2::ggsave(filename = out_file, plot = p, width = width, height = height,
-                  dpi = dpi, device = grDevices::cairo_pdf, limitsize = FALSE,
-                  bg = "white")
 
   return(p)
 }

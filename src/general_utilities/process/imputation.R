@@ -1,20 +1,19 @@
-# ============================================================================================
+# ==========================================================================================
 # IDB: Air monitoring — hourly imputation
-# ============================================================================================
+# ==========================================================================================
 #' @Goal: Functions for hourly imputation.
 #
 #' @Description: Fills missing hourly readings by OLS on neighbouring stations, used for
-#   the imputed robustness specification. Sourced by config_utils_process_data.R; never
-#   sourced directly by a script.
+#   the imputed robustness specification. Scripts and targets call the same model directly.
 #
 #' @Summary:
 #   1. impute_missing_hourly_ols
 #
 #' @Date: August 2026
 #' @Author: Marcos Paulo
-# ============================================================================================
+# ==========================================================================================
 
-# --------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------------------
 # Function: impute_missing_hourly_ols
 #
 #' @param arrow_dir   string; Arrow dataset (hourly).
@@ -29,7 +28,9 @@
 #' @param overwrite   logical; skip if the output already exists. Default TRUE.
 #' @param quiet       logical; suppress messages. Default FALSE.
 #
-#' @return  invisible list with out_path, diag_path, n_imputed, per_poll and per_year.
+#' @return Invisible list with out_path, diag_path, summary_path, n_imputed, per_poll
+# and per_year. Processing writes the panel, fitted values and pollutant-level counts.
+# With overwrite = FALSE and an existing panel, returns only out_path and n_imputed = NA.
 #
 #' @details
 #   Implements the paper's imputation equation: for each station, the pollutant is
@@ -57,7 +58,7 @@
 #' @Written_on : February 2026
 #' @Written_by : Marcos Paulo
 #' @Updated_on : August 2026
-# --------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------------------
 impute_missing_hourly_ols <- function(
     arrow_dir,
     out_dir,
@@ -303,7 +304,10 @@ impute_missing_hourly_ols <- function(
     data.table::data.table(pollutant = character(), n_imputed = integer())
   }
 
-  invisible(list(out_path = out_path, diag_path = diag_path,
+  summary_path <- file.path(out_dir, paste0(out_name, "_counts.parquet"))
+  arrow::write_parquet(pp_summary, summary_path)
+
+  invisible(list(out_path = out_path, diag_path = diag_path, summary_path = summary_path,
                  n_imputed = sum(pp_summary$n_imputed),
                  per_poll = pp_summary, per_year = pp))
 }

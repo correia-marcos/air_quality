@@ -1389,19 +1389,236 @@ list(
     run_compute_station_scatter_inputs(c(outliers, geography, census)),
     format = "file", packages = pipeline_packages("process")),
 
+  # Imputation: each city owns its hourly panel, predictions and count checkpoint.
+
+  targets::tar_target(bogota_imputation,
+    {
+      result <- impute_missing_hourly_ols(arrow_dir = bogota_outliers,
+        out_dir = here::here("data", "processed", "imputed_ols"),
+        out_name = "bogota_imputed", pollutants = imputation_pollutants,
+        id_col = "station", years = imputation_year, diag_year = imputation_year)
+      files <- c(result$out_path, result$diag_path, result$summary_path)
+      files[!is.na(files)]
+    }, format = "file"),
+
+  targets::tar_target(cdmx_imputation,
+    {
+      result <- impute_missing_hourly_ols(arrow_dir = cdmx_outliers,
+        out_dir = here::here("data", "processed", "imputed_ols"),
+        out_name = "cdmx_imputed", pollutants = imputation_pollutants,
+        id_col = "station_code", years = imputation_year, diag_year = imputation_year)
+      files <- c(result$out_path, result$diag_path, result$summary_path)
+      files[!is.na(files)]
+    }, format = "file"),
+
+  targets::tar_target(santiago_imputation,
+    {
+      result <- impute_missing_hourly_ols(arrow_dir = santiago_outliers,
+        out_dir = here::here("data", "processed", "imputed_ols"),
+        out_name = "santiago_imputed", pollutants = imputation_pollutants,
+        id_col = "station", years = imputation_year, diag_year = imputation_year)
+      files <- c(result$out_path, result$diag_path, result$summary_path)
+      files[!is.na(files)]
+    }, format = "file"),
+
+  targets::tar_target(sao_paulo_imputation,
+    {
+      result <- impute_missing_hourly_ols(arrow_dir = sao_paulo_outliers,
+        out_dir = here::here("data", "processed", "imputed_ols"),
+        out_name = "sao_paulo_imputed", pollutants = imputation_pollutants,
+        id_col = "station", years = imputation_year, diag_year = imputation_year)
+      files <- c(result$out_path, result$diag_path, result$summary_path)
+      files[!is.na(files)]
+    }, format = "file"),
+
+  targets::tar_target(imputation_counts,
+    {
+      data.table::rbindlist(list(
+        "Bogota" = arrow::read_parquet(bogota_imputation[
+          basename(bogota_imputation) == "bogota_imputed_counts.parquet"]),
+        "CDMX" = arrow::read_parquet(cdmx_imputation[
+          basename(cdmx_imputation) == "cdmx_imputed_counts.parquet"]),
+        "Santiago" = arrow::read_parquet(santiago_imputation[
+          basename(santiago_imputation) == "santiago_imputed_counts.parquet"]),
+        "Sao Paulo" = arrow::read_parquet(sao_paulo_imputation[
+          basename(sao_paulo_imputation) == "sao_paulo_imputed_counts.parquet"])),
+        idcol = "city")
+    }),
+
+  targets::tar_target(imputation_count_file,
+    {
+      file <- here::here("data", "processed", "imputed_ols",
+        paste0("imputation_summary_", imputation_year, ".parquet"))
+      arrow::write_parquet(imputation_counts, file)
+      file
+    }, format = "file"),
+
   targets::tar_target(impute_missing_hourly,
     {
-        suppressMessages(sf::sf_use_s2(TRUE))
-        run_impute_missing_hourly(c(outliers))
-    },
-    format = "file", packages = pipeline_packages("process")),
+      c(bogota_imputation, cdmx_imputation, santiago_imputation, sao_paulo_imputation,
+        imputation_count_file)
+    }, format = "file"),
+
+  # Imputed IDW and regression: four main city vintages, one education specification.
+
+  targets::tar_target(bogota_2018_imputed_idw,
+    {
+      panel <- bogota_imputation[basename(bogota_imputation) == "bogota_imputed"]
+      micro <- arrow::read_parquet(bogota_census[
+        basename(bogota_census) == "census_2018_metro_individual.parquet"])
+      geo <- arrow::read_parquet(bogota_census[
+        basename(bogota_census) == "census_2018_metro_collapsed.parquet"])
+      matrix <- bogota_2018_distances[basename(bogota_2018_distances) ==
+        "matrix_geo_station_distances.parquet"]
+      result <- run_idw_city(city_label = "Bogota", city_id = "bogota_2018",
+        arrow_dir = here::here(panel, paste0("year=", imputation_year)),
+        geo_sta_pq = matrix, geo_census = geo, micro_census = micro,
+        socio_var = "education", n_groups = 5L, group_name = "edu_quintile",
+        buffer_km = imputed_exposure_buffer_km, distance_power = idw_distance_power,
+        outdir_exp = here::here("data", "processed", "idw_estimates_imputed"))
+      unlist(result, use.names = FALSE)
+    }, format = "file"),
+
+  targets::tar_target(bogota_2018_imputed_estimates,
+    {
+      exposure_file <- paste0("bogota_2018_", imputed_exposure_buffer_km,
+        "km_idw_exposure.parquet")
+      exposure <- arrow::read_parquet(bogota_2018_imputed_idw[
+        basename(bogota_2018_imputed_idw) == exposure_file])
+      individual <- arrow::read_parquet(bogota_2018_imputed_idw[
+        basename(bogota_2018_imputed_idw) == "bogota_2018_indiv_groups.parquet"])
+      matrix <- bogota_2018_distances[basename(bogota_2018_distances) ==
+        "matrix_geo_station_distances.parquet"]
+      run_city_exposure(city = "Bogota", city_id = "bogota_2018",
+        exposure_dt = exposure, individual_dt = individual, geo_station_pq = matrix,
+        socio_var = "education", group_col = "edu_quintile", n_groups = 5L,
+        year = imputation_year, buffer_km = imputed_exposure_buffer_km)
+    }),
+
+  targets::tar_target(cdmx_2020_imputed_idw,
+    {
+      panel <- cdmx_imputation[basename(cdmx_imputation) == "cdmx_imputed"]
+      micro <- arrow::read_parquet(cdmx_census[
+        basename(cdmx_census) == "census_metro_individual_2020.parquet"])
+      geo <- arrow::read_parquet(cdmx_census[
+        basename(cdmx_census) == "collapse_metro_area_2020.parquet"])
+      matrix <- cdmx_2020_distances[basename(cdmx_2020_distances) ==
+        "matrix_geo_station_distances.parquet"]
+      result <- run_idw_city(city_label = "CDMX", city_id = "cdmx_2020",
+        arrow_dir = here::here(panel, paste0("year=", imputation_year)),
+        geo_sta_pq = matrix, geo_census = geo, micro_census = micro,
+        socio_var = "education", n_groups = 5L, group_name = "edu_quintile",
+        buffer_km = imputed_exposure_buffer_km, distance_power = idw_distance_power,
+        outdir_exp = here::here("data", "processed", "idw_estimates_imputed"))
+      unlist(result, use.names = FALSE)
+    }, format = "file"),
+
+  targets::tar_target(cdmx_2020_imputed_estimates,
+    {
+      exposure_file <- paste0("cdmx_2020_", imputed_exposure_buffer_km,
+        "km_idw_exposure.parquet")
+      exposure <- arrow::read_parquet(cdmx_2020_imputed_idw[
+        basename(cdmx_2020_imputed_idw) == exposure_file])
+      individual <- arrow::read_parquet(cdmx_2020_imputed_idw[
+        basename(cdmx_2020_imputed_idw) == "cdmx_2020_indiv_groups.parquet"])
+      matrix <- cdmx_2020_distances[basename(cdmx_2020_distances) ==
+        "matrix_geo_station_distances.parquet"]
+      run_city_exposure(city = "CDMX", city_id = "cdmx_2020",
+        exposure_dt = exposure, individual_dt = individual, geo_station_pq = matrix,
+        socio_var = "education", group_col = "edu_quintile", n_groups = 5L,
+        year = imputation_year, buffer_km = imputed_exposure_buffer_km)
+    }),
+
+  targets::tar_target(santiago_2017_imputed_idw,
+    {
+      panel <- santiago_imputation[basename(santiago_imputation) == "santiago_imputed"]
+      micro <- arrow::read_parquet(santiago_census[
+        basename(santiago_census) == "census_individual_2017.parquet"])
+      geo <- arrow::read_parquet(santiago_census[
+        basename(santiago_census) == "census_collapsed_2017.parquet"])
+      matrix <- santiago_2017_distances[basename(santiago_2017_distances) ==
+        "matrix_geo_station_distances.parquet"]
+      result <- run_idw_city(city_label = "Santiago", city_id = "santiago_2017",
+        arrow_dir = here::here(panel, paste0("year=", imputation_year)),
+        geo_sta_pq = matrix, geo_census = geo, micro_census = micro,
+        socio_var = "education", n_groups = 5L, group_name = "edu_quintile",
+        buffer_km = imputed_exposure_buffer_km, distance_power = idw_distance_power,
+        outdir_exp = here::here("data", "processed", "idw_estimates_imputed"))
+      unlist(result, use.names = FALSE)
+    }, format = "file"),
+
+  targets::tar_target(santiago_2017_imputed_estimates,
+    {
+      exposure_file <- paste0("santiago_2017_", imputed_exposure_buffer_km,
+        "km_idw_exposure.parquet")
+      exposure <- arrow::read_parquet(santiago_2017_imputed_idw[
+        basename(santiago_2017_imputed_idw) == exposure_file])
+      individual <- arrow::read_parquet(santiago_2017_imputed_idw[
+        basename(santiago_2017_imputed_idw) == "santiago_2017_indiv_groups.parquet"])
+      matrix <- santiago_2017_distances[basename(santiago_2017_distances) ==
+        "matrix_geo_station_distances.parquet"]
+      run_city_exposure(city = "Santiago", city_id = "santiago_2017",
+        exposure_dt = exposure, individual_dt = individual, geo_station_pq = matrix,
+        socio_var = "education", group_col = "edu_quintile", n_groups = 5L,
+        year = imputation_year, buffer_km = imputed_exposure_buffer_km)
+    }),
+
+  targets::tar_target(sao_paulo_2010_imputed_idw,
+    {
+      panel <- sao_paulo_imputation[
+        basename(sao_paulo_imputation) == "sao_paulo_imputed"]
+      micro <- arrow::read_parquet(sao_paulo_census[
+        basename(sao_paulo_census) == "census_sp_individual_2010.parquet"])
+      geo <- arrow::read_parquet(sao_paulo_census[
+        basename(sao_paulo_census) == "census_sp_collapsed_2010.parquet"])
+      matrix <- sao_paulo_2010_distances[basename(sao_paulo_2010_distances) ==
+        "matrix_geo_station_distances.parquet"]
+      result <- run_idw_city(city_label = "Sao Paulo", city_id = "sao_paulo_2010",
+        arrow_dir = here::here(panel, paste0("year=", imputation_year)),
+        geo_sta_pq = matrix, geo_census = geo, micro_census = micro,
+        socio_var = "education", n_groups = 5L, group_name = "edu_quintile",
+        buffer_km = imputed_exposure_buffer_km, distance_power = idw_distance_power,
+        outdir_exp = here::here("data", "processed", "idw_estimates_imputed"))
+      unlist(result, use.names = FALSE)
+    }, format = "file"),
+
+  targets::tar_target(sao_paulo_2010_imputed_estimates,
+    {
+      exposure_file <- paste0("sao_paulo_2010_", imputed_exposure_buffer_km,
+        "km_idw_exposure.parquet")
+      exposure <- arrow::read_parquet(sao_paulo_2010_imputed_idw[
+        basename(sao_paulo_2010_imputed_idw) == exposure_file])
+      individual <- arrow::read_parquet(sao_paulo_2010_imputed_idw[
+        basename(sao_paulo_2010_imputed_idw) == "sao_paulo_2010_indiv_groups.parquet"])
+      matrix <- sao_paulo_2010_distances[basename(sao_paulo_2010_distances) ==
+        "matrix_geo_station_distances.parquet"]
+      run_city_exposure(city = "Sao Paulo", city_id = "sao_paulo_2010",
+        exposure_dt = exposure, individual_dt = individual, geo_station_pq = matrix,
+        socio_var = "education", group_col = "edu_quintile", n_groups = 5L,
+        year = imputation_year, buffer_km = imputed_exposure_buffer_km)
+    }),
+
+  targets::tar_target(imputed_exposure_tables,
+    {
+      runs <- list(bogota_2018_imputed_estimates, cdmx_2020_imputed_estimates,
+        santiago_2017_imputed_estimates, sao_paulo_2010_imputed_estimates)
+      list(ci_estimates_education = stack_city_tables(runs, "ci"),
+        group_summaries_education = stack_city_tables(runs, "summary"),
+        coverage = stack_city_tables(runs, "coverage"))
+    }),
+
+  targets::tar_target(imputed_exposure_files,
+    {
+      save_exposure_tables(tables = imputed_exposure_tables,
+        out_dir = here::here("data", "processed", "idw_regressions_imputed"),
+        buffer_km = imputed_exposure_buffer_km, year = imputation_year)
+    }, format = "file"),
 
   targets::tar_target(estimate_exposure_imputed,
     {
-        suppressMessages(sf::sf_use_s2(TRUE))
-        run_estimate_exposure_imputed(c(impute_missing_hourly, distances, census))
-    },
-    format = "file", packages = pipeline_packages("process")),
+      c(bogota_2018_imputed_idw, cdmx_2020_imputed_idw, santiago_2017_imputed_idw,
+        sao_paulo_2010_imputed_idw, imputed_exposure_files)
+    }, format = "file"),
 
   targets::tar_target(generate_panel_air_quality,
     {
@@ -1431,18 +1648,269 @@ list(
         estimate_exposure_imputed, paper_manifest, paper_font)),
     format = "file", packages = pipeline_packages("plot")),
 
-  targets::tar_target(figure_imputation_diagnostics_data,
-    read_figure_imputation_diagnostics_data(
-      c(impute_missing_hourly, compute_station_scatter_inputs, paper_manifest,
-          paper_font)
-    ), format = "rds", packages = pipeline_packages("plot")),
+  # Imputation diagnostics: inspect predictions, station ratios and plots separately.
+
+  targets::tar_target(bogota_imputation_predictions,
+    {
+      arrow::read_parquet(bogota_imputation[
+        basename(bogota_imputation) == "bogota_imputed_predictions.parquet"])
+    }),
+
+  targets::tar_target(bogota_imputation_station_data,
+    {
+      root <- compute_station_scatter_inputs[
+        basename(compute_station_scatter_inputs) == "station_socio_exposure"]
+      station <- arrow::read_parquet(here::here(root, "bogota_2018",
+        "bogota_2018_2023_3km_station_socio.parquet"))
+      rescale_station_education(station, "Bogota")
+    }),
+
+  targets::tar_target(bogota_imputation_ratios,
+    {
+      ratios <- list()
+      for (pollutant in imputation_pollutants) {
+        ratios[[pollutant]] <- summarize_imputation_ratios(
+          pred_dt = bogota_imputation_predictions,
+          station_dt = bogota_imputation_station_data, pollutant = pollutant)
+      }
+      ratios
+    }),
+
+  targets::tar_target(bogota_imputation_plots,
+    {
+      paper_font
+      set_paper_theme()
+      series <- ratios <- list()
+      for (pollutant in imputation_pollutants) {
+        series[[pollutant]] <- plot_imputation_series(
+          pred_dt = bogota_imputation_predictions, pollutant = pollutant,
+          city_label = "Bogotá")
+        ratios[[pollutant]] <- plot_imputation_ratio_by_station(
+          ratio_dt = bogota_imputation_ratios[[pollutant]], pollutant = pollutant,
+          city_label = "Bogotá")
+      }
+      list(series = series, ratios = ratios)
+    }),
+
+  targets::tar_target(bogota_imputation_figures,
+    {
+      paper_font
+      set_paper_theme()
+      dir <- here::here("results", "figures", "imputation")
+      dir.create(dir, recursive = TRUE, showWarnings = FALSE)
+      files <- character()
+      for (pollutant in imputation_pollutants) {
+        tag <- if (pollutant == "pm10") "" else "_pm25"
+        series_file <- here::here(dir, paste0("model2_bogota", tag, ".pdf"))
+        ratio_file <- here::here(dir, paste0("model2_bogota_scatter", tag, ".pdf"))
+        ggplot2::ggsave(series_file, bogota_imputation_plots$series[[pollutant]],
+          width = 12, height = 8, dpi = 300, device = grDevices::cairo_pdf,
+          limitsize = FALSE, bg = "white")
+        ggplot2::ggsave(ratio_file, bogota_imputation_plots$ratios[[pollutant]],
+          width = 8.5, height = 5.8, dpi = 300, device = grDevices::cairo_pdf,
+          limitsize = FALSE, bg = "white")
+        files <- c(files, series_file, ratio_file)
+      }
+      files
+    }, format = "file"),
+
+  targets::tar_target(cdmx_imputation_predictions,
+    {
+      arrow::read_parquet(cdmx_imputation[
+        basename(cdmx_imputation) == "cdmx_imputed_predictions.parquet"])
+    }),
+
+  targets::tar_target(cdmx_imputation_station_data,
+    {
+      root <- compute_station_scatter_inputs[
+        basename(compute_station_scatter_inputs) == "station_socio_exposure"]
+      station <- arrow::read_parquet(here::here(root, "cdmx_2020",
+        "cdmx_2020_2023_station_socio.parquet"))
+      rescale_station_education(station, "CDMX")
+    }),
+
+  targets::tar_target(cdmx_imputation_ratios,
+    {
+      ratios <- list()
+      for (pollutant in imputation_pollutants) {
+        ratios[[pollutant]] <- summarize_imputation_ratios(
+          pred_dt = cdmx_imputation_predictions,
+          station_dt = cdmx_imputation_station_data, pollutant = pollutant)
+      }
+      ratios
+    }),
+
+  targets::tar_target(cdmx_imputation_plots,
+    {
+      paper_font
+      set_paper_theme()
+      series <- ratios <- list()
+      for (pollutant in imputation_pollutants) {
+        series[[pollutant]] <- plot_imputation_series(
+          pred_dt = cdmx_imputation_predictions, pollutant = pollutant,
+          city_label = "Mexico City")
+        ratios[[pollutant]] <- plot_imputation_ratio_by_station(
+          ratio_dt = cdmx_imputation_ratios[[pollutant]], pollutant = pollutant,
+          city_label = "Mexico City")
+      }
+      list(series = series, ratios = ratios)
+    }),
+
+  targets::tar_target(cdmx_imputation_figures,
+    {
+      paper_font
+      set_paper_theme()
+      dir <- here::here("results", "figures", "imputation")
+      dir.create(dir, recursive = TRUE, showWarnings = FALSE)
+      files <- character()
+      for (pollutant in imputation_pollutants) {
+        tag <- if (pollutant == "pm10") "" else "_pm25"
+        series_file <- here::here(dir, paste0("model2_mexico", tag, ".pdf"))
+        ratio_file <- here::here(dir, paste0("model2_mexico_scatter", tag, ".pdf"))
+        ggplot2::ggsave(series_file, cdmx_imputation_plots$series[[pollutant]],
+          width = 12, height = 8, dpi = 300, device = grDevices::cairo_pdf,
+          limitsize = FALSE, bg = "white")
+        ggplot2::ggsave(ratio_file, cdmx_imputation_plots$ratios[[pollutant]],
+          width = 8.5, height = 5.8, dpi = 300, device = grDevices::cairo_pdf,
+          limitsize = FALSE, bg = "white")
+        files <- c(files, series_file, ratio_file)
+      }
+      files
+    }, format = "file"),
+
+  targets::tar_target(santiago_imputation_predictions,
+    {
+      arrow::read_parquet(santiago_imputation[
+        basename(santiago_imputation) == "santiago_imputed_predictions.parquet"])
+    }),
+
+  targets::tar_target(santiago_imputation_station_data,
+    {
+      root <- compute_station_scatter_inputs[
+        basename(compute_station_scatter_inputs) == "station_socio_exposure"]
+      station <- arrow::read_parquet(here::here(root, "santiago_2017",
+        "santiago_2017_2023_station_socio.parquet"))
+      rescale_station_education(station, "Santiago")
+    }),
+
+  targets::tar_target(santiago_imputation_ratios,
+    {
+      ratios <- list()
+      for (pollutant in imputation_pollutants) {
+        ratios[[pollutant]] <- summarize_imputation_ratios(
+          pred_dt = santiago_imputation_predictions,
+          station_dt = santiago_imputation_station_data, pollutant = pollutant)
+      }
+      ratios
+    }),
+
+  targets::tar_target(santiago_imputation_plots,
+    {
+      paper_font
+      set_paper_theme()
+      series <- ratios <- list()
+      for (pollutant in imputation_pollutants) {
+        series[[pollutant]] <- plot_imputation_series(
+          pred_dt = santiago_imputation_predictions, pollutant = pollutant,
+          city_label = "Santiago")
+        ratios[[pollutant]] <- plot_imputation_ratio_by_station(
+          ratio_dt = santiago_imputation_ratios[[pollutant]], pollutant = pollutant,
+          city_label = "Santiago")
+      }
+      list(series = series, ratios = ratios)
+    }),
+
+  targets::tar_target(santiago_imputation_figures,
+    {
+      paper_font
+      set_paper_theme()
+      dir <- here::here("results", "figures", "imputation")
+      dir.create(dir, recursive = TRUE, showWarnings = FALSE)
+      files <- character()
+      for (pollutant in imputation_pollutants) {
+        tag <- if (pollutant == "pm10") "" else "_pm25"
+        series_file <- here::here(dir, paste0("model2_santiago", tag, ".pdf"))
+        ratio_file <- here::here(dir, paste0("model2_santiago_scatter", tag, ".pdf"))
+        ggplot2::ggsave(series_file, santiago_imputation_plots$series[[pollutant]],
+          width = 12, height = 8, dpi = 300, device = grDevices::cairo_pdf,
+          limitsize = FALSE, bg = "white")
+        ggplot2::ggsave(ratio_file, santiago_imputation_plots$ratios[[pollutant]],
+          width = 8.5, height = 5.8, dpi = 300, device = grDevices::cairo_pdf,
+          limitsize = FALSE, bg = "white")
+        files <- c(files, series_file, ratio_file)
+      }
+      files
+    }, format = "file"),
+
+  targets::tar_target(sao_paulo_imputation_predictions,
+    {
+      arrow::read_parquet(sao_paulo_imputation[
+        basename(sao_paulo_imputation) == "sao_paulo_imputed_predictions.parquet"])
+    }),
+
+  targets::tar_target(sao_paulo_imputation_station_data,
+    {
+      root <- compute_station_scatter_inputs[
+        basename(compute_station_scatter_inputs) == "station_socio_exposure"]
+      station <- arrow::read_parquet(here::here(root, "sao_paulo_2010",
+        "sao_paulo_2010_2023_station_socio.parquet"))
+      rescale_station_education(station, "Sao Paulo")
+    }),
+
+  targets::tar_target(sao_paulo_imputation_ratios,
+    {
+      ratios <- list()
+      for (pollutant in imputation_pollutants) {
+        ratios[[pollutant]] <- summarize_imputation_ratios(
+          pred_dt = sao_paulo_imputation_predictions,
+          station_dt = sao_paulo_imputation_station_data, pollutant = pollutant)
+      }
+      ratios
+    }),
+
+  targets::tar_target(sao_paulo_imputation_plots,
+    {
+      paper_font
+      set_paper_theme()
+      series <- ratios <- list()
+      for (pollutant in imputation_pollutants) {
+        series[[pollutant]] <- plot_imputation_series(
+          pred_dt = sao_paulo_imputation_predictions, pollutant = pollutant,
+          city_label = "São Paulo")
+        ratios[[pollutant]] <- plot_imputation_ratio_by_station(
+          ratio_dt = sao_paulo_imputation_ratios[[pollutant]], pollutant = pollutant,
+          city_label = "São Paulo")
+      }
+      list(series = series, ratios = ratios)
+    }),
+
+  targets::tar_target(sao_paulo_imputation_figures,
+    {
+      paper_font
+      set_paper_theme()
+      dir <- here::here("results", "figures", "imputation")
+      dir.create(dir, recursive = TRUE, showWarnings = FALSE)
+      files <- character()
+      for (pollutant in imputation_pollutants) {
+        tag <- if (pollutant == "pm10") "" else "_pm25"
+        series_file <- here::here(dir, paste0("model2_saopaulo", tag, ".pdf"))
+        ratio_file <- here::here(dir, paste0("model2_saopaulo_scatter", tag, ".pdf"))
+        ggplot2::ggsave(series_file, sao_paulo_imputation_plots$series[[pollutant]],
+          width = 12, height = 8, dpi = 300, device = grDevices::cairo_pdf,
+          limitsize = FALSE, bg = "white")
+        ggplot2::ggsave(ratio_file, sao_paulo_imputation_plots$ratios[[pollutant]],
+          width = 8.5, height = 5.8, dpi = 300, device = grDevices::cairo_pdf,
+          limitsize = FALSE, bg = "white")
+        files <- c(files, series_file, ratio_file)
+      }
+      files
+    }, format = "file"),
 
   targets::tar_target(figure_imputation_diagnostics,
-    write_figure_imputation_diagnostics(
-      figure_imputation_diagnostics_data,
-      inputs = c(impute_missing_hourly,
-        compute_station_scatter_inputs, paper_manifest, paper_font)),
-    format = "file", packages = pipeline_packages("plot")),
+    {
+      c(bogota_imputation_figures, cdmx_imputation_figures, santiago_imputation_figures,
+        sao_paulo_imputation_figures)
+    }, format = "file"),
 
   targets::tar_target(plot_station_monitoring_figures_data,
     read_plot_station_monitoring_figures_data(

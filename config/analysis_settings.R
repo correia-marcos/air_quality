@@ -18,3 +18,8 @@ idw_buffers_km <- c(3, 5, 20)
 idw_distance_power <- 1
 exposure_buffers_km <- c(3L, 5L)
 individual_exposure_buffer_km <- 3L
+
+# The imputed robustness specification uses education quintiles at 3 km in 2023.
+imputation_year <- 2023L
+imputed_exposure_buffer_km <- 3
+imputation_pollutants <- c("pm10", "pm25")
