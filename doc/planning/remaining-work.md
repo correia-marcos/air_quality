@@ -1,6 +1,6 @@
 # Workflow inventory and remaining work
 
-Updated 24 September 2026. Every R entry point and Quarto report under scripts/ has
+Updated 29 September 2026. Every R entry point and Quarto report under scripts/ has
 one row below. Targets declarations own manuscript dependencies; scripts remain
 executable RStudio recipes. The inventory is descriptive, not another scheduler.
 
@@ -33,6 +33,51 @@ Imputation, imputed exposure and imputation diagnostics now have direct recipes 
 target commands. The small count table and station-ratio tables are inspectable summaries;
 plots are computed before saving. These three entries remain unverified for real-data runs.
 The broader descriptive summaries and other figures/tables remain the next migration group.
+
+**29 September 2026:** Marcos approved starting imputation at the first finite cleaned
+reading for each station, pollutant and year, continuing through year-end. Complete windows
+skip fitting; observed readings remain available as predictors for other stations. Earlier
+gaps, unsupported calendar levels and non-estimable predictions remain missing. Models with
+no residual degrees of freedom are rejected. The shared function implements this policy
+and returns `per_station` fitting summaries; existing production outputs need a deliberate
+rerun and downstream scientific review. The separate timezone review remains deferred.
+
+Verification: 528 synthetic checks passed using RStudio's R executable with `--vanilla`
+and the restored project library; ordinary startup stalled at the renv sandbox lock.
+Isolated December 2023 checks preserved finite observations in both cities. Cañada El Hato
+and Casa Victorio PM10 skipped fitting; the other four reported Bogotá series were rejected
+for zero residual degrees of freedom. The five reported São Paulo PM2.5 series filled
+26, 53, 23, 20 and 20 gaps respectively (Capão Redondo, Carapicuíba, Interlagos, Santo Amaro,
+Taboão da Serra). These are December-slice checks, not a full-year or downstream rerun.
+
+## Deferred review of pollution timestamp metadata
+
+**29 September 2026 — deferred by Marcos.** Review the timezone contract from source
+readings through interim Parquet, outlier removal, imputation and temporal summaries.
+
+The read-only comparison of Bogotá and São Paulo's 2023 panels found timezone-naive
+interim timestamps and UTC-tagged cleaned timestamps. Numeric time values matched;
+the change in metadata can change their display in R. The affected stations' late-year
+PM coverage was already present in the preserved sources, not caused by this difference.
+This finding does not establish timestamp consistency for other cities, years or joins.
+
+- Document whether each source reports local wall-clock labels or actual UTC instants,
+  including hour-ending conventions, `24:00` and historical daylight-saving changes.
+  Distinguish attaching a timezone label from converting an instant between timezones.
+- Agree on the stored timestamp contract and make R, Arrow and DuckDB metadata consistent.
+  Preserve the intended scientific time alignment; do not blindly convert labels currently
+  stored using UTC as a technical convention.
+- Check year partitions, station-hour joins, outlier windows, imputation calendar factors
+  and alignment with MERRA-2. Test midnight, year boundaries and relevant clock changes.
+- Verify Parquet round trips and identical analytical results under UTC and city-local
+  R session timezones, including RStudio and Rscript. Record any necessary changes to
+  timestamps or sample membership separately from display-only corrections.
+
+Start with the parsers in [bogota.R](../../src/city_specific/bogota.R) and
+[sao_paulo.R](../../src/city_specific/sao_paulo.R), then
+[outliers.R](../../src/general_utilities/process/outliers.R) and
+[imputation.R](../../src/general_utilities/process/imputation.R).
+No timestamp conversion or analytical output rebuild is included in this deferral.
 
 ## Deferred Santiago 2024 population and geography alignment
 
