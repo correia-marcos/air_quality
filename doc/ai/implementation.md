@@ -1,5 +1,143 @@
 # Implementation and evidence
 
+## Tables and exposure figures — 30 September 2026
+
+The four table recipes and `generate_exposure_plots.R` now source their scientific modules
+directly, read saved summaries, retain named LaTeX or plot objects, and save in Section III.
+Shared rendering choices moved to `config/analysis_settings.R` without changing values.
+Formatting and file-writing targets are separate; public stage names and artifact paths
+remain unchanged. Removed the five corresponding adapters. Manuscript export rejects a
+required file that current targets did not report, even when an older file exists on disk.
+
+Evidence: `data/verification/reader-rendering-20260930/` (local, ignored).
+
+- Preserved the incoming functions, recipes, adapters and graph before editing. Compared
+  their execution with the revised recipes and actual target commands using the existing
+  saved summaries. No upstream estimation or production output was rebuilt.
+- All **24 LaTeX files are byte-identical**. Plot layers and labels agree for **54 figures**
+  at `1e-10`; all 54 PDF rasterizations are identical at a maximum dimension of 1050 pixels.
+  The output filenames agree and all **37 manuscript-selected artifacts** exist. Three PDF
+  previews were visually inspected, covering education, income and imputed exposure.
+- Each of the five recipes also completed in its own fresh R process without a loader or
+  targets cache. Their tables and PDF rasterizations match the comparison above.
+- A synthetic graph using the actual station-table target commands tests alternate input
+  directories, first execution, no-op caching, deleted-output recovery without reformatting,
+  and changed input contents. Other checks cover LaTeX values, input preservation, writer
+  errors, observed/imputed filename selection and rejection of stale export artifacts.
+- Final synthetic suite: **567 passed; zero failures, errors, skips or test warnings**.
+  Used Framework R with `--vanilla` and the restored R 4.6 project library. Sandbox CPU
+  probes and temporary-directory cleanup emitted messages outside the test results.
+- All **561 reader/inventory assertions** passed. Changed R lines fit 92 characters;
+  active documentation links and the scoped Git whitespace check passed.
+- Initial checks exposed a missing direct source of formatting helpers, a fixture that
+  treated upstream directory outputs as files, and an expected writer-error warning.
+  Corrected the source, readers/fixtures and negative test, then reran the checks above.
+
+These results establish rendering parity on saved inputs. They do not establish input
+freshness, scientific validity, a GUI RStudio walkthrough, LaTeX/manuscript compilation,
+container execution or complete release reproduction. Broader descriptive computation and
+the remaining figures are next; optional/validation cleanup and operational cutover remain.
+
+Suggested review/commit groups (recommendations only; no staging, git commit or git push):
+
+1. `refactor: expose table and exposure plot objects before saving`:
+   the five recipes above; `src/general_utilities/plot/latex_tables.R`,
+   `src/general_utilities/plot/exposure_figures.R`, `config/analysis_settings.R`,
+   `_targets.R`, `src/pipeline/stage_names.R`, `src/pipeline/contracts.R`,
+   `tests/testthat/test-rendering-checkpoints.R`, `tests/check-reader-workflows.R`,
+   `tests/check-targets-engine.R`; the obsolete adapters were untracked. Documentation-only
+   header corrections also touch `src/general_utilities/base_utils.R` and
+   `src/general_utilities/theme_paper.R`.
+2. `docs: record table and exposure rendering verification`:
+   `doc/planning/remaining-work.md`, `doc/planning/targets-migration.md`,
+   `doc/ai/architecture.md`, `doc/ai/implementation.md`.
+
+Review this batch's hunks separately from pre-existing changes in shared files.
+
+## Imputation recipes and author review — 24 September 2026
+
+Polished comments and layout in the four city recipes, distance matrices, outliers, IDW
+and observed exposure. Seven retain identical parsed expressions to the incoming working
+tree. Observed exposure retains every city/group call and the buffer loop; a first-buffer
+initializer makes its body executable line by line in RStudio. Results remain named by
+buffer and saving follows computation order. All changed R files fit 92 characters.
+
+The next batch covers hourly imputation, imputed exposure, imputation count summaries and
+imputation diagnostic figures. Their scripts now source scientific modules directly and
+show the input/output paths, city calls, returned objects and saves. Removed their three
+transitional stage adapters. The graph calls the same scientific functions explicitly:
+
+- Each city owns one imputed panel, its prediction file and a new small pollutant-count
+  checkpoint. The combined count table is saved separately. The OLS formula, minimum
+  sample requirements, year, station identifiers and pollutant selection are unchanged.
+- Imputed IDW retains the four main vintages, 2023, 3 km and education quintiles. Each
+  city's estimates are cached separately; the combined tables use their original schemas.
+- Diagnostic functions return plots without writing. `summarize_imputation_ratios()`
+  exposes station means, missing-hour counts, ratios and education ranks. Script Section
+  III saves the same sixteen PDFs. Targets caches those plots separately from their files.
+
+Evidence: `data/verification/reader-imputation-20260924/` (local, ignored):
+
+- `before/` preserves the incoming author-edited recipes and definitions. `compare.R`
+  runs preserved implementations, new recipes and actual graph commands on isolated
+  four-city fixtures. **57 Parquet comparisons** and **32 plot-layer comparisons** passed
+  at `1e-12`. Comparisons include the observed-exposure formatting change. The new count
+  sidecars are additional outputs; pre-existing panel and regression contents agree.
+- Manual and target commands each rendered all sixteen diagnostic PDFs. Two fixture PDF
+  previews were visually inspected. Real-data figures and manuscript captions were not.
+- The observed-regression toy produces the same 42 warnings in both versions: 28
+  essentially-perfect-fit warnings and 14 NaN warnings. `check-observed-warnings.R` records
+  and compares them in `warnings.txt`; these fixtures do not validate real-data inference.
+  The first comparison also reported a fixture-global name collision with the census
+  target during manifest inspection; no production graph command was changed for it.
+- `test-imputation-workflow.R` checks hand-computed station ratios, observed-data
+  preservation (alongside the existing model test), city-specific dependencies, no-op
+  caching, deleted count/prediction/partition recovery, settings invalidation, and PDF
+  regeneration without rebuilding cached plots. The first new cache assertion compared
+  unsorted metadata rows; sorting by target name fixed that test assumption.
+- Final synthetic suite: **452 passed; zero failures, errors, skips or test warnings**,
+  using Framework R with `--vanilla` and the existing R 4.6 project library. Sandbox CPU
+  probes and temporary-directory cleanup emitted messages outside the test results.
+  All 555 reader/inventory assertions passed; changed-document local links resolve and
+  the scoped Git whitespace check passed.
+- Marcos reports successful local runs of the eight reviewed scripts. The inventory
+  attributes that evidence explicitly and leaves scientific inquiry/release acceptance
+  pending. The previously missing São Paulo weighting-area source now exists; contents
+  and provenance were not re-audited in this batch.
+
+No production analytical outputs, protected sources, frozen inputs, package versions or
+lockfile were changed. No GUI RStudio walkthrough, container build, full-data imputation
+or isolated release reproduction was run. Broader descriptive summaries and other
+rendering recipes remain next; scientific cutover and Santiago 2024 alignment stay pending.
+
+Suggested review/commit groups (recommendations only; no staging, git commit or git push):
+
+1. `style: polish the reviewed processing recipes`:
+   `scripts/process_data/process_bogota_data.R`,
+   `scripts/process_data/process_cdmx_data.R`,
+   `scripts/process_data/process_santiago_data.R`,
+   `scripts/process_data/process_sao_paulo_data.R`,
+   `scripts/process_data/generate_distance_matrices.R`,
+   `scripts/process_data/detect_outliers.R`,
+   `scripts/process_data/estimate_idw.R`,
+   `scripts/process_data/estimate_exposure.R`.
+2. `refactor: expose imputation estimates and diagnostic plots`:
+   `config/analysis_settings.R`, `_targets.R`, `src/pipeline/stage_names.R`,
+   `src/general_utilities/process/imputation.R`,
+   `src/general_utilities/plot/imputation_diagnostics.R`,
+   `scripts/process_data/impute_missing_hourly.R`,
+   `scripts/process_data/estimate_exposure_imputed.R`,
+   `scripts/tables_images/figure_imputation_diagnostics.R`,
+   `tests/testthat/test-imputation-workflow.R`; retire the three former adapter files
+   `src/pipeline/stages/impute_missing_hourly.R`,
+   `src/pipeline/stages/estimate_exposure_imputed.R`,
+   `src/pipeline/stages/figure_imputation_diagnostics.R` (they were untracked).
+3. `docs: record reported runs and imputation migration evidence`:
+   `doc/planning/remaining-work.md`, `doc/planning/targets-migration.md`,
+   `doc/ai/architecture.md`, `doc/ai/implementation.md`.
+
+These groups cover this batch. Review pre-existing diffs in shared files separately.
+
 ## Outliers, IDW and observed-exposure recipes — 24 September 2026
 
 Three recipes now use direct scientific calls and explicit input/output paths. Outlier

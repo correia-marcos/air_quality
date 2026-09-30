@@ -90,8 +90,11 @@ Makefile and sequential runner remain transitional and their paths must also sta
 After acceptance, remove Makefile and its RStudio build setting; make `run_pipeline.R`
 a compatibility launcher for targets. Optional analyses remain explicit separate commands.
 
-The distance, city, outlier, IDW and observed-exposure recipes call scientific functions
-directly. Other recipes need simplification; heading counts do not establish readability.
+The distance, city, outlier, IDW, observed/imputed-exposure and hourly-imputation recipes
+call scientific functions directly. Imputation diagnostics expose station summaries and plots
+separately from PDF saving. The four table recipes retain named LaTeX objects, and exposure
+figures retain named plot lists; both save in Section III. Other recipes need simplification;
+heading counts do not establish readability.
 The migration candidate
 shares transformation functions with the interactive recipes. The new
 graph declares concrete city functions, configurations and upstream file targets; it does not

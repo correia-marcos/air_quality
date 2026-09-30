@@ -2,8 +2,10 @@
 
 Approved revision, 23 September 2026. **The distance pilot is implemented and its
 readability accepted by Marcos; the four city recipes and their targets are now revised.**
-Outliers, IDW and observed-exposure recipes are also revised; imputation, summaries,
-rendering, tooling and scientific cutover remain pending. This replaces
+Outliers, IDW, observed/imputed exposure and hourly imputation now use direct recipes.
+Imputation diagnostics, the four table recipes and exposure figures now separate named
+computations from saving. Broader summaries, remaining figures, tooling and scientific
+cutover remain pending. This replaces
 the earlier requirements for analytical scripts to use pipeline loaders, specification
 tables, stage adapters and input/output dictionaries. The collapsed historical record
 below is superseded, including its earlier commit groups and environment status.
@@ -38,8 +40,8 @@ The [entry-point inventory](remaining-work.md) is a maintainer reference, not on
 - All repository callers use the split API, including INEGI preparation and resolution
   sensitivity. External scripts must move their output arguments to the writer; no
   compatibility wrapper is provided.
-- Bogotá uses 2018 tracts (`GEO_ID`); CDMX uses 2024 municipalities (`CVE_MUN`) with
-  the 2020 census context; Santiago uses 2017 zones (`zona_id`) and 2024 communes (`CUT`),
+- Bogotá uses 2018 urban blocks/rural sections (`GEO_ID`); CDMX uses 2024 municipalities
+  (`CVE_MUN`) with the 2020 census context; Santiago uses 2017 zones (`zona_id`) and 2024 communes (`CUT`),
   both with the 2017 station selection; São Paulo uses 2010 weighting areas (`code_weighting`).
 - Preserve AEQD, internal polygon points, station normalization, row ordering, schemas,
   filenames and geographic membership. Source acquisition and analytical definitions do
@@ -51,6 +53,42 @@ computation and file-writing targets; Santiago shares its station-reading target
 owns the two Parquet files. Existing distance-stage selections remain available.
 The graph factory, custom declaration parser and distance adapters have been removed.
 The graph loader and remaining analytical adapters are transitional.
+
+## Imputation and diagnostic interfaces — implemented
+
+`impute_missing_hourly.R` exposes four model calls and their returned counts. Each call
+writes the hourly panel, fitted values and a small count checkpoint; Section III saves
+the combined count table. `estimate_exposure_imputed.R` shows the IDW calls, reads their
+returned files, estimates each city and saves the regression tables separately.
+
+`figure_imputation_diagnostics.R` retains named station ratios and plots for both
+pollutants. `plot_imputation_series()` no longer takes saving arguments.
+`plot_imputation_ratio_by_station()` now takes the table returned by
+`summarize_imputation_ratios()`; it also no longer saves. External callers must call the
+summary function and save returned plots with `ggsave()`. Repository callers are updated.
+The graph keeps the public imputation stage names and caches plots separately from PDFs.
+
+The [evidence record](../ai/implementation.md#imputation-recipes-and-author-review--24-september-2026)
+distinguishes fixture comparisons, reported local runs and pending scientific acceptance.
+Broader descriptive summaries and remaining figures still need migration.
+
+## Tables and exposure figures — implemented 30 September 2026
+
+The four `render_*_tables.R` recipes read saved summaries, format named LaTeX objects,
+and save them in matching order. `generate_exposure_plots.R` reads observed/imputed
+regressions and retains named lists of education, income and imputed-education plots.
+All five source their scientific modules directly and run without a targets cache.
+
+Targets caches the input tables and formatted LaTeX or plots separately from the file
+writers. Existing public stage names, figure selections and output paths are unchanged.
+The five corresponding stage adapters have been removed. Export checks that required
+manuscript files were reported by the current targets; existing stale files cannot fill
+gaps in that selection.
+
+Isolated comparison used existing saved summaries, with no upstream estimation rerun.
+The [evidence record](../ai/implementation.md#tables-and-exposure-figures--30-september-2026)
+documents the table, plot, cache and standalone-script checks. Human RStudio review and
+full scientific acceptance remain pending.
 
 ## City preparation — implemented
 
@@ -150,8 +188,8 @@ run `git commit` or run `git push`.
 
 ## Remaining implementation
 
-1. Apply the accepted recipe next to imputation/imputed exposure, summaries and
-   rendering, then optional analysis and validation. Keep short repeated calls; share
+1. Continue from imputation/diagnostics to broader descriptive summaries and remaining
+   rendering recipes, then optional analysis and validation. Keep short repeated calls; share
    transformations, not script-shaped orchestration. Use meaningful names, named arguments
    and space between operations. Follow the author's call layout and step comments,
    recorded in [R style](../ai/rules/r-style.md#spacing-calls-and-comments).
@@ -206,9 +244,10 @@ That review clears the readability gate for extending the pattern; it does not e
 full source reproduction.
 
 Full reproduction and cutover remain pending. Santiago's three 2017 geographic responses
-are now preserved and audited; its census pair must be rebuilt after the committed
-education-filter correction. São Paulo's weighting-area source needs a fresh availability
-check; a reviewed comparison baseline and the manuscript appendix remain unresolved.
+are now preserved and audited. Marcos reports rerunning the Santiago census recipe after
+the education-filter correction; audit paired census products and downstream effects
+before acceptance. São Paulo's weighting-area source now exists. A reviewed comparison
+baseline and the manuscript appendix remain unresolved.
 Santiago 2024 population/geography alignment is deferred in [remaining work](remaining-work.md);
 Gran Santiago remains the preferred definition and 2017 remains the main specification.
 INEGI's 2020/2024 geographic-contract discrepancy is not
