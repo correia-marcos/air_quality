@@ -1635,18 +1635,101 @@ list(
     },
     format = "file", packages = pipeline_packages("process")),
 
-  # Inspectable rendering data and owned figure files
+  # Exposure plots: read saved results, build plots, then save PDFs.
   targets::tar_target(exposure_plot_data,
-    read_generate_exposure_plots_data(
-      c(estimate_exposure, estimate_exposure_imputed, paper_manifest, paper_font)
-    ), format = "rds", packages = pipeline_packages("plot")),
+    {
+      observed <- estimate_exposure
+      imputed <- estimate_exposure_imputed
+      names_ci_edu <- sprintf("exposure_ci_estimates_education_%dkm_%d.parquet",
+        exposure_buffers_km, analysis_year)
+      files_ci_edu <- observed[match(names_ci_edu, basename(observed))]
+      names_summary_edu <- sprintf("exposure_group_summaries_education_%dkm_%d.parquet",
+        exposure_buffers_km, analysis_year)
+      files_summary_edu <- observed[match(names_summary_edu, basename(observed))]
+      names_ci_inc <- sprintf("exposure_ci_estimates_income_%dkm_%d.parquet",
+        exposure_buffers_km, analysis_year)
+      files_ci_inc <- observed[match(names_ci_inc, basename(observed))]
+      names_summary_inc <- sprintf("exposure_group_summaries_income_%dkm_%d.parquet",
+        exposure_buffers_km, analysis_year)
+      files_summary_inc <- observed[match(names_summary_inc, basename(observed))]
+      ci_edu <- data.table::rbindlist(lapply(files_ci_edu, arrow::read_parquet))
+      summary_edu <- data.table::rbindlist(lapply(files_summary_edu, arrow::read_parquet))
+      ci_inc <- summary_inc <- NULL
+      if (!anyNA(c(files_ci_inc, files_summary_inc))) {
+        ci_inc <- data.table::rbindlist(lapply(files_ci_inc, arrow::read_parquet))
+        summary_inc <- data.table::rbindlist(lapply(files_summary_inc, arrow::read_parquet))
+      }
+      file_ci_imputed <- imputed[basename(imputed) ==
+        sprintf("exposure_ci_estimates_education_%dkm_%d.parquet",
+          imputed_exposure_buffer_km, imputation_year)]
+      ci_imputed <- data.table::as.data.table(arrow::read_parquet(file_ci_imputed))
+      file_summary_imputed <- imputed[basename(imputed) ==
+        sprintf("exposure_group_summaries_education_%dkm_%d.parquet",
+          imputed_exposure_buffer_km, imputation_year)]
+      summary_imputed <- data.table::as.data.table(
+        arrow::read_parquet(file_summary_imputed))
+      list(ci_edu = ci_edu, summary_edu = summary_edu,
+           ci_inc = ci_inc, summary_inc = summary_inc,
+           ci_imputed = ci_imputed, summary_imputed = summary_imputed)
+    }),
+
+  targets::tar_target(exposure_plots,
+    {
+      paper_font
+      set_paper_theme()
+      ci_edu <- exposure_plot_data$ci_edu
+      plots_ci_edu <- build_exposure_ci_figures(ci_dt = ci_edu[outcome != "avg"],
+        tag = "education", city_labels = exposure_city_labels,
+        city_files = exposure_city_files)
+      plots_levels_edu <- build_exposure_level_figures(
+        sum_dt = exposure_plot_data$summary_edu, tag = "education",
+        city_labels = exposure_city_labels, city_files = exposure_city_files)
+      plots_ci_inc <- plots_levels_inc <- list()
+      if (!is.null(exposure_plot_data$ci_inc)) {
+        ci_inc <- exposure_plot_data$ci_inc
+        plots_ci_inc <- build_exposure_ci_figures(ci_dt = ci_inc[outcome != "avg"],
+          tag = "income", city_labels = exposure_city_labels,
+          city_files = exposure_city_files)
+        plots_levels_inc <- build_exposure_level_figures(
+          sum_dt = exposure_plot_data$summary_inc, tag = "income",
+          city_labels = exposure_city_labels, city_files = exposure_city_files)
+      }
+      ci_imputed <- exposure_plot_data$ci_imputed
+      plots_ci_imputed <- build_exposure_ci_figures(ci_dt = ci_imputed[outcome != "avg"],
+        tag = "education", city_labels = exposure_city_labels,
+        city_files = exposure_city_files)
+      plots_levels_imputed <- build_exposure_level_figures(
+        sum_dt = exposure_plot_data$summary_imputed, tag = "education",
+        city_labels = exposure_city_labels, city_files = exposure_city_files)
+      list(ci_edu = plots_ci_edu, levels_edu = plots_levels_edu,
+           ci_inc = plots_ci_inc, levels_inc = plots_levels_inc,
+           ci_imputed = plots_ci_imputed, levels_imputed = plots_levels_imputed)
+    }, packages = "data.table"),
 
   targets::tar_target(generate_exposure_plots,
-    write_generate_exposure_plots(
-      exposure_plot_data,
-      inputs = c(estimate_exposure,
-        estimate_exposure_imputed, paper_manifest, paper_font)),
-    format = "file", packages = pipeline_packages("plot")),
+    {
+      paper_font
+      set_paper_theme()
+      c(
+        save_exposure_plot_family(exposure_plots$ci_edu,
+          out_dir = here::here("results", "figures"), paper_files = exposure_paper_files,
+          year = analysis_year),
+        save_exposure_plot_family(exposure_plots$levels_edu,
+          out_dir = here::here("results", "figures"), paper_files = exposure_paper_files,
+          year = analysis_year),
+        save_exposure_plot_family(exposure_plots$ci_inc,
+          out_dir = here::here("results", "figures"), paper_files = exposure_paper_files,
+          year = analysis_year),
+        save_exposure_plot_family(exposure_plots$levels_inc,
+          out_dir = here::here("results", "figures"), paper_files = exposure_paper_files,
+          year = analysis_year),
+        save_exposure_plot_family(exposure_plots$ci_imputed,
+          out_dir = here::here("results", "figures"), paper_files = exposure_paper_files,
+          year = imputation_year, imputed = TRUE),
+        save_exposure_plot_family(exposure_plots$levels_imputed,
+          out_dir = here::here("results", "figures"), paper_files = exposure_paper_files,
+          year = imputation_year, imputed = TRUE))
+    }, format = "file"),
 
   # Imputation diagnostics: inspect predictions, station ratios and plots separately.
 
@@ -1995,55 +2078,189 @@ list(
         paper_manifest, paper_font)),
     format = "file", packages = pipeline_packages("plot")),
 
-  # Inspectable table data and owned LaTeX files
+  # Tables: inspect input summaries and LaTeX before writing each file family.
   targets::tar_target(station_table_data,
-    read_render_station_tables_data(
-      c(compute_descriptive_tables, paper_manifest, paper_font)
-    ), format = "rds", packages = pipeline_packages("plot")),
+    {
+      dir_counts <- compute_descriptive_tables[
+        basename(compute_descriptive_tables) == "station_counts"]
+      dir_who <- compute_descriptive_tables[
+        basename(compute_descriptive_tables) == "who_exceedances"]
+      dir_thresholds <- compute_descriptive_tables[
+        basename(compute_descriptive_tables) == "threshold_exceedances"]
+      list(
+        counts = arrow::read_parquet(here::here(dir_counts,
+          sprintf("stations_by_pollutant_%d.parquet", analysis_year))),
+        who = arrow::read_parquet(here::here(dir_who,
+          "who_exceedances_all_cities.parquet")),
+        thresholds = arrow::read_parquet(here::here(dir_thresholds,
+          sprintf("days_and_hours_%d.parquet", analysis_year))))
+    }),
+
+  targets::tar_target(station_table_tex,
+    {
+      who_table <- table_who_exceedances(exceedances_dt = station_table_data$who)
+      list(counts = latex_station_counts(station_counts = station_table_data$counts),
+           days = latex_threshold_exceedance_table(
+             exceed_dt = station_table_data$thresholds, measure = "days"),
+           hours = latex_threshold_exceedance_table(
+             exceed_dt = station_table_data$thresholds, measure = "hours"),
+           who = latex_who_exceedances(wide = who_table,
+             caption = paste("Annual PM concentrations vs. WHO AQG 2021",
+                             "(interim and long-term targets)."),
+             label = "tab:who_exceedances"))
+    }, packages = "data.table"),
 
   targets::tar_target(render_station_tables,
-    write_render_station_tables(
-      station_table_data,
-      inputs = c(compute_descriptive_tables,
-        paper_manifest, paper_font)),
-    format = "file", packages = pipeline_packages("plot")),
+    {
+      c(
+        write_latex_table(station_table_tex$counts,
+          here::here("results", "tables",
+            sprintf("stations_by_pollutant_%d.tex", analysis_year)),
+          use_bytes = TRUE),
+        write_latex_table(station_table_tex$days,
+          here::here("results", "tables", "table_days_above_thresholds.tex"),
+          use_bytes = TRUE),
+        write_latex_table(station_table_tex$hours,
+          here::here("results", "tables", "table_avg_hours_above_thresholds.tex"),
+          use_bytes = TRUE),
+        write_latex_table(station_table_tex$who,
+          here::here("results", "tables", "who_exceedances_all_cities.tex")))
+    }, format = "file"),
 
   targets::tar_target(missing_table_data,
-    read_render_missing_tables_data(
-      c(compute_descriptive_tables, paper_manifest, paper_font)
-    ), format = "rds", packages = pipeline_packages("plot")),
+    {
+      dir_missing <- compute_descriptive_tables[
+        basename(compute_descriptive_tables) == "missing_proportions"]
+      city_files <- c("bogota", "cdmx", "santiago", "sao_paulo_metro")
+      stems <- unlist(lapply(missing_table_dimensions, function(dimension) {
+        sprintf("%s_%s_missing_by_%s", city_files, missing_table_panel, dimension)
+      }))
+      files <- here::here(dir_missing, paste0(stems, ".parquet"))
+      quintile_file <- here::here(dir_missing,
+        sprintf("missing_by_education_quintile_%d.parquet", analysis_year))
+      list(dimensions = setNames(lapply(files, arrow::read_parquet), stems),
+           quintiles = arrow::read_parquet(quintile_file))
+    }),
+
+  targets::tar_target(missing_table_tex,
+    {
+      tex <- list()
+      for (dimension in missing_table_dimensions) {
+        for (city in c("bogota", "cdmx", "santiago", "sao_paulo_metro")) {
+          name <- sprintf("%s_%s_missing_by_%s", city, missing_table_panel, dimension)
+          table <- table_missing_by_dimension(
+            missing_list = setNames(list(missing_table_data$dimensions[[name]]), dimension),
+            dim = dimension, city_label = city)
+          tex[[name]] <- latex_missing_dimension(dt = table, dim = dimension,
+            city_label = city)
+        }
+      }
+      list(dimensions = tex,
+        quintiles = latex_missing_by_quintile(missing_table_data$quintiles))
+    }, packages = "data.table"),
 
   targets::tar_target(render_missing_tables,
-    write_render_missing_tables(
-      missing_table_data,
-      inputs = c(compute_descriptive_tables,
-        paper_manifest, paper_font)),
-    format = "file", packages = pipeline_packages("plot")),
+    {
+      written <- character()
+      for (name in names(missing_table_tex$dimensions)) {
+        written <- c(written, write_latex_table(missing_table_tex$dimensions[[name]],
+          here::here("results", "tables", paste0(name, ".tex"))))
+      }
+      c(written, write_latex_table(missing_table_tex$quintiles,
+        here::here("results", "tables",
+          sprintf("missing_by_education_quintile_%d.tex", analysis_year))))
+    }, format = "file"),
 
   targets::tar_target(census_table_data,
-    read_render_census_tables_data(
-      c(compute_descriptive_tables, compute_distance_band_descriptives, paper_manifest,
-          paper_font)
-    ), format = "rds", packages = pipeline_packages("plot")),
+    {
+      dir_census <- compute_descriptive_tables[
+        basename(compute_descriptive_tables) == "census_summary"]
+      list(census = arrow::read_parquet(here::here(dir_census, "census_summary.parquet")),
+           bands = arrow::read_parquet(here::here(compute_distance_band_descriptives,
+             "distance_band_descriptives.parquet")))
+    }),
+
+  targets::tar_target(census_table_tex,
+    {
+      list(census = latex_census_summary(census_table_data$census),
+           bands_a = latex_distance_band_table(bands_dt = census_table_data$bands,
+             panel_cities = c("Bogota", "Mexico City")),
+           bands_b = latex_distance_band_table(bands_dt = census_table_data$bands,
+             panel_cities = c("Santiago", "Sao Paulo")))
+    }, packages = "data.table"),
 
   targets::tar_target(render_census_tables,
-    write_render_census_tables(
-      census_table_data,
-      inputs = c(compute_descriptive_tables,
-        compute_distance_band_descriptives, paper_manifest, paper_font)),
-    format = "file", packages = pipeline_packages("plot")),
+    {
+      c(
+        write_latex_table(census_table_tex$census,
+          here::here("results", "tables", "census_summary_table.tex")),
+        write_latex_table(census_table_tex$bands_a,
+          here::here("results", "tables", "table_descriptives_a.tex")),
+        write_latex_table(census_table_tex$bands_b,
+          here::here("results", "tables", "table_descriptives_b.tex")))
+    }, format = "file"),
 
   targets::tar_target(exposure_table_data,
-    read_render_exposure_tables_data(
-      c(estimate_exposure, paper_manifest, paper_font)
-    ), format = "rds", packages = pipeline_packages("plot")),
+    {
+      file_summary_edu <- estimate_exposure[basename(estimate_exposure) ==
+        sprintf("exposure_group_summaries_education_%dkm_%d.parquet",
+          individual_exposure_buffer_km, analysis_year)]
+      summary_edu <- data.table::as.data.table(arrow::read_parquet(file_summary_edu))
+      file_summary_inc <- estimate_exposure[basename(estimate_exposure) ==
+        sprintf("exposure_group_summaries_income_%dkm_%d.parquet",
+          individual_exposure_buffer_km, analysis_year)]
+      summary_inc <- data.table::as.data.table(arrow::read_parquet(file_summary_inc))
+      file_ci_edu <- estimate_exposure[basename(estimate_exposure) ==
+        sprintf("exposure_ci_estimates_education_%dkm_%d.parquet",
+          individual_exposure_buffer_km, analysis_year)]
+      ci_edu <- data.table::as.data.table(arrow::read_parquet(file_ci_edu))
+      file_ci_inc <- estimate_exposure[basename(estimate_exposure) ==
+        sprintf("exposure_ci_estimates_income_%dkm_%d.parquet",
+          individual_exposure_buffer_km, analysis_year)]
+      ci_inc <- data.table::as.data.table(arrow::read_parquet(file_ci_inc))
+      list(summary_edu = summary_edu, summary_inc = summary_inc,
+           ci_edu = ci_edu, ci_inc = ci_inc)
+    }),
+
+  targets::tar_target(exposure_table_tex,
+    {
+      list(
+        means_edu = latex_exposure_means_by_group(
+          summary_dt = exposure_table_data$summary_edu, ci_dt = exposure_table_data$ci_edu,
+          panel_cities = exposure_table_cities_edu,
+          panel_labels = exposure_table_labels_edu,
+          n_groups = 5L),
+        means_inc = latex_exposure_means_by_group(
+          summary_dt = exposure_table_data$summary_inc, ci_dt = exposure_table_data$ci_inc,
+          panel_cities = exposure_table_cities_inc,
+          panel_labels = exposure_table_labels_inc,
+          n_groups = 10L),
+        hours_edu = latex_exposure_hours_by_group(
+          summary_dt = exposure_table_data$summary_edu,
+          panel_cities = exposure_table_cities_edu,
+          panel_labels = exposure_table_labels_edu),
+        hours_inc = latex_exposure_hours_by_group(
+          summary_dt = exposure_table_data$summary_inc,
+          panel_cities = exposure_table_cities_inc,
+          panel_labels = exposure_table_labels_inc))
+    }, packages = "data.table"),
 
   targets::tar_target(render_exposure_tables,
-    write_render_exposure_tables(
-      exposure_table_data,
-      inputs = c(estimate_exposure,
-        paper_manifest, paper_font)),
-    format = "file", packages = pipeline_packages("plot")),
+    {
+      c(
+        write_latex_table(exposure_table_tex$means_edu,
+          here::here("results", "tables", "table_means_education_quintiles.tex"),
+          use_bytes = TRUE),
+        write_latex_table(exposure_table_tex$means_inc,
+          here::here("results", "tables", "table_means_income_groups.tex"),
+          use_bytes = TRUE),
+        write_latex_table(exposure_table_tex$hours_edu,
+          here::here("results", "tables", "table_hours_above_education_quintiles.tex"),
+          use_bytes = TRUE),
+        write_latex_table(exposure_table_tex$hours_inc,
+          here::here("results", "tables", "table_hours_above_income_groups.tex"),
+          use_bytes = TRUE))
+    }, format = "file"),
 
   # Aggregate file selections and manuscript export; selections never write products.
   targets::tar_target(figures,

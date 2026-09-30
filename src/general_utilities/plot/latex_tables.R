@@ -4,8 +4,8 @@
 #' @Goal: Functions for LaTeX tables.
 #
 #' @Description: Renders the paper's tables to .tex. These read tables the process stage
-# already computed; no statistics are calculated here. Sourced by
-# config_utils_plot_tables.R; never sourced directly by a script.
+# already computed. Scripts source these definitions directly, inspect the formatted
+# objects, then save the LaTeX with write_latex_table().
 #
 #' @Summary:
 #   1. table_state_metro_distances
@@ -21,6 +21,10 @@
 #  11. latex_distance_band_table
 #  12. latex_exposure_hours_by_group
 #  13. latex_threshold_exceedance_table
+#  14. latex_who_exceedances
+#  15. latex_missing_dimension
+#  16. latex_station_counts
+#  17. write_latex_table
 #
 #' @Date: September 2026
 #' @Author: Marcos Paulo
@@ -236,27 +240,8 @@ table_who_exceedances <- function(
       stop("File exists: ", out_file, " (set overwrite_tex = TRUE).")
     dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
     
-    num_cols <- setdiff(names(wide), c("city","year"))
-    fmt <- wide[, lapply(.SD, function(x) formatC(x, format = "f", digits = digits)),
-                .SDcols = num_cols]
-    fmt <- cbind(wide[, .(city, year)], fmt)
-    
-    header <- c(
-      "\\begin{table}[!htbp]\\centering",
-      sprintf("\\caption{%s}", caption),
-      sprintf("\\label{%s}", label),
-      "\\begin{tabular}{ll" ,
-      paste(rep("r", length(num_cols)), collapse = ""),
-      "}",
-      "\\toprule",
-      paste(c("City","Year", num_cols), collapse = " & "),
-      "\\\\",
-      "\\midrule"
-    )
-    body <- apply(fmt, 1L, function(r) paste(paste(r, collapse = " & "), "\\\\"))
-    footer <- c("\\bottomrule", "\\end{tabular}", "\\end{table}")
-    
-    writeLines(c(header, body, footer), out_file)
+    writeLines(latex_who_exceedances(wide, caption, label, digits),
+               out_file)
     if (!quiet) message("📝 Wrote LaTeX table → ", out_file)
   }
   
@@ -378,34 +363,12 @@ table_missing_by_dimension <- function(
   
   if (isTRUE(save_latex_table)) {
     if (is.null(out_file)) stop("`out_file` is required.")
-    if (is.null(caption))
-      caption <- sprintf("Share (%%) of missing observations by %s — %s.",
-                         dim, city_label)
-    if (is.null(label))
-      label <- sprintf("tab:missing_%s_%s", dim,
-                       gsub("[^a-z0-9]", "_", tolower(city_label)))
     if (file.exists(out_file) && !overwrite_tex)
       stop("File exists: ", out_file)
     dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
     
-    pretty <- data.table::copy(dt)
-    for (c in pct_cols)
-      pretty[[c]] <- formatC(pretty[[c]], format = "f", digits = digits)
-    
-    n_cols <- ncol(pretty)
-    header <- c(
-      "\\begin{table}[!htbp]\\centering",
-      sprintf("\\caption{%s}", caption),
-      sprintf("\\label{%s}", label),
-      paste0("\\begin{tabular}{", paste(rep("l", n_cols), collapse = ""), "}"),
-      "\\toprule",
-      paste(toupper(names(pretty)), collapse = " & "),
-      "\\\\",
-      "\\midrule"
-    )
-    body <- apply(pretty, 1L, function(r) paste(paste(r, collapse = " & "), "\\\\"))
-    footer <- c("\\bottomrule", "\\end{tabular}", "\\end{table}")
-    writeLines(c(header, body, footer), out_file)
+    writeLines(latex_missing_dimension(dt, dim, city_label, caption, label, digits),
+               out_file)
     if (!quiet) message("📝 Wrote LaTeX table → ", out_file)
   }
   invisible(dt)
@@ -710,29 +673,7 @@ plot_missing_heatmap <- function(
 #' @Updated_on : September 2026
 # --------------------------------------------------------------------------------------------
 write_station_count_latex <- function(station_counts, out_file) {
-  station_counts <- data.table::copy(station_counts)
-
-  lines_body <- apply(station_counts, 1, function(x) {
-    paste0("  ", x[["city"]], " &  ", x[["pm10"]], " &  ",
-           x[["pm25"]], " \\\\ ")
-  })
-
-  latex_lines <- c(
-    "\\begin{tabular}{lcc}",
-    "\\toprule",
-    "\\toprule",
-    "\\textbf{City} & $PM_{10}$ & $PM_{2.5}$ \\\\",
-    "\\midrule",
-    lines_body,
-    "\\bottomrule",
-    "\\bottomrule",
-    "\\end{tabular}"
-  )
-
-  dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
-  writeLines(latex_lines, out_file, useBytes = TRUE)
-
-  invisible(out_file)
+  write_latex_table(latex_station_counts(station_counts), out_file, use_bytes = TRUE)
 }
 
 
@@ -1089,4 +1030,125 @@ latex_threshold_exceedance_table <- function(exceed_dt, measure = c("days", "hou
   }
 
   c(header, body, "    \\bottomrule", "    \\bottomrule", "\\end{tabular}")
+}
+
+
+# ------------------------------------------------------------------------------------------
+# Function: latex_who_exceedances
+#' @param wide City/year table returned by table_who_exceedances().
+#' @param caption,label LaTeX caption and label.
+#' @param digits Decimal places for concentrations and exceedance factors.
+#' @return Character vector of LaTeX lines; writes no files or changes to the input.
+#' @details Preserves the existing column order, formatting and table wrapper.
+# ------------------------------------------------------------------------------------------
+latex_who_exceedances <- function(wide,
+                                caption = "Annual PM concentrations vs. WHO AQG (2021).",
+                                label = "tab:who_exceedances", digits = 2) {
+  wide <- data.table::as.data.table(wide)
+  num_cols <- setdiff(names(wide), c("city","year"))
+  fmt <- wide[, lapply(.SD, function(x) formatC(x, format = "f", digits = digits)),
+              .SDcols = num_cols]
+  fmt <- cbind(wide[, .(city, year)], fmt)
+
+  header <- c(
+    "\\begin{table}[!htbp]\\centering",
+    sprintf("\\caption{%s}", caption),
+    sprintf("\\label{%s}", label),
+    "\\begin{tabular}{ll" ,
+    paste(rep("r", length(num_cols)), collapse = ""),
+    "}",
+    "\\toprule",
+    paste(c("City","Year", num_cols), collapse = " & "),
+    "\\\\",
+    "\\midrule"
+  )
+  body <- apply(fmt, 1L, function(r) paste(paste(r, collapse = " & "), "\\\\"))
+  footer <- c("\\bottomrule", "\\end{tabular}", "\\end{table}")
+
+  c(header, body, footer)
+}
+
+
+# ------------------------------------------------------------------------------------------
+# Function: latex_missing_dimension
+#' @param dt Dimension table returned by table_missing_by_dimension().
+#' @param dim Dimension name: station, month or hour.
+#' @param city_label City name used in the caption and label.
+#' @param caption,label Optional LaTeX caption and label.
+#' @param digits Decimal places for missing percentages.
+#' @return Character vector of LaTeX lines; writes no files or changes to the input.
+#' @details Preserves the existing column order, formatting and table wrapper.
+# ------------------------------------------------------------------------------------------
+latex_missing_dimension <- function(dt, dim, city_label, caption = NULL,
+                                    label = NULL, digits = 1) {
+  if (is.null(caption))
+    caption <- sprintf("Share (%%) of missing observations by %s — %s.",
+                       dim, city_label)
+  if (is.null(label))
+    label <- sprintf("tab:missing_%s_%s", dim,
+                     gsub("[^a-z0-9]", "_", tolower(city_label)))
+  pct_cols <- grep("_missing_pct$", names(dt), value = TRUE)
+  pretty <- data.table::copy(dt)
+  for (c in pct_cols)
+    pretty[[c]] <- formatC(pretty[[c]], format = "f", digits = digits)
+
+  n_cols <- ncol(pretty)
+  header <- c(
+    "\\begin{table}[!htbp]\\centering",
+    sprintf("\\caption{%s}", caption),
+    sprintf("\\label{%s}", label),
+    paste0("\\begin{tabular}{", paste(rep("l", n_cols), collapse = ""), "}"),
+    "\\toprule",
+    paste(toupper(names(pretty)), collapse = " & "),
+    "\\\\",
+    "\\midrule"
+  )
+  body <- apply(pretty, 1L, function(r) paste(paste(r, collapse = " & "), "\\\\"))
+  footer <- c("\\bottomrule", "\\end{tabular}", "\\end{table}")
+  c(header, body, footer)
+}
+
+
+# ------------------------------------------------------------------------------------------
+# Function: latex_station_counts
+#' @param station_counts Table with city, pm10 and pm25 columns for one year.
+#' @return Character vector of LaTeX lines; writes no files.
+#' @details Formats the manuscript station counts, preserving their row order.
+# ------------------------------------------------------------------------------------------
+latex_station_counts <- function(station_counts) {
+  station_counts <- data.table::copy(station_counts)
+
+  lines_body <- apply(station_counts, 1, function(x) {
+    paste0("  ", x[["city"]], " &  ", x[["pm10"]], " &  ",
+           x[["pm25"]], " \\\\ ")
+  })
+
+  latex_lines <- c(
+    "\\begin{tabular}{lcc}",
+    "\\toprule",
+    "\\toprule",
+    "\\textbf{City} & $PM_{10}$ & $PM_{2.5}$ \\\\",
+    "\\midrule",
+    lines_body,
+    "\\bottomrule",
+    "\\bottomrule",
+    "\\end{tabular}"
+  )
+
+  latex_lines
+}
+
+
+# ------------------------------------------------------------------------------------------
+# Function: write_latex_table
+#' @param lines Character vector of LaTeX lines.
+#' @param out_file Destination .tex path.
+#' @param use_bytes Preserve the existing writer's byte-encoding choice.
+#' @return Destination path, invisibly; creates the folder and overwrites the file.
+#' @details Saving is separate so scripts and targets can inspect the formatted table.
+# ------------------------------------------------------------------------------------------
+write_latex_table <- function(lines, out_file, use_bytes = FALSE) {
+  dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
+  writeLines(lines, out_file, useBytes = use_bytes)
+  invisible(out_file)
 }

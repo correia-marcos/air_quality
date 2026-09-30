@@ -4,9 +4,8 @@
 #' @Goal: Functions for exposure-by-group figures.
 #
 #' @Description: Exposure across the socioeconomic distribution: quintile levels, kernel
-# densities, hours
-#   above WHO targets, and the regression gaps with clustered intervals.
-#   Sourced by config_utils_plot_tables.R; never sourced directly by a script.
+# densities, hours above WHO targets, and regression gaps with clustered intervals.
+# Scripts source these definitions directly, build named plots, then save them separately.
 #
 #' @Summary:
 #   1. plot_exposure_by_quintile
@@ -17,6 +16,7 @@
 #   6. plot_group_ci
 #   7. plot_group_levels
 #   8. .format_pollutant_label
+#   9. save_exposure_plot_family
 #
 #' @Date: August 2026
 #' @Author: Marcos Paulo
@@ -997,25 +997,24 @@ plot_group_levels <- function(summary_table,
 #' @param width   numeric; figure width in inches. Default 6.
 #' @param height  numeric; figure height in inches. Default 4.5.
 #
-#' @return  invisible NULL. Writes the PDF, or does nothing when plot_obj is NULL.
+#' @return  The PDF path invisibly. A missing plot is an error.
 #
 #' @details
-#   The NULL case is not an error: the plot builders return NULL when a city lacks the
-#   columns
-#   a figure needs, and skipping quietly keeps one missing city from stopping a whole run.
+#   Plot builders can return NULL when required columns are absent. Fail before reporting
+#   an output path so a stale PDF cannot stand in for a successful rendering.
 #
 #' @Written_by : Marcos Paulo
 #' @Updated_on : August 2026
 # --------------------------------------------------------------------------------------------
 save_plot_pdf <- function(plot_obj, path, width = 6, height = 4.5) {
   if (is.null(plot_obj)) {
-    return(invisible(NULL))
+    stop("Cannot write a missing plot: ", path)
   }
 
   ggplot2::ggsave(filename = path, plot = plot_obj, device = cairo_pdf,
                   width = width, height = height, dpi = 300, bg = "white")
 
-  invisible(NULL)
+  invisible(path)
 }
 
 
@@ -1025,7 +1024,7 @@ save_plot_pdf <- function(plot_obj, path, width = 6, height = 4.5) {
 #' @param plots    named list of ggplot objects; names are the output file names.
 #' @param out_dir  string; folder the PDFs are written to.
 #
-#' @return  invisible NULL. Writes one PDF per element of plots.
+#' @return  Output paths invisibly. Writes one PDF per element of plots.
 #
 #' @details
 #   Companion to the build_exposure_*_figures() builders: the name of each list
@@ -1035,11 +1034,12 @@ save_plot_pdf <- function(plot_obj, path, width = 6, height = 4.5) {
 #' @Updated_on : August 2026
 # --------------------------------------------------------------------------------------------
 save_exposure_figures <- function(plots, out_dir) {
+  files <- character()
   for (nm in names(plots)) {
-    save_plot_pdf(plots[[nm]], file.path(out_dir, nm))
+    files <- c(files, save_plot_pdf(plots[[nm]], file.path(out_dir, nm)))
   }
 
-  invisible(NULL)
+  invisible(files)
 }
 
 
@@ -1186,7 +1186,7 @@ build_exposure_level_figures <- function(sum_dt, tag, city_labels, city_files) {
 #   figures with different bytes remain distinct until comparison supports consolidation.
 #   Only the 3 km runs are printed, so every 5 km name maps to NA, as does the Santiago
 #   commune robustness run. The income CI figures keep the manuscript's "decile" wording
-#   even where the pipeline now estimates quintiles -- see doc/REMAINING_WORK.md.
+#   even where the pipeline now estimates quintiles -- see doc/planning/remaining-work.md.
 #
 #   The returned path is relative to results/figures/. Its folders are named for
 #   what the figures show, not for the manuscript's own Final/ and descriptives/, which
@@ -1250,4 +1250,32 @@ paper_exposure_filename <- function(fname, paper_files, year = 2023L,
   file.path("exposure",
             sprintf("plot_hours_above_%s_%s_%d_3km_reg1.pdf",
                     it_tag, paper_city, year))
+}
+
+
+# ------------------------------------------------------------------------------------------
+# Function: save_exposure_plot_family
+#' @param plots Named list returned by an exposure figure builder.
+#' @param out_dir Figure root containing exposure/ and imputation/.
+#' @param paper_files City filename mapping used by paper_exposure_filename().
+#' @param year Analysis year used in manuscript filenames.
+#' @param imputed Whether these plots describe the imputed robustness analysis.
+#' @return Every saved PDF path; writes each selected plot once.
+#' @details Keeps manuscript names for selected plots and descriptive names for the other
+# observed-data plots. Imputed plots are saved only when selected by the manuscript mapping.
+# ------------------------------------------------------------------------------------------
+save_exposure_plot_family <- function(plots, out_dir, paper_files, year,
+                                      imputed = FALSE) {
+  written <- character()
+  for (name in names(plots)) {
+    filename <- paper_exposure_filename(name, paper_files, year, imputed = imputed)
+    if (is.na(filename)) {
+      if (imputed) next
+      filename <- file.path("exposure", name)
+    }
+    out_file <- here::here(out_dir, filename)
+    dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
+    written <- c(written, save_plot_pdf(plots[[name]], out_file))
+  }
+  invisible(written)
 }

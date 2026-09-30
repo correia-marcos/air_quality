@@ -6,15 +6,10 @@ manuscript_stage_names <- function() c(
   "compute_station_scatter_inputs",
   "generate_panel_air_quality",
   "prepare_station_temporal",
-  "generate_exposure_plots",
   "plot_station_monitoring_figures",
   "figure_station_scatter",
   "figure_population_density_maps",
   "figure_pollution_quintile_maps",
   "figure_kernel_distributions",
   "figure_quintile_kernel_distributions",
-  "figure_station_temporal",
-  "render_station_tables",
-  "render_missing_tables",
-  "render_census_tables",
-  "render_exposure_tables")
+  "figure_station_temporal")

@@ -1,71 +1,59 @@
-# ============================================================================================
+# ========================================================================================
 # IDB: Air monitoring
-# ============================================================================================
-#' @Goal: Render the census coverage table the paper reports for the four metro areas.
+# ========================================================================================
+#' @Goal: Render census coverage and distance-band descriptions.
 #
-#' @Description: Turns two process-stage Parquet files into the .tex fragments the paper
-# \input's. The census summary is written twice under the same content: once as
-# census_summary/census_summary_table.tex, the repo's descriptive name, and once as
-# table_census_coverage.tex, the name the manuscript uses. The distance-band descriptives
-# become table_descriptives_a (Bogota and Mexico City) and table_descriptives_b (Santiago
-# and Sao Paulo). Nothing is calculated here.
+#' @Description: Read the saved census and distance-band summaries for three LaTeX tables.
+# The artifact manifest supplies the manuscript name for census_summary_table.tex.
+# The two distance-band tables retain the existing city pairs and reported statistics.
 #
 #' @Summary:
-#   I.   Import data: locate the process-stage Parquet files.
-#   II.  Render: the census coverage tabular, then the two descriptive panels.
-#   III. Report where each .tex landed.
+#   I.   Import data: source functions, set paths and read saved summaries.
+#   II.  Process data: format the census table and the two distance-band panels.
+#   III. Save outputs: write the three LaTeX tables.
 #
-#' @Date: August 2026
+#' @Date: September 2026
 #' @Author: Marcos
-# ============================================================================================
+# ========================================================================================
 
-# Get all libraries and functions
-source(here::here("src", "general_utilities", "config_utils_plot_tables.R"))
-
-# ============================================================================================
+# ========================================================================================
 # I: Import data
-# ============================================================================================
-# Define input and output folders
-dir_census    <- here::here("data", "processed", "census_summary")
-dir_bands     <- here::here("data", "processed", "distance_band_descriptives")
-outdir_tables <- here::here("results", "tables")
-outdir_paper  <- here::here("results", "tables")
+# ========================================================================================
+# Load the functions and their required packages
+source(here::here("src", "general_utilities", "base_utils.R"))
+source(here::here("src", "general_utilities", "plot", "latex_tables.R"))
 
-dir.create(outdir_paper, recursive = TRUE, showWarnings = FALSE)
+# Set input folders and the output folder
+dir_census <- here::here("data", "processed", "census_summary")
+dir_bands  <- here::here("data", "processed", "distance_band_descriptives")
+dir_tables <- here::here("results", "tables")
 
-census_summary <- arrow::read_parquet(file.path(dir_census, "census_summary.parquet"))
-distance_bands <- arrow::read_parquet(
-  file.path(dir_bands, "distance_band_descriptives.parquet"))
+# Set the census, distances tables and output files
+file_census <- here::here(dir_census, "census_summary.parquet")
+file_bands  <- here::here(dir_bands, "distance_band_descriptives.parquet")
+out_census  <- here::here(dir_tables, "census_summary_table.tex")
+out_bands_a <- here::here(dir_tables, "table_descriptives_a.tex")
+out_bands_b <- here::here(dir_tables, "table_descriptives_b.tex")
 
-# ============================================================================================
-# II: Render tables
-# ============================================================================================
-tex_lines <- latex_census_summary(census_summary)
+# Read summarized files
+census_summary <- arrow::read_parquet(file_census)
+distance_bands <- arrow::read_parquet(file_bands)
 
-# Repo-facing name, alongside the Parquet it was built from.
-tex_census <- file.path(outdir_tables, "census_summary_table.tex")
-dir.create(dirname(tex_census), recursive = TRUE, showWarnings = FALSE)
-writeLines(tex_lines, tex_census)
+# ========================================================================================
+# II: Process data
+# ========================================================================================
+# Generate the tables in LaTeX format - as character
+tex_census <- latex_census_summary(dt = census_summary)
 
-# Manuscript-facing name: the paper \input's tables/table_census_coverage.
-tex_paper <- tex_census  # Export mapping supplies the manuscript name.
+tex_bands_a <- latex_distance_band_table(bands_dt     = distance_bands,
+                                        panel_cities = c("Bogota", "Mexico City"))
+tex_bands_b <- latex_distance_band_table(bands_dt     = distance_bands,
+                                        panel_cities = c("Santiago", "Sao Paulo"))
 
-# Descriptive statistics by distance band, two cities per table as the paper prints them.
-tex_desc_a <- file.path(outdir_paper, "table_descriptives_a.tex")
-writeLines(latex_distance_band_table(distance_bands,
-                                     c("Bogota", "Mexico City")), tex_desc_a)
-
-tex_desc_b <- file.path(outdir_paper, "table_descriptives_b.tex")
-writeLines(latex_distance_band_table(distance_bands,
-                                     c("Santiago", "Sao Paulo")), tex_desc_b)
-
-# ============================================================================================
-# III: Report
-# ============================================================================================
-message("Wrote: ", tex_census)
-message("Wrote: ", tex_paper)
-message("Wrote: ", tex_desc_a)
-message("Wrote: ", tex_desc_b)
-
-# Print a success message for when running inside Docker Container
-cat("Script from the IDB project executed successfully in the Docker container!\n")
+# ========================================================================================
+# III: Save outputs
+# ========================================================================================
+# Saved generated LaTeX tables
+write_latex_table(tex_census, out_census)
+write_latex_table(tex_bands_a, out_bands_a)
+write_latex_table(tex_bands_b, out_bands_b)
