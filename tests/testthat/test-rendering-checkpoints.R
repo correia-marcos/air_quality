@@ -64,8 +64,15 @@ test_that("table targets cache LaTeX and regenerate missing files from explicit 
   }
   quote_text <- function(x) encodeString(x, quote = '"')
   stages <- c("station_table_data", "station_table_tex", "render_station_tables")
-  declarations <- c(paste0("targets::tar_target(compute_descriptive_tables, ",
-    "list.files(", quote_text(inputs), ", full.names = TRUE), format = 'file')"))
+  declarations <- character()
+  families <- c(station_counts_files = "station_counts",
+    who_exceedance_file = "who_exceedances", threshold_exceedance_files =
+      "threshold_exceedances")
+  for (name in names(families)) {
+    declarations <- c(declarations, paste0("targets::tar_target_raw(", quote_text(name),
+      ", quote(list.files(", quote_text(file.path(inputs, families[[name]])),
+      ", full.names = TRUE)), format = 'file')"))
+  }
   for (stage in stages) {
     row <- manifest[manifest$name == stage, ]
     command <- redirect(str2lang(row$command))

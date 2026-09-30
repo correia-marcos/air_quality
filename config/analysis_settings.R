@@ -44,6 +44,11 @@ exposure_table_labels_inc <- c(CDMX = "Mexico City (income quintiles)",
 missing_table_panel <- "raw"
 missing_table_dimensions <- c("station", "month", "hour")
 
+# Descriptive summaries use stored rows before and after outlier removal.
+summary_pollutants <- c("pm10", "pm25")
+missing_dimensions <- c("station", "month", "hour", "day_of_week")
+availability_report <- "available"
+
 # Distance-band descriptions use cumulative radii and each census's own indicators.
 distance_band_radii_km <- c(1, 3, 5, 10, 20)
 

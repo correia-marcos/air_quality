@@ -1,55 +1,51 @@
-# ============================================================================================
+# ========================================================================================
 # IDB: Air monitoring
-# ============================================================================================
-#' @Goal: Compute every descriptive statistic the paper reports about monitoring coverage,
-#   data availability and the census populations behind the exposure estimates.
+# ========================================================================================
+#' @Goal: Describe monitoring coverage, data availability and census populations.
 #
-#' @Description: One script for the paper's descriptive layer, because all five families
-# answer the same question — how much do we actually observe, and for whom. Each family
-# reads the hourly Arrow panels or the census and writes a machine-readable artefact to
-# data/processed/. No LaTeX is written here: the render_*_tables.R scripts turn these
-# Parquet files into the .tex files, which keeps this script on the data side of the
-# data/ -> results/ ratchet. Santiago uses the 2017 zonas censales throughout, matching
-# the main exposure specification; the 2024 communes are a robustness vintage only.
+#' @Description: Read the hourly station panels, distance matrices and individual census
+# files to compute six groups of summaries. Coverage and hourly threshold summaries use
+# the analysis year; WHO comparisons use every available year. Missingness uses stored
+# station-hour rows, without filling gaps in the calendar. Santiago uses the 2017 zones.
+# Save the tables for render_station_tables.R, render_missing_tables.R and
+# render_census_tables.R; these scripts produce the manuscript's LaTeX tables.
 #
 #' @Summary:
-#   I.   Import data: paths and analysis options, one variable per city.
-#   II.  Missing proportions by station, month, hour and day of week (raw and cleaned).
-#   III. Station counts by pollutant.
-#   IV.  WHO exceedance factors.
-#   IVb. Days and hours above the WHO interim targets, city-hour and station-hour.
-#   V.   Data availability by education quintile.
-#   VI.  Census summary.
+#   I.   Import data: source functions and settings, then set input and output paths.
+#   II.  Process data: compute each city's summaries and combine the city tables.
+#   III. Save outputs: write the summaries as Parquet, with CSV copies where used.
 #
-#' @Date: August 2026
+#' @Date: September 2026
 #' @Author: Marcos
-# ============================================================================================
+# ========================================================================================
 
-# Get all libraries and functions
-source(here::here("src", "general_utilities", "config_utils_process_data.R"))
-
-# ============================================================================================
+# ========================================================================================
 # I: Import data
-# ============================================================================================
-# Define input and output folders
-dir_raw     <- here::here("data", "interim", "monitoring_stations")
-dir_clean   <- here::here("data", "processed", "monitoring_stations_outliers")
-dir_dist    <- here::here("data", "processed", "distances_matrices")
-dir_census  <- here::here("data", "interim", "census")
+# ========================================================================================
+# Source the summary and saving functions, plus their shared helpers
+source(here::here("src", "general_utilities", "base_utils.R"))
+source(here::here("src", "general_utilities", "process", "geo_ids.R"))
+source(here::here("src", "general_utilities", "process", "diagnostics.R"))
+source(here::here("src", "general_utilities", "process", "station_socio.R"))
+source(here::here("src", "general_utilities", "process", "exposure_regressions.R"))
 
-outdir_missing  <- here::here("data", "processed", "missing_proportions")
-outdir_counts   <- here::here("data", "processed", "station_counts")
-outdir_who      <- here::here("data", "processed", "who_exceedances")
-outdir_census   <- here::here("data", "processed", "census_summary")
-outdir_exceed   <- here::here("data", "processed", "threshold_exceedances")
+# The shared settings define the year, pollutants and availability measure
+source(here::here("config", "analysis_settings.R"))
 
-# Analysis options. "available" reports non-missing shares, "missing" the complement.
-analysis_year <- 2023L
-pollutants    <- c("pm10", "pm25")
-report        <- "available"
-missing_dims  <- c("station", "month", "hour", "day_of_week")
+# Set the station-panel, distance-matrix and census folders
+dir_raw    <- here::here("data", "interim", "monitoring_stations")
+dir_clean  <- here::here("data", "processed", "monitoring_stations_outliers")
+dir_dist   <- here::here("data", "processed", "distances_matrices")
+dir_census <- here::here("data", "interim", "census")
 
-# Define raw and cleaned Arrow dataset paths
+# Set the output folders for the six groups of summaries
+outdir_missing <- here::here("data", "processed", "missing_proportions")
+outdir_counts  <- here::here("data", "processed", "station_counts")
+outdir_who     <- here::here("data", "processed", "who_exceedances")
+outdir_exceed  <- here::here("data", "processed", "threshold_exceedances")
+outdir_census  <- here::here("data", "processed", "census_summary")
+
+# Define the station datasets before and after outlier removal
 raw_bogota   <- here::here(dir_raw, "bogota_metro_dataset")
 raw_cdmx     <- here::here(dir_raw, "cdmx_metro_dataset")
 raw_santiago <- here::here(dir_raw, "santiago_metro_dataset")
@@ -80,296 +76,269 @@ micro_santiago <- here::here(dir_census, "santiago_2017",
 micro_sp       <- here::here(dir_census, "sao_paulo_2010",
                              "census_sp_individual_2010.parquet")
 
-# ============================================================================================
-# II: Missing proportions by station, month, hour and day of week
-# ============================================================================================
-dir.create(outdir_missing, recursive = TRUE, showWarnings = FALSE)
+# ========================================================================================
+# II: Process data
+# ========================================================================================
+# Compute missing-reading percentages before and after outlier removal
+missing_bogota_raw <- compute_missing_proportions(arrow_dir   = raw_bogota,
+                                                  pollutants  = summary_pollutants,
+                                                  dims        = missing_dimensions,
+                                                  year_filter = analysis_year)
 
-# Raw panels give structural missingness: hours the network never reported.
-compute_missing_proportions(
-  arrow_dir   = raw_bogota,
-  pollutants  = pollutants,
-  dims        = missing_dims,
-  year_filter = analysis_year,
-  out_dir     = outdir_missing,
-  out_name    = "bogota_raw")
+missing_cdmx_raw <- compute_missing_proportions(arrow_dir   = raw_cdmx,
+                                                pollutants  = summary_pollutants,
+                                                dims        = missing_dimensions,
+                                                year_filter = analysis_year)
 
-compute_missing_proportions(
-  arrow_dir   = raw_cdmx,
-  pollutants  = pollutants,
-  dims        = missing_dims,
-  year_filter = analysis_year,
-  out_dir     = outdir_missing,
-  out_name    = "cdmx_raw")
+missing_santiago_raw <- compute_missing_proportions(arrow_dir   = raw_santiago,
+                                                    pollutants  = summary_pollutants,
+                                                    dims        = missing_dimensions,
+                                                    year_filter = analysis_year)
 
-compute_missing_proportions(
-  arrow_dir   = raw_santiago,
-  pollutants  = pollutants,
-  dims        = missing_dims,
-  year_filter = analysis_year,
-  out_dir     = outdir_missing,
-  out_name    = "santiago_raw")
+missing_sp_raw <- compute_missing_proportions(arrow_dir   = raw_sp,
+                                              pollutants  = summary_pollutants,
+                                              dims        = missing_dimensions,
+                                              year_filter = analysis_year)
 
-compute_missing_proportions(
-  arrow_dir   = raw_sp,
-  pollutants  = pollutants,
-  dims        = missing_dims,
-  year_filter = analysis_year,
-  out_dir     = outdir_missing,
-  out_name    = "sao_paulo_metro_raw")
+missing_bogota_clean <- compute_missing_proportions(arrow_dir   = clean_bogota,
+                                                    pollutants  = summary_pollutants,
+                                                    dims        = missing_dimensions,
+                                                    year_filter = analysis_year)
 
-# Cleaned panels add what detect_outliers.R removed; the paper reports the raw panel.
-compute_missing_proportions(
-  arrow_dir   = clean_bogota,
-  pollutants  = pollutants,
-  dims        = missing_dims,
-  year_filter = analysis_year,
-  out_dir     = outdir_missing,
-  out_name    = "bogota_clean")
+missing_cdmx_clean <- compute_missing_proportions(arrow_dir   = clean_cdmx,
+                                                  pollutants  = summary_pollutants,
+                                                  dims        = missing_dimensions,
+                                                  year_filter = analysis_year)
 
-compute_missing_proportions(
-  arrow_dir   = clean_cdmx,
-  pollutants  = pollutants,
-  dims        = missing_dims,
-  year_filter = analysis_year,
-  out_dir     = outdir_missing,
-  out_name    = "cdmx_clean")
+missing_santiago_clean <- compute_missing_proportions(arrow_dir   = clean_santiago,
+                                                      pollutants  = summary_pollutants,
+                                                      dims        = missing_dimensions,
+                                                      year_filter = analysis_year)
 
-compute_missing_proportions(
-  arrow_dir   = clean_santiago,
-  pollutants  = pollutants,
-  dims        = missing_dims,
-  year_filter = analysis_year,
-  out_dir     = outdir_missing,
-  out_name    = "santiago_clean")
+missing_sp_clean <- compute_missing_proportions(arrow_dir   = clean_sp,
+                                                pollutants  = summary_pollutants,
+                                                dims        = missing_dimensions,
+                                                year_filter = analysis_year)
 
-compute_missing_proportions(
-  arrow_dir   = clean_sp,
-  pollutants  = pollutants,
-  dims        = missing_dims,
-  year_filter = analysis_year,
-  out_dir     = outdir_missing,
-  out_name    = "sao_paulo_metro_clean")
+# Count stations with at least one reported value for each pollutant in the year
+counts_bogota <- count_stations_reporting(arrow_dir   = raw_bogota,
+                                          pollutants  = summary_pollutants,
+                                          year_filter = analysis_year,
+                                          mem_gb      = 8)
 
-# ============================================================================================
-# III: Station counts by pollutant
-# ============================================================================================
-dir.create(outdir_counts, recursive = TRUE, showWarnings = FALSE)
+counts_cdmx <- count_stations_reporting(arrow_dir   = raw_cdmx,
+                                        pollutants  = summary_pollutants,
+                                        year_filter = analysis_year,
+                                        mem_gb      = 8)
 
-# Counted on the raw panels: this describes the monitoring infrastructure that exists, not
-# the subset that survives outlier removal.
-counts_bogota <- count_stations_reporting(
-  arrow_dir   = raw_bogota,
-  pollutants  = pollutants,
-  year_filter = analysis_year,
-  mem_gb      = 8)
+counts_santiago <- count_stations_reporting(arrow_dir   = raw_santiago,
+                                            pollutants  = summary_pollutants,
+                                            year_filter = analysis_year,
+                                            mem_gb      = 8)
 
-counts_cdmx <- count_stations_reporting(
-  arrow_dir   = raw_cdmx,
-  pollutants  = pollutants,
-  year_filter = analysis_year,
-  mem_gb      = 8)
+counts_sp <- count_stations_reporting(arrow_dir   = raw_sp,
+                                      pollutants  = summary_pollutants,
+                                      year_filter = analysis_year,
+                                      mem_gb      = 8)
 
-counts_santiago <- count_stations_reporting(
-  arrow_dir   = raw_santiago,
-  pollutants  = pollutants,
-  year_filter = analysis_year,
-  mem_gb      = 8)
-
-counts_sp <- count_stations_reporting(
-  arrow_dir   = raw_sp,
-  pollutants  = pollutants,
-  year_filter = analysis_year,
-  mem_gb      = 8)
-
-# Presentation order and accented names for the paper's station-count table.
+# Combine the station counts in the order used by the manuscript table
 counts_santiago[, city := "Santiago"]
 counts_bogota[,   city := "Bogotá"]
 counts_cdmx[,     city := "Mexico City"]
 counts_sp[,       city := "São Paulo"]
 
-station_counts <- data.table::rbindlist(
-  list(counts_santiago, counts_bogota, counts_cdmx, counts_sp))
+station_counts <- data.table::rbindlist(list(counts_santiago, counts_bogota,
+                                            counts_cdmx, counts_sp))
 station_counts <- station_counts[, .(city, pm10, pm25)]
 
-save_table_parquet_csv(station_counts, outdir_counts,
-                       paste0("stations_by_pollutant_", analysis_year))
+# Average station annual means and compare them with WHO annual guidelines
+# Keep every available year, including years before the main analysis
+who_bogota <- compute_who_exceedances(arrow_dir   = clean_bogota,
+                                      city_label  = "bogota",
+                                      pollutants  = summary_pollutants,
+                                      year_filter = NULL)
 
-# ============================================================================================
-# IV: WHO exceedance factors
-# ============================================================================================
-dir.create(outdir_who, recursive = TRUE, showWarnings = FALSE)
+who_cdmx <- compute_who_exceedances(arrow_dir   = clean_cdmx,
+                                    city_label  = "cdmx",
+                                    pollutants  = summary_pollutants,
+                                    year_filter = NULL)
 
-# Mean-of-means across stations, not a pooled grand mean: pooling would let the stations
-# with the most uptime dominate the city average. All years, not just analysis_year.
-who_bogota <- compute_who_exceedances(
-  arrow_dir   = clean_bogota,
-  city_label  = "bogota",
-  pollutants  = pollutants,
-  year_filter = NULL)
+who_santiago <- compute_who_exceedances(arrow_dir   = clean_santiago,
+                                        city_label  = "santiago",
+                                        pollutants  = summary_pollutants,
+                                        year_filter = NULL)
 
-who_cdmx <- compute_who_exceedances(
-  arrow_dir   = clean_cdmx,
-  city_label  = "cdmx",
-  pollutants  = pollutants,
-  year_filter = NULL)
+who_sp <- compute_who_exceedances(arrow_dir   = clean_sp,
+                                  city_label  = "sao_paulo_metro",
+                                  pollutants  = summary_pollutants,
+                                  year_filter = NULL)
 
-who_santiago <- compute_who_exceedances(
-  arrow_dir   = clean_santiago,
-  city_label  = "santiago",
-  pollutants  = pollutants,
-  year_filter = NULL)
+who_exceedances <- data.table::rbindlist(list(who_bogota, who_cdmx,
+                                              who_santiago, who_sp), fill = TRUE)
 
-who_sp <- compute_who_exceedances(
-  arrow_dir   = clean_sp,
-  city_label  = "sao_paulo_metro",
-  pollutants  = pollutants,
-  year_filter = NULL)
+# Count days and hours above each threshold for city-hour and station-hour series
+# This retains the existing hourly comparison with the 24-hour interim thresholds
+exceed_bogota <- compute_threshold_exceedance_days(arrow_dir   = clean_bogota,
+                                                   city_label  = "Bogota",
+                                                   year_filter = analysis_year,
+                                                   pollutants  = summary_pollutants)
 
-who_exceedances <- data.table::rbindlist(
-  list(who_bogota, who_cdmx, who_santiago, who_sp), fill = TRUE)
+exceed_santiago <- compute_threshold_exceedance_days(arrow_dir   = clean_santiago,
+                                                     city_label  = "Santiago",
+                                                     year_filter = analysis_year,
+                                                     pollutants  = summary_pollutants)
 
-save_raw_data_tidy_formatted(
-  data          = who_exceedances,
-  out_dir       = outdir_who,
-  out_name      = "who_exceedances_all_cities",
-  write_rds     = FALSE,
-  write_parquet = TRUE,
-  write_csv_gz  = FALSE)
+exceed_cdmx <- compute_threshold_exceedance_days(arrow_dir   = clean_cdmx,
+                                                 city_label  = "Mexico City",
+                                                 year_filter = analysis_year,
+                                                 pollutants  = summary_pollutants)
 
-# ============================================================================================
-# IVb: Days and hours above the WHO interim targets
-# ============================================================================================
-dir.create(outdir_exceed, recursive = TRUE, showWarnings = FALSE)
+exceed_sp <- compute_threshold_exceedance_days(arrow_dir   = clean_sp,
+                                               city_label  = "Sao Paulo",
+                                               year_filter = analysis_year,
+                                               pollutants  = summary_pollutants)
 
-# Two series per city: the metro average hour by hour, and the individual stations. The
-# gap between them is how much a city-wide average hides a local spike.
-exceed_bogota <- compute_threshold_exceedance_days(
-  arrow_dir = clean_bogota, city_label = "Bogota", year_filter = analysis_year,
-  pollutants = pollutants)
+threshold_exceedances <- data.table::rbindlist(list(exceed_bogota,
+                                            exceed_santiago, exceed_cdmx, exceed_sp))
 
-exceed_santiago <- compute_threshold_exceedance_days(
-  arrow_dir = clean_santiago, city_label = "Santiago", year_filter = analysis_year,
-  pollutants = pollutants)
+# Assign stations the education quintile of their nearest census unit
+# Summarize available readings among stored rows for stations with a matched unit
+quintile_bogota <- compute_missing_by_quintile(city          = "Bogota",
+                                               city_order    = 1L,
+                                               pollution_dir = clean_bogota,
+                                               dist_pq       = dist_bogota,
+                                               census_file   = micro_bogota,
+                                               geo_id_col    = "geo_id",
+                                               pollutants    = summary_pollutants,
+                                               year          = analysis_year,
+                                               report        = availability_report)
 
-exceed_cdmx <- compute_threshold_exceedance_days(
-  arrow_dir = clean_cdmx, city_label = "Mexico City", year_filter = analysis_year,
-  pollutants = pollutants)
+quintile_cdmx <- compute_missing_by_quintile(city          = "Mexico City",
+                                             city_order    = 2L,
+                                             pollution_dir = clean_cdmx,
+                                             dist_pq       = dist_cdmx,
+                                             census_file   = micro_cdmx,
+                                             geo_id_col    = "geo_id",
+                                             pollutants    = summary_pollutants,
+                                             year          = analysis_year,
+                                             report        = availability_report)
 
-exceed_sp <- compute_threshold_exceedance_days(
-  arrow_dir = clean_sp, city_label = "Sao Paulo", year_filter = analysis_year,
-  pollutants = pollutants)
+quintile_santiago <- compute_missing_by_quintile(city          = "Santiago",
+                                                 city_order    = 3L,
+                                                 pollution_dir = clean_santiago,
+                                                 dist_pq       = dist_santiago,
+                                                 census_file   = micro_santiago,
+                                                 geo_id_col    = "geo_id",
+                                                 pollutants    = summary_pollutants,
+                                                 year          = analysis_year,
+                                                 report        = availability_report)
 
-threshold_exceedances <- data.table::rbindlist(
-  list(exceed_bogota, exceed_santiago, exceed_cdmx, exceed_sp))
+quintile_sp <- compute_missing_by_quintile(city          = "Sao Paulo",
+                                           city_order    = 4L,
+                                           pollution_dir = clean_sp,
+                                           dist_pq       = dist_sp,
+                                           census_file   = micro_sp,
+                                           geo_id_col    = "geo_id",
+                                           pollutants    = summary_pollutants,
+                                           year          = analysis_year,
+                                           report        = availability_report)
 
-save_table_parquet_csv(threshold_exceedances, outdir_exceed,
-                       paste0("days_and_hours_", analysis_year))
+missing_by_quintile <- data.table::rbindlist(list(quintile_bogota, quintile_cdmx,
+                                                  quintile_santiago, quintile_sp))
 
-# ============================================================================================
-# V: Data availability by education quintile
-# ============================================================================================
-# Assigns each station the education quintile of its nearest census unit, then reports the
-# share of non-missing hours by quintile. A smaller share in the lower quintiles means the
-# exposure estimates are least reliable exactly where the paper's question bites.
-quintile_bogota <- compute_missing_by_quintile(
-  city          = "Bogota",
-  city_order    = 1L,
-  pollution_dir = clean_bogota,
-  dist_pq       = dist_bogota,
-  census_file   = micro_bogota,
-  geo_id_col    = "geo_id",
-  pollutants    = pollutants,
-  year          = analysis_year,
-  report        = report)
+# Sum person weights and count geographic units in each individual census file
+summary_bogota <- compute_city_census_summary(census_path  = micro_bogota,
+                                              city         = "Bogota",
+                                              city_latex   = "Bogot\\'a",
+                                              census_year  = 2018L,
+                                              census_level = "Census tract",
+                                              geo_id_col   = "geo_id",
+                                              pop_col      = "person_weight")
 
-quintile_cdmx <- compute_missing_by_quintile(
-  city          = "Mexico City",
-  city_order    = 2L,
-  pollution_dir = clean_cdmx,
-  dist_pq       = dist_cdmx,
-  census_file   = micro_cdmx,
-  geo_id_col    = "geo_id",
-  pollutants    = pollutants,
-  year          = analysis_year,
-  report        = report)
+summary_cdmx <- compute_city_census_summary(census_path  = micro_cdmx,
+                                            city         = "Mexico City",
+                                            city_latex   = "Mexico City",
+                                            census_year  = 2020L,
+                                            census_level = "Municipality",
+                                            geo_id_col   = "geo_id",
+                                            pop_col      = "person_weight")
 
-quintile_santiago <- compute_missing_by_quintile(
-  city          = "Santiago",
-  city_order    = 3L,
-  pollution_dir = clean_santiago,
-  dist_pq       = dist_santiago,
-  census_file   = micro_santiago,
-  geo_id_col    = "geo_id",
-  pollutants    = pollutants,
-  year          = analysis_year,
-  report        = report)
+summary_santiago <- compute_city_census_summary(census_path  = micro_santiago,
+                                                city         = "Gran Santiago",
+                                                city_latex   = "Gran Santiago",
+                                                census_year  = 2017L,
+                                                census_level = "Census tract",
+                                                geo_id_col   = "geo_id",
+                                                pop_col      = "person_weight")
 
-quintile_sp <- compute_missing_by_quintile(
-  city          = "Sao Paulo",
-  city_order    = 4L,
-  pollution_dir = clean_sp,
-  dist_pq       = dist_sp,
-  census_file   = micro_sp,
-  geo_id_col    = "geo_id",
-  pollutants    = pollutants,
-  year          = analysis_year,
-  report        = report)
+summary_sp <- compute_city_census_summary(census_path  = micro_sp,
+                                          city         = "Sao Paulo",
+                                          city_latex   = "S\\~ao Paulo",
+                                          census_year  = 2010L,
+                                          census_level = "Weighting area",
+                                          geo_id_col   = "geo_id",
+                                          pop_col      = "person_weight")
 
-missing_by_quintile <- data.table::rbindlist(
-  list(quintile_bogota, quintile_cdmx, quintile_santiago, quintile_sp))
+census_summary <- data.table::rbindlist(list(summary_bogota, summary_cdmx,
+                                             summary_santiago, summary_sp))
 
-save_table_parquet_csv(missing_by_quintile, outdir_missing,
-                       paste0("missing_by_education_quintile_", analysis_year))
+# ========================================================================================
+# III: Save outputs
+# ========================================================================================
+# Save the four missingness tables for each city and panel
+write_missing_proportions(tables   = missing_bogota_raw,
+                          out_dir  = outdir_missing,
+                          out_name = "bogota_raw")
 
-# ============================================================================================
-# VI: Census summary
-# ============================================================================================
-dir.create(outdir_census, recursive = TRUE, showWarnings = FALSE)
+write_missing_proportions(tables   = missing_cdmx_raw,
+                          out_dir  = outdir_missing,
+                          out_name = "cdmx_raw")
 
-# Population totals and geographic-unit counts behind the exposure estimates. Units with a
-# missing id or a non-positive weight are dropped, so the count is the estimation-relevant
-# one rather than the file's row count.
-summary_bogota <- compute_city_census_summary(
-  census_path  = micro_bogota,
-  city         = "Bogota",
-  city_latex   = "Bogot\\'a",
-  census_year  = 2018L,
-  census_level = "Census tract",
-  geo_id_col   = "geo_id",
-  pop_col      = "person_weight")
+write_missing_proportions(tables   = missing_santiago_raw,
+                          out_dir  = outdir_missing,
+                          out_name = "santiago_raw")
 
-summary_cdmx <- compute_city_census_summary(
-  census_path  = micro_cdmx,
-  city         = "Mexico City",
-  city_latex   = "Mexico City",
-  census_year  = 2020L,
-  census_level = "Municipality",
-  geo_id_col   = "geo_id",
-  pop_col      = "person_weight")
+write_missing_proportions(tables   = missing_sp_raw,
+                          out_dir  = outdir_missing,
+                          out_name = "sao_paulo_metro_raw")
 
-summary_santiago <- compute_city_census_summary(
-  census_path  = micro_santiago,
-  city         = "Gran Santiago",
-  city_latex   = "Gran Santiago",
-  census_year  = 2017L,
-  census_level = "Census tract",
-  geo_id_col   = "geo_id",
-  pop_col      = "person_weight")
+write_missing_proportions(tables   = missing_bogota_clean,
+                          out_dir  = outdir_missing,
+                          out_name = "bogota_clean")
 
-summary_sp <- compute_city_census_summary(
-  census_path  = micro_sp,
-  city         = "Sao Paulo",
-  city_latex   = "S\\~ao Paulo",
-  census_year  = 2010L,
-  census_level = "Weighting area",
-  geo_id_col   = "geo_id",
-  pop_col      = "person_weight")
+write_missing_proportions(tables   = missing_cdmx_clean,
+                          out_dir  = outdir_missing,
+                          out_name = "cdmx_clean")
 
-census_summary <- data.table::rbindlist(
-  list(summary_bogota, summary_cdmx, summary_santiago, summary_sp))
+write_missing_proportions(tables   = missing_santiago_clean,
+                          out_dir  = outdir_missing,
+                          out_name = "santiago_clean")
 
-save_table_parquet_csv(census_summary, outdir_census, "census_summary")
+write_missing_proportions(tables   = missing_sp_clean,
+                          out_dir  = outdir_missing,
+                          out_name = "sao_paulo_metro_clean")
 
-# Print a success message for when running inside Docker Container
-cat("Script from the IDB project executed successfully in the Docker container!\n")
+# Save station counts, annual WHO comparisons and hourly threshold summaries
+save_table_parquet_csv(dt      = station_counts,
+                       out_dir = outdir_counts,
+                       name    = paste0("stations_by_pollutant_", analysis_year))
+
+save_raw_data_tidy_formatted(data          = who_exceedances,
+                             out_dir       = outdir_who,
+                             out_name      = "who_exceedances_all_cities",
+                             write_rds     = FALSE,
+                             write_parquet = TRUE,
+                             write_csv_gz  = FALSE)
+
+save_table_parquet_csv(dt      = threshold_exceedances,
+                       out_dir = outdir_exceed,
+                       name    = paste0("days_and_hours_", analysis_year))
+
+# Save availability by education quintile and the census population summaries
+save_table_parquet_csv(dt      = missing_by_quintile,
+                       out_dir = outdir_missing,
+                       name    = paste0("missing_by_education_quintile_", analysis_year))
+
+save_table_parquet_csv(dt      = census_summary,
+                       out_dir = outdir_census,
+                       name    = "census_summary")

@@ -346,9 +346,11 @@ compute_who_exceedances <- function(
 #' @param mem_gb     numeric; DuckDB memory ceiling in GB. Default 8.
 #' @param quiet      logical; suppress info messages. Default FALSE.
 #
-#' @return  Named list of data.tables.
-#' @details Calculates structural and algorithmic missingness cleanly inside DuckDB.
-#           Avoids RAM bottlenecks by resolving all math before pulling to R.
+#' @return Named list of data.tables, one per requested dimension. No files are written
+#          when out_dir is NULL; use write_missing_proportions() to save separately.
+#' @details Computes missing-reading percentages among stored station-hour rows using
+#          DuckDB. Absent rows are not added to the denominator. The tables retain each
+#          dimension's identifier, pollutant percentages and total_hrs (stored row count).
 #
 #' @Written_on : 17/04/2026
 #' @Written_by : Marcos Paulo
@@ -473,16 +475,39 @@ compute_missing_proportions <- function(
     
     out[[d]] <- res
     
-    # 7. File Export
-    # --------------------------------------------------------------------------------
-    if (!is.null(out_dir)) {
-      pth <- file.path(out_dir, paste0(out_name, "_missing_by_", d, ".parquet"))
-      arrow::write_parquet(res, pth)
-      if (!quiet) message("  -> Wrote: ", pth)
-    }
   }
-  
+
+  if (!is.null(out_dir)) {
+    write_missing_proportions(out, out_dir, out_name, quiet = quiet)
+  }
+
   invisible(out)
+}
+
+# ----------------------------------------------------------------------------------------
+# Function: write_missing_proportions
+#
+#' @param tables Named list returned by compute_missing_proportions().
+#' @param out_dir Directory receiving the Parquet tables.
+#' @param out_name City/panel prefix, for example "bogota_raw".
+#' @param quiet Suppress written-file messages.
+#' @return Character vector of every written Parquet path, named by dimension.
+#' @details Saves each dimension without modifying its table. Existing files with the
+#          same prefix and dimension are replaced; other files are left untouched.
+# ----------------------------------------------------------------------------------------
+write_missing_proportions <- function(tables, out_dir, out_name, quiet = FALSE) {
+  stopifnot(length(tables) > 0L, length(names(tables)) == length(tables),
+            all(nzchar(names(tables))), !anyDuplicated(names(tables)),
+            all(names(tables) %in% c("station", "month", "hour", "day_of_week", "year")),
+            length(out_name) == 1L, !is.na(out_name), nzchar(out_name))
+  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+  paths <- setNames(here::here(out_dir,
+    paste0(out_name, "_missing_by_", names(tables), ".parquet")), names(tables))
+  for (dimension in names(tables)) {
+    arrow::write_parquet(tables[[dimension]], paths[[dimension]])
+    if (!quiet) message("  -> Wrote: ", paths[[dimension]])
+  }
+  invisible(paths)
 }
 
 
@@ -520,7 +545,7 @@ compute_city_census_summary <- function(census_path, city, city_latex, census_ye
   }
 
   dt <- data.table::as.data.table(
-    arrow::read_parquet(census_path, col_select = c(geo_id_col, pop_col)))
+    arrow::read_parquet(census_path, col_select = dplyr::all_of(c(geo_id_col, pop_col))))
 
   missing_cols <- setdiff(c(geo_id_col, pop_col), names(dt))
 
@@ -782,15 +807,13 @@ station_education_quintile <- function(dist_pq, census_file, geo_id_col) {
 #' @param report       string; "available" or "missing" shares.
 #' @param mem_gb       numeric; DuckDB memory ceiling in GB. Default 8.
 #
-#' @return  data.table; one row per pollutant with the share by education quintile Q1..Q5.
+#' @return Long data.table with city, city_order, year, statistic, pollutant, quintile,
+#          value and total_obs. Reads files without writing or modifying them.
 #
 #' @details
-#   Answers whether monitoring coverage itself is unequal: if stations in poorer quintiles
-#   report a smaller share of their expected hours, the exposure estimates are less
-#   reliable
-#   exactly where the paper's question bites. Arguments are named rather than taken as a
-#   spec
-#   row, so the signature documents what the function needs.
+#   Groups stations by their nearest census unit's education quintile, then computes
+#   reading availability among matched, stored station-hour rows. Absent rows are not
+#   added to the denominator. This describes coverage, not exposure-estimate uncertainty.
 #
 #' @Written_by : Marcos Paulo
 #' @Updated_on : August 2026
