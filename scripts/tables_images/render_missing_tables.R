@@ -1,94 +1,69 @@
-# ============================================================================================
+# ========================================================================================
 # IDB: Air monitoring
-# ============================================================================================
-#' @Goal: Render the LaTeX tables describing how much of the hourly record is observed.
+# ========================================================================================
+#' @Goal: Render missingness by station, month, hour and education.
 #
-#' @Description: Turns the missing-proportion Parquet files written by
-# compute_descriptive_tables.R into .tex fragments under results/tables/. Nothing is
-# calculated here. Two families: missing shares along one dimension at a time, one table
-# per city and dimension, and the share of expected hours reported by education quintile.
+#' @Description: Use the original reported-hour panel for station, month and hour tables.
+# These missing shares exclude removals by the outlier procedure. The education
+# table reports available readings among stored station-hour rows in each quintile.
 #
 #' @Summary:
-#   I.   Import data: locate the process-stage Parquet files.
-#   II.  Render: by-dimension missing shares, then availability by education quintile.
-#   III. Report where each .tex landed.
+#   I.   Import data: source functions, set paths and read saved summaries.
+#   II.  Process data: format missingness tables and the education coverage table.
+#   III. Save outputs: write each city/dimension table, then the education table.
 #
-#' @Date: August 2026
+#' @Date: September 2026
 #' @Author: Marcos
-# ============================================================================================
+# ========================================================================================
 
-# Get all libraries and functions
-source(here::here("src", "general_utilities", "config_utils_plot_tables.R"))
-
-# ============================================================================================
+# ========================================================================================
 # I: Import data
-# ============================================================================================
-# Define input and output folders
-dir_missing        <- here::here("data", "processed", "missing_proportions")
-outdir_missing_tex <- here::here("results", "tables")
-outdir_paper       <- here::here("results", "tables")
+# ========================================================================================
+source(here::here("src", "general_utilities", "base_utils.R"))
+source(here::here("src", "general_utilities", "plot", "latex_tables.R"))
+source(here::here("config", "analysis_settings.R"))
 
-analysis_year <- 2023L
+dir_missing <- here::here("data", "processed", "missing_proportions")
+dir_tables  <- here::here("results", "tables")
+city_files  <- c("bogota", "cdmx", "santiago", "sao_paulo_metro")
 
-# Which hourly panel the by-dimension tables describe. "raw" is structural missingness --
-# hours the network never reported. "clean" additionally folds in what detect_outliers.R
-# removed, which mixes two different phenomena in one number.
-panel <- "raw"
+# Keep each city and dimension in a named list.
+stems <- unlist(lapply(missing_table_dimensions, function(dimension) {
+  sprintf("%s_%s_missing_by_%s", city_files, missing_table_panel, dimension)
+}))
+files_missing <- here::here(dir_missing, paste0(stems, ".parquet"))
+out_missing   <- here::here(dir_tables, paste0(stems, ".tex"))
+file_quintile <- here::here(dir_missing,
+  sprintf("missing_by_education_quintile_%d.parquet", analysis_year))
+out_quintile <- here::here(dir_tables,
+  sprintf("missing_by_education_quintile_%d.tex", analysis_year))
 
-missing_dims <- c("station", "month", "hour")
+missing_tables      <- setNames(lapply(files_missing, arrow::read_parquet), stems)
+missing_by_quintile <- arrow::read_parquet(file_quintile)
 
-missing_by_quintile <- arrow::read_parquet(
-  file.path(dir_missing,
-            paste0("missing_by_education_quintile_", analysis_year, ".parquet")))
-
-# ============================================================================================
-# II: Render tables
-# ============================================================================================
-dir.create(outdir_missing_tex, recursive = TRUE, showWarnings = FALSE)
-
-# One table per city and dimension. The dimension loop is a scalar knob over the three
-# views of the same city panel; the cities themselves are written out.
-for (dim in missing_dims) {
-  render_missing_dimension_table(
-    dir_missing = dir_missing,
-    city_id     = "bogota",
-    panel       = panel,
-    dim         = dim,
-    out_dir     = outdir_missing_tex)
-
-  render_missing_dimension_table(
-    dir_missing = dir_missing,
-    city_id     = "cdmx",
-    panel       = panel,
-    dim         = dim,
-    out_dir     = outdir_missing_tex)
-
-  render_missing_dimension_table(
-    dir_missing = dir_missing,
-    city_id     = "santiago",
-    panel       = panel,
-    dim         = dim,
-    out_dir     = outdir_missing_tex)
-
-  render_missing_dimension_table(
-    dir_missing = dir_missing,
-    city_id     = "sao_paulo_metro",
-    panel       = panel,
-    dim         = dim,
-    out_dir     = outdir_missing_tex)
+# ========================================================================================
+# II: Process data
+# ========================================================================================
+dimension_tables <- list()
+tex_missing      <- list()
+for (dimension in missing_table_dimensions) {
+  for (city in city_files) {
+    name <- sprintf("%s_%s_missing_by_%s", city, missing_table_panel, dimension)
+    dimension_tables[[name]] <- table_missing_by_dimension(
+      missing_list = setNames(list(missing_tables[[name]]), dimension),
+      dim = dimension, city_label = city)
+    tex_missing[[name]] <- latex_missing_dimension(dt         = dimension_tables[[name]],
+                                                  dim        = dimension,
+                                                  city_label = city)
+  }
 }
 
-# Share of expected hours actually reported, by education quintile.
-tex_quintile <- file.path(outdir_missing_tex,
-                          paste0("missing_by_education_quintile_", analysis_year, ".tex"))
-writeLines(latex_missing_by_quintile(missing_by_quintile), tex_quintile)
+tex_quintile <- latex_missing_by_quintile(dt = missing_by_quintile)
 
-# ============================================================================================
-# III: Report
-# ============================================================================================
-message("Wrote: 4 cities x ", length(missing_dims), " by-dimension tables in ",
-        outdir_missing_tex)
-message("Wrote: ", tex_quintile)
-
-# Print a success message for when running inside Docker Container
-cat("Script from the IDB project executed successfully in the Docker container!\n")
+# ========================================================================================
+# III: Save outputs
+# ========================================================================================
+for (i in seq_along(stems)) {
+  write_latex_table(tex_missing[[stems[i]]], out_missing[i])
+}
+write_latex_table(tex_quintile, out_quintile)
