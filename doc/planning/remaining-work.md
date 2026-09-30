@@ -32,7 +32,7 @@ scientific validation. Review explanations and analytical assumptions in a later
 Imputation, imputed exposure and imputation diagnostics now have direct recipes and explicit
 target commands. The small count table and station-ratio tables are inspectable summaries;
 plots are computed before saving. These three entries remain unverified for real-data runs.
-The broader descriptive summaries and remaining figures still need migration.
+The completed descriptive summaries are recorded below; remaining figures need migration.
 
 **30 September 2026:** The four table recipes and `generate_exposure_plots.R` now read
 saved summaries, retain named LaTeX/plot objects, and save them in Section III. Isolated
@@ -41,6 +41,22 @@ on 24 LaTeX tables and 54 exposure figures; each recipe also runs in a fresh R s
 Their inventory rows record this rendering evidence as maintained. Upstream estimation,
 GUI readability review and full reproduction remain separate checks. See the
 [rendering evidence](../ai/implementation.md#tables-and-exposure-figures--30-september-2026).
+
+Marcos subsequently reviewed the rendering batch and added step comments. Those comments
+were polished without changing executable expressions. The next completed recipe is
+`compute_distance_band_descriptives.R`: four city summaries and their combined table are
+now visible before saving. Isolated runs on the existing geography, distances and census
+files match the preserved implementation's 342 rows and both downstream LaTeX panels.
+The [distance-band evidence](../ai/implementation.md#distance-band-summaries--30-september-2026)
+records the comparison and its limits. Marcos accepted this recipe's comment style.
+
+`compute_descriptive_tables.R` now exposes all six summary families and saves them in
+Section III. A fresh-session recipe and isolated targets execution match the preserved
+implementation's intermediate tables, 41 saved files and 18 affected LaTeX tables on
+existing inputs. All 200 input hashes are unchanged. See the
+[descriptive evidence](../ai/implementation.md#descriptive-summaries--30-september-2026).
+Station summaries and remaining figures are next. GUI review and scientific acceptance
+remain separate from these executed comparisons.
 
 **29 September 2026:** Marcos approved starting imputation at the first finite cleaned
 reading for each station, pollutant and year, continuing through year-end. Complete windows
@@ -113,6 +129,10 @@ This finding does not establish timestamp consistency for other cities, years or
   stored using UTC as a technical convention.
 - Check year partitions, station-hour joins, outlier windows, imputation calendar factors
   and alignment with MERRA-2. Test midnight, year boundaries and relevant clock changes.
+- Include descriptive summaries: compare DuckDB extraction of year/month/hour from tagged
+  timestamps with the partition-year filter used for threshold summaries. A synthetic UTC
+  midnight fixture exposed this boundary sensitivity during the 30 September refactor;
+  no production time definition was changed.
 - Verify Parquet round trips and identical analytical results under UTC and city-local
   R session timezones, including RStudio and Rscript. Record any necessary changes to
   timestamps or sample membership separately from display-only corrections.
@@ -172,8 +192,8 @@ before scientific acceptance; the run report alone does not establish their equi
 | [scripts/download_data/download_sao_paulo_data.R](../../scripts/download_data/download_sao_paulo_data.R) | acquisition; **unverified** | Outside targets: deliberate provider/network access. | `Rscript scripts/download_data/download_sao_paulo_data.R`<br>Provider access and required credentials/Selenium; never invoked by processing. | Provider inputs -> preserved downloads, source-region diagnostic and acquisition logs; derived GeoPackages belong to processing | Acquisition/preparation split implemented; live provider access remains unverified. |
 | [scripts/export/export_paper.R](../../scripts/export/export_paper.R) | operational utility; **unverified** | Targets: `paper_export` (shared export function). | `Rscript scripts/export/export_paper.R --destination data/verification/export-preview --dry-run`<br>Declared input files must already exist. | Artifact manifest and selected results -> checksum-verified manuscript export | Verify execution and scientific parity independently; preserve the specification. |
 | [scripts/process_data/build_bogota_localidad_crosswalk.R](../../scripts/process_data/build_bogota_localidad_crosswalk.R) | optional analysis; **unverified** | Outside manuscript targets: optional scientific question. | `Rscript scripts/process_data/build_bogota_localidad_crosswalk.R`<br>Declared input files must already exist. | Prepared 2018 manzanas/localities -> crosswalk for resolution workflows | Verify execution and scientific parity independently; preserve the specification. |
-| [scripts/process_data/compute_descriptive_tables.R](../../scripts/process_data/compute_descriptive_tables.R) | manuscript; **unverified** | Targets: `compute_descriptive_tables` | `Rscript scripts/process_data/compute_descriptive_tables.R`<br>Declared input files must already exist. | Raw/clean panels, distances, census -> missingness/counts/WHO/threshold/census summaries | Compare manual operations and targets on identical inputs; complete acceptance. |
-| [scripts/process_data/compute_distance_band_descriptives.R](../../scripts/process_data/compute_distance_band_descriptives.R) | manuscript; **unverified** | Targets: `compute_distance_band_descriptives` | `Rscript scripts/process_data/compute_distance_band_descriptives.R`<br>Declared input files must already exist. | Geography, census, distances -> distance-band tables | Compare manual operations and targets on identical inputs; complete acceptance. |
+| [scripts/process_data/compute_descriptive_tables.R](../../scripts/process_data/compute_descriptive_tables.R) | manuscript; **maintained** | Targets: `compute_descriptive_tables` | `Rscript scripts/process_data/compute_descriptive_tables.R`<br>Prepared raw/clean panels, distance matrices and individual census files must exist. | Six city-summary families -> 41 files; consumed by station, missingness and census rendering | Isolated real-input parity checked on 30 September 2026; review the recipe in RStudio and assess scientific definitions separately. |
+| [scripts/process_data/compute_distance_band_descriptives.R](../../scripts/process_data/compute_distance_band_descriptives.R) | manuscript; **maintained** | Targets: `distance_band_summary`, `compute_distance_band_descriptives` | `Rscript scripts/process_data/compute_distance_band_descriptives.R`<br>Prepared geography, distance matrices and individual census files must exist. | Four city area/summary tables -> combined Parquet and CSV; consumed by census rendering | Isolated real-input parity checked on 30 September 2026 (342 rows); review the new recipe in RStudio and assess the scientific definitions separately. |
 | [scripts/process_data/compute_station_scatter_inputs.R](../../scripts/process_data/compute_station_scatter_inputs.R) | manuscript; **unverified** | Targets: `compute_station_scatter_inputs` | `Rscript scripts/process_data/compute_station_scatter_inputs.R`<br>Declared input files must already exist. | Cleaned panels, geography, census -> station socioeconomic tables | Compare manual operations and targets on identical inputs; complete acceptance. |
 | [scripts/process_data/detect_outliers.R](../../scripts/process_data/detect_outliers.R) | manuscript; **maintained** | Targets: `outliers` | `Rscript scripts/process_data/detect_outliers.R`<br>Declared input files must already exist. | Pollution partitions and station distances -> cleaned partitions for IDW/imputation | Marcos reports a successful local run (24 September); isolated recipe/target parity was checked previously. Scientific review and isolated reproduction remain pending. |
 | [scripts/process_data/estimate_exposure.R](../../scripts/process_data/estimate_exposure.R) | manuscript; **maintained** | Targets: `estimate_exposure` | `Rscript scripts/process_data/estimate_exposure.R`<br>Declared input files must already exist. | IDW families and distances -> exposure regressions for figures/tables | Marcos reports a successful local run (24 September). Comment/layout polish retains the explicit city calls and buffer loop; estimates agree on isolated fixtures. Review scientific explanations later. |

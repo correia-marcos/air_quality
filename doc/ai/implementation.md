@@ -1,5 +1,132 @@
 # Implementation and evidence
 
+## Descriptive summaries — 30 September 2026
+
+`compute_descriptive_tables.R` now follows the distance-band recipe's step comments.
+Section I shows the sources, shared settings and paths. Section II retains city tables
+for six families: missingness, station counts, annual WHO comparisons, hourly threshold
+exceedances, education-quintile availability and census population. Section III saves
+them in the same order. The large panels and individual census records remain on disk.
+
+The scientific functions already existed in subject modules. Removed the broad descriptive
+adapter and added `write_missing_proportions()` for the four dimension tables. Existing
+callers may still request saving through `compute_missing_proportions(out_dir = ...)`;
+its default returns tables without writing. Census column selection now explicitly uses
+`all_of()` to avoid a pre-existing tidyselect warning, with the same selected columns.
+
+Targets calls the scientific functions for each city and caches manageable tables.
+Separate file writers report all **41 files**, and rendering consumes the required file
+families by filename. The public `compute_descriptive_tables` stage remains available.
+The shared settings preserve PM10/PM2.5, four missingness dimensions, the availability
+measure and the existing analysis year. WHO comparisons still include all available years.
+
+Evidence: `data/verification/reader-descriptives-20260930/` (local, ignored).
+
+- Preserved the incoming code and recorded **200 input-file SHA-256 hashes**. The previous
+  adapter, direct recipe and actual target execution agree on every intermediate table
+  and all 41 saved files' contents at `1e-10`, including schemas and row membership.
+  Unspecified DuckDB group order is normalized for comparison; this is not a byte-equality
+  claim. All 200 input hashes remain unchanged.
+- The recipe ran in a fresh R process without targets or the pipeline loader. Outputs
+  were redirected to the isolated evidence folder. The actual targets also ran with a
+  separate store and output root; all **18 affected LaTeX tables** match formatting from
+  the preserved summaries. The two distance-band panels were rendered from an existing
+  checkpoint and are outside this batch's numerical comparison.
+- Synthetic checks cover stored-row missingness, no computation writes, writer round trips
+  and failures, alternate input roots, all 41 output paths, no-op caching, deleted Parquet
+  and CSV recovery, added/removed source files, unchanged-city caching, and changed
+  year/function settings. They check station counts and annual mean-of-station-means
+  against small hand-computed examples.
+- Final synthetic suite: **622 passed; zero failures, errors, skips or test warnings**.
+  Used Framework R with `--vanilla` and the restored R 4.6 project library. Sandbox CPU
+  probes and temporary-directory cleanup emitted messages outside the test results.
+- All **561 reader/inventory assertions** passed. Changed R lines fit 92 characters;
+  active documentation links and the Git whitespace check passed.
+- Initial fixtures omitted the panel's year field and placed UTC observations at a year
+  boundary; corrected those fixtures without changing production timestamp handling.
+  Also corrected test assumptions about Arrow classes and target-manifest ordering.
+
+Comments now state that missingness uses stored station-hour rows, rather than a complete
+calendar. No denominator, threshold or timestamp definition was changed. The existing
+timezone review must cover DuckDB calendar extraction as well as partition-year selection.
+Source preparation, input freshness/provenance, GUI RStudio review, full manuscript
+compilation, containers and isolated release reproduction remain unverified in this batch.
+Production analytical outputs were not replaced. Station summaries and remaining figures
+are next; optional/validation cleanup and operational cutover remain pending.
+
+Suggested review/commit groups (recommendations only; no staging, git commit or git push):
+
+1. `refactor: expose descriptive summaries before saving`:
+   `scripts/process_data/compute_descriptive_tables.R`, `_targets.R`,
+   `config/analysis_settings.R`, `src/general_utilities/process/diagnostics.R`,
+   `src/pipeline/stage_names.R`, `tests/check-targets-contracts.R`,
+   `tests/testthat/test-descriptive-workflow.R`,
+   `tests/testthat/test-rendering-checkpoints.R`. The removed adapter was untracked.
+2. `docs: record descriptive parity and clarify coverage comments`:
+   `scripts/tables_images/render_missing_tables.R` (comment only),
+   `doc/ai/rules/r-style.md`, `doc/ai/architecture.md`, `doc/ai/implementation.md`,
+   `doc/planning/remaining-work.md`, `doc/planning/targets-migration.md`.
+
+Review shared-file hunks alongside their pre-existing migration changes.
+
+## Distance-band summaries — 30 September 2026
+
+Polished Marcos's step comments in `render_census_tables.R` and
+`generate_exposure_plots.R`. Both retain identical parsed expressions. The wording now
+identifies LaTeX character vectors, mean-concentration plots and the observed-plus-imputed
+panels behind the robustness figures. Keep this concrete comment style in subsequent recipes.
+
+`compute_distance_band_descriptives.R` now shows geographic reads, four area tables,
+four city summaries and a combined table. Section III saves the existing Parquet and CSV.
+Unchanged radii and city indicators are named in `config/analysis_settings.R`; the
+scientific function implementations are unchanged. Their comments now distinguish weighted
+population statistics from unit counts, schooling ranges and unweighted mean unit density.
+Targets reuses the geographic objects read for distance matrices and computes summaries
+separately by city. Its file writer returns both actual paths. Census rendering selects
+the Parquet explicitly; the former distance-band stage adapter is removed.
+
+Evidence: `data/verification/reader-distance-bands-20260930/` (local, ignored).
+
+- Snapshotted the incoming code and recorded hashes for the 12 prepared input files.
+  The preserved adapter, standalone recipe and actual target commands agree on four area
+  tables, four city summaries and the **342-row combined table**, at `1e-12`.
+  All 12 prepared inputs retain their SHA-256 hashes after verification.
+- Both saved formats are byte-identical across all three routes; both downstream LaTeX
+  panels are identical. The new census-table target reads the writer's explicit file list.
+  The recipe executed in a fresh R process before loading targets definitions.
+- Hand-computed fixtures check weights, missing education, inclusive distance boundaries,
+  unmatched units in the metropolitan total, the two density definitions and no computation
+  writes. Actual target commands on isolated four-city fixtures verify alternate input
+  roots, no-op caching, recovery of either deleted output without recomputing summaries,
+  changed census contents, unaffected-city caching and changed radius settings.
+- Final synthetic suite: **587 passed; zero failures, errors, skips or test warnings**,
+  using Framework R with `--vanilla` and the restored R 4.6 project library. Sandbox CPU
+  probes and temporary-directory cleanup emitted messages outside the test results.
+- All **561 reader/inventory assertions** passed. Changed R lines fit 92 characters;
+  active documentation links and the scoped Git whitespace check passed.
+- Initial verification needed an explicit project-root path for manifest inspection under
+  testthat and a common data-frame representation when comparing Arrow reads with cached
+  data.tables. Corrected these test assumptions and reran the checks successfully.
+
+No production analytical outputs or source inputs were changed. Existing prepared inputs
+were consumed; source preparation, provenance, full release reproduction and GUI readability
+review were not repeated. Bogotá's identifier-reconciliation message occurs in all three
+routes; numerical parity does not establish the scientific validity of those matches.
+The broader descriptive script, station summaries and remaining figures are still pending.
+
+Suggested next commit groups (recommendations only; no staging, git commit or git push):
+
+1. `refactor: expose city distance-band summaries before saving`:
+   `scripts/process_data/compute_distance_band_descriptives.R`, `_targets.R`,
+   `config/analysis_settings.R`, `src/pipeline/stage_names.R`,
+   `src/general_utilities/process/diagnostics.R`, `src/general_utilities/process/geo_ids.R`,
+   `tests/testthat/test-distance-band-workflow.R`. The removed adapter was untracked.
+2. `docs: record distance-band parity and rendering review`:
+   `doc/ai/implementation.md`, `doc/ai/architecture.md`,
+   `doc/planning/remaining-work.md`, `doc/planning/targets-migration.md`.
+
+Review shared-file hunks alongside their pre-existing migration changes.
+
 ## Tables and exposure figures — 30 September 2026
 
 The four table recipes and `generate_exposure_plots.R` now source their scientific modules

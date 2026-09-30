@@ -95,6 +95,12 @@ call scientific functions directly. Imputation diagnostics expose station summar
 separately from PDF saving. The four table recipes retain named LaTeX objects, and exposure
 figures retain named plot lists; both save in Section III. Other recipes need simplification;
 heading counts do not establish readability.
+Distance-band descriptions also expose area tables, four city summaries and the combined
+table before saving. Targets caches each city's summary and writes the two formats separately
+from computation, using the same scientific functions and shared indicator settings.
+The broader descriptive recipe also exposes each city's missingness, station counts,
+WHO comparisons, hourly thresholds, education-quintile availability and census summaries.
+Separate writers report all 41 files; table-rendering targets consume the required families.
 The migration candidate
 shares transformation functions with the interactive recipes. The new
 graph declares concrete city functions, configurations and upstream file targets; it does not

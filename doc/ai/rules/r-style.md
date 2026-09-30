@@ -67,6 +67,8 @@ Preserve meaningful names; adjust alignment and wrapping rather than exceed the 
 Script comments use short, concrete descriptions: set the paths, read the stations,
 compute distances, save the tables. Explain geographic vintages or other choices where
 they help the reader. Polish the English without replacing this voice with boilerplate.
+Use `scripts/process_data/compute_distance_band_descriptives.R` as the comment reference;
+Marcos prefers its brief descriptions beside each operation.
 
 ## Hard rules
 

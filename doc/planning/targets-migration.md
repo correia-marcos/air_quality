@@ -3,9 +3,9 @@
 Approved revision, 23 September 2026. **The distance pilot is implemented and its
 readability accepted by Marcos; the four city recipes and their targets are now revised.**
 Outliers, IDW, observed/imputed exposure and hourly imputation now use direct recipes.
-Imputation diagnostics, the four table recipes and exposure figures now separate named
-computations from saving. Broader summaries, remaining figures, tooling and scientific
-cutover remain pending. This replaces
+Imputation diagnostics, the four table recipes, exposure figures and distance-band summaries
+now separate named computations from saving. Other summaries, remaining figures, operational
+tooling and scientific cutover remain pending. This replaces
 the earlier requirements for analytical scripts to use pipeline loaders, specification
 tables, stage adapters and input/output dictionaries. The collapsed historical record
 below is superseded, including its earlier commit groups and environment status.
@@ -70,7 +70,7 @@ The graph keeps the public imputation stage names and caches plots separately fr
 
 The [evidence record](../ai/implementation.md#imputation-recipes-and-author-review--24-september-2026)
 distinguishes fixture comparisons, reported local runs and pending scientific acceptance.
-Broader descriptive summaries and remaining figures still need migration.
+Descriptive summaries are covered below; remaining figures still need migration.
 
 ## Tables and exposure figures — implemented 30 September 2026
 
@@ -87,8 +87,45 @@ gaps in that selection.
 
 Isolated comparison used existing saved summaries, with no upstream estimation rerun.
 The [evidence record](../ai/implementation.md#tables-and-exposure-figures--30-september-2026)
-documents the table, plot, cache and standalone-script checks. Human RStudio review and
-full scientific acceptance remain pending.
+documents the table, plot, cache and standalone-script checks. Marcos subsequently reviewed
+the rendering batch; his added step comments are the reference for concise explanations
+beside each operation. Full scientific acceptance remains pending.
+
+## Distance-band summaries — implemented 30 September 2026
+
+`compute_distance_band_descriptives.R` now sources scientific modules directly and reads
+the four geographic layers in Section I. Section II computes named area tables and four
+city summaries, then combines them. Section III saves the existing Parquet and CSV files.
+The shared settings name the unchanged cumulative radii and each city's census indicators.
+
+Targets reuses the geographic objects read for distance matrices, computes areas and
+summaries separately by city, and gives the combined files one writer. The public
+`compute_distance_band_descriptives` selection now returns both filenames; census-table
+rendering selects the Parquet explicitly. Its transitional stage adapter is removed.
+
+The preserved implementation, direct recipe and target commands agree on all 342 rows,
+both output formats and both LaTeX panels using identical existing prepared inputs. This
+checks the refactor, not source preparation or the scientific validity of the summaries.
+See the [comparison evidence](../ai/implementation.md#distance-band-summaries--30-september-2026).
+
+## Descriptive summaries — implemented 30 September 2026
+
+`compute_descriptive_tables.R` now exposes each city's computations and combined tables
+before saving all six summary families. Comments follow the distance-band recipe. Shared
+settings remain plain named values; individual records and hourly panels remain file-backed.
+Missingness uses stored rows, WHO comparisons retain all years, and hourly thresholds and
+the selected-year coverage summaries retain their existing definitions.
+
+Targets caches the city tables separately and reports the 41 owned files through explicit
+writers. Table rendering selects files from the relevant families. The public stage name
+is unchanged; its broad adapter is removed. Existing missingness callers can still request
+combined computation/saving, while this recipe and targets use the separate writer.
+
+The preserved implementation, fresh-session recipe and isolated targets execution agree
+on all intermediate tables and saved contents. All 18 affected LaTeX tables match, and
+200 input-file hashes are unchanged. See the
+[comparison evidence](../ai/implementation.md#descriptive-summaries--30-september-2026).
+Scientific acceptance and the default scheduler cutover remain separate.
 
 ## City preparation — implemented
 
@@ -188,7 +225,7 @@ run `git commit` or run `git push`.
 
 ## Remaining implementation
 
-1. Continue from imputation/diagnostics to broader descriptive summaries and remaining
+1. Continue with station summaries (`compute_station_scatter_inputs.R`) and the remaining
    rendering recipes, then optional analysis and validation. Keep short repeated calls; share
    transformations, not script-shaped orchestration. Use meaningful names, named arguments
    and space between operations. Follow the author's call layout and step comments,
