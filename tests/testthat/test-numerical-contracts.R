@@ -56,12 +56,18 @@ test_that("Mexican census education uses weighted reporting adults as denominato
   expect_equal(out$collapsed$pop_educ_known, 4)
   expect_equal(out$collapsed$education_mean, (0 * 1 + 12 * 3) / 4)
   expect_equal(nrow(out$individual), 4L)
+  files <- e$mexico_harmonize_census_data(data.frame(file = file),
+    out_dir = file.path(root, "file-backed"), quiet = TRUE, return_data = FALSE)
+  expect_named(files, c("individual", "collapsed"))
+  expect_equal(arrow::read_parquet(files[["individual"]]), out$individual)
+  expect_equal(arrow::read_parquet(files[["collapsed"]]), out$collapsed)
 })
 
 test_that("imputation preserves observations and isolates the requested year", {
   root <- tempfile(); dir.create(root)
   on.exit(unlink(root, recursive = TRUE), add = TRUE)
-  d <- expand.grid(hour = 0:239, station = c("A", "B"), year = 2022:2023)
+  # Three weeks retain observed counterparts for both missing weekday-hour cells.
+  d <- expand.grid(hour = 0:503, station = c("A", "B"), year = 2022:2023)
   d$datetime <- as.POSIXct(paste0(d$year, "-01-01"), tz = "UTC") + d$hour * 3600
   d$pm10 <- 20 + sin(d$hour / 4) + (d$station == "B") * 10
   d$pm10[d$station == "A" & d$hour %in% c(100, 120) & d$year == 2023] <- NA_real_
