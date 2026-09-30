@@ -1,6 +1,6 @@
 # Workflow inventory and remaining work
 
-Updated 29 September 2026. Every R entry point and Quarto report under scripts/ has
+Updated 30 September 2026. Every R entry point and Quarto report under scripts/ has
 one row below. Targets declarations own manuscript dependencies; scripts remain
 executable RStudio recipes. The inventory is descriptive, not another scheduler.
 
@@ -49,6 +49,42 @@ and Casa Victorio PM10 skipped fitting; the other four reported Bogotá series w
 for zero residual degrees of freedom. The five reported São Paulo PM2.5 series filled
 26, 53, 23, 20 and 20 gaps respectively (Capão Redondo, Carapicuíba, Interlagos, Santo Amaro,
 Taboão da Serra). These are December-slice checks, not a full-year or downstream rerun.
+
+## Deferred development and validation of the imputation model
+
+**30 September 2026 — requested by Marcos; continue the structural migration.**
+Evaluate the current station-specific OLS model and propose an improved methodology
+for the imputed robustness analysis. The first-reading policy above remains the current
+specification; recording this task does not select or implement a replacement model.
+
+- Define eligibility consistently by station and pollutant. Where available, use operating
+  dates and previous-year records to distinguish outages from periods before installation
+  or after closure. Treat the first finite cleaned reading as a conservative fallback,
+  not a commissioning date. Do not introduce an arbitrary late-year cutoff or interpret
+  a complete eligible window as complete annual monitoring coverage.
+- Compare the current OLS model with a simpler calendar specification and a regularized
+  linear model. Validate by hiding observed blocks that resemble actual gaps, including
+  short outages, long gaps, edge gaps and simultaneous outages where relevant. Fit and
+  tune using only the remaining observations; retain neighboring readings that would
+  actually be available during reconstruction. Fix seeds and record the held-out blocks.
+- Assess mean bias, MAE/RMSE, upper concentrations, threshold-exceedance hours and downstream
+  socioeconomic exposure differences. Report performance and the fraction imputed by city,
+  pollutant, gap length and socioeconomic group. Separate changes in analytical coverage
+  from changes in estimated exposure. In-sample agreement and synthetic tests alone do
+  not establish predictive accuracy.
+- Assess methods that propagate parameter and residual uncertainty while respecting
+  temporal and spatial dependence, including stochastic multiple imputation. Deterministic
+  mean predictions can distort exceedance counts; clustered downstream standard errors
+  alone do not account for the uncertainty of imputed concentrations.
+
+Deliver a documented comparison and a proposed specification for scientific review before
+changing the production model. Keep observed-data main results distinct from this robustness
+analysis. Coordinate calendar definitions with the deferred timezone review below.
+Start with [imputation.R](../../src/general_utilities/process/imputation.R),
+[its diagnostics](../../src/general_utilities/plot/imputation_diagnostics.R) and
+[imputed exposure](../../scripts/process_data/estimate_exposure_imputed.R).
+Newly filled readings now use the label `OLS_imputed`; existing datasets retain their old
+labels until deliberately regenerated. No production dataset was rebuilt for this rename.
 
 ## Deferred review of pollution timestamp metadata
 
