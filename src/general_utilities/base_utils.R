@@ -3,13 +3,9 @@
 # ============================================================================================
 #' @Goal: One definition of every helper more than one stage needs.
 #
-#' @Description: Sourced by config_utils_process_data.R, config_utils_plot_tables.R and
-#   config_utils_validation_old_version.R. Loads no packages and has no side effects, so
-#   it is
-#   safe to source more than once; scripts never source it directly. Absorbs the former
-#   geo_utils.R. Every function here previously existed in two or more copies; keeping one
-#   copy
-#   is what stops them drifting apart the way .safe_chr did.
+#' @Description: Shared projection, identifier and formatting helpers. Scripts source
+# this file directly when needed; transitional loaders also include it. Sourcing loads no
+# packages and has no side effects. Each helper has one definition shared across analyses.
 #
 #' @Summary:
 #   I.   Projections  — aeqd_crs, utm_epsg, aeqd_for

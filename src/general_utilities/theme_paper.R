@@ -3,10 +3,9 @@
 # ============================================================================================
 #' @Goal: Register the manuscript font and set the global ggplot theme, on request.
 #
-#' @Description: Defines one function; sourcing this file changes nothing. Figure scripts call
-#   set_paper_theme() once, immediately after sourcing config_utils_plot_tables.R. It used to
-#   run at the top level of that file, which meant any script sourcing it — including
-#   validation scripts that draw nothing — silently acquired a global font and theme.
+#' @Description: Defines one function; sourcing this file changes nothing. Figure scripts
+# source it directly and call set_paper_theme() in Section I. Font registration and the
+# global theme change only when that function is called.
 #
 #' @Summary:
 #   I. set_paper_theme — register Tex Gyre Pagella and set the ggplot default
