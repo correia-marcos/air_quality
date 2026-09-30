@@ -1,38 +1,40 @@
-# ============================================================================================
+# ========================================================================================
 # IDB: Air monitoring
-# ============================================================================================
-#' @Goal: Describe who lives within each distance band of a monitoring station.
+# ========================================================================================
+#' @Goal: Describe the population living near monitoring stations.
 #
-#' @Description: For every city, groups geographic units by the distance from their
-# representative point to the nearest monitoring station, then reports the population and
-# its socioeconomic composition within 1, 3, 5, 10 and 20 km alongside the metropolitan
-# total. Reads the distance matrices, the individual census and the geographic boundaries
-# (for land area) and writes one long Parquet per city to data/processed/. The
-# render_census_tables.R script turns these into the paper's two descriptive tables.
+#' @Description: Use the nearest-station distance of each geographic unit's representative
+# point to summarize its census population within 1, 3, 5, 10 and 20 km. These cumulative
+# groups are compared with the metropolitan total. Keep each city's results in memory,
+# then save one combined Parquet table and a CSV copy for render_census_tables.R.
+# Santiago uses 2017 zones; CDMX pairs its 2020 census with 2024 municipality boundaries.
 #
 #' @Summary:
-#   I.   Import data: paths, the radii, and the census variables each city carries.
-#   II.  Land area per geographic unit, measured on a local UTM grid.
-#   III. Distance-band summaries, one city at a time.
+#   I.   Import data: source functions and settings, set paths and read geography.
+#   II.  Process data: measure unit areas and summarize each city's distance groups.
+#   III. Save outputs: write the combined descriptive table as Parquet and CSV.
 #
-#' @Date: August 2026
+#' @Date: September 2026
 #' @Author: Marcos
-# ============================================================================================
+# ========================================================================================
 
-# Get all libraries and functions
-source(here::here("src", "general_utilities", "config_utils_process_data.R"))
-
-# ============================================================================================
+# ========================================================================================
 # I: Import data
-# ============================================================================================
-# Define input and output folders
+# ========================================================================================
+# Source the area, summary and saving functions, plus their shared helpers
+source(here::here("src", "general_utilities", "base_utils.R"))
+source(here::here("src", "general_utilities", "process", "geo_ids.R"))
+source(here::here("src", "general_utilities", "process", "diagnostics.R"))
+source(here::here("src", "general_utilities", "process", "exposure_regressions.R"))
+
+# The shared settings define the radii and the census indicators used for each city
+source(here::here("config", "analysis_settings.R"))
+
+# Set the distance, census and geography folders and the output folder
 dir_dist       <- here::here("data", "processed", "distances_matrices")
 dir_census     <- here::here("data", "interim", "census")
 dir_geospatial <- here::here("data", "interim", "geospatial_data")
 outdir_bands   <- here::here("data", "processed", "distance_band_descriptives")
-
-# The radii the paper reports, in kilometres.
-radii_km <- c(1, 3, 5, 10, 20)
 
 # Define geo-to-station distance matrix paths
 dist_bogota   <- here::here(dir_dist, "bogota_2018",
@@ -64,98 +66,66 @@ gpkg_santiago <- here::here(dir_geospatial, "santiago",
 gpkg_sp       <- here::here(dir_geospatial, "sao_paulo",
                             "sao_paulo_metro_2010_weighting_areas.gpkg")
 
-# ============================================================================================
-# II: Land area per geographic unit
-# ============================================================================================
-# Areas are measured on each city's own UTM grid, where a square metre is a square metre.
-area_bogota   <- compute_geo_area_km2(sf::st_read(gpkg_bogota, quiet = TRUE), "GEO_ID")
-area_cdmx     <- compute_geo_area_km2(sf::st_read(gpkg_cdmx, quiet = TRUE), "CVE_MUN")
-area_santiago <- compute_geo_area_km2(sf::st_read(gpkg_santiago, quiet = TRUE),
-                                      "zona_id")
-area_sp       <- compute_geo_area_km2(sf::st_read(gpkg_sp, quiet = TRUE),
-                                      "code_weighting")
+# Read the geographic units used to measure area; census records remain on disk
+geo_bogota   <- sf::st_read(gpkg_bogota, quiet = TRUE)
+geo_cdmx     <- sf::st_read(gpkg_cdmx, quiet = TRUE)
+geo_santiago <- sf::st_read(gpkg_santiago, quiet = TRUE)
+geo_sp       <- sf::st_read(gpkg_sp, quiet = TRUE)
 
-# ============================================================================================
-# III: Distance-band summaries
-# ============================================================================================
-dir.create(outdir_bands, recursive = TRUE, showWarnings = FALSE)
+# ========================================================================================
+# II: Process data
+# ========================================================================================
+# Measure each unit's area in square kilometers using its city's UTM projection
+area_bogota   <- compute_geo_area_km2(geo_sf = geo_bogota, geo_id_col = "GEO_ID")
+area_cdmx     <- compute_geo_area_km2(geo_sf = geo_cdmx, geo_id_col = "CVE_MUN")
+area_santiago <- compute_geo_area_km2(geo_sf = geo_santiago, geo_id_col = "zona_id")
+area_sp       <- compute_geo_area_km2(geo_sf = geo_sp, geo_id_col = "code_weighting")
 
-# The variable list differs by city because the censuses do: Bogota records no household
-# head or ethnicity, Santiago carries age only in its raw column, and income exists only
-# for Mexico City and Sao Paulo.
-bands_bogota <- compute_distance_band_summary(
-  dist_pq     = dist_bogota,
-  census_path = micro_bogota,
-  area_dt     = area_bogota,
-  city        = "Bogota",
-  unit_label  = "census tracts",
-  share_vars  = c("Share of adults" = "adult",
-                  "Share of women" = "women",
-                  "Share of employed" = "employed",
-                  "Share with no education" = "no_education",
-                  "Share with graduate education" = "graduate_educ"),
-  mean_vars   = c("Mean age" = "age",
-                  "Mean years of schooling" = "educ_years"),
-  radii_km    = radii_km)
+# Read the required census columns and summarize all residents in each distance group
+bands_bogota <- compute_distance_band_summary(dist_pq     = dist_bogota,
+                                              census_path = micro_bogota,
+                                              area_dt     = area_bogota,
+                                              city        = "Bogota",
+                                              unit_label  = "census tracts",
+                                              share_vars  = band_shares_bogota,
+                                              mean_vars   = band_means_bogota,
+                                              radii_km    = distance_band_radii_km)
 
-bands_cdmx <- compute_distance_band_summary(
-  dist_pq     = dist_cdmx,
-  census_path = micro_cdmx,
-  area_dt     = area_cdmx,
-  city        = "Mexico City",
-  unit_label  = "municipalities",
-  share_vars  = c("Share of adults" = "adult",
-                  "Share of women" = "women",
-                  "Share of HH women" = "hh_head_women",
-                  "Share of indigenous" = "indigena",
-                  "Share of employed" = "employed",
-                  "Share with no education" = "no_education",
-                  "Share with graduate education" = "graduate_educ"),
-  mean_vars   = c("Mean age" = "age",
-                  "Mean years of schooling" = "educ_years",
-                  "Mean income" = "income"),
-  radii_km    = radii_km)
+bands_cdmx <- compute_distance_band_summary(dist_pq     = dist_cdmx,
+                                            census_path = micro_cdmx,
+                                            area_dt     = area_cdmx,
+                                            city        = "Mexico City",
+                                            unit_label  = "municipalities",
+                                            share_vars  = band_shares_cdmx,
+                                            mean_vars   = band_means_cdmx,
+                                            radii_km    = distance_band_radii_km)
 
-bands_santiago <- compute_distance_band_summary(
-  dist_pq     = dist_santiago,
-  census_path = micro_santiago,
-  area_dt     = area_santiago,
-  city        = "Santiago",
-  unit_label  = "census tracts",
-  share_vars  = c("Share of adults" = "adult",
-                  "Share of women" = "women",
-                  "Share of HH women" = "hh_head_women",
-                  "Share of indigenous" = "indigena",
-                  "Share of employed" = "employed",
-                  "Share with no education" = "no_education",
-                  "Share with graduate education" = "graduate_educ"),
-  mean_vars   = c("Mean age" = "raw_p09",
-                  "Mean years of schooling" = "educ_years"),
-  radii_km    = radii_km)
+bands_santiago <- compute_distance_band_summary(dist_pq     = dist_santiago,
+                                                census_path = micro_santiago,
+                                                area_dt     = area_santiago,
+                                                city        = "Santiago",
+                                                unit_label  = "census tracts",
+                                                share_vars  = band_shares_santiago,
+                                                mean_vars   = band_means_santiago,
+                                                radii_km    = distance_band_radii_km)
 
-bands_sp <- compute_distance_band_summary(
-  dist_pq     = dist_sp,
-  census_path = micro_sp,
-  area_dt     = area_sp,
-  city        = "Sao Paulo",
-  unit_label  = "weighting areas",
-  share_vars  = c("Share of adults" = "adult",
-                  "Share of women" = "women",
-                  "Share of whites" = "white",
-                  "Share of blacks" = "black_pardo",
-                  "Share of formal employees" = "formal_emp",
-                  "Share of informal employees" = "informal_emp",
-                  "Share with no education" = "no_education",
-                  "Share with graduate education" = "graduate_educ"),
-  mean_vars   = c("Mean age" = "age",
-                  "Mean years of schooling" = "educ_years",
-                  "Mean income" = "income"),
-  radii_km    = radii_km)
+bands_sp <- compute_distance_band_summary(dist_pq     = dist_sp,
+                                          census_path = micro_sp,
+                                          area_dt     = area_sp,
+                                          city        = "Sao Paulo",
+                                          unit_label  = "weighting areas",
+                                          share_vars  = band_shares_sp,
+                                          mean_vars   = band_means_sp,
+                                          radii_km    = distance_band_radii_km)
 
-distance_bands <- data.table::rbindlist(
-  list(bands_bogota, bands_cdmx, bands_santiago, bands_sp), fill = TRUE)
+# Combine the four city tables in manuscript order
+distance_bands <- data.table::rbindlist(list(bands_bogota, bands_cdmx,
+                                            bands_santiago, bands_sp), fill = TRUE)
 
-save_table_parquet_csv(distance_bands, outdir_bands, "distance_band_descriptives")
-
-# Print a success message for when running inside Docker Container
-cat("Script from the IDB project executed successfully in the Docker container!\n")
+# ========================================================================================
+# III: Save outputs
+# ========================================================================================
+# Save the Parquet checkpoint and a CSV copy for reading in a spreadsheet
+save_table_parquet_csv(dt      = distance_bands,
+                       out_dir = outdir_bands,
+                       name    = "distance_band_descriptives")

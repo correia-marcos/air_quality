@@ -5,7 +5,7 @@
 #
 #' @Description: Counts reporting stations, WHO exceedances, missingness and who lives
 #   near a station. These feed the paper's descriptive tables rather than the exposure
-#   estimates. Sourced by config_utils_process_data.R; never sourced directly.
+#   estimates. Scripts source these functions directly and save returned tables separately.
 #
 #' @Summary:
 #   1. summarize_stations_by_pollutant
@@ -925,20 +925,23 @@ compute_missing_by_quintile <- function(city, city_order, pollution_dir, dist_pq
 #' @param area_dt     data.table; one row per geographic unit with geo_id and area_km2.
 #' @param city        string; display name stamped on every output row.
 #' @param unit_label  string; what one geographic unit is, e.g. "municipalities".
-#' @param share_vars  named character; label -> 0/1 column averaged over all residents.
+#' @param share_vars  named character; label -> 0/1 column averaged over non-missing values.
 #' @param mean_vars   named character; label -> column averaged over non-missing values.
 #' @param educ_col    string; years-of-schooling column. Default "educ_years".
 #' @param radii_km    numeric vector; the bands to report. Default c(1, 3, 5, 10, 20).
 #
 #' @return  long data.table with columns city, band, statistic, value and value_label:
-#           one row per statistic per band, plus the "All" band covering every unit.
+#           one row per statistic per band, plus the "All" band covering every census unit
+#           with positive, non-missing weights. Reads the specified files; writes no output.
 #
 #' @details
 #   Describes who lives near a monitoring station. A unit joins a band when the distance
 #   from its representative point to the nearest station is within that radius, so the
-#   bands are nested and "All" is the whole metropolitan area. Every statistic
-#   is population weighted, and the population reported is the whole resident population,
-#   not the 25+ subset the exposure stage estimates on.
+#   bands are nested. "All" includes census units without a matched station distance.
+#   Population totals, shares and means use person_weight; missing values are excluded
+#   separately for each share or mean. The population covers all ages, not the 25+ subset
+#   used for exposure estimation. Geographic-unit counts and the mean unit density are
+#   unweighted; schooling ranges describe the units' weighted mean education.
 #
 #   Two density rows, because they answer different questions: the total density divides
 #   the band's population by its total land area, while the average density is the mean of

@@ -43,3 +43,51 @@ exposure_table_labels_inc <- c(CDMX = "Mexico City (income quintiles)",
 # Missingness tables retain the original reported-hour panel and its three dimensions.
 missing_table_panel <- "raw"
 missing_table_dimensions <- c("station", "month", "hour")
+
+# Distance-band descriptions use cumulative radii and each census's own indicators.
+distance_band_radii_km <- c(1, 3, 5, 10, 20)
+
+# Bogotá 2018: these summaries do not use household-head or ethnicity indicators.
+band_shares_bogota <- c("Share of adults" = "adult",
+                        "Share of women" = "women",
+                        "Share of employed" = "employed",
+                        "Share with no education" = "no_education",
+                        "Share with graduate education" = "graduate_educ")
+band_means_bogota <- c("Mean age" = "age",
+                       "Mean years of schooling" = "educ_years")
+
+# Mexico City 2020: include household head, indigenous identity and income.
+band_shares_cdmx <- c("Share of adults" = "adult",
+                      "Share of women" = "women",
+                      "Share of HH women" = "hh_head_women",
+                      "Share of indigenous" = "indigena",
+                      "Share of employed" = "employed",
+                      "Share with no education" = "no_education",
+                      "Share with graduate education" = "graduate_educ")
+band_means_cdmx <- c("Mean age" = "age",
+                     "Mean years of schooling" = "educ_years",
+                     "Mean income" = "income")
+
+# Santiago 2017: age is stored in raw_p09; this census supplies no income measure.
+band_shares_santiago <- c("Share of adults" = "adult",
+                          "Share of women" = "women",
+                          "Share of HH women" = "hh_head_women",
+                          "Share of indigenous" = "indigena",
+                          "Share of employed" = "employed",
+                          "Share with no education" = "no_education",
+                          "Share with graduate education" = "graduate_educ")
+band_means_santiago <- c("Mean age" = "raw_p09",
+                         "Mean years of schooling" = "educ_years")
+
+# São Paulo 2010: include race, formal/informal employment and income.
+band_shares_sp <- c("Share of adults" = "adult",
+                    "Share of women" = "women",
+                    "Share of whites" = "white",
+                    "Share of blacks" = "black_pardo",
+                    "Share of formal employees" = "formal_emp",
+                    "Share of informal employees" = "informal_emp",
+                    "Share with no education" = "no_education",
+                    "Share with graduate education" = "graduate_educ")
+band_means_sp <- c("Mean age" = "age",
+                   "Mean years of schooling" = "educ_years",
+                   "Mean income" = "income")

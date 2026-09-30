@@ -1378,12 +1378,83 @@ list(
     },
     format = "file", packages = pipeline_packages("process")),
 
+  # Distance-band summaries: geographic areas, city tables and saved files.
+  targets::tar_target(bogota_distance_band_area,
+    compute_geo_area_km2(geo_sf = bogota_2018_distance_geography,
+                         geo_id_col = "GEO_ID")),
+
+  targets::tar_target(bogota_distance_bands,
+    compute_distance_band_summary(
+      dist_pq = bogota_2018_distances[basename(bogota_2018_distances) ==
+        "matrix_geo_station_distances.parquet"],
+      census_path = bogota_census[basename(bogota_census) ==
+        "census_2018_metro_individual.parquet"],
+      area_dt = bogota_distance_band_area,
+      city = "Bogota",
+      unit_label = "census tracts",
+      share_vars = band_shares_bogota,
+      mean_vars = band_means_bogota,
+      radii_km = distance_band_radii_km), packages = "data.table"),
+
+  targets::tar_target(cdmx_distance_band_area,
+    compute_geo_area_km2(geo_sf = cdmx_2020_distance_geography,
+                         geo_id_col = "CVE_MUN")),
+
+  targets::tar_target(cdmx_distance_bands,
+    compute_distance_band_summary(
+      dist_pq = cdmx_2020_distances[basename(cdmx_2020_distances) ==
+        "matrix_geo_station_distances.parquet"],
+      census_path = cdmx_census[basename(cdmx_census) ==
+        "census_metro_individual_2020.parquet"],
+      area_dt = cdmx_distance_band_area,
+      city = "Mexico City",
+      unit_label = "municipalities",
+      share_vars = band_shares_cdmx,
+      mean_vars = band_means_cdmx,
+      radii_km = distance_band_radii_km), packages = "data.table"),
+
+  targets::tar_target(santiago_distance_band_area,
+    compute_geo_area_km2(geo_sf = santiago_2017_distance_geography,
+                         geo_id_col = "zona_id")),
+
+  targets::tar_target(santiago_distance_bands,
+    compute_distance_band_summary(
+      dist_pq = santiago_2017_distances[basename(santiago_2017_distances) ==
+        "matrix_geo_station_distances.parquet"],
+      census_path = santiago_census[basename(santiago_census) ==
+        "census_individual_2017.parquet"],
+      area_dt = santiago_distance_band_area,
+      city = "Santiago",
+      unit_label = "census tracts",
+      share_vars = band_shares_santiago,
+      mean_vars = band_means_santiago,
+      radii_km = distance_band_radii_km), packages = "data.table"),
+
+  targets::tar_target(sao_paulo_distance_band_area,
+    compute_geo_area_km2(geo_sf = sao_paulo_2010_distance_geography,
+                         geo_id_col = "code_weighting")),
+
+  targets::tar_target(sao_paulo_distance_bands,
+    compute_distance_band_summary(
+      dist_pq = sao_paulo_2010_distances[basename(sao_paulo_2010_distances) ==
+        "matrix_geo_station_distances.parquet"],
+      census_path = sao_paulo_census[basename(sao_paulo_census) ==
+        "census_sp_individual_2010.parquet"],
+      area_dt = sao_paulo_distance_band_area,
+      city = "Sao Paulo",
+      unit_label = "weighting areas",
+      share_vars = band_shares_sp,
+      mean_vars = band_means_sp,
+      radii_km = distance_band_radii_km), packages = "data.table"),
+
+  targets::tar_target(distance_band_summary,
+    data.table::rbindlist(list(bogota_distance_bands, cdmx_distance_bands,
+      santiago_distance_bands, sao_paulo_distance_bands), fill = TRUE)),
+
   targets::tar_target(compute_distance_band_descriptives,
-    {
-        suppressMessages(sf::sf_use_s2(TRUE))
-        run_compute_distance_band_descriptives(c(distances, census, geography))
-    },
-    format = "file", packages = pipeline_packages("process")),
+    save_table_parquet_csv(dt = distance_band_summary,
+      out_dir = here::here("data", "processed", "distance_band_descriptives"),
+      name = "distance_band_descriptives"), format = "file"),
 
   targets::tar_target(compute_station_scatter_inputs,
     run_compute_station_scatter_inputs(c(outliers, geography, census)),
@@ -2176,8 +2247,9 @@ list(
       dir_census <- compute_descriptive_tables[
         basename(compute_descriptive_tables) == "census_summary"]
       list(census = arrow::read_parquet(here::here(dir_census, "census_summary.parquet")),
-           bands = arrow::read_parquet(here::here(compute_distance_band_descriptives,
-             "distance_band_descriptives.parquet")))
+           bands = arrow::read_parquet(compute_distance_band_descriptives[
+             basename(compute_distance_band_descriptives) ==
+               "distance_band_descriptives.parquet"]))
     }),
 
   targets::tar_target(census_table_tex,

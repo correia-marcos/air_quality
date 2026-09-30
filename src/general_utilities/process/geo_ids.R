@@ -6,7 +6,7 @@
 #' @Description: Reconciles the geographic keys the census and the spatial layers ship,
 #   which differ in zero padding and width between providers, and renames each provider's
 #   columns to the project's canonical schema.
-#   Sourced by config_utils_process_data.R; never sourced directly by a script.
+#   Scripts source these shared functions directly when preparing geographic data.
 #
 #' @Summary:
 #   1. repair_bogota_geo_ids
