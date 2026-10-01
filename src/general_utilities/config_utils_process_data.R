@@ -10,37 +10,8 @@
 #' @Author: Marcos Paulo
 # ============================================================================================
 # List of required packages
-pkgs <- c(
-  "archive",
-  "arrow",
-  "censobr",
-  "data.table",
-  "DBI",
-  "doParallel",
-  "dplyr",
-  "duckdb",
-  "exactextractr",
-  "foreach",
-  "geosphere",
-  "here",
-  "janitor",
-  "lubridate",
-  "memuse",
-  "readr",
-  "rio",
-  "rlang",
-  "rnaturalearth",
-  "rnaturalearthdata",
-  "sandwich",
-  "sf",
-  "stringi",
-  "terra",
-  "tibble",
-  "tidyr",
-  "tools",
-  "XLConnect",
-  "XML"
-)
+source(here::here("src", "pipeline", "packages.R"))
+pkgs <- pipeline_packages("process")
 
 # Shared setup mechanism and leaf helpers (one copy for the whole project).
 source(here::here("src", "general_utilities", "setup_packages.R"))

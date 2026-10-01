@@ -11,33 +11,8 @@
 # ============================================================================================
 
 # List of required packages
-pkgs <- c(
-  "arrow",
-  "cowplot",
-  "data.table",
-  "dplyr",
-  "ggmap",
-  "ggplot2",
-  "ggspatial",
-  "ggridges",
-  "haven",
-  "here",
-  "htmltools",
-  "kableExtra",
-  "leaflet",
-  "lubridate",
-  "rlang",
-  "rnaturalearth",
-  "rnaturalearthdata",
-  "rnaturalearthhires",
-  "sp",
-  "sf",
-  "showtext",
-  "terra",
-  "tidyr",
-  "viridisLite",
-  "viridis",
-  "zoo")
+source(here::here("src", "pipeline", "packages.R"))
+pkgs <- pipeline_packages("plot")
 
 # Shared setup mechanism, leaf helpers and the paper theme (one copy project-wide).
 source(here::here("src", "general_utilities", "setup_packages.R"))
