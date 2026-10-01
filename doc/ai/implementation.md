@@ -1,5 +1,70 @@
 # Implementation and evidence
 
+## Station summaries and manuscript figures — 30 September 2026
+
+`compute_station_scatter_inputs.R` exposes four pollution summaries, four socioeconomic
+context tables and their joins. Section III saves the existing four station Parquets.
+Bogotá retains its 3 km context; CDMX, Santiago and São Paulo retain their containing-area
+definitions. All seven remaining manuscript figure recipes now keep named plots before
+saving: monitoring, station scatter, population maps, education/pollution maps, concentration
+densities, exposure densities and temporal figures. Comments follow the distance-band recipe.
+
+The new `join_station_scatter_inputs()` preserves the existing left join and integer match
+indicator. The convenience builder still works. Exposure densities now consume explicit
+exposure tables and small weight tables from `compute_exposure_quintile_weights()`; they no
+longer discover inputs from a root folder. Maps copy census tables before data.table changes.
+Station plots save only when asked; hourly bar/ridge functions no longer print or change the
+global theme. Scientific calculations, thresholds, membership and output names are preserved.
+
+The graph contains 333 declarations, with city station/context/coverage/weight/plot checkpoints
+and separate writers. Public stage names remain available. Removed eight transitional
+adapters; `generate_panel_air_quality` and `prepare_station_temporal` are the two remaining
+ones. Optional analyses, validation, operational relocation and cutover are still pending.
+
+Evidence: `data/verification/reader-figures-20260930/` (local, ignored).
+
+- Preserved the incoming code before editing. Each revised recipe ran in a fresh R process
+  without a targets cache or orchestration loader; only output roots were redirected.
+- Both manual and targets routes agree with the preserved implementation's station tables
+  at `1e-10`, including schemas, ordering and identifiers: Bogotá 48 stations / 45 matched;
+  CDMX 39 / 30; Santiago 10 / 9; São Paulo 34 / 27. All four saved Parquets agree as well.
+- Both routes reproduce the same 105 figure filenames: 36 monitoring, 28 scatter, four
+  population maps, four education/pollution maps, seven concentration, 16 exposure-density
+  and ten temporal figures. All rendered pixels agree: PDFs rasterized at a 1,000-pixel
+  maximum dimension; PNGs compared at their original dimensions. This is not PDF byte or
+  vector-object equivalence. Visually inspected representative scatter, population-map and
+  episode-duration panels; caption/estimand review remains separate.
+- Executed an isolated 128-target subset using the actual manuscript commands and existing
+  upstream file checkpoints. A no-op run retained all timestamps. Deleting a generated PDF
+  and station Parquet regenerated them while reusing the plots, station calculation and
+  another city's outputs. No production analytical outputs were replaced.
+- All 286 recorded input-file SHA-256 hashes remain unchanged. These are prepared-input
+  comparisons, not validation of provider provenance, source freshness or a release baseline.
+- All 75 manifest-selected figures produced by these recipes exist in both isolated output
+  trees. The manuscript-reference check finds no unmapped or unused destinations, but still
+  exits with an error because `doc/paper/data_appendix.tex` is absent. No export or manuscript
+  compilation was performed.
+- Portable fixtures check active/unmatched stations, partial socioeconomic missingness,
+  non-mutation, positive population weights, year selection and weighted tail trimming.
+  Actual station/figure target commands also exercise alternate inputs, missing-file recovery,
+  changed inputs/settings/functions, no-op reuse and unaffected-city caching.
+
+Used Framework R with `--vanilla` and the restored R 4.6 project library. Initial verification
+harness errors concerned plot capture and ancestor selection; both were corrected without
+changing the scientific functions. Two initial fixture failures expected the wrong name/type
+for the existing match indicator; corrected the expectations to `matched_socio_context`.
+The final synthetic suite passed **646 assertions**, with zero failures, errors, skips or
+test warnings. All **561 reader/inventory assertions** passed; 103 active documentation
+links resolve, 150 R files parse, changed R lines fit 92 characters, and the Git whitespace
+check passes. Final recipe formatting retains the expressions that were executed above.
+Sandbox CPU probes and temporary-directory cleanup emit messages outside the test results.
+
+Marcos reports rerunning all recipes revised before this batch. The inventory records that
+as author-reported execution, including imputation and its diagnostics; it is distinct from
+the isolated comparisons above. GUI RStudio review of this batch, temporal input regeneration,
+full-year imputation validation, manuscript compilation and isolated release reproduction
+remain unverified. This batch does not change the default scheduler.
+
 ## Descriptive summaries — 30 September 2026
 
 `compute_descriptive_tables.R` now follows the distance-band recipe's step comments.

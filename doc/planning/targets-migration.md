@@ -3,9 +3,9 @@
 Approved revision, 23 September 2026. **The distance pilot is implemented and its
 readability accepted by Marcos; the four city recipes and their targets are now revised.**
 Outliers, IDW, observed/imputed exposure and hourly imputation now use direct recipes.
-Imputation diagnostics, the four table recipes, exposure figures and distance-band summaries
-now separate named computations from saving. Other summaries, remaining figures, operational
-tooling and scientific cutover remain pending. This replaces
+Imputation diagnostics, tables, descriptive/station summaries and all manuscript figure
+recipes now separate named computations from saving. Temporal preparation, optional analyses,
+validation, operational tooling and scientific cutover remain pending. This replaces
 the earlier requirements for analytical scripts to use pipeline loaders, specification
 tables, stage adapters and input/output dictionaries. The collapsed historical record
 below is superseded, including its earlier commit groups and environment status.
@@ -70,7 +70,7 @@ The graph keeps the public imputation stage names and caches plots separately fr
 
 The [evidence record](../ai/implementation.md#imputation-recipes-and-author-review--24-september-2026)
 distinguishes fixture comparisons, reported local runs and pending scientific acceptance.
-Descriptive summaries are covered below; remaining figures still need migration.
+The completed descriptive, station-summary and figure batches are covered below.
 
 ## Tables and exposure figures — implemented 30 September 2026
 
@@ -223,11 +223,37 @@ These groups describe this batch, not every pre-existing working-tree change. Re
 shared-file hunks alongside their earlier migration prerequisites. Agents do not stage,
 run `git commit` or run `git push`.
 
+## Station summaries and manuscript figures — implemented 30 September 2026
+
+`compute_station_scatter_inputs.R` now retains separate pollution and census-context tables
+before joining and saving the four station summaries. The seven remaining manuscript figure
+recipes read explicit inputs, keep named plots or plot collections, and save in Section III.
+They preserve the existing geographic definitions, thresholds, years and filenames.
+
+Targets calls the same operations directly and caches station tables, coverage tables,
+exposure weights and plots separately from their writers. The eight public stage selections
+remain available. Their adapters have been removed; only the two temporal preparation
+adapters remain. Imputation diagnostics now read each city's explicit station-file target.
+
+API changes for external callers:
+
+- `plot_station_distance_trend()` and `plot_station_scatter()` return plots without writing
+  when `out_file` is omitted. Supplying it still requests saving.
+- `compute_exposure_quintile_weights(groups_file)` returns the small population-weight table.
+  `plot_exposure_density_by_quintile()` now takes `exposure` and `quintile_weights` tables
+  instead of `dir_idw`. Read the exposure Parquet explicitly and save the returned plot.
+- The hourly bar and ridge functions return plots without printing or changing the global
+  theme. The recipes set the paper theme and save explicitly.
+
+The [evidence record](../ai/implementation.md#station-summaries-and-manuscript-figures--30-september-2026)
+covers numerical and rendered comparisons using existing checkpoints. Source reproduction,
+methodological review, GUI readability acceptance and default cutover remain separate.
+
 ## Remaining implementation
 
-1. Continue with station summaries (`compute_station_scatter_inputs.R`) and the remaining
-   rendering recipes, then optional analysis and validation. Keep short repeated calls; share
-   transformations, not script-shaped orchestration. Use meaningful names, named arguments
+1. Finish the two temporal preparation recipes (`generate_panel_air_quality.R` and
+   `prepare_station_temporal.R`), then optional analysis and validation. Keep repeated calls;
+   share transformations, not script-shaped orchestration. Use meaningful names, named arguments
    and space between operations. Follow the author's call layout and step comments,
    recorded in [R style](../ai/rules/r-style.md#spacing-calls-and-comments).
    Computations return manageable objects; writers return

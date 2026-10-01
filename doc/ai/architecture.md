@@ -57,7 +57,7 @@ src/                 Functions (logic). Sourced, never run directly.
   city_specific/      One module per city + registry.R (dispatch by city id)
                        processing.R input/output contracts; preparation.R offline stages
   pipeline/           Transitional loader/adapters awaiting the remaining migration
-    stages/            Extracted logic to move into subject modules
+    stages/            Two temporal preparation adapters still awaiting migration
   general_utilities/
     base_utils.R        The one copy of each shared helper. No packages, no side effects.
     setup_packages.R    ensure_installed() / attach_packages()
