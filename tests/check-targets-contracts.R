@@ -2,8 +2,8 @@
 #' @return Number of independent contract assertions exercised.
 check_targets_contracts <- function() {
   e <- new.env(parent = globalenv())
-  sys.source(here::here("src", "pipeline", "load.R"), e)
-  e$load_manuscript_functions(envir = e)
+  sys.source(here::here("src", "city_specific", "registry.R"), e)
+  e$load_city_modules(envir = e)
   count <- 0L
   check <- function(condition) {
     stopifnot(isTRUE(condition))
@@ -186,8 +186,10 @@ check_targets_contracts <- function() {
     check(identical(plan[[paste0(city, "_pollution_parquet")]]$format, "file"))
   }
   check(!any(grepl("resolution|download|validation|process_merra2_panels", names(plan))))
-  check("generate_panel_air_quality" %in% dependencies$prepare_station_temporal)
-  check("prepare_station_temporal" %in% dependencies$bogota_station_temporal_data)
+  check("bogota_aerosol_file" %in% dependencies$generate_panel_air_quality)
+  check("bogota_aerosol_file" %in% dependencies$bogota_aerosol_data)
+  check("bogota_temporal_series_file" %in% dependencies$prepare_station_temporal)
+  check("bogota_temporal_series_file" %in% dependencies$bogota_station_temporal_data)
   check("estimate_exposure_imputed" %in% dependencies$exposure_plot_data)
   check("paper_manifest" %in% dependencies$paper_export)
   check("bogota_station_socio_file" %in% dependencies$compute_station_scatter_inputs)

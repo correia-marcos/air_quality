@@ -125,3 +125,8 @@ kernel_city_colours <- c("Bogotá" = "black", "Mexico City" = "black",
                          "São Paulo" = "black", "Santiago" = "red")
 kernel_city_linetypes <- c("Bogotá" = "solid", "Mexico City" = "dashed",
                            "São Paulo" = "dotdash", "Santiago" = "solid")
+
+# Original MERRA-2 extraction: polygon means, with the existing RAM-based parallel choice.
+# merra2_extraction_fun <- "mean"
+# merra2_parallel <- TRUE
+# merra2_num_cores <- NULL

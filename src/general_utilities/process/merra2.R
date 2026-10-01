@@ -5,7 +5,7 @@
 #
 #' @Description: Reads MERRA-2 .nc4 aerosol fields over a city polygon, converts them to PM2.5, and
 #   compares the result against NASA country means and against the ground stations.
-#   Sourced by config_utils_process_data.R; never sourced directly by a script.
+#   Scripts and targets source these definitions and retain tables before saving.
 #
 #' @Summary:
 #   1. process_merra2_region_hourly
@@ -19,6 +19,13 @@
 #' @Date: August 2026
 #' @Author: Marcos Paulo
 # ============================================================================================
+
+# Attach the installed packages used by the conversion, joins and parallel extraction
+suppressPackageStartupMessages({
+  library(dplyr)
+  library(lubridate)
+  library(foreach)
+})
 
 # ############################################################################################
 # Functions
@@ -44,7 +51,7 @@
 #' @return       A data frame with Date, Hour, and the aerosol variables. When extraction_fun
 #                is not NULL, a single row per hour is returned (aggregated over the shapefile).
 #                When extraction_fun is NULL, the output includes one row per grid (feature) 
-#                per hour, including a 'feature_index' column.
+#                per hour, including a 'feature_index' column. No analytical files are written.
 #' @Purpose    : Processes MERRA-2 .nc4 files for a given region by extracting aerosol variables
 #                at hourly resolution. The extraction can be done in an aggregated manner (e.g.,
 #                using "mean") or on a per-grid basis. The function automatically selects
@@ -415,7 +422,10 @@ generate_region_comparison <- function(shapefile,
 #' @Purpose     : This function merges hourly ground station PM2.5 data with MERRA-2 PM2.5
 #                estimates by matching on date and hour. The ground station data may contain 
 #                multiple stations in the same city; the function computes an average PM2.5 for 
-#                each hour across all stations.
+#                each hour across available station rows. The left join retains MERRA-2
+#                timestamps and duplicate rows. All-missing station hours remain NaN.
+#                Date/hour extraction retains the input/session timezone behavior; no
+#                timezone correction is applied. Inputs are not modified; no files are saved.
 #' @Written_on  : 13/02/2025
 #' @Written_by  : Marcos Paulo
 # --------------------------------------------------------------------------------------------

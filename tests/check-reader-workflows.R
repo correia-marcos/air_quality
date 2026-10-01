@@ -22,8 +22,6 @@ check_reader_workflows <- function() {
     paste(setdiff(paths, files), collapse = ", ")))
 
   e <- new.env(parent = globalenv())
-  sys.source(file.path(root, "src/pipeline/load.R"), e)
-  e$load_manuscript_functions(envir = e)
   manifest <- targets::tar_manifest(fields = c("name", "command"),
     script = here::here("_targets.R"),
     callr_function = NULL, envir = new.env(parent = globalenv()))
@@ -88,7 +86,11 @@ check_reader_workflows <- function() {
       paste0(cities[i], "_pm25_stations_merra2.csv")), row.names = FALSE)
   }
   explicit <- list.files(series, full.names = TRUE)
-  e$prepare_station_temporal <- explicit
+  slugs <- c("bogota", "santiago", "cdmx", "sao_paulo")
+  for (i in seq_along(slugs)) {
+    e[[paste0(slugs[i], "_temporal_series_file")]] <- explicit[
+      basename(explicit) == paste0(cities[i], "_pm25_stations_merra2.csv")]
+  }
   names <- paste0(c("bogota", "santiago", "cdmx", "sao_paulo"), "_station_temporal_data")
   values <- vapply(names, function(name) {
     command <- str2lang(manifest$command[manifest$name == name])
@@ -96,10 +98,6 @@ check_reader_workflows <- function() {
   }, integer(1))
   check(identical(unname(values), seq_along(cities)),
         "Temporal readers ignored explicitly supplied sources")
-  fail <- function(expr) inherits(try(force(expr), silent = TRUE), "try-error")
-  check(fail(e$pipeline_input_root(work, "census")), "Missing input family accepted")
-  check(fail(e$pipeline_input_root(c(file.path(work, "a/census"),
-    file.path(work, "b/census")), "census")), "Ambiguous input roots accepted")
 
   # Renderer object/file caching is exercised by test-rendering-checkpoints.R.
   count

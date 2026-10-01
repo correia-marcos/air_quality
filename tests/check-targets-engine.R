@@ -139,7 +139,7 @@ check_targets_engine <- function() {
   check(!"cdmx_config" %in% parents("bogota_geography"))
   check("bogota_2018_distances" %in% parents("bogota_outliers"))
   check("bogota_station_temporal_plots" %in% parents("figure_station_temporal"))
-  check("prepare_station_temporal" %in% parents("bogota_station_temporal_data"))
+  check("bogota_temporal_series_file" %in% parents("bogota_station_temporal_data"))
   check("exposure_plots" %in% parents("generate_exposure_plots"))
   check("exposure_plot_data" %in% parents("exposure_plots"))
   check("station_table_tex" %in% parents("render_station_tables"))
