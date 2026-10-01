@@ -5,10 +5,11 @@
 #
 #' @Description: Builds the station-to-station and geographic-unit-to-station distance matrices
 #   every later stage joins on, on an AEQD metre grid centered on each metro area.
-#   Sourced by config_utils_process_data.R; never sourced directly by a script.
+#   Source base_utils.R before this file. Computation returns tables; saving is separate.
 #
 #' @Summary:
 #   1. compute_distance_matrices
+#   2. write_distance_matrices
 #
 #' @Date: August 2026
 #' @Author: Marcos Paulo
@@ -21,19 +22,23 @@
 #' @param station_id_col      string; column in stations_sf with station IDs.
 #' @param geo_sf              sf POLYGON object or NULL; geographic units.
 #' @param geo_id_col          string or NULL; unique ID column in geo_sf.
-#' @param out_dir             string; output directory.
-#' @param out_name            string; prefix, e.g. "bogota_2018".
 #' @param distance_metric     string; "aeqd", "haversine", or "geosphere".
 #' @param representative_point string; "point_on_surface", "math_centroid",
 #                             or "math_centroid_legacy".
-#' @param overwrite           logical; skip if output exists. Default TRUE.
 #' @param quiet               logical; suppress messages. Default FALSE.
 #' @param evaluation_crs      optional projected metre CRS for AEQD evaluation.
 #' @param return_points       logical; return prepared points and evaluation CRS.
-#                             Requires overwrite = TRUE when cached matrices exist.
 #
-#' @return  Named station/geo distance tables; optional points and evaluation CRS.
+#' @return Named list with station_matrix (station_from, station_to, distance_km)
+#   and geo_station_matrix (geo_id, station_id, distance_km; NULL without geography).
+#   With return_points = TRUE, also representative_points and evaluation_crs.
+#   Distances are kilometres; station IDs are normalized, geographic IDs are strings.
 #' @details
+#   Returns computed objects without reading or writing analytical checkpoints.
+#   Use write_distance_matrices() to save them, or arrow::read_parquet() to read
+#   an existing checkpoint. Curved-geometry conversion still uses temporary GDAL
+#   files, removed on exit; it does not write to the supplied source layers.
+#
 #   Calculates station-to-station and geo-to-station distance matrices. If
 #   representative_point = "point_on_surface", it uses an internal point returned by
 #   st_point_on_surface() for every geo unit. If representative_point = "math_centroid",
@@ -70,12 +75,9 @@ compute_distance_matrices <- function(
     station_id_col,
     geo_sf               = NULL,
     geo_id_col           = NULL,
-    out_dir,
-    out_name,
     distance_metric      = c("aeqd", "haversine", "geosphere"),
     representative_point = c("point_on_surface", "math_centroid",
                              "math_centroid_legacy"),
-    overwrite            = TRUE,
     quiet                = FALSE,
     evaluation_crs       = NULL,
     return_points        = FALSE
@@ -95,7 +97,7 @@ compute_distance_matrices <- function(
   
   # 1. Check required packages
   # -----------------------------------------------------------------------
-  pkgs <- c("sf", "data.table", "arrow", "stringi")
+  pkgs <- c("sf", "data.table", "stringi")
 
   if (dist_metric == "geosphere") {
     pkgs <- c(pkgs, "geosphere")
@@ -264,47 +266,12 @@ compute_distance_matrices <- function(
     }
   }
   
-  # 4. Output paths and early exit
-  # -----------------------------------------------------------------------
-  if (!dir.exists(out_dir)) {
-    dir.create(out_dir, recursive = TRUE)
-    
-    if (!quiet) {
-      message("Created output directory: ", out_dir)
-    }
-  }
-  
-  path_sta <- file.path(out_dir, paste0(out_name, "_station_distances.parquet"))
-  path_geo <- file.path(out_dir, paste0(out_name, "_geo_station_distances.parquet"))
-  
-  geo_ready <- is.null(geo_sf) || file.exists(path_geo)
-  
-  if (!overwrite && return_points && file.exists(path_sta) && geo_ready) {
-    stop("return_points requires overwrite = TRUE when cached matrices exist.")
-  }
-  if (!overwrite && file.exists(path_sta) && geo_ready) {
-    if (!quiet) {
-      message("Files exist and overwrite = FALSE.")
-    }
-    
-    return(invisible(list(
-      station_matrix = data.table::as.data.table(
-        arrow::read_parquet(path_sta)
-      ),
-      geo_station_matrix = if (!is.null(geo_sf)) {
-        data.table::as.data.table(arrow::read_parquet(path_geo))
-      } else {
-        NULL
-      }
-    )))
-  }
-  
   if (!quiet) {
-    message("[", out_name, "] Metric: ", dist_metric)
-    message("[", out_name, "] Representative point: ", representative_point)
+    message("Metric: ", dist_metric)
+    message("Representative point: ", representative_point)
   }
   
-  # 5. Prepare stations
+  # 4. Prepare stations
   # -----------------------------------------------------------------------
   # Enforce WGS84 and keep only the station ID column.
   stations_wgs <- sf::st_transform(stations_sf, crs = 4326)
@@ -347,10 +314,10 @@ compute_distance_matrices <- function(
   station_ids <- .normalize(as.character(stations_wgs[[station_id_col]]))
   n_sta <- length(station_ids)
   
-  # 6. Station-to-station distances
+  # 5. Station-to-station distances
   # -----------------------------------------------------------------------
   if (!quiet) {
-    message("[", out_name, "] Station distances.")
+    message("Station distances.")
   }
   
   if (dist_metric == "geosphere") {
@@ -374,21 +341,15 @@ compute_distance_matrices <- function(
     distance_km  = dist_sta_km
   )
   
-  if (!quiet) {
-    message("[", out_name, "] Writing: ", path_sta)
-  }
-  
-  arrow::write_parquet(station_dt, path_sta)
-  
   geo_station_dt <- NULL
   geo_points <- NULL
   
-  # 7. Geo-to-station distances
+  # 6. Geo-to-station distances
   # -----------------------------------------------------------------------
   if (!is.null(geo_sf)) {
     
     if (!quiet) {
-      message("[", out_name, "] Geo distances.")
+      message("Geo distances.")
     }
     
     # Linearize curved geometries, fix validity, and transform to WGS84.
@@ -442,15 +403,9 @@ compute_distance_matrices <- function(
       station_id  = rep(station_ids, each  = n_geo),
       distance_km = dist_geo_km
     )
-    
-    if (!quiet) {
-      message("[", out_name, "] Writing: ", path_geo)
-    }
-    
-    arrow::write_parquet(geo_station_dt, path_geo)
   }
   
-  # 8. Return both matrices invisibly
+  # 7. Return both matrices invisibly
   # -----------------------------------------------------------------------
   result <- list(station_matrix = station_dt, geo_station_matrix = geo_station_dt)
   if (return_points) {
@@ -458,4 +413,40 @@ compute_distance_matrices <- function(
     result$evaluation_crs <- sf::st_crs(stations_eval)
   }
   invisible(result)
+}
+
+# --------------------------------------------------------------------------------------------
+# Function: write_distance_matrices
+#
+#' @param result Named list returned by compute_distance_matrices().
+#' @param out_dir Output directory; created when absent.
+#' @param out_name Filename prefix. Default "matrix" preserves manuscript filenames.
+#' @param overwrite Replace existing files. FALSE errors before writing either table
+#   if any destination already exists.
+#' @return Named character vector of written Parquet paths: stations, and geography
+#   when geo_station_matrix is present. Optional points and CRS remain in result.
+#' @details Writes the tables unchanged, without recomputing distances or modifying
+#   result. Existing checkpoints are read explicitly with arrow::read_parquet().
+# --------------------------------------------------------------------------------------------
+write_distance_matrices <- function(result, out_dir, out_name = "matrix",
+                                    overwrite = TRUE) {
+  stopifnot(is.list(result), is.data.frame(result$station_matrix),
+            is.null(result$geo_station_matrix) ||
+              is.data.frame(result$geo_station_matrix))
+  tables <- list(stations = result$station_matrix)
+  suffixes <- "_station_distances.parquet"
+  if (!is.null(result$geo_station_matrix)) {
+    tables$geography <- result$geo_station_matrix
+    suffixes <- c(suffixes, "_geo_station_distances.parquet")
+  }
+  paths <- stats::setNames(file.path(out_dir, paste0(out_name, suffixes)), names(tables))
+  if (!overwrite && any(file.exists(paths))) {
+    stop("Distance output already exists and overwrite = FALSE: ",
+         paste(paths[file.exists(paths)], collapse = ", "))
+  }
+  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+  for (name in names(tables)) {
+    arrow::write_parquet(tables[[name]], paths[[name]])
+  }
+  invisible(paths)
 }
