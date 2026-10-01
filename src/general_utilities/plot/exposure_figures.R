@@ -10,7 +10,7 @@
 #' @Summary:
 #   1. plot_exposure_by_quintile
 #   2. plot_exposure_by_quintile_with_ci
-#   3. plot_exposure_density_by_quintile
+#   3. compute_exposure_quintile_weights / plot_exposure_density_by_quintile
 #   4. plot_scatter_pollutants
 #   5. plot_hours_above_target_by_quintile
 #   6. plot_group_ci
@@ -434,11 +434,29 @@ plot_exposure_by_quintile_with_ci <- function(
 }
 
 
+# ----------------------------------------------------------------------------------------
+# Function: compute_exposure_quintile_weights
+#
+#' @param groups_file IDW individual-groups Parquet with geo_id, edu_quintile and
+#                    person_weight.
+#' @return data.table with one row per geo_id/quintile and quintile_population.
+#' @details Retains the interpolation stage's adult education groups. Reads only the
+#          required columns, sums positive observed weights and writes no files.
+# ----------------------------------------------------------------------------------------
+compute_exposure_quintile_weights <- function(groups_file) {
+  groups <- data.table::as.data.table(arrow::read_parquet(groups_file,
+    col_select = c("geo_id", "edu_quintile", "person_weight")))
+  groups[, geo_id := safe_chr(geo_id)]
+  groups[!is.na(edu_quintile) & !is.na(person_weight) & person_weight > 0,
+    .(quintile_population = sum(person_weight)), by = .(geo_id, edu_quintile)]
+}
+
 # --------------------------------------------------------------------------------------------
 # Function: plot_exposure_density_by_quintile
 #
-#' @param dir_idw     string; root folder of the IDW estimates.
-#' @param city_id     string; city folder and file prefix, e.g. "cdmx_2020".
+#' @param exposure Geographic-unit exposure table read from the IDW Parquet file.
+#' @param quintile_weights Table from compute_exposure_quintile_weights().
+#' @param city_id     string; context label for messages, e.g. "cdmx_2020".
 #' @param buffer_km   numeric; buffer the exposure was interpolated with.
 #' @param pollutant   string; "pm10" or "pm25".
 #' @param city_label  string; plot title.
@@ -448,7 +466,8 @@ plot_exposure_by_quintile_with_ci <- function(
 #                     quantile, so a few extreme units cannot flatten the figure.
 #                     Default 0.995.
 #
-#' @return  ggplot object; one weighted density curve per education quintile.
+#' @return ggplot object; one weighted density curve per education quintile.
+#          Does not modify inputs, read files or save the figure.
 #
 #' @details
 #   The distribution of a metropolitan area's exposure as its residents experience it, cut
@@ -458,15 +477,16 @@ plot_exposure_by_quintile_with_ci <- function(
 #   rather than unit weighted, and it is the definition the caption states.
 #
 #   The quintiles come from the individual artifact, which the interpolation stage already
-#   restricted to adults and cut into equal-population groups. Reading them here rather
-#   than re-cutting keeps this figure and the regressions on one definition.
+#   restricted to adults and cut into equal-population groups. The supplied weights
+#   retain those groups, keeping the figure and regressions on the same definition.
 #
 #' @Written_on : April 2026
 #' @Written_by : Marcos Paulo
 #' @Updated_on : August 2026
 # --------------------------------------------------------------------------------------------
 plot_exposure_density_by_quintile <- function(
-    dir_idw,
+    exposure,
+    quintile_weights,
     city_id,
     buffer_km,
     pollutant   = "pm25",
@@ -476,22 +496,14 @@ plot_exposure_density_by_quintile <- function(
     x_trim_q    = 0.995
 ) {
 
-  exposure <- read_idw_artifact(dir_idw, city_id, "idw_exposure", buffer_km)
-  groups   <- read_idw_artifact(dir_idw, city_id, "indiv_groups")
+  exposure <- data.table::copy(data.table::as.data.table(exposure))
+  weights <- data.table::copy(data.table::as.data.table(quintile_weights))
 
   x_col <- paste0("avg_", pollutant)
   if (!x_col %in% names(exposure)) stop("Column ", x_col, " not found for ", city_id)
 
   exposure[, geo_id := safe_chr(geo_id)]
   if (!is.null(year_filter)) exposure <- exposure[year == year_filter]
-
-  # One row per geo unit and quintile, carrying that quintile's population there.
-  groups[, geo_id := safe_chr(geo_id)]
-  weights <- groups[
-    !is.na(edu_quintile) & !is.na(person_weight) & person_weight > 0,
-    .(quintile_population = sum(person_weight)),
-    by = .(geo_id, edu_quintile)
-  ]
 
   weights[, geo_id := reconcile_geo_ids(geo_id, exposure$geo_id, label = city_id)]
 

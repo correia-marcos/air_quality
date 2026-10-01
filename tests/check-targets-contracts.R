@@ -187,12 +187,21 @@ check_targets_contracts <- function() {
   }
   check(!any(grepl("resolution|download|validation|process_merra2_panels", names(plan))))
   check("generate_panel_air_quality" %in% dependencies$prepare_station_temporal)
-  check("prepare_station_temporal" %in% dependencies$figure_station_temporal_data)
+  check("prepare_station_temporal" %in% dependencies$bogota_station_temporal_data)
   check("estimate_exposure_imputed" %in% dependencies$exposure_plot_data)
   check("paper_manifest" %in% dependencies$paper_export)
-  check("census" %in% dependencies$compute_station_scatter_inputs)
-  check("geography" %in% dependencies$compute_station_scatter_inputs)
-  check("census" %in% dependencies$compute_descriptive_tables)
+  check("bogota_station_socio_file" %in% dependencies$compute_station_scatter_inputs)
+  check("bogota_collapsed_census" %in% dependencies$bogota_station_context)
+  check("bogota_2018_distance_geography" %in% dependencies$bogota_station_context)
+  check("census_summary_files" %in% dependencies$compute_descriptive_tables)
+  for (city in cities) {
+    check(paste0(city, "_census") %in%
+      dependencies[[paste0(city, "_census_summary")]])
+    check(paste0(city, "_census") %in%
+      dependencies[[paste0(city, "_quintile_availability")]])
+    check(paste0(main_ids[[city]], "_distances") %in%
+      dependencies[[paste0(city, "_quintile_availability")]])
+  }
   check(!"cdmx_config" %in% dependencies$bogota_geography)
   check(!"bogota_config" %in% dependencies$cdmx_geography)
   cfg <- e$bogota_cfg

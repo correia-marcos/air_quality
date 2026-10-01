@@ -24,7 +24,8 @@ check_reader_workflows <- function() {
   e <- new.env(parent = globalenv())
   sys.source(file.path(root, "src/pipeline/load.R"), e)
   e$load_manuscript_functions(envir = e)
-  manifest <- targets::tar_manifest(fields = "name", script = here::here("_targets.R"),
+  manifest <- targets::tar_manifest(fields = c("name", "command"),
+    script = here::here("_targets.R"),
     callr_function = NULL, envir = new.env(parent = globalenv()))
   launcher <- readLines(file.path(root, "scripts/run_pipeline.R"))
   active <- launcher[!grepl("^\\s*#", launcher)]
@@ -87,37 +88,20 @@ check_reader_workflows <- function() {
       paste0(cities[i], "_pm25_stations_merra2.csv")), row.names = FALSE)
   }
   explicit <- list.files(series, full.names = TRUE)
-  objects <- e$figure_station_temporal_inputs(explicit)
-  check(identical(vapply(objects$city_specs, function(x) x$df$fixture, integer(1)),
-                  seq_along(cities)), "Reader ignored explicitly supplied sources")
+  e$prepare_station_temporal <- explicit
+  names <- paste0(c("bogota", "santiago", "cdmx", "sao_paulo"), "_station_temporal_data")
+  values <- vapply(names, function(name) {
+    command <- str2lang(manifest$command[manifest$name == name])
+    eval(command, e)$fixture
+  }, integer(1))
+  check(identical(unname(values), seq_along(cities)),
+        "Temporal readers ignored explicitly supplied sources")
   fail <- function(expr) inherits(try(force(expr), silent = TRUE), "try-error")
   check(fail(e$pipeline_input_root(work, "census")), "Missing input family accepted")
   check(fail(e$pipeline_input_root(c(file.path(work, "a/census"),
     file.path(work, "b/census")), "census")), "Ambiguous input roots accepted")
 
-  # A cached rendering input must still work after all its output directories disappear.
-  e$set_paper_theme <- function(...) invisible(NULL)
-  e$latex_census_summary <- function(x) paste("population", sum(x$population))
-  e$latex_distance_band_table <- function(x, cities) paste(cities, collapse = ";")
-  e$pipeline_stage_outputs <- function(stage, written) {
-    stopifnot(all(file.exists(written)))
-    written
-  }
-  output <- file.path(work, "tables")
-  inputs <- list(written = character(), outdir_tables = output, outdir_paper = output,
-                 census_summary = data.frame(population = c(10L, 20L)),
-                 distance_bands = data.frame(distance = 1:2))
-  dir.create(output)
-  manual <- do.call(e$render_census_tables_tables, inputs)
-  check(identical(manual$tex_lines, "population 30"), "Table object not inspectable")
-  before <- lapply(manual$written, readLines)
-  unlink(manual$written)
-  check(!any(file.exists(manual$written)), "Fixture output removal failed")
-  inputs$outdir_tables <- inputs$outdir_paper <- file.path(work, "fresh-output")
-  check(!dir.exists(inputs$outdir_tables), "Expected a fresh output directory")
-  automated <- e$write_render_census_tables(list(inputs = inputs))
-  check(identical(before, lapply(automated, readLines)),
-        "Cached input rendering differs from the manual operations")
+  # Renderer object/file caching is exercised by test-rendering-checkpoints.R.
   count
 }
 

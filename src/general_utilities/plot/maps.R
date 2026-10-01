@@ -5,7 +5,7 @@
 #
 #' @Description: Static and interactive maps: national context, metro areas by education quintile, MERRA-2
 #   grids, and the Latin America locator.
-#   Sourced by config_utils_plot_tables.R; never sourced directly by a script.
+#   Sourced directly by figure scripts; plotting starts at the function call.
 #
 #' @Summary:
 #   1. .stadia_tile
@@ -52,6 +52,12 @@
   }
 }
 
+
+# Attach the installed packages used by the plotting functions
+suppressPackageStartupMessages({
+  library(dplyr)
+  library(ggplot2)
+})
 
 # --------------------------------------------------------------------------------------------
 # Function: plot_metro_area_national_context
@@ -984,7 +990,7 @@ plot_inequality_pollution <- function(
   
   # 2. Compute Population-Weighted Quintiles
   # ---------------------------------------------------------------------------
-  data.table::setDT(census_df)
+  census_df <- data.table::copy(data.table::as.data.table(census_df))
   
   census_clean <- census_df[!is.na(get(ed_col)) & !is.na(get(pop_col))]
   data.table::setorderv(census_clean, cols = ed_col)

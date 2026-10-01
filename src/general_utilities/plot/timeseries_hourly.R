@@ -5,7 +5,7 @@
 #
 #' @Description: Concentration over time and over the hour of day, including the ridgeline profiles and the
 #   time-above-target spans.
-#   Sourced by config_utils_plot_tables.R; never sourced directly by a script.
+#   Sourced directly by figure scripts; plotting starts at the function call.
 #
 #' @Summary:
 #   1. plot_city_distributions
@@ -21,6 +21,14 @@
 #' @Date: August 2026
 #' @Author: Marcos Paulo
 # ============================================================================================
+
+# Attach the installed packages used by the plotting functions
+suppressPackageStartupMessages({
+  library(dplyr)
+  library(tidyr)
+  library(ggplot2)
+  library(ggridges)
+})
 
 # --------------------------------------------------------------------------------------------
 # Function: plot_city_distributions
@@ -272,7 +280,8 @@ plot_pm25_timeseries_smooth <- function(df,
 #' @return       A ggplot object showing the average hourly PM2.5 (from MERRA-2 and stations),
 #                with optional error bars in matching/darker tones, and with dashed vertical 
 #                lines indicating WHO Interim Targets: IT2 (25 µg/m³, orange) and IT1 (35 µg/m³,
-#                dark red). This is the IT1 and IT2 values for annual averages.
+#                dark red). These are the IT1 and IT2 values for annual averages.
+#                Returns without printing, saving or changing the global theme.
 #' @Purpose     : To visualize and compare the hourly persistence of PM2.5 pollution, 
 #                facilitating an understanding of differences among cities/hours.
 #                The IT dashed lines help highlight when pollutant concentrations
@@ -348,7 +357,7 @@ plot_hourly_avg_pollution <- function(df,
       y     = "Hour of Day",
       fill  = "Data Source"
     ) +
-    theme_set(theme_minimal(base_family = "Palatino", base_size = 14))
+    theme_minimal(base_family = "Palatino", base_size = 14)
   
   # If error bars (CI) are requested, add them in a matching/darker color
   if (plot_ci) {
@@ -370,7 +379,6 @@ plot_hourly_avg_pollution <- function(df,
     annotate("text", x = 36, y = 23, label = "IT1", vjust = -0.5,
              color = "darkred", size = 3)
   
-  print(p)
   return(p)
 }
 
@@ -383,7 +391,8 @@ plot_hourly_avg_pollution <- function(df,
 #' @param        pollution_var is a string specifying which column of PM2.5 data to visualize.
 #' @return       A ggplot object showing the distribution of PM2.5 across 24 hours in ridgeline
 #                form, with dashed vertical lines indicating WHO Interim Targets: IT2 (50 µg/m³, 
-#                orange) and IT1 (75 µg/m³, dark red). IT1 and IT2 are the 24 hours average.
+#                orange) and IT1 (75 µg/m³, dark red), using 24-hour reference values.
+#                Returns without printing, saving or changing the global theme.
 #' @Purpose    : To visualize the distribution (rather than just the mean) of pollutants by
 #                hour of day, helping to spot patterns in how pollution accumulates over time.
 #' @Written_on  : 28/02/2025
@@ -425,7 +434,7 @@ plot_hourly_ridgeline_pollution <- function(df,
       x     = "PM2.5 (µg/m³)",
       y     = "Hour of Day"
     ) +
-    theme_set(theme_minimal(base_family = "Palatino", base_size = 14))
+    theme_minimal(base_family = "Palatino", base_size = 14)
   
   # Add dashed vertical lines for Interim Targets and annotations
   p <- p +
@@ -436,7 +445,6 @@ plot_hourly_ridgeline_pollution <- function(df,
     annotate("text", x = 78.5, y = max_hour + 2.5, label = "IT1", vjust = -.5, 
              color = "darkred", size = 3)
   
-  print(p)
   return(p)
 }
 

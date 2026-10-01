@@ -5,12 +5,13 @@
 #
 #' @Description: Summarises pollution per station and attaches the socioeconomic profile
 #   of the census units around it, which feeds the station-level scatter figures.
-#   Sourced by config_utils_process_data.R; never sourced directly by a script.
+#   Scripts and targets can source this module and retain each intermediate table.
 #
 #' @Summary:
 #   1. compute_station_pollution_summary
 #   2. compute_station_socio_context
-#   3. build_station_scatter_inputs
+#   3. join_station_scatter_inputs
+#   4. build_station_scatter_inputs (convenience interface with optional saving)
 #
 #' @Date: August 2026
 #' @Author: Marcos Paulo
@@ -439,6 +440,59 @@ compute_station_socio_context <- function(
 
 
 # ------------------------------------------------------------------------------------
+# Function: join_station_scatter_inputs
+#
+#' @param pollution_dt Station pollution summaries with a station_id column.
+#' @param context_dt Spatial socioeconomic context with a station_id column.
+#' @param socio_vars Socioeconomic columns used to identify valid matches.
+#' @param year_filter Analysis year stored in the joined table.
+#' @param quiet Suppress the match-count message.
+#' @return A new data.table retaining every active station and its match indicator.
+#' @details A valid match requires a spatial context and at least one observed requested
+#          socioeconomic value. Inputs are not modified and no files are written.
+# ------------------------------------------------------------------------------------
+join_station_scatter_inputs <- function(pollution_dt, context_dt, socio_vars,
+                                        year_filter, quiet = FALSE) {
+  out_dt <- merge(
+    pollution_dt,
+    context_dt,
+    by = "station_id",
+    all.x = TRUE
+  )
+
+  out_dt[, year := year_filter]
+
+  # A station is socioeconomically matched only if a spatial context exists
+  # and at least one requested socioeconomic variable is non-missing.
+  socio_present <- intersect(socio_vars, names(out_dt))
+
+  if (length(socio_present) == 0L) {
+    stop("None of `socio_vars` are present after merging station context.")
+  }
+
+  out_dt[
+    ,
+    matched_socio_context := as.integer(
+      !is.na(n_geo_context) &
+        n_geo_context > 0L &
+        rowSums(!is.na(.SD)) > 0L
+    ),
+    .SDcols = socio_present
+  ]
+
+  if (!quiet) {
+    n_good <- out_dt[matched_socio_context == 1L, .N]
+
+    message(
+      "[station_socio] Valid socioeconomic matches: ",
+      n_good, " of ", nrow(out_dt), "."
+    )
+  }
+
+  out_dt[]
+}
+
+# ------------------------------------------------------------------------------------
 # Function: build_station_scatter_inputs
 #
 #' @param arrow_dir       string; path to partitioned Arrow/Parquet hourly data.
@@ -553,44 +607,10 @@ build_station_scatter_inputs <- function(
     quiet             = quiet
   )
   
-  # 4. Merge station-level pollution and socioeconomic context
-  # -----------------------------------------------------------------------
-  out_dt <- merge(
-    pol_dt,
-    socio_dt,
-    by = "station_id",
-    all.x = TRUE
-  )
-  
-  out_dt[, year := year_filter]
-  
-  # A station is socioeconomically matched only if a spatial context exists
-  # and at least one requested socioeconomic variable is non-missing.
-  socio_present <- intersect(socio_vars, names(out_dt))
-  
-  if (length(socio_present) == 0L) {
-    stop("None of `socio_vars` are present after merging station context.")
-  }
-  
-  out_dt[
-    ,
-    matched_socio_context := as.integer(
-      !is.na(n_geo_context) &
-        n_geo_context > 0L &
-        rowSums(!is.na(.SD)) > 0L
-    ),
-    .SDcols = socio_present
-  ]
-  
-  if (!quiet) {
-    n_good <- out_dt[matched_socio_context == 1L, .N]
-    
-    message(
-      "[station_socio] Valid socioeconomic matches: ",
-      n_good, " of ", nrow(out_dt), "."
-    )
-  }
-  
+  out_dt <- join_station_scatter_inputs(pollution_dt = pol_dt,
+    context_dt = socio_dt, socio_vars = socio_vars,
+    year_filter = year_filter, quiet = quiet)
+
   # 5. Save output
   # -----------------------------------------------------------------------
   arrow::write_parquet(out_dt, out_path)

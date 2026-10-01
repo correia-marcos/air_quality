@@ -1,31 +1,34 @@
-# ============================================================================================
+# ========================================================================================
 # IDB: Air monitoring
-# ============================================================================================
-#' @Goal: Build station-level data linking pollution outcomes to socioeconomic context.
+# ========================================================================================
+#' @Goal: Link station pollution outcomes to socioeconomic context.
 #
-#' @Description:
-#   This script computes station-level pollution outcomes for active monitoring stations
-#   in 2023 and attaches socioeconomic characteristics from nearby or containing
-#   geographic units. The resulting datasets are inputs for station-level scatterplots.
-#   Santiago uses the 2017 zonas censales, matching the main exposure specification.
-#   Bogota is the one city on buffer context: its manzanas are so small that a single
-#   containing block is a noisy descriptor of what a station actually sits among.
+#' @Description: Summarize cleaned hourly readings in the analysis year and attach the
+# collapsed census context. Bogotá uses a 3 km buffer; the other cities use the
+# containing municipality, census zone or weighting area. Retain unmatched active
+# stations and their match indicator. These four tables feed monitoring and scatter plots.
 #
 #' @Summary:
-#   I.   Import data: Define paths and read stations, geographic units, and census files.
-#   II.  Process: Build station-level pollution-socioeconomic datasets for each city.
+#   I.   Import data: source functions and settings, set paths and read inputs.
+#   II.  Process data: summarize pollution, attach spatial context and join station tables.
+#   III. Save outputs: save the results in the same order.
 #
-#' @Date: August 2026
+#' @Date: September 2026
 #' @Author: Marcos
-# ============================================================================================
+# ========================================================================================
 
-# Get all libraries and functions
-source(here::here("src", "general_utilities", "config_utils_process_data.R"))
-
-# ============================================================================================
+# ========================================================================================
 # I: Import data
-# ============================================================================================
-# Define general input and output folders
+# ========================================================================================
+# Source the scientific functions and their shared helpers
+source(here::here("src", "general_utilities", "base_utils.R"))
+source(here::here("src", "general_utilities", "process", "geo_ids.R"))
+source(here::here("src", "general_utilities", "process", "station_socio.R"))
+source(here::here("config", "analysis_settings.R"))
+
+sf::sf_use_s2(TRUE)
+
+# Set the input folders and the destination for station summaries
 dir_cleaned    <- here::here("data", "processed", "monitoring_stations_outliers")
 dir_geospatial <- here::here("data", "interim", "geospatial_data")
 dir_census     <- here::here("data", "interim", "census")
@@ -85,104 +88,115 @@ census_cdmx     <- data.table::as.data.table(arrow::read_parquet(census_cdmx_pq)
 census_santiago <- data.table::as.data.table(arrow::read_parquet(census_santiago_pq))
 census_sp       <- data.table::as.data.table(arrow::read_parquet(census_sp_pq))
 
-# CDMX geo key: the gpkg stores CVE_MUN as the full 5-digit code ("09012"). The census
-# side is already padded to width 5 by apply_canonical_names(), so no repair is needed.
+# Set the four station-summary filenames
+out_bogota   <- here::here(outdir_station, "bogota_2018",
+                           "bogota_2018_2023_3km_station_socio.parquet")
+out_cdmx     <- here::here(outdir_station, "cdmx_2020",
+                           "cdmx_2020_2023_station_socio.parquet")
+out_santiago <- here::here(outdir_station, "santiago_2017",
+                           "santiago_2017_2023_station_socio.parquet")
+out_sp       <- here::here(outdir_station, "sao_paulo_2010",
+                           "sao_paulo_2010_2023_station_socio.parquet")
 
-# ============================================================================================
-# II: Process station-level socioeconomic exposure data
-# ============================================================================================
-# Create output folder
-dir.create(outdir_station, recursive = TRUE, showWarnings = FALSE)
+# ========================================================================================
+# II: Process data
+# ========================================================================================
+# Summarize each active station: annual concentrations and hours above each threshold
+pollution_bogota   <- compute_station_pollution_summary(arrow_dir   = arrow_bogota,
+                                                        year_filter = analysis_year,
+                                                        station_col = "station",
+                                                        pollutants  = summary_pollutants,
+                                                        who_it      = station_who_thresholds)
 
-# Define common WHO thresholds used in the paper
-who_it <- list(
-  pm10 = c(it1 = 150, it2 = 100),
-  pm25 = c(it1 = 75,  it2 = 50))
+pollution_cdmx     <- compute_station_pollution_summary(arrow_dir   = arrow_cdmx,
+                                                        year_filter = analysis_year,
+                                                        station_col = "station",
+                                                        pollutants  = summary_pollutants,
+                                                        who_it      = station_who_thresholds)
 
-# 1. Bogota
-# --------------------------------------------------------------------------------------------
-# Bogota uses very small geographic units, so we use a buffer-based context.
-station_bogota <- build_station_scatter_inputs(
-  arrow_dir         = arrow_bogota,
-  stations_sf       = stations_bogota,
-  geo_sf            = geo_bogota,
-  census_col        = census_bogota,
-  station_id_col    = "station_name",
-  geo_sf_id_col     = "GEO_ID",
-  socio_vars        = c("education_mean"),
-  year_filter       = 2023L,
-  context_method    = "buffer",
-  context_buffer_km = 3,
-  pollutants        = c("pm10", "pm25"),
-  who_it            = who_it,
-  out_dir           = here::here(outdir_station, "bogota_2018"),
-  out_name          = "bogota_2018_2023_3km",
-  overwrite         = TRUE,
-  return_data       = TRUE
-)
+pollution_santiago <- compute_station_pollution_summary(arrow_dir   = arrow_santiago,
+                                                        year_filter = analysis_year,
+                                                        station_col = "station",
+                                                        pollutants  = summary_pollutants,
+                                                        who_it      = station_who_thresholds)
 
-# 2. CDMX
-# --------------------------------------------------------------------------------------------
-# Municipalities are large enough that the containing-unit definition is transparent.
-station_cdmx <- build_station_scatter_inputs(
-  arrow_dir         = arrow_cdmx,
-  stations_sf       = stations_cdmx,
-  geo_sf            = geo_cdmx,
-  census_col        = census_cdmx,
-  station_id_col    = "station",
-  geo_sf_id_col     = "CVE_MUN",
-  socio_vars        = c("education_mean", "income_mean"),
-  year_filter       = 2023L,
-  context_method    = "containing_geo",
-  pollutants        = c("pm10", "pm25"),
-  who_it            = who_it,
-  out_dir           = here::here(outdir_station, "cdmx_2020"),
-  out_name          = "cdmx_2020_2023",
-  overwrite         = TRUE,
-  return_data       = TRUE
-)
+pollution_sp       <- compute_station_pollution_summary(arrow_dir   = arrow_sp,
+                                                        year_filter = analysis_year,
+                                                        station_col = "station",
+                                                        pollutants  = summary_pollutants,
+                                                        who_it      = station_who_thresholds)
 
-# 3. Santiago
-# --------------------------------------------------------------------------------------------
-# Zonas censales 2017, the main exposure specification. They are small enough that the
-# containing zona describes the station's immediate surroundings.
-station_santiago <- build_station_scatter_inputs(
-  arrow_dir         = arrow_santiago,
-  stations_sf       = stations_santiago,
-  geo_sf            = geo_santiago,
-  census_col        = census_santiago,
-  station_id_col    = "station_name",
-  geo_sf_id_col     = "zona_id",
-  socio_vars        = c("education_mean"),
-  year_filter       = 2023L,
-  context_method    = "containing_geo",
-  pollutants        = c("pm10", "pm25"),
-  who_it            = who_it,
-  out_dir           = here::here(outdir_station, "santiago_2017"),
-  out_name          = "santiago_2017_2023",
-  overwrite         = TRUE,
-  return_data       = TRUE
-)
+# Attach the census context, preserving each city's geographic definition
+context_bogota   <- compute_station_socio_context(stations_sf    = stations_bogota,
+                                                  geo_sf         = geo_bogota,
+                                                  census_col     = census_bogota,
+                                                  station_id_col = "station_name",
+                                                  geo_sf_id_col  = "GEO_ID",
+                                                  socio_vars     = "education_mean",
+                                                  context_method = "buffer",
+                                                  buffer_km      = station_context_buffer_km)
 
-# 4. Sao Paulo
-# --------------------------------------------------------------------------------------------
-# Sao Paulo uses weighting areas. We attach both education and income context.
-station_sp <- build_station_scatter_inputs(
-  arrow_dir         = arrow_sp,
-  stations_sf       = stations_sp,
-  geo_sf            = geo_sp,
-  census_col        = census_sp,
-  station_id_col    = "station_name",
-  geo_sf_id_col     = "code_weighting",
-  socio_vars        = c("education_mean", "income_mean"),
-  year_filter       = 2023L,
-  context_method    = "containing_geo",
-  pollutants        = c("pm10", "pm25"),
-  who_it            = who_it,
-  out_dir           = here::here(outdir_station, "sao_paulo_2010"),
-  out_name          = "sao_paulo_2010_2023",
-  overwrite         = TRUE,
-  return_data       = TRUE
-)
+context_cdmx     <- compute_station_socio_context(stations_sf    = stations_cdmx,
+                                                  geo_sf         = geo_cdmx,
+                                                  census_col     = census_cdmx,
+                                                  station_id_col = "station",
+                                                  geo_sf_id_col  = "CVE_MUN",
+                                                  socio_vars     = c("education_mean",
+                                                                     "income_mean"),
+                                                  context_method = "containing_geo")
 
-cat("Station-level socioeconomic exposure data created successfully.\n")
+context_santiago <- compute_station_socio_context(stations_sf    = stations_santiago,
+                                                  geo_sf         = geo_santiago,
+                                                  census_col     = census_santiago,
+                                                  station_id_col = "station_name",
+                                                  geo_sf_id_col  = "zona_id",
+                                                  socio_vars     = "education_mean",
+                                                  context_method = "containing_geo")
+
+context_sp       <- compute_station_socio_context(stations_sf    = stations_sp,
+                                                  geo_sf         = geo_sp,
+                                                  census_col     = census_sp,
+                                                  station_id_col = "station_name",
+                                                  geo_sf_id_col  = "code_weighting",
+                                                  socio_vars     = c("education_mean",
+                                                                     "income_mean"),
+                                                  context_method = "containing_geo")
+
+# Keep every active station and mark whether its socioeconomic context matched
+station_bogota   <- join_station_scatter_inputs(pollution_dt = pollution_bogota,
+                                                context_dt   = context_bogota,
+                                                socio_vars   = "education_mean",
+                                                year_filter  = analysis_year)
+  
+station_cdmx     <- join_station_scatter_inputs(pollution_dt = pollution_cdmx,
+                                                context_dt   = context_cdmx,
+                                                socio_vars   = c("education_mean",
+                                                                 "income_mean"),
+                                                year_filter  = analysis_year)
+
+station_santiago <- join_station_scatter_inputs(pollution_dt = pollution_santiago,
+                                                context_dt   = context_santiago,
+                                                socio_vars   = "education_mean",
+                                                year_filter  = analysis_year)
+
+station_sp       <- join_station_scatter_inputs(pollution_dt = pollution_sp,
+                                                context_dt   = context_sp,
+                                                socio_vars   = c("education_mean",
+                                                                 "income_mean"),
+                                                year_filter  = analysis_year)
+
+# ========================================================================================
+# III: Save outputs
+# ========================================================================================
+# Save each city table for the figure recipes
+dir.create(dirname(out_bogota), recursive = TRUE, showWarnings = FALSE)
+arrow::write_parquet(station_bogota, out_bogota)
+
+dir.create(dirname(out_cdmx), recursive = TRUE, showWarnings = FALSE)
+arrow::write_parquet(station_cdmx, out_cdmx)
+
+dir.create(dirname(out_santiago), recursive = TRUE, showWarnings = FALSE)
+arrow::write_parquet(station_santiago, out_santiago)
+
+dir.create(dirname(out_sp), recursive = TRUE, showWarnings = FALSE)
+arrow::write_parquet(station_sp, out_sp)

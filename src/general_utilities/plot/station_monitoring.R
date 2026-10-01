@@ -5,7 +5,7 @@
 #
 #' @Description: How far each census unit sits from its nearest station, and how a
 #   station's pollution relates to the socioeconomic profile of the units around it.
-#   Sourced by config_utils_plot_tables.R; never sourced directly by a script.
+#   Sourced directly by figure scripts; functions return plots before optional saving.
 #
 #' @Summary:
 #   1. make_station_acronyms
@@ -224,20 +224,20 @@ build_station_distance_trend_data <- function(
 #' @param city_label            string; city label.
 #' @param pollutant             string; pollutant label.
 #' @param radius_km             numeric; radius used for nearby-station count.
-#' @param out_file              string; output image path.
+#' @param out_file              string or NULL; save only when a path is supplied.
 #' @param distance_color        string; color for nearest-station distance.
 #' @param station_count_color   string; color for number of nearby stations.
 #' @param font_family           string; base font family.
 #' @param adaptive_y_axis       logical; zoom y-axis to fitted curves. Default TRUE.
 #
-#' @return  ggplot object, saved to disk.
+#' @return ggplot object; writes a file only when out_file is supplied.
 # --------------------------------------------------------------------------------------
 plot_station_distance_trend <- function(
     dt,
     city_label,
     pollutant,
     radius_km,
-    out_file,
+    out_file = NULL,
     distance_color      = "darkblue",
     station_count_color = "darkred",
     font_family         = "Palatino",
@@ -343,16 +343,18 @@ plot_station_distance_trend <- function(
     )
   
   # cairo_pdf for .pdf so the Palatino text is embedded rather than substituted.
-  ggplot2::ggsave(
-    filename = out_file,
-    plot = p,
-    width = width,
-    height = height,
-    dpi = dpi,
-    device = if (grepl("\\.pdf$", out_file)) grDevices::cairo_pdf else NULL,
-    limitsize = FALSE,
-    bg = "white"
-  )
+  if (!is.null(out_file)) {
+    ggplot2::ggsave(
+      filename = out_file,
+      plot = p,
+      width = width,
+      height = height,
+      dpi = dpi,
+      device = if (grepl("\\.pdf$", out_file)) grDevices::cairo_pdf else NULL,
+      limitsize = FALSE,
+      bg = "white"
+    )
+  }
 
   return(p)
 }
@@ -812,14 +814,14 @@ safe_read_parquet <- function(path) {
 #' @param x_col      string; the socioeconomic column on the x axis.
 #' @param y_label    string; y-axis title.
 #' @param x_label    string; x-axis title.
-#' @param out_file   string; where to write the figure.
+#' @param out_file Optional filename; NULL returns the plot without saving.
 #' @param point_color string; colour of the station points.
 #' @param font_family string; base font family.
 #' @param width      numeric; figure width in inches.
 #' @param height     numeric; figure height in inches.
 #' @param dpi        numeric; raster resolution.
 #
-#' @return  ggplot object; also written to out_file.
+#' @return ggplot object; writes a file only when out_file is supplied.
 #
 #' @details
 #   One station per point: a single pollutant outcome against the socioeconomic profile
@@ -837,7 +839,7 @@ plot_station_scatter <- function(
     x_col,
     y_label,
     x_label,
-    out_file,
+    out_file = NULL,
     point_color = "darkblue",
     font_family = "Palatino",
     width       = 8.5,
@@ -862,16 +864,18 @@ plot_station_scatter <- function(
     ggplot2::labs(x = x_label, y = y_label) +
     ggplot2::theme(text = ggplot2::element_text(family = font_family))
 
-  ggplot2::ggsave(
-    filename = out_file,
-    plot = p,
-    width = width,
-    height = height,
-    dpi = dpi,
-    device = if (grepl("\\.pdf$", out_file)) grDevices::cairo_pdf else NULL,
-    limitsize = FALSE,
-    bg = "white"
-  )
+  if (!is.null(out_file)) {
+    ggplot2::ggsave(
+      filename = out_file,
+      plot = p,
+      width = width,
+      height = height,
+      dpi = dpi,
+      device = if (grepl("\\.pdf$", out_file)) grDevices::cairo_pdf else NULL,
+      limitsize = FALSE,
+      bg = "white"
+    )
+  }
 
   return(p)
 }

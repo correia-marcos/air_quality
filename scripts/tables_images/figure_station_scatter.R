@@ -1,44 +1,38 @@
-# ============================================================================================
+# ========================================================================================
 # IDB: Air monitoring
-# ============================================================================================
-#' @Goal: Plot each station's 2023 pollution against the socioeconomic profile of the unit
-#   it sits in, one pollutant and one outcome at a time.
+# ========================================================================================
+#' @Goal: Plot station pollution outcomes against education and income.
 #
-#' @Description: Reads the station-level socioeconomic exposure data written by
-# compute_station_scatter_inputs.R and draws the manuscript's scatter family: hours above
-# each WHO interim target and the annual mean, for PM10 and PM2.5, against mean years of
-# schooling, plus the income variants for the two cities whose census carries income.
-# One station per point with an ordinary least squares fit. Every figure is written under
-# the file name the manuscript cites, in results/figures/monitoring/.
+#' @Description: Read the four station-summary checkpoints. Each point is one station
+# with both axis values observed; the line is an OLS fit. Bogotá uses buffer context,
+# while the other cities use the containing area. Keep the existing schooling-scale
+# correction: divide by 1,000 if a table's maximum exceeds 100. Income panels are
+# available for CDMX and São Paulo.
 #
 #' @Summary:
-#   I.   Setup: load dependencies, set the paper theme, define paths.
-#   II.  Read the station-level inputs.
-#   III. Education scatters: hours above IT1 and IT2, then annual means.
-#   IV.  Income scatters: Mexico City and Sao Paulo only.
+#   I.   Import data: source functions and settings, set paths and read inputs.
+#   II.  Process data: rescale schooling and build named scatter plots.
+#   III. Save outputs: save the results in the same order.
 #
-#' @Date: August 2026
+#' @Date: September 2026
 #' @Author: Marcos
-# ============================================================================================
+# ========================================================================================
 
-# Get all libraries and functions
-source(here::here("src", "general_utilities", "config_utils_plot_tables.R"))
+# ========================================================================================
+# I: Import data
+# ========================================================================================
+# Source the scientific functions and their shared helpers
+source(here::here("src", "general_utilities", "base_utils.R"))
+source(here::here("src", "general_utilities", "plot", "station_monitoring.R"))
+source(here::here("src", "general_utilities", "theme_paper.R"))
+source(here::here("config", "analysis_settings.R"))
 
-# Register Tex Gyre Pagella and set the paper ggplot theme for this script.
+# Use the manuscript font and theme
 set_paper_theme()
 
-# ============================================================================================
-# I: Setup
-# ============================================================================================
-# Define input and output folders
+# Set the station-summary folder and figure destination
 dir_station <- here::here("data", "processed", "station_socio_exposure")
 outdir_fig  <- here::here("results", "figures", "monitoring")
-
-dir.create(outdir_fig, recursive = TRUE, showWarnings = FALSE)
-
-# Axis labels shared by every panel of a given outcome.
-lab_education <- "Average years of schooling"
-lab_income    <- "Average monthly labour income"
 
 # Define station-level socioeconomic exposure paths
 station_bogota_pq   <- here::here(dir_station, "bogota_2018",
@@ -50,117 +44,143 @@ station_santiago_pq <- here::here(dir_station, "santiago_2017",
 station_sp_pq       <- here::here(dir_station, "sao_paulo_2010",
                                   "sao_paulo_2010_2023_station_socio.parquet")
 
-# ============================================================================================
-# II: Read processed data
-# ============================================================================================
+# Read the four station tables
 station_bogota   <- safe_read_parquet(station_bogota_pq)
 station_cdmx     <- safe_read_parquet(station_cdmx_pq)
 station_santiago <- safe_read_parquet(station_santiago_pq)
 station_sp       <- safe_read_parquet(station_sp_pq)
 
-# Sao Paulo stores education x1000 in the source census; correct it once per city.
+# ========================================================================================
+# II: Process data
+# ========================================================================================
+# Apply the existing schooling-unit correction before plotting
 station_bogota   <- rescale_station_education(station_bogota, "Bogota")
 station_cdmx     <- rescale_station_education(station_cdmx, "Mexico City")
 station_santiago <- rescale_station_education(station_santiago, "Gran Santiago")
 station_sp       <- rescale_station_education(station_sp, "Sao Paulo")
 
-# ============================================================================================
-# III: Station outcomes versus education
-# ============================================================================================
-# The six education panels differ only in which outcome column they read and what the
-# manuscript calls the file, so the outcome is the loop and the cities are written out.
-scatter_specs <- list(
-  list(y_col = "hrs_d_pm10_it1", tag = "2023",
-       y_label = "Hours above PM10 IT1 in 2023"),
-  list(y_col = "hrs_d_pm25_it1", tag = "pm25_2023",
-       y_label = "Hours above PM2.5 IT1 in 2023"),
-  list(y_col = "hrs_d_pm10_it2", tag = "IT2_2023",
-       y_label = "Hours above PM10 IT2 in 2023"),
-  list(y_col = "hrs_d_pm25_it2", tag = "IT2_pm25_2023",
-       y_label = "Hours above PM2.5 IT2 in 2023"),
-  list(y_col = "avg_pm10", tag = "2023_pm10mean",
-       y_label = "Mean annual PM10 concentration in 2023"),
-  list(y_col = "avg_pm25", tag = "2023_pm25mean",
-       y_label = "Mean annual PM2.5 concentration in 2023")
-)
-
-for (spec in scatter_specs) {
-
-  plot_station_scatter(
-    station_dt = station_bogota,
-    y_col      = spec$y_col,
+# Keep six education plots per city, named by the pollution outcome
+plots_bogota   <- list()
+plots_cdmx     <- list()
+plots_santiago <- list()
+plots_sp       <- list()
+for (outcome in names(station_scatter_labels)) {
+  plots_bogota[[outcome]] <- plot_station_scatter(station_dt = station_bogota,
+    y_col      = outcome,
     x_col      = "education_mean",
-    y_label    = spec$y_label,
-    x_label    = lab_education,
-    out_file   = file.path(outdir_fig,
-                           paste0("scatter_plot_bogota_", spec$tag, ".pdf")))
+    y_label    = station_scatter_labels[[outcome]],
+    x_label    = "Average years of schooling")
 
-  plot_station_scatter(
-    station_dt = station_cdmx,
-    y_col      = spec$y_col,
+  plots_cdmx[[outcome]] <- plot_station_scatter(station_dt = station_cdmx,
+    y_col      = outcome,
     x_col      = "education_mean",
-    y_label    = spec$y_label,
-    x_label    = lab_education,
-    out_file   = file.path(outdir_fig,
-                           paste0("scatter_plot_mexico_", spec$tag, ".pdf")))
+    y_label    = station_scatter_labels[[outcome]],
+    x_label    = "Average years of schooling")
 
-  # Santiago's PM2.5 IT2 file is the one place the manuscript swaps the two tokens.
-  santiago_tag <- if (spec$tag == "IT2_pm25_2023") "pm25_IT2_2023" else spec$tag
-
-  plot_station_scatter(
-    station_dt = station_santiago,
-    y_col      = spec$y_col,
+  plots_santiago[[outcome]] <- plot_station_scatter(station_dt = station_santiago,
+    y_col      = outcome,
     x_col      = "education_mean",
-    y_label    = spec$y_label,
-    x_label    = lab_education,
-    out_file   = file.path(outdir_fig,
-                           paste0("scatter_plot_santiago_", santiago_tag, ".pdf")))
+    y_label    = station_scatter_labels[[outcome]],
+    x_label    = "Average years of schooling")
 
-  plot_station_scatter(
-    station_dt = station_sp,
-    y_col      = spec$y_col,
+  plots_sp[[outcome]] <- plot_station_scatter(station_dt = station_sp,
+    y_col      = outcome,
     x_col      = "education_mean",
-    y_label    = spec$y_label,
-    x_label    = lab_education,
-    out_file   = file.path(outdir_fig,
-                           paste0("scatter_plot_saopaulo_", spec$tag, ".pdf")))
+    y_label    = station_scatter_labels[[outcome]],
+    x_label    = "Average years of schooling")
+
 }
 
-# ============================================================================================
-# IV: Station outcomes versus income
-# ============================================================================================
-# Only Mexico City and Sao Paulo have income in the census.
-plot_station_scatter(
-  station_dt = station_cdmx,
+# Plot income only where the census provides it
+income_cdmx_pm10 <- plot_station_scatter(station_dt = station_cdmx,
   y_col      = "hrs_d_pm10_it1",
   x_col      = "income_mean",
-  y_label    = "Hours above PM10 IT1 in 2023",
-  x_label    = lab_income,
-  out_file   = file.path(outdir_fig, "scatter_plot_mexico_2023_income.pdf"))
+  y_label    = station_scatter_labels[["hrs_d_pm10_it1"]],
+  x_label    = "Average monthly labour income")
 
-plot_station_scatter(
-  station_dt = station_cdmx,
+income_cdmx_pm25 <- plot_station_scatter(station_dt = station_cdmx,
   y_col      = "hrs_d_pm25_it1",
   x_col      = "income_mean",
-  y_label    = "Hours above PM2.5 IT1 in 2023",
-  x_label    = lab_income,
-  out_file   = file.path(outdir_fig, "scatter_plot_mexico_pm25_2023_income.pdf"))
+  y_label    = station_scatter_labels[["hrs_d_pm25_it1"]],
+  x_label    = "Average monthly labour income")
 
-plot_station_scatter(
-  station_dt = station_sp,
+income_sp_pm10 <- plot_station_scatter(station_dt = station_sp,
   y_col      = "hrs_d_pm10_it1",
   x_col      = "income_mean",
-  y_label    = "Hours above PM10 IT1 in 2023",
-  x_label    = lab_income,
-  out_file   = file.path(outdir_fig, "scatter_plot_saopaulo_2023_income.pdf"))
+  y_label    = station_scatter_labels[["hrs_d_pm10_it1"]],
+  x_label    = "Average monthly labour income")
 
-plot_station_scatter(
-  station_dt = station_sp,
+income_sp_pm25 <- plot_station_scatter(station_dt = station_sp,
   y_col      = "hrs_d_pm25_it1",
   x_col      = "income_mean",
-  y_label    = "Hours above PM2.5 IT1 in 2023",
-  x_label    = lab_income,
-  out_file   = file.path(outdir_fig, "scatter_plot_saopaulo_pm25_2023_income.pdf"))
+  y_label    = station_scatter_labels[["hrs_d_pm25_it1"]],
+  x_label    = "Average monthly labour income")
 
-# Print a success message for when running inside Docker Container
-cat("Script from the IDB project executed successfully in the Docker container!\n")
+# ========================================================================================
+# III: Save outputs
+# ========================================================================================
+# Save education panels, retaining the manuscript's Santiago filename spelling
+dir.create(outdir_fig, recursive = TRUE, showWarnings = FALSE)
+
+for (outcome in names(station_scatter_tags)) {
+  tag <- station_scatter_tags[[outcome]]
+  santiago_tag <- if (tag == "IT2_pm25_2023") "pm25_IT2_2023" else tag
+
+  ggplot2::ggsave(
+    filename  = here::here(outdir_fig, paste0("scatter_plot_bogota_", tag, ".pdf")),
+    plot      = plots_bogota[[outcome]],
+    device    = grDevices::cairo_pdf,
+    width     = 8.5, height = 5.8, dpi = 300,
+    bg        = "white", limitsize = FALSE)
+
+  ggplot2::ggsave(
+    filename  = here::here(outdir_fig, paste0("scatter_plot_mexico_", tag, ".pdf")),
+    plot      = plots_cdmx[[outcome]],
+    device    = grDevices::cairo_pdf,
+    width     = 8.5, height = 5.8, dpi = 300,
+    bg        = "white", limitsize = FALSE)
+
+  ggplot2::ggsave(
+    filename  = here::here(outdir_fig,
+      paste0("scatter_plot_santiago_", santiago_tag, ".pdf")),
+    plot      = plots_santiago[[outcome]],
+    device    = grDevices::cairo_pdf,
+    width     = 8.5, height = 5.8, dpi = 300,
+    bg        = "white", limitsize = FALSE)
+
+  ggplot2::ggsave(
+    filename  = here::here(outdir_fig, paste0("scatter_plot_saopaulo_", tag, ".pdf")),
+    plot      = plots_sp[[outcome]],
+    device    = grDevices::cairo_pdf,
+    width     = 8.5, height = 5.8, dpi = 300,
+    bg        = "white", limitsize = FALSE)
+
+}
+
+# Save the four income panels
+ggplot2::ggsave(filename  = here::here(outdir_fig, "scatter_plot_mexico_2023_income.pdf"),
+                plot      = income_cdmx_pm10,
+                device    = grDevices::cairo_pdf,
+                width     = 8.5, height = 5.8, dpi = 300,
+                bg        = "white", limitsize = FALSE)
+
+ggplot2::ggsave(
+  filename  = here::here(outdir_fig, "scatter_plot_mexico_pm25_2023_income.pdf"),
+  plot      = income_cdmx_pm25,
+  device    = grDevices::cairo_pdf,
+  width     = 8.5, height = 5.8, dpi = 300,
+  bg        = "white", limitsize = FALSE)
+
+ggplot2::ggsave(filename  = here::here(outdir_fig, "scatter_plot_saopaulo_2023_income.pdf"),
+                plot      = income_sp_pm10,
+                device    = grDevices::cairo_pdf,
+                width     = 8.5, height = 5.8, dpi = 300,
+                bg        = "white", limitsize = FALSE)
+
+ggplot2::ggsave(
+  filename  = here::here(outdir_fig, "scatter_plot_saopaulo_pm25_2023_income.pdf"),
+  plot      = income_sp_pm25,
+  device    = grDevices::cairo_pdf,
+  width     = 8.5, height = 5.8, dpi = 300,
+  bg        = "white", limitsize = FALSE)
+

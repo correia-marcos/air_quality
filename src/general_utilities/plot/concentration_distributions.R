@@ -8,7 +8,7 @@
 #   WHO 24-hour interim targets as dashed reference lines (the paper's Figure 1), and the
 #   companion share of station-hours at or above each target. Both share one reader and
 #   one threshold lookup, so the two figures always describe the same observations.
-#   Sourced by config_utils_plot_tables.R; never sourced directly by a script.
+#   Scripts and targets source these definitions and retain plots before saving.
 #
 #' @Summary:
 #   1. .who_24h_targets

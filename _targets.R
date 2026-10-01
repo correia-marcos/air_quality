@@ -1853,11 +1853,204 @@ list(
       out_dir = here::here("data", "processed", "distance_band_descriptives"),
       name = "distance_band_descriptives"), format = "file"),
 
-  targets::tar_target(compute_station_scatter_inputs,
-    run_compute_station_scatter_inputs(c(outliers, geography, census)),
-    format = "file", packages = pipeline_packages("process")),
+  # Station outcomes, spatial context and their saved checkpoints.
+  targets::tar_target(bogota_collapsed_census,
+    {
+      data.table::as.data.table(arrow::read_parquet(bogota_census[basename(bogota_census) ==
+        "census_2018_metro_collapsed.parquet"]))
+    }, packages = "data.table"),
 
-  # Imputation: each city owns its hourly panel, predictions and count checkpoint.
+  targets::tar_target(bogota_station_pollution_summary,
+    {
+      compute_station_pollution_summary(
+        arrow_dir = bogota_outliers,
+        year_filter = analysis_year,
+        station_col = "station",
+        pollutants = summary_pollutants,
+        who_it = station_who_thresholds)
+    }, packages = "data.table"),
+
+  targets::tar_target(bogota_station_context,
+    {
+      sf::sf_use_s2(TRUE)
+      compute_station_socio_context(
+        stations_sf = bogota_distance_stations,
+        geo_sf = bogota_2018_distance_geography,
+        census_col = bogota_collapsed_census,
+        station_id_col = "station_name",
+        geo_sf_id_col = "GEO_ID",
+        socio_vars = "education_mean",
+        context_method = "buffer",
+        buffer_km = station_context_buffer_km)
+    }, packages = "data.table"),
+
+  targets::tar_target(bogota_station_socio,
+    {
+      join_station_scatter_inputs(
+        pollution_dt = bogota_station_pollution_summary,
+        context_dt = bogota_station_context,
+        socio_vars = "education_mean",
+        year_filter = analysis_year)
+    }, packages = "data.table"),
+
+  targets::tar_target(bogota_station_socio_file,
+    {
+      path <- here::here("data", "processed", "station_socio_exposure",
+        "bogota_2018", "bogota_2018_2023_3km_station_socio.parquet")
+      dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+      arrow::write_parquet(bogota_station_socio, path)
+      path
+    }, format = "file", packages = "data.table"),
+
+  targets::tar_target(cdmx_collapsed_census,
+    {
+      data.table::as.data.table(arrow::read_parquet(cdmx_census[basename(cdmx_census) ==
+        "collapse_metro_area_2020.parquet"]))
+    }, packages = "data.table"),
+
+  targets::tar_target(cdmx_station_pollution_summary,
+    {
+      compute_station_pollution_summary(
+        arrow_dir = cdmx_outliers,
+        year_filter = analysis_year,
+        station_col = "station",
+        pollutants = summary_pollutants,
+        who_it = station_who_thresholds)
+    }, packages = "data.table"),
+
+  targets::tar_target(cdmx_station_context,
+    {
+      sf::sf_use_s2(TRUE)
+      compute_station_socio_context(
+        stations_sf = cdmx_distance_stations,
+        geo_sf = cdmx_2020_distance_geography,
+        census_col = cdmx_collapsed_census,
+        station_id_col = "station",
+        geo_sf_id_col = "CVE_MUN",
+        socio_vars = c("education_mean", "income_mean"),
+        context_method = "containing_geo")
+    }, packages = "data.table"),
+
+  targets::tar_target(cdmx_station_socio,
+    {
+      join_station_scatter_inputs(
+        pollution_dt = cdmx_station_pollution_summary,
+        context_dt = cdmx_station_context,
+        socio_vars = c("education_mean", "income_mean"),
+        year_filter = analysis_year)
+    }, packages = "data.table"),
+
+  targets::tar_target(cdmx_station_socio_file,
+    {
+      path <- here::here("data", "processed", "station_socio_exposure",
+        "cdmx_2020", "cdmx_2020_2023_station_socio.parquet")
+      dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+      arrow::write_parquet(cdmx_station_socio, path)
+      path
+    }, format = "file", packages = "data.table"),
+
+  targets::tar_target(santiago_collapsed_census,
+    {
+      data.table::as.data.table(arrow::read_parquet(santiago_census[
+        basename(santiago_census) ==
+        "census_collapsed_2017.parquet"]))
+    }, packages = "data.table"),
+
+  targets::tar_target(santiago_station_pollution_summary,
+    {
+      compute_station_pollution_summary(
+        arrow_dir = santiago_outliers,
+        year_filter = analysis_year,
+        station_col = "station",
+        pollutants = summary_pollutants,
+        who_it = station_who_thresholds)
+    }, packages = "data.table"),
+
+  targets::tar_target(santiago_station_context,
+    {
+      sf::sf_use_s2(TRUE)
+      compute_station_socio_context(
+        stations_sf = santiago_distance_stations,
+        geo_sf = santiago_2017_distance_geography,
+        census_col = santiago_collapsed_census,
+        station_id_col = "station_name",
+        geo_sf_id_col = "zona_id",
+        socio_vars = "education_mean",
+        context_method = "containing_geo")
+    }, packages = "data.table"),
+
+  targets::tar_target(santiago_station_socio,
+    {
+      join_station_scatter_inputs(
+        pollution_dt = santiago_station_pollution_summary,
+        context_dt = santiago_station_context,
+        socio_vars = "education_mean",
+        year_filter = analysis_year)
+    }, packages = "data.table"),
+
+  targets::tar_target(santiago_station_socio_file,
+    {
+      path <- here::here("data", "processed", "station_socio_exposure",
+        "santiago_2017", "santiago_2017_2023_station_socio.parquet")
+      dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+      arrow::write_parquet(santiago_station_socio, path)
+      path
+    }, format = "file", packages = "data.table"),
+
+  targets::tar_target(sao_paulo_collapsed_census,
+    {
+      data.table::as.data.table(arrow::read_parquet(sao_paulo_census[
+        basename(sao_paulo_census) ==
+        "census_sp_collapsed_2010.parquet"]))
+    }, packages = "data.table"),
+
+  targets::tar_target(sao_paulo_station_pollution_summary,
+    {
+      compute_station_pollution_summary(
+        arrow_dir = sao_paulo_outliers,
+        year_filter = analysis_year,
+        station_col = "station",
+        pollutants = summary_pollutants,
+        who_it = station_who_thresholds)
+    }, packages = "data.table"),
+
+  targets::tar_target(sao_paulo_station_context,
+    {
+      sf::sf_use_s2(TRUE)
+      compute_station_socio_context(
+        stations_sf = sao_paulo_distance_stations,
+        geo_sf = sao_paulo_2010_distance_geography,
+        census_col = sao_paulo_collapsed_census,
+        station_id_col = "station_name",
+        geo_sf_id_col = "code_weighting",
+        socio_vars = c("education_mean", "income_mean"),
+        context_method = "containing_geo")
+    }, packages = "data.table"),
+
+  targets::tar_target(sao_paulo_station_socio,
+    {
+      join_station_scatter_inputs(
+        pollution_dt = sao_paulo_station_pollution_summary,
+        context_dt = sao_paulo_station_context,
+        socio_vars = c("education_mean", "income_mean"),
+        year_filter = analysis_year)
+    }, packages = "data.table"),
+
+  targets::tar_target(sao_paulo_station_socio_file,
+    {
+      path <- here::here("data", "processed", "station_socio_exposure",
+        "sao_paulo_2010", "sao_paulo_2010_2023_station_socio.parquet")
+      dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+      arrow::write_parquet(sao_paulo_station_socio, path)
+      path
+    }, format = "file", packages = "data.table"),
+
+  targets::tar_target(compute_station_scatter_inputs,
+    {
+      c(bogota_station_socio_file, cdmx_station_socio_file,
+        santiago_station_socio_file, sao_paulo_station_socio_file)
+    }, format = "file", packages = "data.table"),
+
 
   targets::tar_target(bogota_imputation,
     {
@@ -2209,10 +2402,7 @@ list(
 
   targets::tar_target(bogota_imputation_station_data,
     {
-      root <- compute_station_scatter_inputs[
-        basename(compute_station_scatter_inputs) == "station_socio_exposure"]
-      station <- arrow::read_parquet(here::here(root, "bogota_2018",
-        "bogota_2018_2023_3km_station_socio.parquet"))
+      station <- arrow::read_parquet(bogota_station_socio_file)
       rescale_station_education(station, "Bogota")
     }),
 
@@ -2273,10 +2463,7 @@ list(
 
   targets::tar_target(cdmx_imputation_station_data,
     {
-      root <- compute_station_scatter_inputs[
-        basename(compute_station_scatter_inputs) == "station_socio_exposure"]
-      station <- arrow::read_parquet(here::here(root, "cdmx_2020",
-        "cdmx_2020_2023_station_socio.parquet"))
+      station <- arrow::read_parquet(cdmx_station_socio_file)
       rescale_station_education(station, "CDMX")
     }),
 
@@ -2337,10 +2524,7 @@ list(
 
   targets::tar_target(santiago_imputation_station_data,
     {
-      root <- compute_station_scatter_inputs[
-        basename(compute_station_scatter_inputs) == "station_socio_exposure"]
-      station <- arrow::read_parquet(here::here(root, "santiago_2017",
-        "santiago_2017_2023_station_socio.parquet"))
+      station <- arrow::read_parquet(santiago_station_socio_file)
       rescale_station_education(station, "Santiago")
     }),
 
@@ -2401,10 +2585,7 @@ list(
 
   targets::tar_target(sao_paulo_imputation_station_data,
     {
-      root <- compute_station_scatter_inputs[
-        basename(compute_station_scatter_inputs) == "station_socio_exposure"]
-      station <- arrow::read_parquet(here::here(root, "sao_paulo_2010",
-        "sao_paulo_2010_2023_station_socio.parquet"))
+      station <- arrow::read_parquet(sao_paulo_station_socio_file)
       rescale_station_education(station, "Sao Paulo")
     }),
 
@@ -2463,88 +2644,1638 @@ list(
         sao_paulo_imputation_figures)
     }, format = "file"),
 
-  targets::tar_target(plot_station_monitoring_figures_data,
-    read_plot_station_monitoring_figures_data(
-      c(distances, compute_station_scatter_inputs, census, paper_manifest, paper_font)
-    ), format = "rds", packages = pipeline_packages("plot")),
+  # Figures: retain data and plot objects before writing the manuscript files.
+  targets::tar_target(bogota_station_plot_data,
+    {
+      rescale_station_education(
+        station_dt = safe_read_parquet(bogota_station_socio_file),
+        city_label = "Bogota")
+    }, packages = "data.table"),
 
-  targets::tar_target(plot_station_monitoring_figures,
-    write_plot_station_monitoring_figures(
-      plot_station_monitoring_figures_data,
-        inputs = c(distances, compute_station_scatter_inputs, census, paper_manifest,
-            paper_font)),
-    format = "file", packages = pipeline_packages("plot")),
+  targets::tar_target(bogota_station_scatter_plots,
+    {
+      paper_font
+      set_paper_theme()
+      plots <- list()
+      for (outcome in names(station_scatter_labels)) {
+        plots[[outcome]] <- plot_station_scatter(
+          station_dt = bogota_station_plot_data,
+          y_col = outcome,
+          x_col = "education_mean",
+          y_label = station_scatter_labels[[outcome]],
+          x_label = "Average years of schooling")
+      }
+      plots
+    }, packages = "data.table"),
 
-  targets::tar_target(figure_station_scatter_data,
-    read_figure_station_scatter_data(
-      c(compute_station_scatter_inputs, paper_manifest, paper_font)
-    ), format = "rds", packages = pipeline_packages("plot")),
+  targets::tar_target(bogota_station_scatter_files,
+    {
+      paper_font
+      set_paper_theme()
+      out_dir <- here::here("results", "figures", "monitoring")
+      dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+      files <- character()
+      for (outcome in names(station_scatter_tags)) {
+        tag <- station_scatter_tags[[outcome]]
+        file <- here::here(out_dir, paste0("scatter_plot_bogota_", tag, ".pdf"))
+        ggplot2::ggsave(
+          filename = file,
+          plot = bogota_station_scatter_plots[[outcome]],
+          device = grDevices::cairo_pdf,
+          width = 8.5,
+          height = 5.8,
+          dpi = 300,
+          bg = "white",
+          limitsize = FALSE)
+        files <- c(files, file)
+      }
+      files
+    }, format = "file", packages = "data.table"),
+
+  targets::tar_target(bogota_station_coverage,
+    {
+      coverage <- list()
+      for (radius_km in monitoring_radii_km) {
+        for (pollutant in summary_pollutants) {
+          key <- paste(radius_km, pollutant, sep = "_")
+          active <- get_active_station_ids(bogota_station_plot_data, pollutant)
+          coverage[[key]] <- build_station_distance_trend_data(
+            dist_pq = bogota_2018_distances[basename(bogota_2018_distances) ==
+              "matrix_geo_station_distances.parquet"],
+            census_dt = bogota_collapsed_census,
+            active_ids = active,
+            radius_km = radius_km)
+        }
+      }
+      coverage
+    }, packages = "data.table"),
+
+  targets::tar_target(bogota_station_distance_plots,
+    {
+      paper_font
+      set_paper_theme()
+      plots <- list()
+      for (radius_km in monitoring_radii_km) {
+        for (pollutant in summary_pollutants) {
+          key <- paste(radius_km, pollutant, sep = "_")
+          label <- if (pollutant == "pm10") "PM10" else "PM2.5"
+          plots[[key]] <- plot_station_distance_trend(
+            dt = bogota_station_coverage[[key]],
+            city_label = "Bogota",
+            pollutant = label,
+            radius_km = radius_km)
+        }
+      }
+      plots
+    }, packages = "data.table"),
+
+  targets::tar_target(bogota_station_education_plots,
+    {
+      paper_font
+      set_paper_theme()
+      plots <- list()
+      plots$avg_pollution <- plot_dual_pollutant_station_scatter(
+        station_dt = bogota_station_plot_data,
+        city_label = "Bogota",
+        y_pm10 = "avg_pm10",
+        y_pm25 = "avg_pm25",
+        title = "Annual average concentration in 2023",
+        y_left = "PM10 annual average",
+        y_right = "PM2.5 annual average")
+      plots$hours_it1 <- plot_dual_pollutant_station_scatter(
+        station_dt = bogota_station_plot_data,
+        city_label = "Bogota",
+        y_pm10 = "hrs_d_pm10_it1",
+        y_pm25 = "hrs_d_pm25_it1",
+        title = "Hours above WHO IT1 threshold in 2023",
+        y_left = "PM10 hours above IT1",
+        y_right = "PM2.5 hours above IT1")
+      plots$hours_it2 <- plot_dual_pollutant_station_scatter(
+        station_dt = bogota_station_plot_data,
+        city_label = "Bogota",
+        y_pm10 = "hrs_d_pm10_it2",
+        y_pm25 = "hrs_d_pm25_it2",
+        title = "Hours above WHO IT2 threshold in 2023",
+        y_left = "PM10 hours above IT2",
+        y_right = "PM2.5 hours above IT2")
+      plots
+    }, packages = "data.table"),
+
+  targets::tar_target(bogota_station_monitoring_files,
+    {
+      paper_font
+      set_paper_theme()
+      out_dir <- here::here("results", "figures", "monitoring")
+      dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+      files <- character()
+      for (radius_km in monitoring_radii_km) {
+        radius_tag <- if (radius_km == 3) "3km_v2" else paste0(radius_km, "km")
+        for (pollutant in summary_pollutants) {
+          key <- paste(radius_km, pollutant, sep = "_")
+          tag <- if (pollutant == "pm10") "" else "_pm25"
+          file <- here::here(out_dir, paste0("stations_dis_num_bogota_",
+            radius_tag, tag, ".pdf"))
+          ggplot2::ggsave(
+            filename = file,
+            plot = bogota_station_distance_plots[[key]],
+            device = grDevices::cairo_pdf,
+            width = 8.5,
+            height = 5.8,
+            dpi = 300,
+            bg = "white",
+            limitsize = FALSE)
+          files <- c(files, file)
+        }
+      }
+      file <- here::here(out_dir, "bogota_2018_avg_pm10_pm25_vs_education.png")
+      ggplot2::ggsave(
+        filename = file,
+        plot = bogota_station_education_plots$avg_pollution,
+        width = 8.5,
+        height = 5.8,
+        dpi = 300,
+        bg = "white",
+        limitsize = FALSE)
+      files <- c(files, file)
+      file <- here::here(out_dir, "bogota_2018_hours_it1_pm10_pm25_vs_education.png")
+      ggplot2::ggsave(
+        filename = file,
+        plot = bogota_station_education_plots$hours_it1,
+        width = 8.5,
+        height = 5.8,
+        dpi = 300,
+        bg = "white",
+        limitsize = FALSE)
+      files <- c(files, file)
+      file <- here::here(out_dir, "bogota_2018_hours_it2_pm10_pm25_vs_education.png")
+      ggplot2::ggsave(
+        filename = file,
+        plot = bogota_station_education_plots$hours_it2,
+        width = 8.5,
+        height = 5.8,
+        dpi = 300,
+        bg = "white",
+        limitsize = FALSE)
+      files <- c(files, file)
+      files
+    }, format = "file", packages = "data.table"),
+
+  targets::tar_target(bogota_population_map,
+    {
+      paper_font
+      set_paper_theme()
+      sf::sf_use_s2(TRUE)
+      plot_population_density_map(
+        metro_sf = bogota_2018_distance_geography,
+        stations_sf = bogota_distance_stations,
+        arrow_dir = bogota_pollution_parquet[basename(bogota_pollution_parquet) ==
+          "bogota_metro_dataset"],
+        census_df = bogota_collapsed_census,
+        join_sf_col = "GEO_ID",
+        join_df_col = "geo_id",
+        station_col = "station_name",
+        year_filter = analysis_year,
+        city_label = "Bogotá")
+    }, packages = "data.table"),
+
+  targets::tar_target(bogota_education_map,
+    {
+      paper_font
+      set_paper_theme()
+      sf::sf_use_s2(TRUE)
+      plot_inequality_pollution(
+        metro_sf = bogota_2018_distance_geography,
+        stations_sf = bogota_distance_stations,
+        arrow_dir = bogota_pollution_parquet[basename(bogota_pollution_parquet) ==
+          "bogota_metro_dataset"],
+        census_df = bogota_collapsed_census,
+        join_sf_col = "GEO_ID",
+        join_df_col = "geo_id",
+        station_col = "station_name",
+        year_filter = analysis_year,
+        ed_col = "education_mean",
+        pop_col = "pop_total",
+        buffer_km = station_context_buffer_km,
+        city_label = "")
+    }, packages = "data.table"),
+
+  targets::tar_target(bogota_exposure_quintile_weights,
+    {
+      compute_exposure_quintile_weights(
+        groups_file = bogota_2018_idw[basename(bogota_2018_idw) ==
+          "bogota_2018_indiv_groups.parquet"])
+    }, packages = "data.table"),
+
+  targets::tar_target(bogota_density_exposure,
+    {
+      exposure <- list()
+      for (radius_km in exposure_density_radii_km) {
+        filename <- sprintf("bogota_2018_%dkm_idw_exposure.parquet", radius_km)
+        exposure[[as.character(radius_km)]] <- arrow::read_parquet(
+          bogota_2018_idw[basename(bogota_2018_idw) == filename])
+      }
+      exposure
+    }, packages = "data.table"),
+
+  targets::tar_target(bogota_exposure_density_plots,
+    {
+      paper_font
+      set_paper_theme()
+      plots <- list()
+      for (radius_km in exposure_density_radii_km) {
+        for (pollutant in summary_pollutants) {
+          key <- paste(radius_km, pollutant, sep = "_")
+          plots[[key]] <- plot_exposure_density_by_quintile(
+            exposure = bogota_density_exposure[[as.character(radius_km)]],
+            quintile_weights = bogota_exposure_quintile_weights,
+            city_id = "bogota_2018",
+            buffer_km = radius_km,
+            pollutant = pollutant,
+            city_label = "Bogotá",
+            year_filter = analysis_year)
+        }
+      }
+      plots
+    }, packages = "data.table"),
+
+  targets::tar_target(bogota_exposure_density_files,
+    {
+      paper_font
+      set_paper_theme()
+      out_dir <- here::here("results", "figures", "exposure")
+      dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+      files <- character()
+      for (radius_km in exposure_density_radii_km) {
+        tag <- if (radius_km == 3) "" else "_v2"
+        for (pollutant in summary_pollutants) {
+          key <- paste(radius_km, pollutant, sep = "_")
+          file <- here::here(out_dir, paste0("distribution_3km_bogota_",
+            pollutant, tag, ".pdf"))
+          ggplot2::ggsave(
+            filename = file,
+            plot = bogota_exposure_density_plots[[key]],
+            device = grDevices::cairo_pdf,
+            width = 8,
+            height = 5.5,
+            dpi = 300,
+            bg = "white",
+            limitsize = FALSE)
+          files <- c(files, file)
+        }
+      }
+      files
+    }, format = "file", packages = "data.table"),
+
+  targets::tar_target(cdmx_station_plot_data,
+    {
+      rescale_station_education(
+        station_dt = safe_read_parquet(cdmx_station_socio_file),
+        city_label = "Mexico City")
+    }, packages = "data.table"),
+
+  targets::tar_target(cdmx_station_scatter_plots,
+    {
+      paper_font
+      set_paper_theme()
+      plots <- list()
+      for (outcome in names(station_scatter_labels)) {
+        plots[[outcome]] <- plot_station_scatter(
+          station_dt = cdmx_station_plot_data,
+          y_col = outcome,
+          x_col = "education_mean",
+          y_label = station_scatter_labels[[outcome]],
+          x_label = "Average years of schooling")
+      }
+      plots$income_pm10 <- plot_station_scatter(
+        station_dt = cdmx_station_plot_data,
+        y_col = "hrs_d_pm10_it1",
+        x_col = "income_mean",
+        y_label = station_scatter_labels[["hrs_d_pm10_it1"]],
+        x_label = "Average monthly labour income")
+      plots$income_pm25 <- plot_station_scatter(
+        station_dt = cdmx_station_plot_data,
+        y_col = "hrs_d_pm25_it1",
+        x_col = "income_mean",
+        y_label = station_scatter_labels[["hrs_d_pm25_it1"]],
+        x_label = "Average monthly labour income")
+      plots
+    }, packages = "data.table"),
+
+  targets::tar_target(cdmx_station_scatter_files,
+    {
+      paper_font
+      set_paper_theme()
+      out_dir <- here::here("results", "figures", "monitoring")
+      dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+      files <- character()
+      for (outcome in names(station_scatter_tags)) {
+        tag <- station_scatter_tags[[outcome]]
+        file <- here::here(out_dir, paste0("scatter_plot_mexico_", tag, ".pdf"))
+        ggplot2::ggsave(
+          filename = file,
+          plot = cdmx_station_scatter_plots[[outcome]],
+          device = grDevices::cairo_pdf,
+          width = 8.5,
+          height = 5.8,
+          dpi = 300,
+          bg = "white",
+          limitsize = FALSE)
+        files <- c(files, file)
+      }
+      file <- here::here(out_dir, "scatter_plot_mexico_2023_income.pdf")
+      ggplot2::ggsave(
+        filename = file,
+        plot = cdmx_station_scatter_plots$income_pm10,
+        device = grDevices::cairo_pdf,
+        width = 8.5,
+        height = 5.8,
+        dpi = 300,
+        bg = "white",
+        limitsize = FALSE)
+      files <- c(files, file)
+      file <- here::here(out_dir, "scatter_plot_mexico_pm25_2023_income.pdf")
+      ggplot2::ggsave(
+        filename = file,
+        plot = cdmx_station_scatter_plots$income_pm25,
+        device = grDevices::cairo_pdf,
+        width = 8.5,
+        height = 5.8,
+        dpi = 300,
+        bg = "white",
+        limitsize = FALSE)
+      files <- c(files, file)
+      files
+    }, format = "file", packages = "data.table"),
+
+  targets::tar_target(cdmx_station_coverage,
+    {
+      coverage <- list()
+      for (radius_km in monitoring_radii_km) {
+        for (pollutant in summary_pollutants) {
+          key <- paste(radius_km, pollutant, sep = "_")
+          active <- get_active_station_ids(cdmx_station_plot_data, pollutant)
+          coverage[[key]] <- build_station_distance_trend_data(
+            dist_pq = cdmx_2020_distances[basename(cdmx_2020_distances) ==
+              "matrix_geo_station_distances.parquet"],
+            census_dt = cdmx_collapsed_census,
+            active_ids = active,
+            radius_km = radius_km)
+        }
+      }
+      coverage
+    }, packages = "data.table"),
+
+  targets::tar_target(cdmx_station_distance_plots,
+    {
+      paper_font
+      set_paper_theme()
+      plots <- list()
+      for (radius_km in monitoring_radii_km) {
+        for (pollutant in summary_pollutants) {
+          key <- paste(radius_km, pollutant, sep = "_")
+          label <- if (pollutant == "pm10") "PM10" else "PM2.5"
+          plots[[key]] <- plot_station_distance_trend(
+            dt = cdmx_station_coverage[[key]],
+            city_label = "Mexico City",
+            pollutant = label,
+            radius_km = radius_km)
+        }
+      }
+      plots
+    }, packages = "data.table"),
+
+  targets::tar_target(cdmx_station_education_plots,
+    {
+      paper_font
+      set_paper_theme()
+      plots <- list()
+      plots$avg_pollution <- plot_dual_pollutant_station_scatter(
+        station_dt = cdmx_station_plot_data,
+        city_label = "Mexico City",
+        y_pm10 = "avg_pm10",
+        y_pm25 = "avg_pm25",
+        title = "Annual average concentration in 2023",
+        y_left = "PM10 annual average",
+        y_right = "PM2.5 annual average")
+      plots$hours_it1 <- plot_dual_pollutant_station_scatter(
+        station_dt = cdmx_station_plot_data,
+        city_label = "Mexico City",
+        y_pm10 = "hrs_d_pm10_it1",
+        y_pm25 = "hrs_d_pm25_it1",
+        title = "Hours above WHO IT1 threshold in 2023",
+        y_left = "PM10 hours above IT1",
+        y_right = "PM2.5 hours above IT1")
+      plots$hours_it2 <- plot_dual_pollutant_station_scatter(
+        station_dt = cdmx_station_plot_data,
+        city_label = "Mexico City",
+        y_pm10 = "hrs_d_pm10_it2",
+        y_pm25 = "hrs_d_pm25_it2",
+        title = "Hours above WHO IT2 threshold in 2023",
+        y_left = "PM10 hours above IT2",
+        y_right = "PM2.5 hours above IT2")
+      plots
+    }, packages = "data.table"),
+
+  targets::tar_target(cdmx_station_monitoring_files,
+    {
+      paper_font
+      set_paper_theme()
+      out_dir <- here::here("results", "figures", "monitoring")
+      dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+      files <- character()
+      for (radius_km in monitoring_radii_km) {
+        radius_tag <- if (radius_km == 3) "3km_v2" else paste0(radius_km, "km")
+        for (pollutant in summary_pollutants) {
+          key <- paste(radius_km, pollutant, sep = "_")
+          tag <- if (pollutant == "pm10") "" else "_pm25"
+          file <- here::here(out_dir, paste0("stations_dis_num_mexico_",
+            radius_tag, tag, ".pdf"))
+          ggplot2::ggsave(
+            filename = file,
+            plot = cdmx_station_distance_plots[[key]],
+            device = grDevices::cairo_pdf,
+            width = 8.5,
+            height = 5.8,
+            dpi = 300,
+            bg = "white",
+            limitsize = FALSE)
+          files <- c(files, file)
+        }
+      }
+      file <- here::here(out_dir, "cdmx_2020_avg_pm10_pm25_vs_education.png")
+      ggplot2::ggsave(
+        filename = file,
+        plot = cdmx_station_education_plots$avg_pollution,
+        width = 8.5,
+        height = 5.8,
+        dpi = 300,
+        bg = "white",
+        limitsize = FALSE)
+      files <- c(files, file)
+      file <- here::here(out_dir, "cdmx_2020_hours_it1_pm10_pm25_vs_education.png")
+      ggplot2::ggsave(
+        filename = file,
+        plot = cdmx_station_education_plots$hours_it1,
+        width = 8.5,
+        height = 5.8,
+        dpi = 300,
+        bg = "white",
+        limitsize = FALSE)
+      files <- c(files, file)
+      file <- here::here(out_dir, "cdmx_2020_hours_it2_pm10_pm25_vs_education.png")
+      ggplot2::ggsave(
+        filename = file,
+        plot = cdmx_station_education_plots$hours_it2,
+        width = 8.5,
+        height = 5.8,
+        dpi = 300,
+        bg = "white",
+        limitsize = FALSE)
+      files <- c(files, file)
+      files
+    }, format = "file", packages = "data.table"),
+
+  targets::tar_target(cdmx_population_map,
+    {
+      paper_font
+      set_paper_theme()
+      sf::sf_use_s2(TRUE)
+      plot_population_density_map(
+        metro_sf = cdmx_2020_distance_geography,
+        stations_sf = cdmx_distance_stations,
+        arrow_dir = cdmx_pollution_parquet[basename(cdmx_pollution_parquet) ==
+          "cdmx_metro_dataset"],
+        census_df = cdmx_collapsed_census,
+        join_sf_col = "CVE_MUN",
+        join_df_col = "geo_id",
+        station_col = "station",
+        year_filter = analysis_year,
+        city_label = "Mexico City")
+    }, packages = "data.table"),
+
+  targets::tar_target(cdmx_education_map,
+    {
+      paper_font
+      set_paper_theme()
+      sf::sf_use_s2(TRUE)
+      plot_inequality_pollution(
+        metro_sf = cdmx_2020_distance_geography,
+        stations_sf = cdmx_distance_stations,
+        arrow_dir = cdmx_pollution_parquet[basename(cdmx_pollution_parquet) ==
+          "cdmx_metro_dataset"],
+        census_df = cdmx_collapsed_census,
+        join_sf_col = "CVE_MUN",
+        join_df_col = "geo_id",
+        station_col = "station",
+        year_filter = analysis_year,
+        ed_col = "education_mean",
+        pop_col = "pop_total",
+        buffer_km = station_context_buffer_km,
+        city_label = "")
+    }, packages = "data.table"),
+
+  targets::tar_target(cdmx_exposure_quintile_weights,
+    {
+      compute_exposure_quintile_weights(
+        groups_file = cdmx_2020_idw[basename(cdmx_2020_idw) ==
+          "cdmx_2020_indiv_groups.parquet"])
+    }, packages = "data.table"),
+
+  targets::tar_target(cdmx_density_exposure,
+    {
+      exposure <- list()
+      for (radius_km in exposure_density_radii_km) {
+        filename <- sprintf("cdmx_2020_%dkm_idw_exposure.parquet", radius_km)
+        exposure[[as.character(radius_km)]] <- arrow::read_parquet(
+          cdmx_2020_idw[basename(cdmx_2020_idw) == filename])
+      }
+      exposure
+    }, packages = "data.table"),
+
+  targets::tar_target(cdmx_exposure_density_plots,
+    {
+      paper_font
+      set_paper_theme()
+      plots <- list()
+      for (radius_km in exposure_density_radii_km) {
+        for (pollutant in summary_pollutants) {
+          key <- paste(radius_km, pollutant, sep = "_")
+          plots[[key]] <- plot_exposure_density_by_quintile(
+            exposure = cdmx_density_exposure[[as.character(radius_km)]],
+            quintile_weights = cdmx_exposure_quintile_weights,
+            city_id = "cdmx_2020",
+            buffer_km = radius_km,
+            pollutant = pollutant,
+            city_label = "Mexico City",
+            year_filter = analysis_year)
+        }
+      }
+      plots
+    }, packages = "data.table"),
+
+  targets::tar_target(cdmx_exposure_density_files,
+    {
+      paper_font
+      set_paper_theme()
+      out_dir <- here::here("results", "figures", "exposure")
+      dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+      files <- character()
+      for (radius_km in exposure_density_radii_km) {
+        tag <- if (radius_km == 3) "" else "_v2"
+        for (pollutant in summary_pollutants) {
+          key <- paste(radius_km, pollutant, sep = "_")
+          file <- here::here(out_dir, paste0("distribution_3km_mexico_",
+            pollutant, tag, ".pdf"))
+          ggplot2::ggsave(
+            filename = file,
+            plot = cdmx_exposure_density_plots[[key]],
+            device = grDevices::cairo_pdf,
+            width = 8,
+            height = 5.5,
+            dpi = 300,
+            bg = "white",
+            limitsize = FALSE)
+          files <- c(files, file)
+        }
+      }
+      files
+    }, format = "file", packages = "data.table"),
+
+  targets::tar_target(santiago_station_plot_data,
+    {
+      rescale_station_education(
+        station_dt = safe_read_parquet(santiago_station_socio_file),
+        city_label = "Gran Santiago")
+    }, packages = "data.table"),
+
+  targets::tar_target(santiago_station_scatter_plots,
+    {
+      paper_font
+      set_paper_theme()
+      plots <- list()
+      for (outcome in names(station_scatter_labels)) {
+        plots[[outcome]] <- plot_station_scatter(
+          station_dt = santiago_station_plot_data,
+          y_col = outcome,
+          x_col = "education_mean",
+          y_label = station_scatter_labels[[outcome]],
+          x_label = "Average years of schooling")
+      }
+      plots
+    }, packages = "data.table"),
+
+  targets::tar_target(santiago_station_scatter_files,
+    {
+      paper_font
+      set_paper_theme()
+      out_dir <- here::here("results", "figures", "monitoring")
+      dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+      files <- character()
+      for (outcome in names(station_scatter_tags)) {
+        tag <- station_scatter_tags[[outcome]]
+        if (tag == "IT2_pm25_2023") tag <- "pm25_IT2_2023"
+        file <- here::here(out_dir, paste0("scatter_plot_santiago_", tag, ".pdf"))
+        ggplot2::ggsave(
+          filename = file,
+          plot = santiago_station_scatter_plots[[outcome]],
+          device = grDevices::cairo_pdf,
+          width = 8.5,
+          height = 5.8,
+          dpi = 300,
+          bg = "white",
+          limitsize = FALSE)
+        files <- c(files, file)
+      }
+      files
+    }, format = "file", packages = "data.table"),
+
+  targets::tar_target(santiago_station_coverage,
+    {
+      coverage <- list()
+      for (radius_km in monitoring_radii_km) {
+        for (pollutant in summary_pollutants) {
+          key <- paste(radius_km, pollutant, sep = "_")
+          active <- get_active_station_ids(santiago_station_plot_data, pollutant)
+          coverage[[key]] <- build_station_distance_trend_data(
+            dist_pq = santiago_2017_distances[basename(santiago_2017_distances) ==
+              "matrix_geo_station_distances.parquet"],
+            census_dt = santiago_collapsed_census,
+            active_ids = active,
+            radius_km = radius_km)
+        }
+      }
+      coverage
+    }, packages = "data.table"),
+
+  targets::tar_target(santiago_station_distance_plots,
+    {
+      paper_font
+      set_paper_theme()
+      plots <- list()
+      for (radius_km in monitoring_radii_km) {
+        for (pollutant in summary_pollutants) {
+          key <- paste(radius_km, pollutant, sep = "_")
+          label <- if (pollutant == "pm10") "PM10" else "PM2.5"
+          plots[[key]] <- plot_station_distance_trend(
+            dt = santiago_station_coverage[[key]],
+            city_label = "Gran Santiago",
+            pollutant = label,
+            radius_km = radius_km)
+        }
+      }
+      plots
+    }, packages = "data.table"),
+
+  targets::tar_target(santiago_station_education_plots,
+    {
+      paper_font
+      set_paper_theme()
+      plots <- list()
+      plots$avg_pollution <- plot_dual_pollutant_station_scatter(
+        station_dt = santiago_station_plot_data,
+        city_label = "Gran Santiago",
+        y_pm10 = "avg_pm10",
+        y_pm25 = "avg_pm25",
+        title = "Annual average concentration in 2023",
+        y_left = "PM10 annual average",
+        y_right = "PM2.5 annual average")
+      plots$hours_it1 <- plot_dual_pollutant_station_scatter(
+        station_dt = santiago_station_plot_data,
+        city_label = "Gran Santiago",
+        y_pm10 = "hrs_d_pm10_it1",
+        y_pm25 = "hrs_d_pm25_it1",
+        title = "Hours above WHO IT1 threshold in 2023",
+        y_left = "PM10 hours above IT1",
+        y_right = "PM2.5 hours above IT1")
+      plots$hours_it2 <- plot_dual_pollutant_station_scatter(
+        station_dt = santiago_station_plot_data,
+        city_label = "Gran Santiago",
+        y_pm10 = "hrs_d_pm10_it2",
+        y_pm25 = "hrs_d_pm25_it2",
+        title = "Hours above WHO IT2 threshold in 2023",
+        y_left = "PM10 hours above IT2",
+        y_right = "PM2.5 hours above IT2")
+      plots
+    }, packages = "data.table"),
+
+  targets::tar_target(santiago_station_monitoring_files,
+    {
+      paper_font
+      set_paper_theme()
+      out_dir <- here::here("results", "figures", "monitoring")
+      dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+      files <- character()
+      for (radius_km in monitoring_radii_km) {
+        radius_tag <- if (radius_km == 3) "3km_v2" else paste0(radius_km, "km")
+        for (pollutant in summary_pollutants) {
+          key <- paste(radius_km, pollutant, sep = "_")
+          tag <- if (pollutant == "pm10") "" else "_pm25"
+          file <- here::here(out_dir, paste0("stations_dis_num_santiago_",
+            radius_tag, tag, ".pdf"))
+          ggplot2::ggsave(
+            filename = file,
+            plot = santiago_station_distance_plots[[key]],
+            device = grDevices::cairo_pdf,
+            width = 8.5,
+            height = 5.8,
+            dpi = 300,
+            bg = "white",
+            limitsize = FALSE)
+          files <- c(files, file)
+        }
+      }
+      file <- here::here(out_dir, "santiago_2017_avg_pm10_pm25_vs_education.png")
+      ggplot2::ggsave(
+        filename = file,
+        plot = santiago_station_education_plots$avg_pollution,
+        width = 8.5,
+        height = 5.8,
+        dpi = 300,
+        bg = "white",
+        limitsize = FALSE)
+      files <- c(files, file)
+      file <- here::here(out_dir, "santiago_2017_hours_it1_pm10_pm25_vs_education.png")
+      ggplot2::ggsave(
+        filename = file,
+        plot = santiago_station_education_plots$hours_it1,
+        width = 8.5,
+        height = 5.8,
+        dpi = 300,
+        bg = "white",
+        limitsize = FALSE)
+      files <- c(files, file)
+      file <- here::here(out_dir, "santiago_2017_hours_it2_pm10_pm25_vs_education.png")
+      ggplot2::ggsave(
+        filename = file,
+        plot = santiago_station_education_plots$hours_it2,
+        width = 8.5,
+        height = 5.8,
+        dpi = 300,
+        bg = "white",
+        limitsize = FALSE)
+      files <- c(files, file)
+      files
+    }, format = "file", packages = "data.table"),
+
+  targets::tar_target(santiago_population_map,
+    {
+      paper_font
+      set_paper_theme()
+      sf::sf_use_s2(TRUE)
+      plot_population_density_map(
+        metro_sf = santiago_2017_distance_geography,
+        stations_sf = santiago_distance_stations,
+        arrow_dir = santiago_pollution_parquet[basename(santiago_pollution_parquet) ==
+          "santiago_metro_dataset"],
+        census_df = santiago_collapsed_census,
+        join_sf_col = "zona_id",
+        join_df_col = "geo_id",
+        station_col = "station_name",
+        year_filter = analysis_year,
+        city_label = "Santiago")
+    }, packages = "data.table"),
+
+  targets::tar_target(santiago_education_map,
+    {
+      paper_font
+      set_paper_theme()
+      sf::sf_use_s2(TRUE)
+      plot_inequality_pollution(
+        metro_sf = santiago_2017_distance_geography,
+        stations_sf = santiago_distance_stations,
+        arrow_dir = santiago_pollution_parquet[basename(santiago_pollution_parquet) ==
+          "santiago_metro_dataset"],
+        census_df = santiago_collapsed_census,
+        join_sf_col = "zona_id",
+        join_df_col = "geo_id",
+        station_col = "station_name",
+        year_filter = analysis_year,
+        ed_col = "education_mean",
+        pop_col = "pop_total",
+        buffer_km = station_context_buffer_km,
+        city_label = "")
+    }, packages = "data.table"),
+
+  targets::tar_target(santiago_exposure_quintile_weights,
+    {
+      compute_exposure_quintile_weights(
+        groups_file = santiago_2017_idw[basename(santiago_2017_idw) ==
+          "santiago_2017_indiv_groups.parquet"])
+    }, packages = "data.table"),
+
+  targets::tar_target(santiago_density_exposure,
+    {
+      exposure <- list()
+      for (radius_km in exposure_density_radii_km) {
+        filename <- sprintf("santiago_2017_%dkm_idw_exposure.parquet", radius_km)
+        exposure[[as.character(radius_km)]] <- arrow::read_parquet(
+          santiago_2017_idw[basename(santiago_2017_idw) == filename])
+      }
+      exposure
+    }, packages = "data.table"),
+
+  targets::tar_target(santiago_exposure_density_plots,
+    {
+      paper_font
+      set_paper_theme()
+      plots <- list()
+      for (radius_km in exposure_density_radii_km) {
+        for (pollutant in summary_pollutants) {
+          key <- paste(radius_km, pollutant, sep = "_")
+          plots[[key]] <- plot_exposure_density_by_quintile(
+            exposure = santiago_density_exposure[[as.character(radius_km)]],
+            quintile_weights = santiago_exposure_quintile_weights,
+            city_id = "santiago_2017",
+            buffer_km = radius_km,
+            pollutant = pollutant,
+            city_label = "Santiago",
+            year_filter = analysis_year)
+        }
+      }
+      plots
+    }, packages = "data.table"),
+
+  targets::tar_target(santiago_exposure_density_files,
+    {
+      paper_font
+      set_paper_theme()
+      out_dir <- here::here("results", "figures", "exposure")
+      dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+      files <- character()
+      for (radius_km in exposure_density_radii_km) {
+        tag <- if (radius_km == 3) "" else "_v2"
+        for (pollutant in summary_pollutants) {
+          key <- paste(radius_km, pollutant, sep = "_")
+          file <- here::here(out_dir, paste0("distribution_3km_santiago_",
+            pollutant, tag, ".pdf"))
+          ggplot2::ggsave(
+            filename = file,
+            plot = santiago_exposure_density_plots[[key]],
+            device = grDevices::cairo_pdf,
+            width = 8,
+            height = 5.5,
+            dpi = 300,
+            bg = "white",
+            limitsize = FALSE)
+          files <- c(files, file)
+        }
+      }
+      files
+    }, format = "file", packages = "data.table"),
+
+  targets::tar_target(sao_paulo_station_plot_data,
+    {
+      rescale_station_education(
+        station_dt = safe_read_parquet(sao_paulo_station_socio_file),
+        city_label = "Sao Paulo")
+    }, packages = "data.table"),
+
+  targets::tar_target(sao_paulo_station_scatter_plots,
+    {
+      paper_font
+      set_paper_theme()
+      plots <- list()
+      for (outcome in names(station_scatter_labels)) {
+        plots[[outcome]] <- plot_station_scatter(
+          station_dt = sao_paulo_station_plot_data,
+          y_col = outcome,
+          x_col = "education_mean",
+          y_label = station_scatter_labels[[outcome]],
+          x_label = "Average years of schooling")
+      }
+      plots$income_pm10 <- plot_station_scatter(
+        station_dt = sao_paulo_station_plot_data,
+        y_col = "hrs_d_pm10_it1",
+        x_col = "income_mean",
+        y_label = station_scatter_labels[["hrs_d_pm10_it1"]],
+        x_label = "Average monthly labour income")
+      plots$income_pm25 <- plot_station_scatter(
+        station_dt = sao_paulo_station_plot_data,
+        y_col = "hrs_d_pm25_it1",
+        x_col = "income_mean",
+        y_label = station_scatter_labels[["hrs_d_pm25_it1"]],
+        x_label = "Average monthly labour income")
+      plots
+    }, packages = "data.table"),
+
+  targets::tar_target(sao_paulo_station_scatter_files,
+    {
+      paper_font
+      set_paper_theme()
+      out_dir <- here::here("results", "figures", "monitoring")
+      dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+      files <- character()
+      for (outcome in names(station_scatter_tags)) {
+        tag <- station_scatter_tags[[outcome]]
+        file <- here::here(out_dir, paste0("scatter_plot_saopaulo_", tag, ".pdf"))
+        ggplot2::ggsave(
+          filename = file,
+          plot = sao_paulo_station_scatter_plots[[outcome]],
+          device = grDevices::cairo_pdf,
+          width = 8.5,
+          height = 5.8,
+          dpi = 300,
+          bg = "white",
+          limitsize = FALSE)
+        files <- c(files, file)
+      }
+      file <- here::here(out_dir, "scatter_plot_saopaulo_2023_income.pdf")
+      ggplot2::ggsave(
+        filename = file,
+        plot = sao_paulo_station_scatter_plots$income_pm10,
+        device = grDevices::cairo_pdf,
+        width = 8.5,
+        height = 5.8,
+        dpi = 300,
+        bg = "white",
+        limitsize = FALSE)
+      files <- c(files, file)
+      file <- here::here(out_dir, "scatter_plot_saopaulo_pm25_2023_income.pdf")
+      ggplot2::ggsave(
+        filename = file,
+        plot = sao_paulo_station_scatter_plots$income_pm25,
+        device = grDevices::cairo_pdf,
+        width = 8.5,
+        height = 5.8,
+        dpi = 300,
+        bg = "white",
+        limitsize = FALSE)
+      files <- c(files, file)
+      files
+    }, format = "file", packages = "data.table"),
+
+  targets::tar_target(sao_paulo_station_coverage,
+    {
+      coverage <- list()
+      for (radius_km in monitoring_radii_km) {
+        for (pollutant in summary_pollutants) {
+          key <- paste(radius_km, pollutant, sep = "_")
+          active <- get_active_station_ids(sao_paulo_station_plot_data, pollutant)
+          coverage[[key]] <- build_station_distance_trend_data(
+            dist_pq = sao_paulo_2010_distances[basename(sao_paulo_2010_distances) ==
+              "matrix_geo_station_distances.parquet"],
+            census_dt = sao_paulo_collapsed_census,
+            active_ids = active,
+            radius_km = radius_km)
+        }
+      }
+      coverage
+    }, packages = "data.table"),
+
+  targets::tar_target(sao_paulo_station_distance_plots,
+    {
+      paper_font
+      set_paper_theme()
+      plots <- list()
+      for (radius_km in monitoring_radii_km) {
+        for (pollutant in summary_pollutants) {
+          key <- paste(radius_km, pollutant, sep = "_")
+          label <- if (pollutant == "pm10") "PM10" else "PM2.5"
+          plots[[key]] <- plot_station_distance_trend(
+            dt = sao_paulo_station_coverage[[key]],
+            city_label = "Sao Paulo",
+            pollutant = label,
+            radius_km = radius_km)
+        }
+      }
+      plots
+    }, packages = "data.table"),
+
+  targets::tar_target(sao_paulo_station_education_plots,
+    {
+      paper_font
+      set_paper_theme()
+      plots <- list()
+      plots$avg_pollution <- plot_dual_pollutant_station_scatter(
+        station_dt = sao_paulo_station_plot_data,
+        city_label = "Sao Paulo",
+        y_pm10 = "avg_pm10",
+        y_pm25 = "avg_pm25",
+        title = "Annual average concentration in 2023",
+        y_left = "PM10 annual average",
+        y_right = "PM2.5 annual average")
+      plots$hours_it1 <- plot_dual_pollutant_station_scatter(
+        station_dt = sao_paulo_station_plot_data,
+        city_label = "Sao Paulo",
+        y_pm10 = "hrs_d_pm10_it1",
+        y_pm25 = "hrs_d_pm25_it1",
+        title = "Hours above WHO IT1 threshold in 2023",
+        y_left = "PM10 hours above IT1",
+        y_right = "PM2.5 hours above IT1")
+      plots$hours_it2 <- plot_dual_pollutant_station_scatter(
+        station_dt = sao_paulo_station_plot_data,
+        city_label = "Sao Paulo",
+        y_pm10 = "hrs_d_pm10_it2",
+        y_pm25 = "hrs_d_pm25_it2",
+        title = "Hours above WHO IT2 threshold in 2023",
+        y_left = "PM10 hours above IT2",
+        y_right = "PM2.5 hours above IT2")
+      plots
+    }, packages = "data.table"),
+
+  targets::tar_target(sao_paulo_station_monitoring_files,
+    {
+      paper_font
+      set_paper_theme()
+      out_dir <- here::here("results", "figures", "monitoring")
+      dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+      files <- character()
+      for (radius_km in monitoring_radii_km) {
+        radius_tag <- if (radius_km == 3) "3km_v2" else paste0(radius_km, "km")
+        for (pollutant in summary_pollutants) {
+          key <- paste(radius_km, pollutant, sep = "_")
+          tag <- if (pollutant == "pm10") "" else "_pm25"
+          file <- here::here(out_dir, paste0("stations_dis_num_saopaulo_",
+            radius_tag, tag, ".pdf"))
+          ggplot2::ggsave(
+            filename = file,
+            plot = sao_paulo_station_distance_plots[[key]],
+            device = grDevices::cairo_pdf,
+            width = 8.5,
+            height = 5.8,
+            dpi = 300,
+            bg = "white",
+            limitsize = FALSE)
+          files <- c(files, file)
+        }
+      }
+      file <- here::here(out_dir, "sao_paulo_2010_avg_pm10_pm25_vs_education.png")
+      ggplot2::ggsave(
+        filename = file,
+        plot = sao_paulo_station_education_plots$avg_pollution,
+        width = 8.5,
+        height = 5.8,
+        dpi = 300,
+        bg = "white",
+        limitsize = FALSE)
+      files <- c(files, file)
+      file <- here::here(out_dir, "sao_paulo_2010_hours_it1_pm10_pm25_vs_education.png")
+      ggplot2::ggsave(
+        filename = file,
+        plot = sao_paulo_station_education_plots$hours_it1,
+        width = 8.5,
+        height = 5.8,
+        dpi = 300,
+        bg = "white",
+        limitsize = FALSE)
+      files <- c(files, file)
+      file <- here::here(out_dir, "sao_paulo_2010_hours_it2_pm10_pm25_vs_education.png")
+      ggplot2::ggsave(
+        filename = file,
+        plot = sao_paulo_station_education_plots$hours_it2,
+        width = 8.5,
+        height = 5.8,
+        dpi = 300,
+        bg = "white",
+        limitsize = FALSE)
+      files <- c(files, file)
+      files
+    }, format = "file", packages = "data.table"),
+
+  targets::tar_target(sao_paulo_population_map,
+    {
+      paper_font
+      set_paper_theme()
+      sf::sf_use_s2(TRUE)
+      plot_population_density_map(
+        metro_sf = sao_paulo_2010_distance_geography,
+        stations_sf = sao_paulo_distance_stations,
+        arrow_dir = sao_paulo_pollution_parquet[basename(sao_paulo_pollution_parquet) ==
+          "sao_paulo_metro_dataset"],
+        census_df = sao_paulo_collapsed_census,
+        join_sf_col = "code_weighting",
+        join_df_col = "geo_id",
+        station_col = "station_name",
+        year_filter = analysis_year,
+        city_label = "São Paulo")
+    }, packages = "data.table"),
+
+  targets::tar_target(sao_paulo_education_map,
+    {
+      paper_font
+      set_paper_theme()
+      sf::sf_use_s2(TRUE)
+      plot_inequality_pollution(
+        metro_sf = sao_paulo_2010_distance_geography,
+        stations_sf = sao_paulo_distance_stations,
+        arrow_dir = sao_paulo_pollution_parquet[basename(sao_paulo_pollution_parquet) ==
+          "sao_paulo_metro_dataset"],
+        census_df = sao_paulo_collapsed_census,
+        join_sf_col = "code_weighting",
+        join_df_col = "geo_id",
+        station_col = "station_name",
+        year_filter = analysis_year,
+        ed_col = "education_mean",
+        pop_col = "pop_total",
+        buffer_km = station_context_buffer_km,
+        city_label = "")
+    }, packages = "data.table"),
+
+  targets::tar_target(sao_paulo_exposure_quintile_weights,
+    {
+      compute_exposure_quintile_weights(
+        groups_file = sao_paulo_2010_idw[basename(sao_paulo_2010_idw) ==
+          "sao_paulo_2010_indiv_groups.parquet"])
+    }, packages = "data.table"),
+
+  targets::tar_target(sao_paulo_density_exposure,
+    {
+      exposure <- list()
+      for (radius_km in exposure_density_radii_km) {
+        filename <- sprintf("sao_paulo_2010_%dkm_idw_exposure.parquet", radius_km)
+        exposure[[as.character(radius_km)]] <- arrow::read_parquet(
+          sao_paulo_2010_idw[basename(sao_paulo_2010_idw) == filename])
+      }
+      exposure
+    }, packages = "data.table"),
+
+  targets::tar_target(sao_paulo_exposure_density_plots,
+    {
+      paper_font
+      set_paper_theme()
+      plots <- list()
+      for (radius_km in exposure_density_radii_km) {
+        for (pollutant in summary_pollutants) {
+          key <- paste(radius_km, pollutant, sep = "_")
+          plots[[key]] <- plot_exposure_density_by_quintile(
+            exposure = sao_paulo_density_exposure[[as.character(radius_km)]],
+            quintile_weights = sao_paulo_exposure_quintile_weights,
+            city_id = "sao_paulo_2010",
+            buffer_km = radius_km,
+            pollutant = pollutant,
+            city_label = "São Paulo",
+            year_filter = analysis_year)
+        }
+      }
+      plots
+    }, packages = "data.table"),
+
+  targets::tar_target(sao_paulo_exposure_density_files,
+    {
+      paper_font
+      set_paper_theme()
+      out_dir <- here::here("results", "figures", "exposure")
+      dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+      files <- character()
+      for (radius_km in exposure_density_radii_km) {
+        tag <- if (radius_km == 3) "" else "_v2"
+        for (pollutant in summary_pollutants) {
+          key <- paste(radius_km, pollutant, sep = "_")
+          file <- here::here(out_dir, paste0("distribution_3km_saopaulo_",
+            pollutant, tag, ".pdf"))
+          ggplot2::ggsave(
+            filename = file,
+            plot = sao_paulo_exposure_density_plots[[key]],
+            device = grDevices::cairo_pdf,
+            width = 8,
+            height = 5.5,
+            dpi = 300,
+            bg = "white",
+            limitsize = FALSE)
+          files <- c(files, file)
+        }
+      }
+      files
+    }, format = "file", packages = "data.table"),
 
   targets::tar_target(figure_station_scatter,
-    write_figure_station_scatter(
-      figure_station_scatter_data,
-      inputs = c(compute_station_scatter_inputs,
-        paper_manifest, paper_font)),
-    format = "file", packages = pipeline_packages("plot")),
+    {
+      c(
+        bogota_station_scatter_files,
+        cdmx_station_scatter_files,
+        santiago_station_scatter_files,
+        sao_paulo_station_scatter_files)
+    }, format = "file", packages = "data.table"),
 
-  targets::tar_target(figure_population_density_maps_data,
-    read_figure_population_density_maps_data(
-      c(geography, stations, census, pollution, paper_manifest, paper_font)
-    ), format = "rds", packages = pipeline_packages("plot")),
-
-  targets::tar_target(figure_population_density_maps,
-    write_figure_population_density_maps(
-      figure_population_density_maps_data,
-      inputs = c(geography,
-        stations, census, pollution, paper_manifest, paper_font)),
-    format = "file", packages = pipeline_packages("plot")),
-
-  targets::tar_target(figure_pollution_quintile_maps_data,
-    read_figure_pollution_quintile_maps_data(
-      c(geography, stations, census, pollution, paper_manifest, paper_font)
-    ), format = "rds", packages = pipeline_packages("plot")),
-
-  targets::tar_target(figure_pollution_quintile_maps,
-    write_figure_pollution_quintile_maps(
-      figure_pollution_quintile_maps_data,
-      inputs = c(geography,
-        stations, census, pollution, paper_manifest, paper_font)),
-    format = "file", packages = pipeline_packages("plot")),
-
-  targets::tar_target(figure_kernel_distributions_data,
-    read_figure_kernel_distributions_data(
-      c(outliers, paper_manifest, paper_font)
-    ), format = "rds", packages = pipeline_packages("plot")),
-
-  targets::tar_target(figure_kernel_distributions,
-    write_figure_kernel_distributions(
-      figure_kernel_distributions_data,
-      inputs = c(outliers,
-        paper_manifest, paper_font)),
-    format = "file", packages = pipeline_packages("plot")),
-
-  targets::tar_target(figure_quintile_kernel_distributions_data,
-    read_figure_quintile_kernel_distributions_data(
-      c(idw, paper_manifest, paper_font)
-    ), format = "rds", packages = pipeline_packages("plot")),
+  targets::tar_target(plot_station_monitoring_figures,
+    {
+      c(
+        bogota_station_monitoring_files,
+        cdmx_station_monitoring_files,
+        santiago_station_monitoring_files,
+        sao_paulo_station_monitoring_files)
+    }, format = "file", packages = "data.table"),
 
   targets::tar_target(figure_quintile_kernel_distributions,
-    write_figure_quintile_kernel_distributions(
-      figure_quintile_kernel_distributions_data,
-        inputs = c(idw, paper_manifest, paper_font)),
-    format = "file", packages = pipeline_packages("plot")),
+    {
+      c(
+        bogota_exposure_density_files,
+        cdmx_exposure_density_files,
+        santiago_exposure_density_files,
+        sao_paulo_exposure_density_files)
+    }, format = "file", packages = "data.table"),
 
-  targets::tar_target(figure_station_temporal_data,
-    read_figure_station_temporal_data(
-      c(prepare_station_temporal, paper_manifest, paper_font)
-    ), format = "rds", packages = pipeline_packages("plot")),
+  targets::tar_target(figure_population_density_maps,
+    {
+      paper_font
+      set_paper_theme()
+      out_dir <- here::here("results", "figures", "maps")
+      dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+      files <- character()
+      file <- here::here(out_dir, "bogota_population_density_map.pdf")
+      ggplot2::ggsave(
+        filename = file,
+        plot = bogota_population_map,
+        device = grDevices::cairo_pdf,
+        width = 8,
+        height = 8,
+        dpi = 300,
+        limitsize = FALSE)
+      files <- c(files, file)
+      file <- here::here(out_dir, "mexico_population_density_map.pdf")
+      ggplot2::ggsave(
+        filename = file,
+        plot = cdmx_population_map,
+        device = grDevices::cairo_pdf,
+        width = 8,
+        height = 8,
+        dpi = 300,
+        limitsize = FALSE)
+      files <- c(files, file)
+      file <- here::here(out_dir, "santiago_population_density_map.pdf")
+      ggplot2::ggsave(
+        filename = file,
+        plot = santiago_population_map,
+        device = grDevices::cairo_pdf,
+        width = 8,
+        height = 8,
+        dpi = 300,
+        limitsize = FALSE)
+      files <- c(files, file)
+      file <- here::here(out_dir, "saopaulo_population_density_map.pdf")
+      ggplot2::ggsave(
+        filename = file,
+        plot = sao_paulo_population_map,
+        device = grDevices::cairo_pdf,
+        width = 8,
+        height = 8,
+        dpi = 300,
+        limitsize = FALSE)
+      files <- c(files, file)
+      files
+    }, format = "file", packages = "data.table"),
+
+  targets::tar_target(figure_pollution_quintile_maps,
+    {
+      paper_font
+      set_paper_theme()
+      out_dir <- here::here("results", "figures", "maps")
+      dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+      files <- character()
+      file <- here::here(out_dir, "map_bogota_3km.pdf")
+      ggplot2::ggsave(
+        filename = file,
+        plot = bogota_education_map,
+        device = grDevices::cairo_pdf,
+        width = 12,
+        height = 8,
+        dpi = 300,
+        bg = "white",
+        limitsize = FALSE)
+      files <- c(files, file)
+      file <- here::here(out_dir, "map_mexico_3km.pdf")
+      ggplot2::ggsave(
+        filename = file,
+        plot = cdmx_education_map,
+        device = grDevices::cairo_pdf,
+        width = 12,
+        height = 8,
+        dpi = 300,
+        bg = "white",
+        limitsize = FALSE)
+      files <- c(files, file)
+      file <- here::here(out_dir, "map_santiago_3km_dc.pdf")
+      ggplot2::ggsave(
+        filename = file,
+        plot = santiago_education_map,
+        device = grDevices::cairo_pdf,
+        width = 12,
+        height = 8,
+        dpi = 300,
+        bg = "white",
+        limitsize = FALSE)
+      files <- c(files, file)
+      file <- here::here(out_dir, "map_saopaulo_3km.pdf")
+      ggplot2::ggsave(
+        filename = file,
+        plot = sao_paulo_education_map,
+        device = grDevices::cairo_pdf,
+        width = 12,
+        height = 8,
+        dpi = 300,
+        bg = "white",
+        limitsize = FALSE)
+      files <- c(files, file)
+      files
+    }, format = "file", packages = "data.table"),
+
+  targets::tar_target(kernel_distribution_plots,
+    {
+      paper_font
+      set_paper_theme()
+      city_panels <- list("Bogotá" = bogota_outliers, "Mexico City" = cdmx_outliers,
+        "São Paulo" = sao_paulo_outliers, "Santiago" = santiago_outliers)
+      density_pm10 <- density_pm25 <- list()
+      for (year in c(analysis_year, kernel_reference_years)) {
+        key <- as.character(year)
+        pm25_limit <- if (year == analysis_year) kernel_pm25_limit else
+        kernel_pm25_reference_limit
+        density_pm10[[key]] <- plot_kernel_density_by_city(
+          city_data = city_panels,
+          pollutant = "pm10",
+          year = year,
+          x_max = kernel_pm10_limit,
+          city_colours = kernel_city_colours,
+          city_linetypes = kernel_city_linetypes,
+          fill_alpha = 0,
+          legend_position = "bottom")
+        density_pm25[[key]] <- plot_kernel_density_by_city(
+          city_data = city_panels,
+          pollutant = "pm25",
+          year = year,
+          x_max = pm25_limit,
+          city_colours = kernel_city_colours,
+          city_linetypes = kernel_city_linetypes,
+          fill_alpha = 0,
+          legend_position = "bottom")
+      }
+      exceedance_pm10 <- plot_exceedance_shares(
+        city_data = city_panels,
+        pollutant = "pm10",
+        year = analysis_year,
+        legend_position = "bottom")
+      exceedance_pm25 <- plot_exceedance_shares(
+        city_data = city_panels,
+        pollutant = "pm25",
+        year = analysis_year,
+        legend_position = "bottom")
+      list(pm10 = density_pm10, pm25 = density_pm25,
+        exceedance = cowplot::plot_grid(exceedance_pm10, exceedance_pm25, nrow = 2))
+    }, packages = "data.table"),
+
+  targets::tar_target(figure_kernel_distributions,
+    {
+      paper_font
+      set_paper_theme()
+      out_dir <- here::here("results", "figures", "temporal")
+      dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+      files <- character()
+      for (year in c(analysis_year, kernel_reference_years)) {
+        key <- as.character(year)
+        tag <- if (year == analysis_year) "" else paste0("_", year)
+        file <- here::here(out_dir, paste0("all", tag, ".pdf"))
+        ggplot2::ggsave(
+          filename = file,
+          plot = kernel_distribution_plots$pm10[[key]],
+          device = grDevices::cairo_pdf,
+          width = 16,
+          height = 9,
+          dpi = 300,
+          limitsize = FALSE)
+        files <- c(files, file)
+        file <- here::here(out_dir, paste0("all_pm25", tag, ".pdf"))
+        ggplot2::ggsave(
+          filename = file,
+          plot = kernel_distribution_plots$pm25[[key]],
+          device = grDevices::cairo_pdf,
+          width = 16,
+          height = 9,
+          dpi = 300,
+          limitsize = FALSE)
+        files <- c(files, file)
+      }
+      file <- here::here(out_dir, "exceedance_shares.pdf")
+      ggplot2::ggsave(
+        filename = file,
+        plot = kernel_distribution_plots$exceedance,
+        device = grDevices::cairo_pdf,
+        width = 16,
+        height = 12,
+        dpi = 300,
+        limitsize = FALSE)
+      c(files, file)
+    }, format = "file", packages = "data.table"),
+
+  targets::tar_target(bogota_station_temporal_data,
+    {
+      read.csv(prepare_station_temporal[basename(prepare_station_temporal) ==
+        "bogota_pm25_stations_merra2.csv"])
+    }, packages = "data.table"),
+
+  targets::tar_target(bogota_station_temporal_plots,
+    {
+      paper_font
+      set_paper_theme()
+      bar <- plot_hourly_avg_pollution(
+        df = bogota_station_temporal_data,
+        region_name = "Bogota",
+        plot_ci = TRUE,
+        bar_width = 0.7)
+      ridge <- plot_hourly_ridgeline_pollution(
+        df = bogota_station_temporal_data,
+        region_name = "Bogota",
+        pollution_var = "pm25_stations") +
+      ggplot2::labs(title = NULL) + ggplot2::theme(plot.title = ggplot2::element_blank())
+      list(bar = bar, ridge = ridge)
+    }, packages = "data.table"),
+
+  targets::tar_target(cdmx_station_temporal_data,
+    {
+      read.csv(prepare_station_temporal[basename(prepare_station_temporal) ==
+        "ciudad_mexico_pm25_stations_merra2.csv"])
+    }, packages = "data.table"),
+
+  targets::tar_target(cdmx_station_temporal_plots,
+    {
+      paper_font
+      set_paper_theme()
+      bar <- plot_hourly_avg_pollution(
+        df = cdmx_station_temporal_data,
+        region_name = "Ciudad de México",
+        plot_ci = TRUE,
+        bar_width = 0.7)
+      ridge <- plot_hourly_ridgeline_pollution(
+        df = cdmx_station_temporal_data,
+        region_name = "Ciudad de México",
+        pollution_var = "pm25_stations") +
+      ggplot2::labs(title = NULL) + ggplot2::theme(plot.title = ggplot2::element_blank())
+      list(bar = bar, ridge = ridge)
+    }, packages = "data.table"),
+
+  targets::tar_target(santiago_station_temporal_data,
+    {
+      read.csv(prepare_station_temporal[basename(prepare_station_temporal) ==
+        "santiago_pm25_stations_merra2.csv"])
+    }, packages = "data.table"),
+
+  targets::tar_target(santiago_station_temporal_plots,
+    {
+      paper_font
+      set_paper_theme()
+      bar <- plot_hourly_avg_pollution(
+        df = santiago_station_temporal_data,
+        region_name = "Santiago",
+        plot_ci = TRUE,
+        bar_width = 0.7)
+      ridge <- plot_hourly_ridgeline_pollution(
+        df = santiago_station_temporal_data,
+        region_name = "Santiago",
+        pollution_var = "pm25_stations") +
+      ggplot2::labs(title = NULL) + ggplot2::theme(plot.title = ggplot2::element_blank())
+      list(bar = bar, ridge = ridge)
+    }, packages = "data.table"),
+
+  targets::tar_target(sao_paulo_station_temporal_data,
+    {
+      read.csv(prepare_station_temporal[basename(prepare_station_temporal) ==
+        "sao_paulo_pm25_stations_merra2.csv"])
+    }, packages = "data.table"),
+
+  targets::tar_target(sao_paulo_station_temporal_plots,
+    {
+      paper_font
+      set_paper_theme()
+      bar <- plot_hourly_avg_pollution(
+        df = sao_paulo_station_temporal_data,
+        region_name = "São Paulo",
+        plot_ci = TRUE,
+        bar_width = 0.7)
+      ridge <- plot_hourly_ridgeline_pollution(
+        df = sao_paulo_station_temporal_data,
+        region_name = "São Paulo",
+        pollution_var = "pm25_stations") +
+      ggplot2::labs(title = NULL) + ggplot2::theme(plot.title = ggplot2::element_blank())
+      list(bar = bar, ridge = ridge)
+    }, packages = "data.table"),
+
+  targets::tar_target(station_temporal_episode_plots,
+    {
+      paper_font
+      set_paper_theme()
+      city_series <- list("Bogota" = bogota_station_temporal_data,
+        "Santiago" = santiago_station_temporal_data,
+        "Ciudad de México" = cdmx_station_temporal_data,
+        "São Paulo" = sao_paulo_station_temporal_data)
+      plots <- list()
+      for (target in c("IT1", "IT2")) {
+        plots[[target]] <- plot_time_spans_ridgeline(
+          list_of_dfs = city_series,
+          target = target,
+          pollution_var = "pm25_stations") +
+        ggplot2::labs(title = NULL) + ggplot2::theme(plot.title = ggplot2::element_blank())
+      }
+      plots
+    }, packages = "data.table"),
 
   targets::tar_target(figure_station_temporal,
-    write_figure_station_temporal(
-      figure_station_temporal_data,
-      inputs = c(prepare_station_temporal,
-        paper_manifest, paper_font)),
-    format = "file", packages = pipeline_packages("plot")),
+    {
+      paper_font
+      set_paper_theme()
+      out_dir <- here::here("results", "figures", "temporal")
+      dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+      files <- character()
+      file <- here::here(out_dir, "bogota_bar_plot.pdf")
+      ggplot2::ggsave(
+        filename = file,
+        plot = bogota_station_temporal_plots$bar,
+        device = grDevices::cairo_pdf,
+        width = 16,
+        height = 9,
+        dpi = 300,
+        limitsize = FALSE)
+      files <- c(files, file)
+      file <- here::here(out_dir, "bogota_ridge_plot.pdf")
+      ggplot2::ggsave(
+        filename = file,
+        plot = bogota_station_temporal_plots$ridge,
+        device = grDevices::cairo_pdf,
+        width = 16,
+        height = 9,
+        dpi = 300,
+        limitsize = FALSE)
+      files <- c(files, file)
+      file <- here::here(out_dir, "santiago_bar_plot.pdf")
+      ggplot2::ggsave(
+        filename = file,
+        plot = santiago_station_temporal_plots$bar,
+        device = grDevices::cairo_pdf,
+        width = 16,
+        height = 9,
+        dpi = 300,
+        limitsize = FALSE)
+      files <- c(files, file)
+      file <- here::here(out_dir, "santiago_ridge_plot.pdf")
+      ggplot2::ggsave(
+        filename = file,
+        plot = santiago_station_temporal_plots$ridge,
+        device = grDevices::cairo_pdf,
+        width = 16,
+        height = 9,
+        dpi = 300,
+        limitsize = FALSE)
+      files <- c(files, file)
+      file <- here::here(out_dir, "ciudad_mexico_bar_plot.pdf")
+      ggplot2::ggsave(
+        filename = file,
+        plot = cdmx_station_temporal_plots$bar,
+        device = grDevices::cairo_pdf,
+        width = 16,
+        height = 9,
+        dpi = 300,
+        limitsize = FALSE)
+      files <- c(files, file)
+      file <- here::here(out_dir, "ciudad_mexico_ridge_plot.pdf")
+      ggplot2::ggsave(
+        filename = file,
+        plot = cdmx_station_temporal_plots$ridge,
+        device = grDevices::cairo_pdf,
+        width = 16,
+        height = 9,
+        dpi = 300,
+        limitsize = FALSE)
+      files <- c(files, file)
+      file <- here::here(out_dir, "sao_paulo_bar_plot.pdf")
+      ggplot2::ggsave(
+        filename = file,
+        plot = sao_paulo_station_temporal_plots$bar,
+        device = grDevices::cairo_pdf,
+        width = 16,
+        height = 9,
+        dpi = 300,
+        limitsize = FALSE)
+      files <- c(files, file)
+      file <- here::here(out_dir, "sao_paulo_ridge_plot.pdf")
+      ggplot2::ggsave(
+        filename = file,
+        plot = sao_paulo_station_temporal_plots$ridge,
+        device = grDevices::cairo_pdf,
+        width = 16,
+        height = 9,
+        dpi = 300,
+        limitsize = FALSE)
+      files <- c(files, file)
+      file <- here::here(out_dir, "distribution_hours_above_IT1.pdf")
+      ggplot2::ggsave(
+        filename = file,
+        plot = station_temporal_episode_plots$IT1,
+        device = grDevices::cairo_pdf,
+        width = 16,
+        height = 9,
+        dpi = 300,
+        limitsize = FALSE)
+      files <- c(files, file)
+      file <- here::here(out_dir, "distribution_hours_above_IT2.pdf")
+      ggplot2::ggsave(
+        filename = file,
+        plot = station_temporal_episode_plots$IT2,
+        device = grDevices::cairo_pdf,
+        width = 16,
+        height = 9,
+        dpi = 300,
+        limitsize = FALSE)
+      files <- c(files, file)
+      files
+    }, format = "file", packages = "data.table"),
 
   # Tables: inspect input summaries and LaTeX before writing each file family.
   targets::tar_target(station_table_data,

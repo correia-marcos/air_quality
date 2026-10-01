@@ -138,12 +138,15 @@ check_targets_engine <- function() {
     %in% parents("bogota_metro_2005_sf")))
   check(!"cdmx_config" %in% parents("bogota_geography"))
   check("bogota_2018_distances" %in% parents("bogota_outliers"))
-  check("figure_station_temporal_data" %in% parents("figure_station_temporal"))
-  check("prepare_station_temporal" %in% parents("figure_station_temporal_data"))
-  check("exposure_plot_data" %in% parents("generate_exposure_plots"))
-  check("station_table_data" %in% parents("render_station_tables"))
-  check("idw" %in% parents("figure_quintile_kernel_distributions"))
-  check("estimate_exposure_imputed" %in% parents("generate_exposure_plots"))
+  check("bogota_station_temporal_plots" %in% parents("figure_station_temporal"))
+  check("prepare_station_temporal" %in% parents("bogota_station_temporal_data"))
+  check("exposure_plots" %in% parents("generate_exposure_plots"))
+  check("exposure_plot_data" %in% parents("exposure_plots"))
+  check("station_table_tex" %in% parents("render_station_tables"))
+  check("station_table_data" %in% parents("station_table_tex"))
+  check("bogota_2018_idw" %in% parents("bogota_density_exposure"))
+  check("bogota_exposure_density_files" %in% parents("figure_quintile_kernel_distributions"))
+  check("estimate_exposure_imputed" %in% parents("exposure_plot_data"))
   count
 }
 
