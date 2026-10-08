@@ -1,5 +1,14 @@
 # Machine enforcement and live-client evidence
 
+Current observation, 5 October 2026: Codex CLI 0.155.1 and Claude Code 2.1.267 are installed.
+`/etc/codex/requirements.toml` and its managed hook exist and are root-owned, with a managed
+`research_no_publish` profile and allowed approval policy `never`. This session declares
+Git metadata read-only and forbids escalation. Native Codex rule evaluation forbids add,
+commit and push, and leaves status unmatched; evaluation executes none of those commands.
+Shared adapter tests pass. These observations do not prove every client/tool boundary or
+live Claude hook dispatch. The deployment and fixture account below is historical evidence
+from 21 September; its “not installed” and “Claude absent” statements describe that date.
+
 Status recorded on 21 September 2026 for Codex CLI `0.154.0-alpha.6.2` on macOS.
 The user selected **every Codex project on this Mac** as the deployment scope.
 

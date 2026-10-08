@@ -1,5 +1,9 @@
 # Implementation and evidence
 
+Current status: [station-only migration, 5 October 2026](../planning/station-only-targets-implementation.md).
+The dated records below retain earlier implementation and validation evidence; they are
+not the current execution specification.
+
 ## Station summaries and manuscript figures — 30 September 2026
 
 `compute_station_scatter_inputs.R` exposes four pollution summaries, four socioeconomic
@@ -1017,7 +1021,7 @@ Checks actually run for this revision:
 | Extraction audit | Compared manuscript operation statements with the pre-edit working-tree snapshot and optional resolution call expressions with their original scripts. Reviewed differences are explicit paths, retained result collections, setup/reporting, and explicit replacement of name-based checkpoint lookup. A missing cross-operation resolution collection was corrected. Static comparison is not executed scientific parity. |
 | Transitional scheduler | Make dry run and active sequential runner cover the same 28 manuscript scripts; acquisition remains disabled. No analyses were run by this check. |
 | Required synthetic suite | `Rscript tests/testthat.R --mode=synthetic`, with renv sandbox activation disabled, stopped because the project library lacks `here`. A vanilla fallback found `here` but lacks `testthat`; the full suite did not execute. |
-| Required isolated verification | `Rscript scripts/verification/verify.R --full --targets`, with renv sandbox activation disabled, stopped on missing `here` before Docker execution. No release verification or scientific rebuild occurred. |
+| Required isolated verification | `Rscript tools/reproduction/verify.R --full --targets`, with renv sandbox activation disabled, stopped on missing `here` before Docker execution. No release verification or scientific rebuild occurred. |
 | Manuscript references | No unmapped references or unused manifest destinations for the available draft; check fails on missing `doc/paper/data_appendix.tex`. |
 | Public documentation | 252 local links checked, zero errors; four explicitly local-only targets and three historical pages excluded. Git whitespace check passed. |
 | Preservation | No acquisition or analytical execution occurred. renv.lock SHA-256 remains `272bc378fb6c415c74da9c0742e79acfa3f40360c69c535f7986ac724307ce41`, matching the pre-edit working tree. No dependency installation/upgrade or lockfile regeneration was performed. |

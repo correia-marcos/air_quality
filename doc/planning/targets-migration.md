@@ -1,5 +1,22 @@
 # Readable R scripts and a simpler targets pipeline
 
+## Current implementation — 5 October 2026
+
+Marcos authorized the revised station-only migration plan in the implementation session.
+The manuscript graph now has a 48-line entry point, 14 declaration modules and 340 targets.
+It excludes optional satellite preparation and historical balanced panels. Station-hourly
+checkpoints, an IT2 episode CSV and the five appendix PDFs use current observed cleaned
+partitions. Reproduction tools have moved to `tools/reproduction/`.
+
+See [the current implementation and acceptance record](station-only-targets-implementation.md)
+for exact checks, scientific findings and dependency-complete review groups. Full acceptance
+and the final scheduler cutover remain pending. The CDMX cleaned dataset contains extreme
+PM2.5 readings that require scientific review. Existing data, census vintages and methods
+were preserved. There has been no staging, committing or pushing.
+
+<details>
+<summary>Historical migration and handoff records, through 30 September 2026</summary>
+
 Approved revision, 23 September 2026. **The distance pilot is implemented and its
 readability accepted by Marcos; the four city recipes and their targets are now revised.**
 Outliers, IDW, observed/imputed exposure and hourly imputation now use direct recipes.
@@ -532,8 +549,8 @@ Implementation: [`processing.R`](../../src/city_specific/processing.R),
 [`registry.R`](../../src/city_specific/registry.R),
 `src/pipeline/graph.R` (retired; declarations now in [`_targets.R`](../../_targets.R)),
 `src/pipeline/core.R` (retired on 24 September; calls now live in scripts and targets),
-[`stages`](../../src/pipeline/stages), [`_targets.R`](../../_targets.R),
-[`runner`](../../scripts/run_targets.R), [`verification`](../../scripts/verification/verify.R).
+`src/pipeline/stages/` (retired), [`_targets.R`](../../_targets.R),
+[`runner`](../../scripts/run_targets.R), [`verification`](../../tools/reproduction/verify.R).
 Commands: [HOW_TO_RUN](../HOW_TO_RUN.md#candidate-manuscript-migration-to-targets).
 
 ## Evidence and acceptance limits
@@ -564,7 +581,7 @@ Checked during implementation on 2026-09-22–23:
 - `Rscript tests/testthat.R --mode=synthetic` was attempted. Normal renv activation waited on
   a sandbox lock and was interrupted. With autoload disabled and existing libraries selected,
   R crashed in `brio::read_lines()` before assertions (exit 139).
-- `Rscript scripts/verification/verify.R --full --targets` was attempted with autoload disabled.
+- `Rscript tools/reproduction/verify.R --full --targets` was attempted with autoload disabled.
   R crashed loading a compiled dependency of `sf` (exit 139), before rebuilding or completing a
   report. A separate check also found Docker's default daemon endpoint unavailable.
 - Successful native fixtures emitted a temporary-directory cleanup permission message at process
@@ -736,12 +753,12 @@ _targets.R
 docker-compose.release.yml
 docker-compose.verify.yml
 docker-compose.yml
-scripts/export/export_paper.R
+tools/reproduction/export_paper.R
 scripts/run_pipeline.R
 scripts/run_targets.R
-scripts/verification/check_manuscript.R
-scripts/verification/run_stage.R
-scripts/verification/verify.R
+tools/reproduction/check_manuscript.R
+tools/reproduction/run_stage.R
+tools/reproduction/verify.R
 src/general_utilities/verification_cli.R
 tests/check-targets-engine.R
 tests/testthat/test-results-freshness.R
@@ -775,5 +792,7 @@ tests/check-reader-workflows.R
 tests/testthat/test-pipeline-paths.R
 tests/testthat/test-reader-workflows.R
 ```
+
+</details>
 
 </details>

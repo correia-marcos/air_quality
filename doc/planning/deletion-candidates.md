@@ -1,5 +1,28 @@
 # Deletion candidates
 
+## Current disposition — 23 September 2026
+
+The complete entry-point inventory is [remaining-work.md](remaining-work.md). A script's
+absence from targets is not evidence for removal. No optional or validation analysis was
+deleted in the reader-first revision. Readiness and scientific repair issues belong in
+that inventory; this file records removal proposals only.
+
+| Candidate | Current callers / consumers | Outputs and replacement | Consequence / disposition |
+|---|---|---|---|
+| Makefile manuscript scheduler | HOW_TO_RUN, RStudio Build setting, verification, Make path tests | Derived manuscript files; replace scheduling with `scripts/run_targets.R` and translate optional commands to documented CLI sequences | Removal is gated on isolated scientific acceptance. Keep transitional automation until then. |
+| Sequential body of `scripts/run_pipeline.R` | Manual users and active documentation | Same manuscript products; retain the filename as a targets compatibility launcher | Change only at cutover. It shares scientific functions with targets and is not an independent baseline. |
+| Historical `prepare_station_scatter_data()` | No definition or execution caller found in the current src/scripts tree | Maintained station inputs use `build_station_scatter_inputs()` | Already absent; the August proposal is stale, not a new deletion candidate. |
+| `summarize_stations_by_pollutant()` / `table_stations_by_pollutant()` | No execution callers found in current src/scripts search | Long city/year/pollutant summary and corresponding table; manuscript uses the distinct compact station-count route | Remove as a pair only if that optional long-form product is retired. No deletion now. |
+
+The August claims below are preserved as dated context, not current instructions.
+In particular, `safe_read_parquet()` is used by manuscript input operations and the station
+distance helper; `find_col()` still serves six column selections in `diagnostics.R`; and
+`format_int_latex()` serves three fields in `latex_census_summary()`. Their old script
+filenames/caller counts are superseded. Inlining them would change shared interfaces or
+schema behavior and is not justified by the targets migration.
+
+## Historical August 2026 review
+
 Functions that moved from `scripts/` into `src/` during the Step 4 refactor but look removable.
 **None of these has been deleted.** Each row says what it does, why it looks removable, and what
 breaks if it goes, so the call is yours. Deleting any of them is a one-line change now that they

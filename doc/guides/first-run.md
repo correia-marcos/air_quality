@@ -1,30 +1,72 @@
-# First run: inspect a small example
+# First run: three stations, three distances
 
-This route introduces the repository without acquiring city data. It uses the existing
-synthetic tests and their hand-worked IDW example; it does not reproduce the manuscript.
+Start at the repository root. Use `docker compose up` and open the project in its RStudio
+session, or restore the project packages locally with `renv::restore()` before opening
+`Coding.Rproj`. The local route also needs the system libraries used by sf/terra and Arrow;
+[the setup guide](../HOW_TO_RUN.md#development-and-acquisition) describes both routes.
+Analysis scripts load installed packages; they do not install missing dependencies.
 
-1. Read the [repository map](../ai/architecture.md#repository-layout). Functions live in
-   `src/`; entry-point scripts live in `scripts/`. Open a function and its calling script
-   side by side to see where inputs become outputs.
-2. Use the declared R environment. Follow [environment setup](../HOW_TO_RUN.md#development-and-acquisition)
-   if it is not available. Do not install replacement versions merely to make a test pass.
-3. From the repository root, run:
+Open `Coding.Rproj` in RStudio with the restored project environment. This example
+needs no city data. Three stations form a triangle with sides 3, 4 and 5 kilometres.
+We can check each number before following the four-city analysis.
 
-   ```sh
-   Rscript tests/testthat.R --mode=synthetic
-   ```
+## Read the definitions and create the stations
 
-   Read the final counts and exit status. Missing packages or startup failures mean the
-   check did not complete. The synthetic suite requires its declared dependencies, but
-   does not require the full city source datasets.
-4. Work through the [IDW toy example](../reference/idw_golden_test.md), then open
-   [its test](../../tests/testthat/test-idw-exposure-golden.R). Check a missing station
-   reading and a zero-distance pair against the hand calculation. This connects one
-   mathematical claim to an executable check.
-5. Consult the [data dictionary](../reference/data_dictionary.md) before interpreting
-   real interim/processed tables. When authorized city inputs are available, follow
-   the [run guide](../HOW_TO_RUN.md) and inspect stage outputs in RStudio. Do not infer
-   that a historical intermediate proves fresh source-to-output execution.
+```r
+source(here::here("src", "general_utilities", "base_utils.R"))
+source(here::here("src", "general_utilities", "process", "distances.R"))
 
-Next: [review coverage and its limits](../ai/methods-tests.md), or
-[contribute a bounded change](contributing.md).
+crs <- aeqd_crs(0, 0)
+stations <- sf::st_as_sf(
+  data.frame(station = c("A", "B", "C"),
+             x = c(0, 3000, 0), y = c(0, 0, 4000)),
+  coords = c("x", "y"), crs = crs
+)
+```
+
+The coordinates are metres on this projected grid. A is at the origin; B is 3 km
+away horizontally and C is 4 km away vertically. Their separation is
+`sqrt(3^2 + 4^2) = 5` km. Inspect `stations` in RStudio.
+
+## Compute the distances
+
+```r
+distances <- compute_distance_matrices(
+  stations_sf = stations,
+  station_id_col = "station",
+  distance_metric = "aeqd",
+  evaluation_crs = crs
+)
+distances$station_matrix
+stopifnot(nrow(distances$station_matrix) == 9L)
+```
+
+The table contains every ordered pair: A–B and B–A both have distance 3; A–C and
+C–A have distance 4; B–C and C–B have distance 5. A station's distance to itself
+is zero. `geo_station_matrix` is NULL because we supplied no geographic polygons.
+The function has not saved an analytical output.
+
+## Save the result
+
+```r
+files <- write_distance_matrices(
+  result = distances,
+  out_dir = here::here("data", "interim", "distance_example")
+)
+saved_distances <- arrow::read_parquet(files[["stations"]])
+```
+
+`saved_distances` is the same table, read from its Parquet checkpoint.
+[The synthetic check](../../tests/testthat/test-distance-matrices.R) tests this triangle
+and the computation/saving contract. It is a small calculation, not a manuscript run.
+
+For real data, open
+[generate_distance_matrices.R](../../scripts/process_data/generate_distance_matrices.R).
+Its first section reads the station and geographic files. Its second section calls the
+same function five times, including both Santiago geographic vintages. Its third section
+saves the results in matching order. The geographic matrix connects each geographic unit
+to stations; the [IDW example worked by hand](../reference/idw_golden_test.md) shows how
+those distances become exposure estimates.
+
+Use [HOW_TO_RUN](../HOW_TO_RUN.md) for environment setup, the complete analysis, and
+verification. You do not need to learn targets to follow the individual script.

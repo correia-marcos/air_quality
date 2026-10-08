@@ -3,6 +3,8 @@
 This directory is the canonical source for Claude, Codex, and other assistants.
 Read architecture.md at task start, then load only the relevant guidance below.
 Edit the shared source once; native wrappers contain discovery metadata and links.
+The highest structural priority is [inspection in RStudio](architecture.md#the-reader-is-a-human-not-just-a-machine).
+Load that requirement before creating scripts, functions, figures, or structural changes.
 
 | Task | Read |
 |---|---|

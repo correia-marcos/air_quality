@@ -56,8 +56,6 @@ Two tracks live in one repo:
 src/                 Functions (logic). Sourced, never run directly.
   city_specific/      One module per city + registry.R (dispatch by city id)
                        processing.R input/output contracts; preparation.R offline stages
-  pipeline/           Transitional loader/adapters awaiting the remaining migration
-    stages/            Two temporal preparation adapters still awaiting migration
   general_utilities/
     base_utils.R        The one copy of each shared helper. No packages, no side effects.
     setup_packages.R    ensure_installed() / attach_packages()
@@ -75,7 +73,9 @@ scripts/             Execution. Each script sources the src/ it needs, then runs
   validation_old_version/  Legacy comparison + Quarto reports
   run_pipeline.R      Transitional sequential runner, pending scientific acceptance
   run_targets.R       Candidate incremental manuscript runner; explicit stage selection
-_targets.R           Candidate manuscript graph with explicit target declarations
+_targets.R           Small candidate manuscript graph entry point
+config/targets/      Ordinary target declarations grouped by scientific stage
+tools/reproduction/  Verification, stage reporting, manifest checks and export
 config/analysis_settings.R  Plain named choices shared by migrated scripts and targets
 data/                raw/ interim/ processed/ downloads/ _legacy/   (all git-ignored)
 results/             Only figures/ (seven topic folders) and tables/ (flat).
@@ -85,6 +85,12 @@ data/validation/     Ignored legacy comparison artifacts and HTML.
 
 Scripts are named for what they produce, never numbered. The complete entry-point inventory
 is `doc/planning/remaining-work.md`; tests require exactly one row per script/report.
+The candidate graph combines literal target lists from `config/targets/` using base
+`source(..., local = TRUE)$value`. Scientific logic stays in `src/`; declaration modules
+show names, dependencies and output paths. Explicit common package defaults replace
+incidental package attachment. Station temporal preparation uses current observed cleaned
+partitions, never optional satellite inputs. PDF writers preserve explicit rendering options.
+Worker font/theme setup remains where plots are built or rendered.
 The candidate graph uses ordinary `tar_target()` declarations. Until acceptance, the
 Makefile and sequential runner remain transitional and their paths must also stay valid.
 After acceptance, remove Makefile and its RStudio build setting; make `run_pipeline.R`
@@ -140,12 +146,12 @@ must not install packages, acquire data or run an analysis.
   declared source inputs read-only and derived/output roots writable.
 - **Manuscript pipeline:** `make all` or
   `source(here::here("scripts", "run_pipeline.R"))` runs the maintained manuscript stages,
-  including preserved temporal preparation. `make merra2` is optional supporting analysis.
-- **Isolated verification:** `Rscript scripts/verification/verify.R --full` rebuilds derived
+  including station-only hourly preparation. `make merra2` is optional supporting analysis.
+- **Isolated verification:** `Rscript tools/reproduction/verify.R --full` rebuilds derived
   outputs with source mounts read-only and runtime networking disabled.
 - **Migration candidate:** `make targets STAGE=bogota_geography` runs the preparation pilot;
   `make targets` selects manuscript export and its prerequisites. `make targets-outdated`
-  inspects that selection. `Rscript scripts/verification/verify.R --full --targets` requests
+  inspects that selection. `Rscript tools/reproduction/verify.R --full --targets` requests
   a fresh isolated targets store and records target metadata. These commands require restored
   dependencies and preserved inputs; they do not establish acceptance merely by existing.
 - **One stage:** run the relevant script in `scripts/`; each is self-contained via `here::here()`.

@@ -1,6 +1,7 @@
 # Workflow inventory and remaining work
 
-Updated 30 September 2026. Every R entry point and Quarto report under scripts/ has
+Updated 6 October 2026; individual execution records retain their original dates.
+Every R entry point and Quarto report under scripts/ has
 one row below. Targets declarations own manuscript dependencies; scripts remain
 executable RStudio recipes. The inventory is descriptive, not another scheduler.
 
@@ -85,6 +86,246 @@ and Casa Victorio PM10 skipped fitting; the other four reported Bogotá series w
 for zero residual degrees of freedom. The five reported São Paulo PM2.5 series filled
 26, 53, 23, 20 and 20 gaps respectively (Capão Redondo, Carapicuíba, Interlagos, Santo Amaro,
 Taboão da Serra). These are December-slice checks, not a full-year or downstream rerun.
+
+## Parameterized particulate screening and execution corrections
+
+**6 October 2026 — implementation approved by Marcos.** A configurable quality hold for
+PM2.5 and PM10 now precedes statistical cleaning across all four cities. Defaults are
+500/1,000 µg/m³; equality passes, and above-bound values remain preserved but withheld
+pending documented review. Implementation is separate from scientific acceptance. Its
+effects on analytical inputs and usable reporting-station counts require review apart from
+the structural migration. See the [parameter and dataset contract](../reference/particulate_quality.md).
+
+### Evidence and the recommended common policy
+
+The local [CDMX source-to-clean audit](../audits/procedures/cdmx-source-quality/2026-10-06-source-to-clean.md)
+traces the retained 79,999 µg/m³ PM2.5 observation to an explicit value in an unvalidated
+SINAICA download. It is below its contaminated station-month p99 of 80,532.76, so the
+current rule never screens it. Other extremes pass temporal or spatial checks whose
+benchmarks also contain suspect values. Tightening the percentile alone would not
+reliably address persistent errors or sparse, contaminated months.
+
+The approved screening applies to **standardized hourly panels, after the existing source
+aggregation and before statistical benchmarks**, including boundary-hour donors. Original
+downloads and standardized values remain preserved. A statistical pass cannot override a
+quality hold. Source selection, averaging, p99, SD tolerances, fallbacks and the source
+clock remain unchanged. This does not screen every unaggregated contributing source record.
+
+| Condition | Implemented action or explicit boundary |
+|---|---|
+| Negative or nonfinite concentration | Preserve the original record; represent it as missing in the analytical copy. Negative masking already precedes averaging. |
+| Zero concentration | Keep the existing nonnegative-value rule. Current code accepts `>= 0`, not strictly positive values. Any detection-limit treatment requires a separate documented decision. |
+| Agency-invalid flag, documented invalid sentinel, or documented monitor-range failure | Exclude the affected measurement or documented affected interval, with a reason and supporting evidence. Obtain instrument/range information rather than infer it from an air-quality index. |
+| Hourly PM2.5 **> 500 µg/m³** or hourly PM10 **> 1,000 µg/m³** | Hold pending review independently of p99 and source validation status. These configurable project review triggers are not physical maxima. |
+| Repeated or quantized values, abrupt scale changes, prolonged flat segments, or same-hour PM2.5 > PM10 | Deferred for coauthor discussion; no corresponding exclusion rule is activated. |
+| Flagged record or period with unresolved quality concerns | Mark `pending_review`; withhold it from analytical calculations until a documented review retains it or excludes it. This also applies to a suspicious value from a validated feed. |
+| Reviewed, credible extreme event | Retain its original concentration and the evidence supporting that decision. Do not winsorize it or replace it with the review threshold. |
+
+The selected bounds are supported by examples rather than a universal cap.
+[SINAICA Manual 5](https://sinaica.inecc.gob.mx/archivo/guias/5%20-%20Protocolo%20de%20Manejo%20de%20Datos%20de%20la%20Calidad%20del%20Aire.pdf),
+§3.2.1.1 and Cuadro 3 (printed p. 17), lists **both 0–500 and 0–1,000 µg/m³ for each
+particulate pollutant**, with local operating limits potentially differing. It does not
+assign one range to PM2.5 and the other to PM10. Our differing defaults are project choices.
+The [current BAM-1020 datasheet](https://metone.com/wp-content/uploads/2026/03/MetOne-BAM-1020-Datasheet-v2.2-20260319-1.pdf)
+reports a measurement range extending to 10,000 µg/m³; the
+[older manual](https://metone.com/wp-content/uploads/2019/05/BAM-1020-9800-Manual-Rev-W.pdf)
+(§§6.2, 6.11.2) distinguishes configured analog ranges and extended reporting. No source
+confirms those instruments, channels or settings at CALPULALPAN in 2023. Instrument-specific
+specifications remain unresolved. The
+[EPA's 2021 data-validation guidance](https://www.epa.gov/system/files/documents/2021-10/data-validation-guidance-document-final-august-2021.pdf)
+(§3.2, printed pp. 42–44) describes automated flags followed by review of supporting
+records. The [INECC 2013 national report](https://sinaica.inecc.gob.mx/archivo/informes/Informe2013.pdf)
+(§3.1, printed pp. 117–118) similarly reviews suspicious patterns with network operators
+and their operating logs. Its historical exclusion of zeros is not adopted here.
+A [primary field study of prescribed-fire smoke](https://amt.copernicus.org/articles/11/1087/2018/)
+reported a 24-hour PM2.5 mean of 915 µg/m³: 500 cannot be defended as an absolute physical
+limit. That different setting does not substantiate the CDMX measurements.
+
+A new read-only scan of the existing 2023 partitions gives the following diagnostic
+counts. They do not establish source validity or the effect of a new cleaning pipeline.
+
+| City | Input PM2.5 > 500 | Cleaned PM2.5 > 500 | Input PM10 > 1,000 | Cleaned PM10 > 1,000 |
+|---|---:|---:|---:|---:|
+| Bogotá | 0 | 0 | 0 | 0 |
+| CDMX | 56 | 16 | 5 | 0 |
+| Santiago | 0 | 0 | 0 | 0 |
+| São Paulo | 0 | 0 | 2 | 0 |
+
+Evidence is local-only: `data/verification/pm-quality-policy-20261006/` contains the
+R script, summaries, station counts, environment record and input hashes. All consumed
+partition hashes remained unchanged. A first Homebrew R attempt failed while loading
+the existing `data.table` library; the completed scan used Framework R 4.6.1 and the
+matching project library. This is an executed scan, not a source rebuild or reproduction.
+
+### CDMX disposition and source-status fields
+
+**Superseded early 6 October recommendation:** placing CALPULALPAN's whole 2023 PM2.5
+series on a provisional hold is now deferred. The approved implementation retains its
+catalog membership and station-year rows and applies reading-level bounds. The earlier
+negative readings, sparse months and numerical lattice remain dated audit findings;
+they do not prove that every reading is erroneous or justify an inferred scaling correction.
+Whole-series or interval dispositions require coauthor review of source and operating evidence.
+
+Eight of the 27 stations with finite 2023 PM2.5 use the matched secondary feed:
+Biblioteca, Centro de Salud, Estación de Bomberos de Cd. Sahagún, Primaria Melchor Ocampo,
+Primaria Revolución, Universidad Tecnológica de Tula Tepeji, Cuernavaca 01 and Calpulalpan.
+[SINAICA's raw-data portal](https://sinaica.inecc.gob.mx/data.php?tipo=C) explicitly describes
+its readings as preliminary and unvalidated; the
+[validated-data portal](https://sinaica.inecc.gob.mx/data.php?tipo=V) reports a different
+validation status. Unvalidated does not by itself mean incorrect. Recommend preserving
+these source distinctions and reviewing eligibility, rather than automatically deleting
+all eight stations. Use a validated-feed-only rerun as a sensitivity analysis; source
+availability changes geographic coverage and can change the exposure estimand.
+
+Prefer **pollutant-specific source status** over a single `verified` column. PM2.5 and
+PM10 at one station-hour can have different sources and validation histories.
+
+| Implemented field or record | Meaning |
+|---|---|
+| `pm25_source_status`, `pm10_source_status` | Provider-reported `validated`, `preliminary`, `raw_unvalidated`, `unknown`, or `mixed`; derive from acquisition evidence, never from an outlier flag. The SINAICA raw route is `raw_unvalidated`. |
+| `pm25_qa_status`, `pm10_qa_status` | Project review state: `not_flagged`, `pending_review`, `reviewed_retained`, `excluded`, or `missing`. `not_flagged` is not a certification of validity. |
+| `pm25_qa_eligible`, `pm10_qa_eligible` | Logical permission to enter statistical cleaning; only TRUE permits use. |
+| `pm25_use`, `pm10_use` | Logical usability of the final observed concentration; does not label imputed predictions as observed or validated. |
+| A linked source manifest | Provider, source file/hash, units, averaging interval, query period and retrieval date when known. Retain the secondary acquisition log; do not invent historical retrieval dates. |
+| A versioned quality-decision table | Station/pollutant/time or interval, original value where applicable, flags, decision, evidence, reviewer and date. Keep statistical-removal reasons separate. |
+
+The CDMX recipe, preparation adapter and targets explicitly enable source metadata; the
+merger's `include_source_metadata` default remains FALSE. Both engines retain actual
+nonnegative, finite contributors after the canonical-code join. Overlapping validated and
+unvalidated contributions are labeled `mixed`, preserving existing averaging. Linked
+manifest and coverage CSVs stay outside the dataset. Unknown query/retrieval metadata is
+explicit; observed coverage and file modification dates are not substituted for it.
+Other cities receive `unknown` unless input metadata already supplies source status.
+Further source-status recovery remains work; preserve Bogotá's documented source
+priority; recover Santiago's validated/preliminary/raw choice and establish São Paulo's
+status from provider metadata. Keep imputed values identified separately from observations.
+Withholding a pollutant series does not remove the physical station from the station
+catalog; distinguish network presence from usable pollutant reporting.
+
+### Separate execution corrections
+
+These repairs should preserve the current scientific specification and be reviewed
+separately from introducing the quality policy.
+
+| Issue and affected area | Proposed repair and completion check |
+|---|---|
+| CDMX memory reader drops primary wide CSVs; `src/city_specific/cdmx.R` | Parse station columns inside primary CSVs instead of treating the pollutant filename component as a station. Test primary-only and mixed-source fixtures, qualified station identifiers and bounded memory/DuckDB parity. The default DuckDB path is separate. |
+| Arrow year-boundary filter fails in non-UTC R sessions; `src/general_utilities/process/outliers.R` | Match timestamp literal types to stored Arrow metadata without converting the source clock. Compare boundary keys, values and removal reasons under UTC, America/Sao_Paulo and America/Mexico_City. The broader timezone-methodology decision remains deferred. |
+| Download/preparation directory casing differs; CDMX download/process recipes and targets inputs | Agree on canonical paths for future execution and verify them on case-sensitive Linux. Preserve existing downloaded files and their hashes. |
+| Baseline code inventory includes generated Python bytecode; `src/general_utilities/verification_cli.R` | Exclude `__pycache__` and bytecode from code identity, including runtime packaging where relevant. Running documentation checks must not change scientific code identity. Recreate a candidate inventory deliberately; do not modify the prior baseline. |
+| Integer-backed POSIXct/Arrow serialization failed in an audit fixture | Add a focused timestamp round-trip regression in the actual supported R/library combination. Production bounded-reader timestamps matched; do not infer production corruption or change `renv.lock` from that fixture alone. |
+
+Use the R executable that matches the restored project library, and record executable
+paths and library paths for terminal and RStudio runs. The successful Framework R scan
+and failed Homebrew R load are separate execution evidence; the latter's root cause has
+not been established. Do not resolve it through an unreviewed dependency upgrade.
+
+The supplied `data_appendix.tex` now exists and declares `outlier_procedure`; the missing
+include identified by the earlier audit is historical. Five revised temporal PDFs were
+rendered and inspected in isolation. Complete TeX compilation was attempted but stopped
+because `amsthm.sty` is absent; fetching it failed with DNS errors. Complete manuscript
+rendering remains pending. Docker's socket now exists, but the 6 October full-verifier check from
+this managed session still receives a permission denial. The socket resolves inside the
+protected user Docker directory. Run verification from an environment with authorized
+daemon access; do not bypass that boundary or count daemon availability as a successful
+isolated rebuild.
+
+### Data appendix and manuscript review
+
+The approved implementation updates [data_appendix.tex](../paper/data_appendix.tex) with
+the quality policy, source distinctions and corrected outlier formulas. Numerical losses,
+captions and claims require reviewed regeneration. The following remains the manuscript
+acceptance record; bounded checks are not a full clean-source rebuild.
+
+The completed 2023 source replay matches existing CDMX concentrations, keys and missingness.
+Disabled-screening cleaner output matches the preserved statistical implementation for
+all four cities on identical bounded inputs, including the previous-year donor hour.
+The new holds affect 56 CDMX PM2.5 hours, five CDMX PM10 hours and two São Paulo PM10 hours;
+the other 2023 panels have no above-bound readings. CDMX's PM2.5 statistical decisions
+change at 95 hours: 40 previously removed extremes now have separate quality holds,
+and 55 other readings change classification when eligible-data benchmarks are recomputed.
+Usable PM2.5 readings change from 167,418 to 167,347, with the maximum falling from 79,999
+to 280 µg/m³. All station-year rows and reporting-station counts remain intact in this
+bounded comparison; this does not assume unchanged counts in other years or after future
+source decisions. CDMX IT2 episodes change from 20/41 hours to 6/26 hours. Bogotá, Santiago
+and São Paulo episode results are unchanged. These are implementation comparisons,
+not approval of every source reading or full manuscript scientific acceptance.
+
+The final portable suite reports **804 passes and zero failures, errors, warnings or skips**.
+Production outlier target commands and direct functions agree on identical bounded inputs;
+their isolated selected graph supports a no-op rerun. The 62-entry comparison registry now
+also covers observed panels, annual IDW estimates, station-context plot data, imputation
+predictions, exposure coefficients and manuscript tables. Full downstream regeneration
+and human baseline approval remain pending. Working-tree documentation links pass;
+tracked-only links identify 17 missing new dependencies, including existing untracked
+migration files and the new quality reference. Those groups require review before staging.
+
+1. Add a **source validation and particulate quality review** subsection before the
+   statistical outlier procedure. Explain source status, preserved originals, review
+   triggers, pending/excluded observations and the decision record. Label any adopted
+   numeric trigger as a project choice; cite the monitoring guidance accurately.
+2. Revise the Mexico City source paragraph to describe the actual validated SINAICA
+   route and secondary unvalidated route, station coverage and verified retrieval
+   metadata. The present email-acquisition narrative describes an older input route.
+   Include a station/pollutant source-status table and the final disposition of the eight
+   raw-feed PM2.5 series. Do not describe project-screened data as agency validated.
+3. Correct the two outlier formulas. If `delta_t` is the station's first difference and
+   `b_t` is the difference from its adjacent-hour benchmark, the temporal band is
+   `mean_month(delta) - 2 * sd_month(delta) < b_t < mean_month(delta) + 2 * sd_month(delta)`.
+   The spatial band similarly centers on the monthly **mean station-peer difference**,
+   not the individual difference being tested. Define moments by station, month and
+   pollutant; document strict inequalities, sparse/zero-SD cases, Type 3 spatial fallback,
+   second-nearest use only when the nearest check is infeasible, and current `with_data`
+   peer eligibility. Passing these relative checks does not establish source validity.
+4. Report losses separately by negative/invalid input, quality-review hold, agency
+   invalidation and statistical removal. Show reporting-station and city-hour coverage
+   before/after the approved policy. Avoid double-counting reasons or calling an outlier
+   flag of zero a validation result.
+5. Explain that temporal figures average available eligible observed station readings
+   each hour, with a changing reporting count; entirely missing hours break episodes.
+   Keep the current IT2 comparison, PM2.5 >= 50 µg/m³. Replace episode counts and related
+   numerical claims only from the reviewed rerun. Extend comparison coverage to these
+   numerical and plotting inputs and the other affected manuscript products.
+6. Report sensitivity to retaining reviewed raw-feed data versus validated-feed-only
+   data, and to the CALPULALPAN disposition. If hard caps are investigated, identify them
+   as separate alternative methods and compare them without choosing a cap to obtain
+   preferred results. Recompute cleaning and downstream results for each input policy;
+   the earlier post-cleaning exclusions are diagnostics, not full alternative pipelines.
+
+### Order and acceptance
+
+Repair checks and metadata-only comparisons must use unchanged concentrations and disabled
+screening. The approved functions and callers are implemented; regenerate affected
+inputs and analytical products, compare numerical and
+plotting data, then update the appendix and inspect the complete compiled manuscript.
+Record the human RStudio walkthrough separately. Create a new revision-matched baseline
+for the reviewed specification and run complete isolated verification with original
+sources mounted read-only, recording failures and skips. Editing this planning document
+also changes an inventoried file; the old candidate must not be relabeled as matching.
+Keep Make and its RStudio setting until manuscript acceptance; independent reproduction
+remains a separate claim. Local implementation logs, before-code snapshots, the bounded
+second-model review and isolated comparisons are under
+`data/verification/particulate-screening-implementation-20261006/`. Consult their recorded
+outcomes; this document does not approve a baseline or establish complete reproduction.
+
+### Deferred source-quality work for coauthor review
+
+- **Suspicious patterns:** assemble evidence and candidate parameters for flat/quantized
+  segments, repeated values, scale changes and PM2.5/PM10 inconsistencies. Discuss methods
+  and sensitivity results before adopting further rules.
+- **Validated 2023 replacements:** later check CALPULALPAN and other secondary-feed stations.
+  Archive replacement downloads separately with retrieval metadata and hashes; compare
+  them before changing inputs. No replacement acquisition is activated here.
+- **Station or interval disposition:** review source availability and operating evidence
+  before excluding whole station-years or intervals. CALPULALPAN remains included now.
+- **Instrument-specific bounds:** establish model, configuration, reporting channel and
+  applicable operating dates. Future overrides require parameters and that evidence.
+
+Future manuscript versions must disclose replacement sources, acquisition dates, revised
+station/pollutant counts and consequences for coverage and exposure. The current cleaner
+also allows appended boundary rows to establish neighbor availability, despite its
+year-only description. That existing behavior is preserved for disabled-screening parity;
+changing its scientific interpretation is deferred.
 
 ## Deferred development and validation of the imputation model
 
@@ -202,7 +443,7 @@ before scientific acceptance; the run report alone does not establish their equi
 | [scripts/download_data/download_merra2_data.R](../../scripts/download_data/download_merra2_data.R) | acquisition; **unverified** | Outside targets: deliberate provider/network access. | `Rscript scripts/download_data/download_merra2_data.R 2023-01-01 2023-12-31 M2T1NXAER.5.12.4 data/raw/merra2_aerosol_products`<br>Provider access and required credentials/Selenium; never invoked by processing. | Provider inputs -> preserved downloads, geographic products and acquisition logs | Verify execution and scientific parity independently; preserve the specification. |
 | [scripts/download_data/download_santiago_data.R](../../scripts/download_data/download_santiago_data.R) | acquisition; **unverified** | Outside targets: deliberate provider/network access. | `Rscript scripts/download_data/download_santiago_data.R`<br>Provider access and required credentials/Selenium; never invoked by processing. | Provider inputs -> preserved downloads, source-region diagnostic and acquisition logs; derived GeoPackages belong to processing | Acquisition/preparation split implemented; live provider access remains unverified. |
 | [scripts/download_data/download_sao_paulo_data.R](../../scripts/download_data/download_sao_paulo_data.R) | acquisition; **unverified** | Outside targets: deliberate provider/network access. | `Rscript scripts/download_data/download_sao_paulo_data.R`<br>Provider access and required credentials/Selenium; never invoked by processing. | Provider inputs -> preserved downloads, source-region diagnostic and acquisition logs; derived GeoPackages belong to processing | Acquisition/preparation split implemented; live provider access remains unverified. |
-| [scripts/export/export_paper.R](../../scripts/export/export_paper.R) | operational utility; **unverified** | Targets: `paper_export` (shared export function). | `Rscript scripts/export/export_paper.R --destination data/verification/export-preview --dry-run`<br>Declared input files must already exist. | Artifact manifest and selected results -> checksum-verified manuscript export | Verify execution and scientific parity independently; preserve the specification. |
+| [tools/reproduction/export_paper.R](../../tools/reproduction/export_paper.R) | operational utility; **unverified** | Targets: `paper_export` (shared export function). | `Rscript tools/reproduction/export_paper.R --destination data/verification/export-preview --dry-run`<br>Declared input files must already exist. | Artifact manifest and selected results -> checksum-verified manuscript export | Verify execution and scientific parity independently; preserve the specification. |
 | [scripts/process_data/build_bogota_localidad_crosswalk.R](../../scripts/process_data/build_bogota_localidad_crosswalk.R) | optional analysis; **unverified** | Outside manuscript targets: optional scientific question. | `Rscript scripts/process_data/build_bogota_localidad_crosswalk.R`<br>Declared input files must already exist. | Prepared 2018 manzanas/localities -> crosswalk for resolution workflows | Verify execution and scientific parity independently; preserve the specification. |
 | [scripts/process_data/compute_descriptive_tables.R](../../scripts/process_data/compute_descriptive_tables.R) | manuscript; **maintained** | Targets: `compute_descriptive_tables` | `Rscript scripts/process_data/compute_descriptive_tables.R`<br>Prepared raw/clean panels, distance matrices and individual census files must exist. | Six city-summary families -> 41 files; consumed by station, missingness and census rendering | Isolated real-input parity checked on 30 September 2026; review the recipe in RStudio and assess scientific definitions separately. |
 | [scripts/process_data/compute_distance_band_descriptives.R](../../scripts/process_data/compute_distance_band_descriptives.R) | manuscript; **maintained** | Targets: `distance_band_summary`, `compute_distance_band_descriptives` | `Rscript scripts/process_data/compute_distance_band_descriptives.R`<br>Prepared geography, distance matrices and individual census files must exist. | Four city area/summary tables -> combined Parquet and CSV; consumed by census rendering | Isolated real-input parity checked on 30 September 2026 (342 rows); review the new recipe in RStudio and assess the scientific definitions separately. |
@@ -214,11 +455,12 @@ before scientific acceptance; the run report alone does not establish their equi
 | [scripts/process_data/estimate_resolution_sensitivity.R](../../scripts/process_data/estimate_resolution_sensitivity.R) | optional analysis; **unverified** | Outside manuscript targets: optional scientific question. | `Rscript scripts/process_data/estimate_resolution_sensitivity.R --scope=reference`<br>Completed reference inputs; --scope=multicity requires frozen inputs and saved reference anchors. | Reference or frozen multicity inputs -> A/B/C estimates, diagnostics, optional tables | Verify execution and scientific parity independently; preserve the specification. |
 | [scripts/process_data/generate_distance_matrices.R](../../scripts/process_data/generate_distance_matrices.R) | manuscript; **maintained** | Targets: `distances` | `Rscript scripts/process_data/generate_distance_matrices.R`<br>The nine prepared geographic/station files shown in Section I must exist. | Prepared geography/stations -> distance matrices for outliers and IDW | Marcos reports a successful local run (24 September); pilot readability and prepared-input parity were checked previously. Review scientific geography choices separately. |
 | [scripts/process_data/generate_inegi_lab_inputs.R](../../scripts/process_data/generate_inegi_lab_inputs.R) | optional analysis; **blocked** | Outside manuscript targets: optional scientific question. | `Rscript scripts/process_data/generate_inegi_lab_inputs.R`<br>Declared input files must already exist. | CDMX 2023 and declared 2020/current 2024 geography -> INEGI CSV deliverables | Resolve the stated 2020 versus implemented 2024 geographic contract. |
-| [scripts/process_data/generate_panel_air_quality.R](../../scripts/process_data/generate_panel_air_quality.R) | manuscript; **unverified** | Targets: `generate_panel_air_quality` | `Rscript scripts/process_data/generate_panel_air_quality.R`<br>Declared input files must already exist. | Preserved MERRA-2 rasters and original geography -> city aerosol CSV panels | Compare manual operations and targets on identical inputs; complete acceptance. |
+| [scripts/process_data/generate_panel_air_quality.R](../../scripts/process_data/generate_panel_air_quality.R) | optional analysis; **blocked** | Outside manuscript: satellite extraction | `Rscript scripts/process_data/generate_panel_air_quality.R` | MERRA aerosol files and generated metropolitan geography | Four city aerosol CSVs; real source regeneration unverified |
 | [scripts/process_data/impute_missing_hourly.R](../../scripts/process_data/impute_missing_hourly.R) | manuscript; **maintained** | Targets: `impute_missing_hourly` | `Rscript scripts/process_data/impute_missing_hourly.R`<br>Declared input files must already exist. | Cleaned panels -> imputed panels/predictions for exposure and diagnostics | Marcos reports rerunning this revised recipe (30 September). Fixture parity was checked previously; independently verify full-year outputs and downstream scientific validity. |
 | [scripts/process_data/prepare_resolution_inputs.R](../../scripts/process_data/prepare_resolution_inputs.R) | optional analysis; **unverified** | Outside manuscript targets: optional scientific question. | `Rscript scripts/process_data/prepare_resolution_inputs.R`<br>Freeze reviewed derived inputs deliberately; changed existing manifests must fail. | Reviewed derived city inputs -> frozen manifests, populations, crosswalks and B matrices | Verify execution and scientific parity independently; preserve the specification. |
 | [scripts/process_data/prepare_santiago_alternative_geography.R](../../scripts/process_data/prepare_santiago_alternative_geography.R) | optional analysis; **unverified** | Outside manuscript targets: alternative administrative-commune boundary. | `Rscript scripts/process_data/prepare_santiago_alternative_geography.R`<br>Preserved Cartografia_censo2024_Pais.zip and installed packages. | National 2024 archive -> santiago_metro_area_2024.gpkg; optional boundary inspection. | Preserves the former download-script branch; compare real-source geometry before analytical use. |
-| [scripts/process_data/prepare_station_temporal.R](../../scripts/process_data/prepare_station_temporal.R) | manuscript; **unverified** | Targets: `prepare_station_temporal` | `Rscript scripts/process_data/prepare_station_temporal.R`<br>Declared input files must already exist. | Aerosol panels and original balanced station samples -> temporal PM2.5 series | Compare manual operations and targets on identical inputs; complete acceptance. |
+| [scripts/process_data/prepare_station_hourly.R](../../scripts/process_data/prepare_station_hourly.R) | manuscript; **maintained** | Targets: `prepare_station_hourly` | `Rscript scripts/process_data/prepare_station_hourly.R` | Current cleaned observed partitions | Four city/year hourly Parquets; no imputation or satellite join |
+| [scripts/process_data/prepare_station_temporal.R](../../scripts/process_data/prepare_station_temporal.R) | optional analysis; **unverified** | Outside manuscript: satellite comparison | `Rscript scripts/process_data/prepare_station_temporal.R` | Optional aerosol panels and current station-hourly checkpoints | Converted PM2.5 and joined satellite CSVs |
 | [scripts/process_data/process_bogota_data.R](../../scripts/process_data/process_bogota_data.R) | manuscript; **maintained** | Targets: `bogota_geography`, `bogota_stations_filter`, `bogota_pollution_parquet`, `bogota_census` | `Rscript scripts/process_data/process_bogota_data.R`<br>Declared input files must already exist. | bogota preserved sources -> interim geography/stations, partitioned pollution and all census variants | Marcos reports a successful local run (24 September). Review census/geography explanations and full source-to-output scientific reproduction later. |
 | [scripts/process_data/process_cdmx_data.R](../../scripts/process_data/process_cdmx_data.R) | manuscript; **maintained** | Targets: `cdmx_geography`, `cdmx_stations_filter`, `cdmx_pollution_parquet`, `cdmx_census` | `Rscript scripts/process_data/process_cdmx_data.R`<br>Declared input files must already exist. | cdmx preserved sources -> interim geography/stations, partitioned pollution and all census variants | Marcos reports a successful local run (24 September). Review geographic vintage, source precedence and scientific interpretation later. |
 | [scripts/process_data/process_merra2_panels.R](../../scripts/process_data/process_merra2_panels.R) | optional analysis; **unverified** | Outside manuscript targets: optional scientific question. | `Rscript scripts/process_data/process_merra2_panels.R`<br>Declared input files must already exist. | Temporal series and country/NASA inputs -> optional comparison tables | Verify execution and scientific parity independently; preserve the specification. |
@@ -238,7 +480,7 @@ before scientific acceptance; the run report alone does not establish their equi
 | [scripts/tables_images/figure_resolution_sensitivity.R](../../scripts/tables_images/figure_resolution_sensitivity.R) | optional analysis; **unverified** | Outside manuscript targets: optional scientific question. | `Rscript scripts/tables_images/figure_resolution_sensitivity.R --scope=reference`<br>Completed reference inputs; --scope=multicity requires frozen inputs and saved reference anchors. | Completed resolution estimates -> PDFs and review packet | Verify execution and scientific parity independently; preserve the specification. |
 | [scripts/tables_images/figure_resolution_review.R](../../scripts/tables_images/figure_resolution_review.R) | optional analysis; **unverified** | Outside manuscript targets: optional scientific question. | `Rscript scripts/tables_images/figure_resolution_review.R`<br>Completed 3 km and 20 km multicity products and frozen resolution inputs. | Frozen inputs and saved multicity tables -> review CSVs and PDFs (IT reading, schooling ties, Santiago composition, monitoring by support, 3 km vs 20 km) | Estimates nothing; verify against the saved multicity tables. |
 | [scripts/tables_images/figure_station_scatter.R](../../scripts/tables_images/figure_station_scatter.R) | manuscript; **maintained** | Targets: `figure_station_scatter` | `Rscript scripts/tables_images/figure_station_scatter.R`<br>Declared input files must already exist. | Station socioeconomic tables -> monitoring PDFs | Isolated manual/targets rendering matches all 28 preserved figures on 30 September 2026. Review socioeconomic context and schooling units separately. |
-| [scripts/tables_images/figure_station_temporal.R](../../scripts/tables_images/figure_station_temporal.R) | manuscript; **maintained** | Targets: `figure_station_temporal` | `Rscript scripts/tables_images/figure_station_temporal.R`<br>Declared input files must already exist. | Prepared temporal series -> hourly/episode PDFs | Isolated manual/targets rendering matches all ten preserved figures on 30 September 2026. Upstream temporal preparation and threshold explanations still need review. |
+| [scripts/tables_images/figure_station_temporal.R](../../scripts/tables_images/figure_station_temporal.R) | manuscript; **maintained** | Targets: `figure_station_temporal` | `Rscript scripts/tables_images/figure_station_temporal.R`<br>Declared input files must already exist. | Current observed city-hour checkpoints -> five appendix PDFs | Station-only replacement implemented on 5 October 2026; changed station membership, episode counts and captions require current-input review. The 30 September ten-figure comparison is historical evidence for the superseded input route. |
 | [scripts/tables_images/figure_stations_on_metro_area.R](../../scripts/tables_images/figure_stations_on_metro_area.R) | optional analysis; **blocked** | Outside manuscript targets: optional scientific question. | `Rscript scripts/tables_images/figure_stations_on_metro_area.R`<br>Declared input files must already exist. | Obsolete CDMX paths -> two interactive station HTML widgets | Review obsolete paths and equivalence; preserve the interactive purpose. |
 | [scripts/tables_images/figure_study_area_maps.R](../../scripts/tables_images/figure_study_area_maps.R) | optional analysis; **unverified** | Outside manuscript targets: optional scientific question. | `Rscript scripts/tables_images/figure_study_area_maps.R`<br>Context geography; terrain tiles may require networking. | Context geography and optional terrain tiles -> context maps | Verify execution and scientific parity independently; preserve the specification. |
 | [scripts/tables_images/generate_exposure_plots.R](../../scripts/tables_images/generate_exposure_plots.R) | manuscript; **maintained** | Targets: `generate_exposure_plots` | `Rscript scripts/tables_images/generate_exposure_plots.R`<br>Declared input files must already exist. | Observed/imputed regressions -> exposure PDFs | Isolated rendering and fresh-session execution checked on saved inputs (30 September 2026); review in RStudio and verify fresh upstream results. |
@@ -253,11 +495,12 @@ before scientific acceptance; the run report alone does not establish their equi
 | [scripts/validation_old_version/compare_cdmx_raw_ground_stations.R](../../scripts/validation_old_version/compare_cdmx_raw_ground_stations.R) | legacy validation; **blocked** | Outside manuscript targets: separate historical comparison. | `Rscript scripts/validation_old_version/compare_cdmx_raw_ground_stations.R`<br>Matching preserved legacy inputs, comparison configuration and producer outputs. | Historical CDMX inputs -> station comparison widgets/tables | Resolve historical raw/geographic paths from provenance. |
 | [scripts/validation_old_version/compare_ground_stations_data.R](../../scripts/validation_old_version/compare_ground_stations_data.R) | legacy validation; **blocked** | Outside manuscript targets: separate historical comparison. | `Rscript scripts/validation_old_version/compare_ground_stations_data.R`<br>Matching preserved legacy inputs, comparison configuration and producer outputs. | City comparison configuration -> comparison products and expected report template | Verify cfg$compare and the report template expected beneath results. |
 | [scripts/validation_old_version/plot_bogota_quintiles.R](../../scripts/validation_old_version/plot_bogota_quintiles.R) | legacy validation; **unverified** | Outside manuscript targets: separate historical comparison. | `Rscript scripts/validation_old_version/plot_bogota_quintiles.R`<br>Matching preserved legacy inputs, comparison configuration and producer outputs. | 2005 census/geography and old stations -> validation map PDFs | Verify execution and scientific parity independently; preserve the specification. |
-| [scripts/verification/check_manuscript.R](../../scripts/verification/check_manuscript.R) | operational utility; **unverified** | Outside analytical graph: execution/export/verification utility. | `Rscript scripts/verification/check_manuscript.R doc/paper/paper_draft_part1.tex`<br>Declared input files must already exist. | TeX and manifest -> reference coverage diagnostics | Verify execution and scientific parity independently; preserve the specification. |
-| [scripts/verification/run_stage.R](../../scripts/verification/run_stage.R) | operational utility; **unverified** | Outside analytical graph: execution/export/verification utility. | `Rscript scripts/verification/run_stage.R scripts/process_data/compute_descriptive_tables.R`<br>Set AIR_VERIFY_RUN to an isolated verification directory. | One stage script -> isolated stage log and metadata | Verify execution and scientific parity independently; preserve the specification. |
-| [scripts/verification/verify.R](../../scripts/verification/verify.R) | operational utility; **unverified** | Outside analytical graph: execution/export/verification utility. | `Rscript scripts/verification/verify.R --full --targets`<br>Docker, complete preserved sources, installed dependencies and reviewed baseline. | Candidate, sources, environment and reviewed baseline -> isolated verification report | Verify execution and scientific parity independently; preserve the specification. |
+| [tools/reproduction/check_manuscript.R](../../tools/reproduction/check_manuscript.R) | operational utility; **unverified** | Outside analytical graph: execution/export/verification utility. | `Rscript tools/reproduction/check_manuscript.R doc/paper/paper_draft_part1.tex`<br>Declared input files must already exist. | TeX and manifest -> reference coverage diagnostics | Verify execution and scientific parity independently; preserve the specification. |
+| [tools/reproduction/run_stage.R](../../tools/reproduction/run_stage.R) | operational utility; **unverified** | Outside analytical graph: execution/export/verification utility. | `Rscript tools/reproduction/run_stage.R scripts/process_data/compute_descriptive_tables.R`<br>Set AIR_VERIFY_RUN to an isolated verification directory. | One stage script -> isolated stage log and metadata | Verify execution and scientific parity independently; preserve the specification. |
+| [tools/reproduction/verify.R](../../tools/reproduction/verify.R) | operational utility; **unverified** | Outside analytical graph: execution/export/verification utility. | `Rscript tools/reproduction/verify.R --full --targets`<br>Docker, complete preserved sources, installed dependencies and reviewed baseline. | Candidate, sources, environment and reviewed baseline -> isolated verification report | Verify execution and scientific parity independently; preserve the specification. |
 
 
+| [tools/reproduction/prepare_baseline.R](../../tools/reproduction/prepare_baseline.R) | operational utility; **maintained** | Outside manuscript: baseline review preparation | `Rscript tools/reproduction/prepare_baseline.R --destination data/verification/new-baseline-candidate` | Registered generated products | New local snapshot with all human approval flags FALSE; never overwrites a baseline |
 <!-- workflow-inventory:end -->
 
 ## Explicit optional command sequences

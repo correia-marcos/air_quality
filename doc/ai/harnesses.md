@@ -60,3 +60,32 @@ and live-client verification remain separate from repository implementation.
    not prove that an interactive client invoked the hooks.
 
 Use reviewer roles for explicitly requested independent work. Do not automatically split small tasks. Updating a scientific workflow means editing doc/ai/workflows once; wrappers should remain thin links. Sources: [Codex skills](https://developers.openai.com/codex/skills/), [configuration](https://developers.openai.com/codex/config-reference/), [hooks](https://developers.openai.com/codex/hooks/).
+
+## Current client review — 5 October 2026
+
+Installed versions are Claude Code 2.1.267 and Codex CLI 0.155.1. Keep `CLAUDE.md`: it and
+`AGENTS.md` currently carry the same shared-document entry instructions, but this Claude
+version predates direct AGENTS loading. The current [official Claude memory documentation](https://code.claude.com/docs/en/memory)
+requires 2.1.277 or later, an enabled built-in `agents-md` plugin and the applicable user or
+managed Project instructions setting. The default uses CLAUDE when present in a directory;
+AGENTS imports and settings choices have different loading behavior. Some older supported
+clients also need an upgrade to 2.1.281. User/plugin settings cannot be imposed through this
+repository's project settings. Neither wrapper currently has an automatic `@` import;
+both instruct the assistant to read `doc/ai/` explicitly. Removal is a later option only
+after checking equivalent loading, rules and `/memory` output in the actual client.
+
+Written project rules are instructions, not enforced controls. Claude's native `Edit` deny
+rules now include downloads as well as raw, legacy and lockfile paths. `Read` and `Edit`
+path rules cover built-in file reading/editing; native `Write(path)` rules are unsupported.
+[Official permission documentation](https://code.claude.com/docs/en/permissions) explains
+these distinctions. Bash and external tools require separate controls. Shared hook tests
+exercise policy parsing, not live Claude dispatch. Rules under `.claude/rules/` retain
+supported native discovery metadata and links to canonical shared requirements.
+
+Codex discovers hierarchical AGENTS instructions under its [official loading rules](https://developers.openai.com/codex/guides/agents-md).
+Its [configuration precedence](https://developers.openai.com/codex/config-basic) means the
+project's `on-request` setting does not override a managed `never` policy. This implementation
+session uses managed no-escalation permissions and read-only Git metadata; project settings
+remain a fallback declaration. Native command-rule evaluation and shared guard tests are
+bounded evidence. No other harness-specific wrapper was found in the repository inventory;
+adding a new harness still requires native loading and enforcement verification.

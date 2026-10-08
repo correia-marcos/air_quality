@@ -1,6 +1,6 @@
 # Data dictionary — processed layer
 
-Every file under `data/interim/census/` and `data/processed/` uses the column names below. The
+The canonical census, monitoring and derived datasets use the column names below. The
 names are identical across the four cities; they differ between the *individual* (micro) and
 *collapsed* (geo) file only where the underlying **concept** differs.
 
@@ -263,3 +263,31 @@ decisions rather than naming ones.
 - **Income exists only for CDMX and São Paulo.** Bogotá's and Santiago's censuses do not collect it.
 
 During a recorded verification, canonical Parquet metadata additionally includes `verification_run` and `code_revision` when supplied by the run environment. Existing city/year/geography metadata is retained. Run-level SHA-256 inventories connect files to the recorded code and input versions; an unstamped historical file is not a verified baseline.
+
+## 8. Observed station city-hours
+
+`data/processed/station_hourly/<city>_pm25_<year>.parquet` contains one row per hour,
+including hours when no station reports finite PM2.5. Each available station has equal
+weight. Duplicate station/timestamp records are rejected rather than silently overweighted.
+The source is the current cleaned observed metropolitan partition, with no imputation.
+
+| Column | Definition |
+|---|---|
+| `datetime` | Complete calendar in the existing UTC-labelled stored convention; no new source-time conversion. |
+| `Date`, `Hour` | UTC-labelled calendar date and integer hour from `datetime`. |
+| `pm25_stations` | Mean of finite observed station readings at that timestamp; NA if none report. |
+| `n_reporting` | Number of stations contributing to the mean; zero for missing city-hours. |
+
+Station availability can change across hours. Missing hours break episodes. The appendix
+retains the comparison PM2.5 >= 50 for IT2 (75 for optional IT1), including equality.
+These hourly comparisons do not themselves implement WHO's daily averaging prescription.
+Santiago 2017 and São Paulo 2010 census vintages remain approved analytical inputs.
+
+## 9. Observed particulate quality fields
+
+The cleaned observed partitions retain source status, original standardized concentrations,
+project quality categories and reasons, logical quality eligibility, final observed-use
+flags and input identities for both pollutants. See [particulate screening](particulate_quality.md)
+for the field definitions, parameter contract, decision registry and linked CDMX source manifests.
+Statistical removal reasons remain separate. Imputed predictions retain their existing
+identification; the observed flags do not certify them as agency-validated observations.

@@ -58,7 +58,16 @@
       "Read(**/.env)",
       "Edit(renv.lock)",
       "Edit(data/raw/**)",
-      "Edit(data/_legacy/**)"
+      "Edit(data/_legacy/**)",
+      "Edit(data/downloads/**)",
+      "Read(**/.Renviron)",
+      "Read(**/.netrc)",
+      "Edit(.env)",
+      "Edit(.Renviron)",
+      "Edit(.netrc)",
+      "Edit(**/.env)",
+      "Edit(**/.Renviron)",
+      "Edit(**/.netrc)"
     ]
   },
   "respectGitignore": true,

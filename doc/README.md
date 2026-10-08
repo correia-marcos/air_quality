@@ -10,12 +10,13 @@ agreement, scientific validity, and independent reproduction are separate claims
 | New contributor | [Contributing](guides/contributing.md) → [architecture](ai/architecture.md) → [shared workflows](ai/README.md) |
 | Procedure audit | [Human guide](guides/procedure-audit.md) → [canonical workflow](ai/workflows/audit-procedure.md) → [report template](reviews/procedure-template.md) |
 | Supporting research | [Geographic-resolution sensitivity](RESOLUTION_SENSITIVITY.md); optional, separate from manuscript production |
+| Particulate quality | [Screening and provenance](reference/particulate_quality.md) → [remaining acceptance work](planning/remaining-work.md) |
 | Agent setup | [Git boundary](ai/rules/git-safety.md) → [harness setup](ai/harnesses.md) → [host enforcement](ai/host-enforcement.md) |
 | Repository assessment | [Current review](REPO_REVIEW.md) → [review catalog](reviews/README.md) |
 
 ## Where documents belong
 
-- `guides/`: instructions for learning or doing a task.
+- `guides/`: the first-run tutorial and task-oriented how-to guides.
 - `reference/`: definitions and worked analytical reference material.
 - `planning/`: dated findings and proposals; inclusion is not implementation authorization.
 - `reviews/`: public assessments, report templates, and preserved historical reviews.
@@ -35,3 +36,12 @@ removed on 22 September 2026. The [move ledger](reviews/document-moves.csv) pres
 paths, revisions, and checksums as historical evidence, not current navigation. Local
 evidence links may be unavailable in a clone;
 they are not a claim that restricted data or unpublished drafts are distributed.
+
+The [Diátaxis framework](https://diataxis.fr/start-here/) distinguishes learning tutorials,
+practical how-to guides, lookup reference and explanation. This repository already has a
+[first-run tutorial](guides/first-run.md). Its synthetic example leads into a production
+recipe. [HOW_TO_RUN](HOW_TO_RUN.md) explains operational tasks; the data dictionary defines
+fields; the architecture explains design choices. Human guides use connected explanations
+and links to details. Shared agent rules keep explicit requirements and references concise.
+The worked IDW calculation combines explanation and reference; it need not be split merely
+to make these categories uniform.

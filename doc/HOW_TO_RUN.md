@@ -3,8 +3,10 @@
 Navigation: [documentation index](README.md) · [first run](guides/first-run.md) ·
 [data dictionary](reference/data_dictionary.md) · [resolution sensitivity](RESOLUTION_SENSITIVITY.md).
 
-This is the operational guide for the repository. The analytical methods are unchanged by
-the infrastructure work. Passing tests, a completed pipeline, reviewed numerical parity, and
+This is the operational guide for the repository. Infrastructure changes preserve methods;
+the separately approved particulate quality holds change observed analytical eligibility.
+See [particulate screening](reference/particulate_quality.md) for settings and review records.
+Passing tests, a completed pipeline, reviewed numerical parity, and
 independent researcher reproduction are different forms of evidence. Complete scientific
 reproduction is not yet claimed.
 
@@ -15,6 +17,13 @@ Restore the recorded R environment before running locally:
 ```r
 renv::restore()
 ```
+
+Use an R executable matching the restored library. The local audit used Framework R
+4.6.1 with the existing R-4.6 aarch64 project library; a Homebrew R attempt failed loading
+data.table. Its root cause is unresolved. Record `R.home()`, `Sys.which("Rscript")`,
+`.libPaths()` and `sessionInfo()` in both terminal and RStudio. A deliberate diagnostic
+using `Rscript --vanilla` and `R_LIBS_USER` is recorded separately from normal renv startup;
+do not upgrade dependencies to hide a binary mismatch.
 
 Use `docker compose up` for interactive RStudio with live code. Run
 `docker compose --profile acquisition up` when a download script needs Selenium. The
@@ -198,12 +207,12 @@ make all
 source(here::here("scripts", "run_pipeline.R"))
 ```
 
-Both routes execute city processing, the core station/census analysis, preserved temporal
+Both routes execute city processing, the core station/census analysis, station-only hourly
 preparation, and manuscript figures and tables. `make` uses stage stamps; after changing or
 reacquiring source data, force a rebuild with `make -B all`.
 
 The candidate's direct command is `Rscript scripts/run_targets.R all`. Inspect the ordinary
-declarations in `_targets.R`; cached station counts, missingness, census summaries,
+declarations under `config/targets/`, loaded by `_targets.R`; cached station counts, missingness, census summaries,
 exposure tables and figure inputs have named data targets. After scientific acceptance,
 targets becomes the sole manuscript scheduler: remove Makefile and RStudio's Make build
 setting, and reduce `run_pipeline.R` to a compatibility launcher. This cutover is pending.
@@ -214,9 +223,12 @@ owns the two Parquet files. The `distances` selection still requests all five co
 The candidate graph retains upstream city preparation: an existing derived file alone
 does not bypass missing preserved sources in a fresh targets run.
 
-The temporal manuscript figures intentionally retain the legacy station panels and MERRA-2
-timestamp support. This preserves their historical time support and sample. It does not claim
-that the figures are independent of that preparation.
+The temporal appendix now uses current cleaned observed station partitions, filtered by
+`analysis_year`. `prepare_station_hourly.R` exposes four city-hour summaries, reporting-station
+counts and small Parquet checkpoints. `figure_station_temporal.R` produces the four ridgelines,
+the IT2 episode figure and its underlying episode CSV. Missing hours break episodes; equality
+at 50 is included. No imputation or satellite input is required. The stored UTC-labelled
+convention is retained; source-timezone methodology remains a separate review.
 
 ## Supporting analyses
 
@@ -230,7 +242,8 @@ Run optional satellite comparisons separately:
 make merra2
 ```
 
-This reuses the temporal prerequisites and adds country/NASA comparisons, satellite
+This prepares optional aerosol panels with current generated city geography and joins them
+to the station-hourly checkpoints. It adds country/NASA comparisons, satellite
 correlations, aerosol figures, thermal-inversion comparisons, and grid illustrations. Acquire
 its additional MERRA-2/NASA inputs before running it. `make merra2` is supporting analysis and
 does not replace `make all` as the manuscript route.
@@ -245,7 +258,7 @@ these unselected figures are outside offline manuscript verification. Legacy com
 ```sh
 Rscript tests/testthat.R --mode=synthetic
 Rscript tests/testthat.R --mode=release
-Rscript scripts/verification/verify.R
+Rscript tools/reproduction/verify.R
 ```
 
 Synthetic mode runs portable checks. Release test mode treats missing full-data requirements as
@@ -255,7 +268,7 @@ known limitations; it is not a clean-room reproduction claim.
 ## Isolated batch verification
 
 ```sh
-Rscript scripts/verification/verify.R --full
+Rscript tools/reproduction/verify.R --full
 ```
 
 `--full` builds the image and invokes `docker-compose.verify.yml`. The verifier mounts
@@ -287,16 +300,16 @@ comparisons, and rendering review.
 producer script. Export only to an authorized local manuscript copy:
 
 ```sh
-Rscript scripts/export/export_paper.R --destination /your/local/paper --dry-run
-Rscript scripts/export/export_paper.R --destination /your/local/paper
-Rscript scripts/export/export_paper.R --destination /your/local/paper --overwrite
-Rscript scripts/verification/check_manuscript.R doc/paper/paper_draft_part1.tex
+Rscript tools/reproduction/export_paper.R --destination /your/local/paper --dry-run
+Rscript tools/reproduction/export_paper.R --destination /your/local/paper
+Rscript tools/reproduction/export_paper.R --destination /your/local/paper --overwrite
+Rscript tools/reproduction/check_manuscript.R doc/paper/paper_draft_part1.tex
 ```
 
 The exporter validates the manifest, checks copied-file hashes, and never edits TeX or deletes
 unrelated manuscript files. The scanner reports absent includes and dynamic constructs; it is
-not a TeX interpreter. The unavailable `data_appendix` prevents a complete manuscript-coverage
-claim.
+not a TeX interpreter. The supplied `data_appendix.tex` is now present; complete compilation
+and rendering still require recorded review.
 
 ## Acceptance limits
 
@@ -325,7 +338,7 @@ make targets STAGE=bogota_geography  # pilot; writes derived geography
 make targets STAGE=bogota_pollution_parquet  # prerequisites included
 make targets                       # manuscript export and all its prerequisites
 make targets-outdated              # inspect the manuscript selection without processing
-Rscript scripts/verification/verify.R --full --targets
+Rscript tools/reproduction/verify.R --full --targets
 ```
 
 Development and image-baked Compose services mount `_targets/` as the persistent cache.
@@ -339,8 +352,9 @@ configured roots for city-level comparisons.
 The four manual interfaces are complete:
 
 ```r
-source(here::here("src", "pipeline", "load.R"))
-load_manuscript_functions(kind = "process", packages = TRUE)
+source(here::here("src", "general_utilities", "base_utils.R"))
+source(here::here("src", "city_specific", "registry.R"))
+load_city_modules()
 processed <- city_process("bogota")
 geography <- city_process("santiago", steps = "geography")
 ```
@@ -351,10 +365,10 @@ whole named stages; inspect `city_processing_inputs("bogota", city_cfg("bogota")
 Bogotá's `census_2005` and `census_2018` selectors remain available. Missing inputs fail preflight,
 and required stage failures stop processing. Results contain named path vectors for every stage.
 Reusable transformation functions retain manageable data returns and named local inspection
-points. Stage adapters return paths; large partitioned datasets are reopened by their consumers.
+points. Writers return paths; large partitioned datasets are reopened by their consumers.
 
 The graph keeps pollution years together and serializes each city/vintage's IDW buffers and
-income reuse. It includes imputation, descriptions, scatter inputs and temporal MERRA-2 inputs.
+income reuse. It includes imputation, descriptions, scatter inputs and observed station-hourly inputs.
 Optional resolution, acquisition, context maps, satellite comparison and validation retain their
 existing entry points. Frozen resolution inputs are not regenerated by this graph.
 
@@ -367,3 +381,29 @@ model responsibility; that planning file is deliberately excluded from runtime i
 Santiago, and São Paulo from existing derived inputs. It does not invoke or export the
 manuscript workflow. Definitions, input requirements, reference verification, outputs,
 and clean-source limitations are in [RESOLUTION_SENSITIVITY.md](RESOLUTION_SENSITIVITY.md).
+
+## Prepare a comparison candidate
+
+The comparison registry covers station-hourly/episode data, quality summaries and linked
+review records, CDMX source manifests, reporting/threshold/availability summaries, observed
+and imputed exposure coefficients, observed panels, IDW annual estimates, station-context
+plot data, imputation predictions, and exported manuscript TeX tables. The registry now
+contains 62 comparisons. Rendering review and any remaining unregistered plotting inputs
+are still necessary for complete acceptance.
+Baseline filenames are
+relative to `AIR_BASELINE_ROOT` (default `data/verification/baseline`), mounted read-only as
+`/baseline` in the verifier. The shared comparison function also handles keyed CSV tables,
+literal TeX and exact GeoPackage attributes/geometry/CRS.
+
+After generating the registered products, prepare a new snapshot:
+
+```sh
+Rscript tools/reproduction/prepare_baseline.R --destination data/verification/new-baseline-candidate
+```
+
+The tool refuses an occupied destination and records every approval flag as false. A human
+must review input identifiers and station membership, numerical criteria, missingness,
+plot data, renderings and scientific claims. Do not relabel an unreviewed snapshot as an
+accepted baseline. Extend the registry to the remaining manuscript products and use a
+fresh, revision-matched review record before release verification. Existing processed
+outputs alone do not establish clean-source regeneration.

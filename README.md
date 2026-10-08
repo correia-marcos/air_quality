@@ -71,7 +71,7 @@ Three Compose files serve distinct uses:
 | `docker compose up` | Interactive RStudio with live project code for development. |
 | `docker compose --profile acquisition up` | Development plus Selenium for acquisition scripts that need a browser. |
 | `docker compose -f docker-compose.release.yml up` | Interactive RStudio using code baked into the image, with source inputs read-only. |
-| `Rscript scripts/verification/verify.R --full` | Batch-only isolated verification with fresh derived outputs and no runtime network. |
+| `Rscript tools/reproduction/verify.R --full` | Batch-only isolated verification with fresh derived outputs and no runtime network. |
 
 Copy `.env.example` to `.env` only for interactive RStudio settings. The verification
 container uses neither credentials nor Selenium. `renv.lock` controls R packages; image
@@ -88,13 +88,14 @@ make all
 source(here::here("scripts", "run_pipeline.R"))
 ```
 
-Both routes run city processing, the core analysis, the preserved temporal preparation, and
-manuscript figures and tables. The temporal figures retain their existing legacy station
-samples and MERRA-2 timestamp support.
+Both routes run city processing, the core analysis, station-only hourly preparation, and
+manuscript figures and tables. The appendix uses city-hour means of available observed metropolitan stations from the
+current cleaned partitions. Missing hours break pollution episodes. MERRA-2 is optional.
 
-`make merra2` runs additional optional satellite comparisons after `make all` prerequisites
-and any extra satellite/NASA inputs are available. It is supporting analysis, not a separate
-manuscript route.
+`make merra2` runs optional satellite extraction and comparisons after current station
+and geography products and additional satellite/NASA inputs are available. It is separate
+from manuscript execution. The targets route remains a migration candidate until full
+scientific acceptance: `Rscript scripts/run_targets.R all`.
 
 ```mermaid
 flowchart TD
@@ -102,7 +103,7 @@ flowchart TD
   I --> P[City processing: prepare geography, stations and census]
   P --> A[Distances, outliers, exposure and robustness]
   A --> F[Manuscript figures and tables]
-  T[Legacy station inputs and MERRA-2 time support] --> H[Preserved temporal preparation]
+  A --> H[Observed station city-hour summaries]
   H --> F
   H --> S[Optional satellite comparisons]
   N[Additional satellite and NASA inputs] --> S
@@ -115,14 +116,14 @@ flowchart TD
 
 ```sh
 Rscript tests/testthat.R --mode=synthetic
-Rscript scripts/verification/verify.R
-Rscript scripts/verification/verify.R --full
+Rscript tools/reproduction/verify.R
+Rscript tools/reproduction/verify.R --full
 ```
 
 Passing tests or a completed run are evidence for the checks that actually ran; they do not
 by themselves establish scientific or independent reproduction. The verifier records inputs,
 outputs, environment details, failures, and comparison limitations. Export selected artifacts
-with `scripts/export/export_paper.R`; see the operational guide for commands and constraints.
+with `tools/reproduction/export_paper.R`; see the operational guide for commands and constraints.
 
 ## Contributing and citation
 
