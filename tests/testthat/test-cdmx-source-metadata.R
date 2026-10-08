@@ -66,7 +66,7 @@ test_that("CDMX memory and DuckDB readers agree on wide CSVs and actual contribu
   expect_true(all(file.exists(c(primary, secondary, fallback))))
 })
 
-test_that("generated Python bytecode does not change the scientific code inventory", {
+test_that("generated and image-excluded local files do not enter the code inventory", {
   source(here::here("src", "general_utilities", "verification_cli.R"), local = TRUE)
   root <- tempfile("bytecode-inventory-"); dir.create(root)
   on.exit(unlink(root, recursive = TRUE), add = TRUE)
@@ -74,9 +74,14 @@ test_that("generated Python bytecode does not change the scientific code invento
   writeLines("code", file.path(root, "src", "kept.R"))
   writeLines("cache", file.path(root, "src", "__pycache__", "guard.cpython-314.pyc"))
   writeLines("cache", file.path(root, "src", "module.pyc"))
+  writeLines("desktop", file.path(root, "src", ".DS_Store"))
+  dir.create(file.path(root, "scripts", "export"), recursive = TRUE)
+  writeLines("local export", file.path(root, "scripts", "export", "paper.local.sh"))
   inventory <- verification_code_inventory(root)
   expect_true("src/kept.R" %in% inventory$path)
   expect_false(any(grepl("__pycache__|[.]pyc$", inventory$path)))
+  expect_false(any(basename(inventory$path) == ".DS_Store"))
+  expect_false("scripts/export/paper.local.sh" %in% inventory$path)
 })
 
 test_that("identical archives retain distinct file identities in provenance", {

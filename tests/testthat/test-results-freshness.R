@@ -73,27 +73,36 @@ freshness_stages <- list(
        output = file.path("results", "figures", "maps"))
 )
 
-test_that("no stage output is older than its inputs", {
-  for (st in freshness_stages) {
-    newest_in  <- dir_mtime(st$inputs, max)
-    # Topic folders mix producers. Only this producer's selected manuscript files
-    # may stand in for its outputs; unrelated historical figures cannot date the stage.
-    producer <- sub(" .*", "", st$stage)
-    manifest <- artifact_manifest(here::here("config/paper_artifacts.csv"))
-    selected <- manifest$source_path[basename(manifest$producer_script) == producer]
-    if (length(selected)) {
-      paths <- here::here(selected)
-      oldest_out <- if (all(file.exists(paths))) min(file.info(paths)$mtime) else as.POSIXct(NA)
-    } else oldest_out <- dir_mtime(st$output, min)
-    if (is.na(newest_in) || is.na(oldest_out)) {
-      if (identical(getOption("airmonitoring.test_mode"), "release")) {
-        fail(paste("Missing freshness input/output for", st$stage))
-      } else skip(paste("Missing freshness input/output for", st$stage))
-      next
+test_that("manuscript outputs are current for the selected engine", {
+  if (identical(Sys.getenv("AIR_PIPELINE"), "targets")) {
+    outdated <- targets::tar_outdated(names = tidyselect::all_of("paper_export"),
+      script = here::here("_targets.R"),
+      store = Sys.getenv("AIR_TARGETS_STORE", here::here("_targets")),
+      callr_function = NULL)
+    expect_equal(length(outdated), 0L,
+      info = paste("Stale targets:", paste(outdated, collapse = ", ")))
+  } else {
+    for (st in freshness_stages) {
+      newest_in  <- dir_mtime(st$inputs, max)
+      # Topic folders mix producers. Only this producer's selected manuscript files
+      # may stand in for its outputs; unrelated historical figures cannot date the stage.
+      producer <- sub(" .*", "", st$stage)
+      manifest <- artifact_manifest(here::here("config/paper_artifacts.csv"))
+      selected <- manifest$source_path[basename(manifest$producer_script) == producer]
+      if (length(selected)) {
+        paths <- here::here(selected)
+        oldest_out <- if (all(file.exists(paths))) min(file.info(paths)$mtime) else as.POSIXct(NA)
+      } else oldest_out <- dir_mtime(st$output, min)
+      if (is.na(newest_in) || is.na(oldest_out)) {
+        if (identical(getOption("airmonitoring.test_mode"), "release")) {
+          fail(paste("Missing freshness input/output for", st$stage))
+        } else skip(paste("Missing freshness input/output for", st$stage))
+        next
+      }
+      expect_lte(as.numeric(newest_in), as.numeric(oldest_out),
+                 label = paste0("newest input mtime for stage '", st$stage, "'"),
+                 expected.label = paste0("its oldest output mtime (stale: re-run ",
+                                         st$stage, ")"))
     }
-    expect_lte(as.numeric(newest_in), as.numeric(oldest_out),
-               label = paste0("newest input mtime for stage '", st$stage, "'"),
-               expected.label = paste0("its oldest output mtime (stale: re-run ",
-                                       st$stage, ")"))
   }
 })

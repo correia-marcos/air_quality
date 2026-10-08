@@ -41,10 +41,15 @@ COPY renv/activate.R renv/activate.R
 COPY renv/settings.json renv/settings.json
 
 # Restore libraries (caching this layer)
-ENV RENV_CONFIG_CACHE_SYMLINKS=FALSE
+ENV RENV_CONFIG_CACHE_SYMLINKS=FALSE ARROW_WITH_ZSTD=ON
 RUN R -e "install.packages('renv', repos='https://cran.rstudio.com/')" \
  && R -s -e "options(renv.install.timeout = 7200L); renv::restore(clean = TRUE)" \
- && R -s -e "stopifnot(requireNamespace('testthat', quietly = TRUE))"
+ && R -s -e "stopifnot(requireNamespace('testthat', quietly = TRUE))" \
+ && R -s -e 'p <- tempfile(); x <- data.frame(value = 1); \
+      arrow::write_parquet(x, p, compression = "zstd"); \
+      y <- arrow::read_parquet(p); \
+      stopifnot(identical(names(y), names(x)), nrow(y) == nrow(x), \
+        identical(y$value, x$value)); unlink(p)'
 
 ################################################################################
 # STAGE 3: Final - Runtime
