@@ -87,20 +87,24 @@ download_logs_stations <- cdmx_download_sinaica_data(
   container                   = TRUE,
   timeout_csv                 = 20,
   settle_before_csv_click_sec = 1,
-  subdir                      = here::here(cdmx_cfg$dl_dir, "Ground_stations")
+  subdir                      = here::here(cdmx_cfg$dl_dir, "ground_stations")
 )
 
-# Save the acquisition log once it contains at least 1,000 entries.
-if (nrow(download_logs_stations) >= 1000){
+# Save every returned acquisition log, including small or incomplete runs.
+if (nrow(download_logs_stations) > 0L) {
   write.csv(download_logs_stations, file = path(cdmx_cfg$dl_dir, "stations_log.csv"))
 }
 
 # Download 2023 pollution data for states missing that year.
 missing_data_stations <- cdmx_download_remaining_raw_sinaica(
   base_url         = cdmx_cfg$base_url_sinaica,
-  subdir_existing  = here::here(cdmx_cfg$dl_dir, "Ground_stations"),
-  out_subdir_raw   = here::here(cdmx_cfg$dl_dir, "Ground_stations_raw_missing_data"),
+  subdir_existing  = here::here(cdmx_cfg$dl_dir, "ground_stations"),
+  out_subdir_raw   = here::here(cdmx_cfg$dl_dir, "ground_stations_raw_missing_data"),
   year_check       = 2023L)
+if (nrow(missing_data_stations) > 0L) {
+  write.csv(missing_data_stations, file = path(cdmx_cfg$dl_dir, "raw_stations_log.csv"),
+            row.names = FALSE)
+}
 
 # Download the census archives covering the metro area.
 census_log <- cdmx_download_census_data(

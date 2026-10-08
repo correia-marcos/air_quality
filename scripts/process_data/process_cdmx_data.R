@@ -86,6 +86,7 @@ pollution <- cdmx_merge_pollution_data(primary_data_dir   = dir_pollution,
                                        tz                 = cfg$processing_tz,
                                        years              = cfg$years,
                                        cleanup            = FALSE,
+                                       include_source_metadata = TRUE,
                                        out_dir            = out_pollution,
                                        out_name           = "cdmx_metro")
 
@@ -114,4 +115,3 @@ metro_area_file <- write_geopackage(
 stations_file <- write_geopackage(
   x    = stations,
   path = here::here(out_geography, "cdmx_stations_buffer_metro.gpkg"))
-

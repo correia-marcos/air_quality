@@ -3783,15 +3783,89 @@ cdmx_download_census_data <- function(
 #   and never convert or relabel. The stored clock equals the source clock. This
 #   matches Bogota and CDMX's duckdb engine, so all cities share one convention.
 # --------------------------------------------------------------------------------------------
+.cdmx_guess_parameter <- function(path) {
+  name <- tolower(basename(path))
+  patterns <- c(PM10 = "pm10|particulas_menores_a_10",
+    `PM2.5` = "pm2_5|pm2[.]5|particulas_menores_a_2_5",
+    NO2 = "dioxido_de_nitrogeno|__no2__", SO2 = "dioxido_de_azufre|__so2__",
+    O3 = "ozono|__o3__", CO = "monoxido.*carbono|__co__")
+  matches <- names(patterns)[vapply(patterns, grepl, logical(1), x = name)]
+  if (length(matches)) matches[1] else NA_character_
+}
+
+.cdmx_read_primary_csv <- function(path) {
+  data <- readr::read_csv(path, locale = readr::locale(encoding = "Latin1"),
+    col_types = readr::cols(.default = readr::col_character()),
+    show_col_types = FALSE, progress = FALSE)
+  names(data) <- trimws(gsub("\u00a0", " ", names(data), fixed = TRUE))
+  data[] <- lapply(data, function(x) {
+    x <- trimws(gsub("\u00a0", " ", x, fixed = TRUE))
+    x[!is.na(x) & (x == "" | grepl("^[-\\s]+$", x, perl = TRUE))] <- NA_character_
+    x
+  })
+  data
+}
+
+.cdmx_source_files <- function(csvs, spreadsheets) {
+  paths <- c(csvs, spreadsheets)
+  status <- c(rep("validated", length(csvs)), rep("raw_unvalidated", length(spreadsheets)))
+  hashes <- vapply(paths, digest::digest, character(1), file = TRUE, algo = "sha256")
+  relative <- ifelse(startsWith(paths, paste0(here::here(), "/")),
+    substring(paths, nchar(here::here()) + 2L), paths)
+  identities <- vapply(seq_along(paths), function(i)
+    digest::digest(paste(relative[i], hashes[i], sep = "\n"),
+      algo = "sha256", serialize = FALSE), character(1))
+  data.frame(source_id = paste(status, identities, sep = ":"), source_file = relative,
+    source_sha256 = hashes, provider = "SINAICA / INECC", source_status = status,
+    status_basis = "archived acquisition route; no per-reading validation flag",
+    source_url = ifelse(status == "validated",
+      "https://sinaica.inecc.gob.mx/data.php?tipo=V",
+      "https://sinaica.inecc.gob.mx/data.php?tipo=C"),
+    query_start = NA_character_, query_end = NA_character_,
+    retrieved_at = NA_character_, retrieval_status = "unknown", stringsAsFactors = FALSE)
+}
+
+.cdmx_write_source_manifest <- function(files, coverage, out_dir, out_name) {
+  # Coverage describes parsed records separately from nonnegative analytical contributors.
+  totals <- data.table::as.data.table(coverage)[,
+    .(parsed_records = sum(n_records), selected_contributions = sum(n_selected),
+      units = paste(sort(unique(ifelse(is.na(unit), "unknown", unit))), collapse = "|")),
+    by = source_id]
+  files <- merge(files, totals, by = "source_id", all.x = TRUE, sort = FALSE)
+  files$parsed_records[is.na(files$parsed_records)] <- 0
+  files$selected_contributions[is.na(files$selected_contributions)] <- 0
+  files$units[is.na(files$units)] <- "unknown"
+  coverage <- data.table::as.data.table(coverage)
+  for (column in c("first_record", "last_record")) {
+    if (inherits(coverage[[column]], "POSIXct")) {
+      coverage[, (column) := format(get(column), "%Y-%m-%d %H:%M:%S", tz = "UTC")]
+    }
+  }
+  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+  data.table::fwrite(files, file.path(out_dir, paste0(out_name, "_source_manifest.csv")))
+  data.table::fwrite(coverage, file.path(out_dir, paste0(out_name, "_source_coverage.csv")))
+  invisible(files)
+}
+
 .cdmx_merge_memory_engine <- function(
     csvs,
     new_source_files = NULL,
     station_lookup = NULL,
     years, tz, out_dir, out_name,
     write_parquet, write_rds, write_csv,
-    cleanup, verbose, stations_keep_codes = NULL
+    cleanup, verbose, stations_keep_codes = NULL, include_source_metadata = FALSE
 ) {
   if (isTRUE(verbose)) message("Engine: memory (RAM intensive).")
+  source_files <- if (include_source_metadata)
+    .cdmx_source_files(csvs, new_source_files) else NULL
+  file_metadata <- function(data, path, unit) {
+    if (!include_source_metadata) return(data)
+    position <- match(path, c(csvs, new_source_files))
+    data$source_id <- source_files$source_id[position]
+    data$source_status <- source_files$source_status[position]
+    data$unit <- unit
+    data
+  }
   
   # --- [Helpers] --------------------------------------------------------------
   .tnb <- function(x) trimws(gsub("\u00A0", " ", x, fixed = TRUE))
@@ -3866,17 +3940,12 @@ cdmx_download_census_data <- function(
   
   # A) Read CSV
   read_one_csv <- function(path) {
-    meta <- .parse_filename_meta(path, type = "csv")
-    if (is.null(meta)) return(NULL)
     
     if (isTRUE(verbose)) message("… CSV: ", basename(path))
     
     wtxt <- character()
     df <- withCallingHandlers(
-      readr::read_csv(
-        file = path, locale = readr::locale(encoding = "Latin1"),
-        show_col_types = FALSE, progress = FALSE
-      ),
+      .cdmx_read_primary_csv(path),
       warning = function(w) {
         wtxt <<- c(wtxt, conditionMessage(w))
         invokeRestart("muffleWarning")
@@ -3891,7 +3960,7 @@ cdmx_download_census_data <- function(
     # Identify parameter column or guess from filename.
     pcol <- intersect(c("Parámetro", "Parametro", "parametro"), names(df))
     if (!length(pcol)) {
-      df$parametro <- .guess_from_file(basename(path))
+      df$parametro <- .cdmx_guess_parameter(path)
       pcol <- "parametro"
     }
     if (!all(c("Fecha", "Hora") %in% names(df))) return(NULL)
@@ -3899,7 +3968,7 @@ cdmx_download_census_data <- function(
     # Station columns are headers shaped "Code : Name".
     meta_cols <- c("Fecha", "Hora", "Unidad", "Parámetro", "Parametro", "parametro")
     st_cols <- setdiff(
-      names(df)[grepl("\\s:\\s", names(df), perl = TRUE)], meta_cols
+      names(df)[grepl(":", names(df), fixed = TRUE)], meta_cols
     )
     if (!length(st_cols)) return(NULL)
     
@@ -3913,7 +3982,7 @@ cdmx_download_census_data <- function(
     
     # Split "Code : Name" into code and name.
     sp <- t(vapply(
-      strsplit(long$station_label, "\\s:\\s", perl = TRUE),
+      strsplit(long$station_label, "\\s*:\\s*", perl = TRUE),
       function(x) c(x[1] %||% NA_character_, x[2] %||% NA_character_),
       character(2)
     ))
@@ -3938,18 +4007,19 @@ cdmx_download_census_data <- function(
     }
     
     # Comma = thousands separator (aligned with the duckdb engine).
-    long$value <- suppressWarnings(readr::parse_number(
-      as.character(long$value), locale = readr::locale(grouping_mark = ",")
-    ))
+    long$value <- suppressWarnings(as.numeric(gsub(",", "", long$value, fixed = TRUE)))
     
     # Build the wall-clock timestamp as naive UTC (see DATETIME CONVENTION).
-    hr <- suppressWarnings(as.integer(long$Hora))
-    hr[is.na(hr)] <- 0L
-    dt_chr <- sprintf("%s %02d:00:00", as.character(as.Date(long$Fecha)),
+    hr <- suppressWarnings(as.integer(substr(trimws(long$Hora), 1, 2)))
+    hr[is.na(hr)] <- 23L
+    dates <- as.Date(long$Fecha, format = "%Y-%m-%d")
+    missing_date <- is.na(dates)
+    dates[missing_date] <- as.Date(long$Fecha[missing_date], format = "%d/%m/%Y")
+    dt_chr <- sprintf("%s %02d:00:00", as.character(dates),
                       pmax(0L, pmin(23L, hr)))
     dt_utc <- as.POSIXct(dt_chr, tz = "UTC")
     
-    tibble::tibble(
+    result <- tibble::tibble(
       datetime     = dt_utc,
       station      = station_name,
       station_code = station_code,
@@ -3957,6 +4027,8 @@ cdmx_download_census_data <- function(
       parametro    = as.character(long[[pcol[1]]]),
       value        = long$value
     )
+    units <- if ("Unidad" %in% names(long)) as.character(long$Unidad) else NA_character_
+    file_metadata(result, path, units)
   }
   
   # B) Read XLSX/XLS
@@ -3999,7 +4071,7 @@ cdmx_download_census_data <- function(
     
     if (nrow(df) == 0) return(NULL)
     
-    tibble::tibble(
+    result <- tibble::tibble(
       datetime     = df$datetime_utc,
       station      = df$st_name,
       station_code = df$st_code,
@@ -4007,6 +4079,8 @@ cdmx_download_census_data <- function(
       parametro    = as.character(df$parametro),
       value        = df$value_clean
     )
+    units <- if ("Unidad" %in% names(df)) as.character(df$Unidad) else NA_character_
+    file_metadata(result, path, units)
   }
   
   # ---- (2) Execute Reads ----------------------------------------------------
@@ -4028,6 +4102,17 @@ cdmx_download_census_data <- function(
   long_all <- long_all[long_all$year %in% years, , drop = FALSE]
   long_all$.__var <- .map_param(long_all$parametro)
   long_all <- long_all[!is.na(long_all$.__var), , drop = FALSE]
+  long_all <- long_all[long_all$.__var %in% c("pm25", "pm10", "no2", "so2", "co",
+                                            "ozone"), , drop = FALSE]
+  if (include_source_metadata) {
+    coverage <- long_all |>
+      dplyr::group_by(source_id, station, station_code, year,
+                      pollutant = .__var, unit) |>
+      dplyr::summarise(first_record = min(datetime), last_record = max(datetime),
+        n_records = dplyr::n(), n_contributing = sum(is.finite(value) & value >= 0),
+        n_negative = sum(value < 0, na.rm = TRUE), n_missing = sum(is.na(value)),
+        .groups = "drop")
+  }
   
   # ---- (4) Aggregate & Pivot ------------------------------------------------
   # Negative concentrations are physically impossible; report then NA them before the
@@ -4062,7 +4147,7 @@ cdmx_download_census_data <- function(
   # ---- (5) Canonical Station Code -------------------------------------------
   # One code per name. The skeleton join below assumes each name maps to a
   # single code in the data; verified zero multi-code names for CDMX.
-  st_ref <- wide |>
+  st_ref <- aggr |>
     dplyr::filter(!is.na(station_code), nzchar(station_code)) |>
     dplyr::count(station, station_code, sort = TRUE) |>
     dplyr::group_by(station) |>
@@ -4072,27 +4157,60 @@ cdmx_download_census_data <- function(
   
   # ---- (6) Hourly Skeleton --------------------------------------------------
   # Naive UTC grid (see DATETIME CONVENTION); no tz conversion.
-  t0  <- as.POSIXct(sprintf("%04d-01-01 00:00:00", min(years)), tz = "UTC")
-  t1  <- as.POSIXct(sprintf("%04d-12-31 23:00:00", max(years)), tz = "UTC")
-  hrs <- seq(t0, t1, by = "1 hour")
-  
-  stations <- sort(unique(wide$station))
-  skel <- tidyr::expand_grid(station = stations, datetime = hrs)
-  skel$year <- as.integer(format(skel$datetime, "%Y", tz = "UTC"))
+  skel <- dplyr::bind_rows(lapply(sort(unique(years)), function(yy) {
+    t0 <- as.POSIXct(sprintf("%04d-01-01 00:00:00", yy), tz = "UTC")
+    t1 <- as.POSIXct(sprintf("%04d-12-31 23:00:00", yy), tz = "UTC")
+    stations <- sort(unique(wide$station[wide$year == yy]))
+    tidyr::expand_grid(station = stations, datetime = seq(t0, t1, by = "hour"), year = yy)
+  }))
   
   wide_full <- skel |>
     dplyr::left_join(st_ref, by = "station") |>
     dplyr::left_join(wide, by = c("station","station_code","datetime","year"))
+  for (pol in c("pm25", "pm10", "no2", "so2", "co", "ozone")) {
+    if (!pol %in% names(wide_full)) wide_full[[pol]] <- NA_real_
+  }
+  if (include_source_metadata) {
+    contributors <- long_all |>
+      dplyr::filter(is.finite(value), value >= 0) |>
+      dplyr::inner_join(st_ref, by = c("station", "station_code"))
+    selected <- contributors |>
+      dplyr::count(source_id, station, station_code, year, pollutant = .__var, unit,
+                    name = "n_selected")
+    coverage <- dplyr::left_join(coverage, selected,
+      by = c("source_id", "station", "station_code", "year", "pollutant", "unit"))
+    coverage$n_selected[is.na(coverage$n_selected)] <- 0L
+    for (pol in c("pm25", "pm10")) {
+      provenance <- contributors |>
+        dplyr::filter(.__var == pol) |>
+        dplyr::group_by(station, station_code, datetime, year) |>
+        dplyr::summarise(source_status = if (dplyr::n_distinct(source_status) > 1L)
+          "mixed" else dplyr::first(source_status),
+          source_ids = paste(sort(unique(source_id)), collapse = "|"), .groups = "drop")
+      names(provenance)[5:6] <- paste0(pol, c("_source_status", "_source_ids"))
+      wide_full <- dplyr::left_join(wide_full, provenance,
+        by = c("station", "station_code", "datetime", "year"))
+      status <- paste0(pol, "_source_status")
+      wide_full[[status]][is.na(wide_full[[status]])] <- "unknown"
+    }
+    .cdmx_write_source_manifest(source_files, coverage, out_dir, out_name)
+  }
   
   # ---- (7) Write Artifacts --------------------------------------------------
   # No tz relabel: datetime stays naive, matching Bogota.
   if (isTRUE(write_parquet) && !missing(out_dir) && !missing(out_name)) {
     if (!requireNamespace("arrow", quietly = TRUE)) stop("Need 'arrow'.")
     base <- file.path(out_dir, paste0(out_name, "_dataset"))
+    if (dir.exists(base)) unlink(base, recursive = TRUE)
     dir.create(base, recursive = TRUE, showWarnings = FALSE)
     
     arrow::write_dataset(
-      dataset = wide_full, path = base, format = "parquet",
+      dataset = arrow::Table$create(wide_full)$SetColumn(
+        which(names(wide_full) == "datetime") - 1L,
+        arrow::field("datetime", arrow::timestamp("us")),
+        arrow::ChunkedArray$create(as.POSIXct(as.numeric(wide_full$datetime),
+          origin = "1970-01-01", tz = "UTC"), type = arrow::timestamp("us"))),
+      path = base, format = "parquet",
       partitioning = "year", existing_data_behavior = "overwrite",
       compression = "zstd"
     )
@@ -4161,9 +4279,11 @@ cdmx_download_census_data <- function(
     new_source_files = NULL,
     station_lookup = NULL,
     years, tz, out_dir, out_name, cleanup, run_parallel,
-    verbose
+    verbose, include_source_metadata = FALSE
 ) {
   if (isTRUE(verbose)) message("Engine: duckdb (Mixed Wide-CSV + Strict XLSX).")
+  source_files <- if (include_source_metadata)
+    .cdmx_source_files(csvs, new_source_files) else NULL
   
   # --- [Checks & Setup] -------------------------------------------------------
   if (!requireNamespace("duckdb", quietly = TRUE) ||
@@ -4189,7 +4309,8 @@ cdmx_download_census_data <- function(
   DBI::dbExecute(con, paste0(
     "CREATE TABLE staging_long(",
     "datetime VARCHAR, station VARCHAR, station_code VARCHAR, ",
-    "year INTEGER, parametro VARCHAR, value DOUBLE);"
+    "year INTEGER, parametro VARCHAR, value DOUBLE, source_id VARCHAR, ",
+    "source_status VARCHAR, unit VARCHAR);"
   ))
   
   # --- [Helpers] --------------------------------------------------------------
@@ -4225,12 +4346,7 @@ cdmx_download_census_data <- function(
   .preclean_to_utf8 <- function(path) {
     wtxt <- character()
     df <- withCallingHandlers(
-      readr::read_csv(
-        file = path,
-        locale = readr::locale(encoding = "Latin1", decimal_mark = ".",
-                               grouping_mark = ","),
-        show_col_types = FALSE, progress = FALSE
-      ),
+      .cdmx_read_primary_csv(path),
       warning = function(w) {
         wtxt <<- c(wtxt, conditionMessage(w))
         invokeRestart("muffleWarning")
@@ -4259,6 +4375,7 @@ cdmx_download_census_data <- function(
     if (is.null(pc)) return(0L)
     
     tmp <- pc$path
+    on.exit(unlink(tmp), add = TRUE)
     cr  <- pc$hdr_raw
     ct  <- .tnb(cr)
     
@@ -4273,8 +4390,8 @@ cdmx_download_census_data <- function(
     if (!is.na(p_i)) {
       param_sel <- paste0(.dq(cr[p_i]), " AS param_src")
     } else {
-      parts <- strsplit(basename(path), "__")[[1]]
-      g <- if(length(parts)>=4) parts[4] else "unknown"
+      g <- .cdmx_guess_parameter(path)
+      if (is.na(g)) return(0L)
       param_sel <- paste0(.ds(g), " AS param_src")
     }
     
@@ -4304,8 +4421,8 @@ cdmx_download_census_data <- function(
     # No AT TIME ZONE: the wall clock is preserved (see DATETIME CONVENTION).
     from_where <- paste0(
       "FROM (SELECT *, ", param_sel, ", ",
-      " COALESCE(STRPTIME(", fecha_q, ",'%Y-%m-%d'), ",
-      "          STRPTIME(", fecha_q, ",'%d/%m/%Y')) AS d, ",
+      " COALESCE(TRY_STRPTIME(", fecha_q, ",'%Y-%m-%d'), ",
+      "          TRY_STRPTIME(", fecha_q, ",'%d/%m/%Y')) AS d, ",
       " GREATEST(0, LEAST(23, TRY_CAST(SUBSTR(TRIM(", hora_q,
       "),1,2) AS INTEGER))) AS h ",
       " FROM read_csv_auto(", .ds(tmp),
@@ -4322,6 +4439,11 @@ cdmx_download_census_data <- function(
       "STRFTIME(CAST(d AS TIMESTAMP) + (h * INTERVAL 1 HOUR), ",
       "'%Y-%m-%d %H:%M:%S')"
     )
+    position <- match(path, c(csvs, new_source_files))
+    source_sql <- if (include_source_metadata) paste0(
+      .ds(source_files$source_id[position]), ", ",
+      .ds(source_files$source_status[position])) else "NULL, NULL"
+    unit_sql <- if ("Unidad" %in% cr) .dq("Unidad") else "NULL"
     
     insert_sql <- paste0(
       "INSERT INTO staging_long SELECT ", dt_expr, " AS datetime, ",
@@ -4330,7 +4452,8 @@ cdmx_download_census_data <- function(
       "NULLIF(REGEXP_EXTRACT(st, '^(.*?)\\s*:\\s*', 1), '') AS station_code, ",
       "EXTRACT(YEAR FROM (CAST(d AS TIMESTAMP) + (h * INTERVAL 1 HOUR))) ",
       "AS year, param_src AS parametro, ",
-      "TRY_CAST(REPLACE(TRIM(val), ',', '') AS DOUBLE) AS value ",
+      "TRY_CAST(REPLACE(TRIM(val), ',', '') AS DOUBLE) AS value, ",
+      source_sql, ", ", unit_sql, " AS unit ",
       from_where, ";"
     )
     
@@ -4387,12 +4510,18 @@ cdmx_download_census_data <- function(
       value        = as.numeric(df$value_clean),
       stringsAsFactors = FALSE
     )
+    position <- match(path, c(csvs, new_source_files))
+    out$source_id <- if (include_source_metadata)
+      source_files$source_id[position] else NA_character_
+    out$source_status <- if (include_source_metadata)
+      source_files$source_status[position] else NA_character_
+    out$unit <- if ("Unidad" %in% names(df)) as.character(df$Unidad) else NA_character_
     
     DBI::dbWriteTable(con, "temp_xlsx_load", out,
                       append = FALSE, overwrite = TRUE)
     DBI::dbExecute(con, paste0(
       "INSERT INTO staging_long SELECT datetime, station, station_code, ",
-      "year, parametro, value FROM temp_xlsx_load"
+      "year, parametro, value, source_id, source_status, unit FROM temp_xlsx_load"
     ))
     return(nrow(out))
   }
@@ -4403,7 +4532,7 @@ cdmx_download_census_data <- function(
   if (length(csvs) > 0) {
     if (isTRUE(verbose)) message("--> Processing CSVs (Wide Format)...")
     for (pth in csvs) {
-      ins <- tryCatch(insert_one_csv(pth), error = function(e) 0L)
+      ins <- insert_one_csv(pth)
       total_ins <- total_ins + ins
     }
   }
@@ -4434,7 +4563,7 @@ cdmx_download_census_data <- function(
     "WHEN UPPER(TRIM(parametro)) IN ('DIOXIDO DE NITROGENO','NO2') THEN 'no2' ",
     "WHEN UPPER(TRIM(parametro)) IN ('DIOXIDO DE AZUFRE','SO2') THEN 'so2' ",
     "WHEN UPPER(TRIM(parametro)) IN ('MONOXIDO DE CARBONO','CO') THEN 'co' ",
-    "ELSE NULL END AS var, value ",
+    "ELSE NULL END AS var, value, source_id, source_status, unit ",
     "FROM staging_long WHERE parametro IS NOT NULL;"
   ))
   
@@ -4452,7 +4581,14 @@ cdmx_download_census_data <- function(
 
   DBI::dbExecute(con, paste0(
     "CREATE TABLE aggr AS SELECT datetime, station, station_code, year, var, ",
-    "AVG(CASE WHEN value >= 0 THEN value END) AS value FROM long_mapped ",
+    "AVG(CASE WHEN value >= 0 THEN value END) AS value, ",
+    "CASE WHEN COUNT(DISTINCT CASE WHEN value >= 0 AND isfinite(value) ",
+    "THEN source_status END) > 1 THEN 'mixed' ELSE ",
+    "MAX(CASE WHEN value >= 0 AND isfinite(value) THEN source_status END) END ",
+    "AS source_status, ",
+    "STRING_AGG(DISTINCT CASE WHEN value >= 0 AND isfinite(value) ",
+    "THEN source_id END, '|' ORDER BY CASE WHEN value >= 0 AND isfinite(value) ",
+    "THEN source_id END) AS source_ids FROM long_mapped ",
     "WHERE var IS NOT NULL GROUP BY 1,2,3,4,5;"
   ))
 
@@ -4464,6 +4600,21 @@ cdmx_download_census_data <- function(
     "FROM aggr WHERE station_code IS NOT NULL AND station_code <> '' ",
     "GROUP BY 1,2) t WHERE rn = 1;"
   ))
+  if (include_source_metadata) {
+    coverage <- DBI::dbGetQuery(con, paste0(
+      "SELECT source_id, station, station_code, year, var AS pollutant, unit, ",
+      "STRFTIME(MIN(datetime), '%Y-%m-%d %H:%M:%S') AS first_record, ",
+      "STRFTIME(MAX(datetime), '%Y-%m-%d %H:%M:%S') AS last_record, ",
+      "COUNT(*) AS n_records, ",
+      "COUNT(*) FILTER (WHERE value >= 0 AND isfinite(value)) AS n_contributing, ",
+      "COUNT(*) FILTER (WHERE value < 0) AS n_negative, ",
+      "COUNT(*) FILTER (WHERE value IS NULL) AS n_missing, ",
+      "COUNT(*) FILTER (WHERE value >= 0 AND isfinite(value) AND ",
+      "station_code = (SELECT station_code FROM st_ref ",
+      "WHERE st_ref.station = long_mapped.station)) AS n_selected ",
+      "FROM long_mapped WHERE var IS NOT NULL GROUP BY 1,2,3,4,5,6;"))
+    .cdmx_write_source_manifest(source_files, coverage, out_dir, out_name)
+  }
   
   # --- [Step 5: Write Parquet] ------------------------------------------------
   # Naive hourly grid; no AT TIME ZONE (see DATETIME CONVENTION).
@@ -4480,6 +4631,21 @@ cdmx_download_census_data <- function(
     DBI::dbExecute(con, sprintf(
       "CREATE TEMP TABLE aggr_y AS SELECT * FROM aggr WHERE year = %d;", yy
     ))
+
+    # Pivot before joining the calendar, preserving the canonical-code predicate.
+    DBI::dbExecute(con, paste0(
+      "CREATE TEMP TABLE wide_y AS SELECT a.datetime, a.station, a.station_code, ",
+      paste(vapply(c("pm25", "pm10", "no2", "so2", "co", "ozone"), function(pol)
+        paste0("AVG(CASE WHEN a.var='", pol, "' THEN a.value END) AS ", pol),
+        character(1)), collapse = ", "),
+      if (include_source_metadata) paste0(vapply(c("pm25", "pm10"), function(pol)
+        paste0(", MAX(CASE WHEN a.var='", pol,
+          "' THEN a.source_status END) AS ", pol, "_source_status, ",
+          "MAX(CASE WHEN a.var='", pol, "' THEN a.source_ids END) AS ",
+          pol, "_source_ids"), character(1)), collapse = "") else "",
+      " FROM aggr_y a LEFT JOIN st_ref sr ON a.station = sr.station ",
+      "WHERE COALESCE(sr.station_code, a.station_code) = a.station_code ",
+      "GROUP BY 1,2,3;"))
     
     hours_sql <- paste0(
       "SELECT gs.ts AS datetime FROM generate_series(TIMESTAMP '",
@@ -4494,24 +4660,23 @@ cdmx_download_census_data <- function(
       "sk AS (SELECT s.station, h.datetime FROM stations s ",
       "       CROSS JOIN hours h) ",
       "SELECT sk.datetime, sk.station, sr.station_code, ", yy, " AS year, ",
-      " AVG(CASE WHEN a.var='pm25' THEN a.value END) AS pm25, ",
-      " AVG(CASE WHEN a.var='pm10' THEN a.value END) AS pm10, ",
-      " AVG(CASE WHEN a.var='no2' THEN a.value END) AS no2, ",
-      " AVG(CASE WHEN a.var='so2' THEN a.value END) AS so2, ",
-      " AVG(CASE WHEN a.var='co' THEN a.value END) AS co, ",
-      " AVG(CASE WHEN a.var='ozone' THEN a.value END) AS ozone ",
-      "FROM sk ",
+      " a.pm25, a.pm10, a.no2, a.so2, a.co, a.ozone ",
+      if (include_source_metadata) paste0(vapply(c("pm25", "pm10"), function(pol)
+        paste0(", COALESCE(a.", pol, "_source_status, 'unknown') AS ",
+          pol, "_source_status, a.", pol, "_source_ids"), character(1)),
+        collapse = "") else "",
+      " FROM sk ",
       "LEFT JOIN st_ref sr ON sk.station = sr.station ",
-      "LEFT JOIN aggr_y a ON sk.station = a.station ",
-      "  AND COALESCE(sr.station_code, a.station_code) = a.station_code ",
+      "LEFT JOIN wide_y a ON sk.station = a.station ",
       "  AND sk.datetime = a.datetime ",
-      "GROUP BY 1,2,3 ORDER BY sk.station, sk.datetime ",
+      "ORDER BY sk.station, sk.datetime ",
       ") TO ", .ds(base), " (FORMAT PARQUET, COMPRESSION ", parquet_codec,
       ", PARTITION_BY (year), OVERWRITE_OR_IGNORE TRUE);"
     )
     
     DBI::dbExecute(con, sql_copy_y)
     DBI::dbExecute(con, "DROP TABLE aggr_y;")
+    DBI::dbExecute(con, "DROP TABLE wide_y;")
   }
   
   if (isTRUE(cleanup)) {
@@ -4530,8 +4695,8 @@ cdmx_download_census_data <- function(
 #' @param primary_data_dir     folder with .csv files
 #' @param secondary_data_dir   folder with .xls/xlsx files
 #' @param stations_sf          sf dataframe containing stations' info
-#' @param tz                   Olson tz for final relabel (default "America/Mexico_City")
-#' @param years                integer vector of years to keep (UTC/local)
+#' @param tz                   Retained for compatibility; no source-clock conversion.
+#' @param years                Requested source-clock calendar years.
 #' @param cleanup              remove source CSVs after success (default FALSE)
 #' @param out_dir, out_name  — output location (dataset goes to "<name>_dataset/")
 #' @param write_parquet        TRUE → write Parquet artifacts
@@ -4539,22 +4704,21 @@ cdmx_download_census_data <- function(
 #                             • duckdb: per-year partitioned dataset via COPY
 #' @param write_rds, write_csv — optional single-file extras (memory engine)
 #' @param verbose             print progress (default TRUE)
-#' @param engine              "auto" | "duckdb" | "memory"
-#                             Auto: if RAM > 64 GB → "memory", else "duckdb"
-#' @param stations_keep_codes   NULL or character vector of station codes to keep
+#' @param engine              "duckdb" (default) or "memory".
+#' @param include_source_metadata Retain actual contributor IDs and feed status; FALSE.
 #' @Return: Arrow Dataset handle (if Parquet written) else tibble.
-#' @Steps : (1) discover CSVs, (2) RAM detect + engine pick,
+#' @Steps : (1) discover sources, (2) use the requested engine,
 #          (3A) memory engine, (3B) duckdb engine.
 #' @details
 #   NEGATIVE READINGS:
 #     secondary_data_dir holds SINAICA's unvalidated "Datos crudos" feed, which ships no
-#     validity flag and lets faulty instruments through — CALPULALPAN's 2023 PM2.5 is
-#     11% negative hours alongside a lattice of multiples of 5000/3 µg/m³. A concentration
+#     per-reading validity flag. The 2023 CALPULALPAN audit found negative readings and
+#     an unexplained numerical lattice; no instrument cause was established. A concentration
 #     below zero is physically impossible, so both engines drop those readings before the
 #     hourly mean; after the mean they would be indistinguishable from a low valid hour.
 #     Downstream outlier detection cannot catch them: it flags only values above the
 #     station-month p99. Counts print per station-year-pollutant so the loss is auditable
-#     and a wholly faulty station-year can be judged on the numbers.
+#     for documented review. No automatic whole-station or station-year exclusion is applied.
 #' @Written_on: 20/08/2025
 #' @Written_by: Marcos Paulo
 # --------------------------------------------------------------------------------------------
@@ -4569,7 +4733,8 @@ cdmx_merge_pollution_data <- function(
     out_name,
     write_parquet = TRUE,
     verbose = TRUE,
-    engine = "duckdb"
+    engine = "duckdb",
+    include_source_metadata = FALSE
 ) {
   
   # 1. Prepare Lookup
@@ -4605,7 +4770,8 @@ cdmx_merge_pollution_data <- function(
       out_name = out_name,
       cleanup = cleanup,
       run_parallel = TRUE,
-      verbose = verbose
+      verbose = verbose,
+      include_source_metadata = include_source_metadata
     )
   } else {
     .cdmx_merge_memory_engine(
@@ -4619,7 +4785,8 @@ cdmx_merge_pollution_data <- function(
       write_parquet = write_parquet,
       write_rds = TRUE, write_csv = FALSE,
       cleanup = cleanup,
-      verbose = verbose
+      verbose = verbose,
+      include_source_metadata = include_source_metadata
     )
   }
 }

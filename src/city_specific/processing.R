@@ -191,6 +191,9 @@ city_pollution_outputs <- function(id, cfg) {
   paths <- c(dataset = dataset)
   if (id == "bogota") paths <- c(paths,
     comparison = here::here(root, "bogota_rmcab_sisaire_comparison"))
+  if (id == "cdmx") paths <- c(paths,
+    source_manifest = here::here(root, "cdmx_metro_source_manifest.csv"),
+    source_coverage = here::here(root, "cdmx_metro_source_coverage.csv"))
   processing_files(paths)
   partitions <- list.files(dataset, pattern = "\\.parquet$", recursive = TRUE)
   if (!length(partitions) || any(!grepl("^year=[0-9]{4}/", partitions))) {
@@ -238,4 +241,17 @@ run_city_processing <- function(id, cfg, steps, inputs = NULL, quiet = FALSE) {
       do.call(functions[[stage]], args)
   }
   outputs
+}
+
+#' @param cfg City configuration used by the manuscript graph.
+#' @return Configuration with the canonical interim root required by downstream readers.
+#' @details Manual city wrappers support separate output roots. The manuscript graph uses
+#   the repository layout, isolated through Compose mounts during verification.
+manuscript_city_config <- function(cfg) {
+  root <- normalizePath(here::here("data", "interim"), mustWork = FALSE)
+  if (!identical(normalizePath(cfg$out_dir, mustWork = FALSE), root)) {
+    stop("The manuscript graph requires the canonical data/interim root. ",
+         "Use isolated verification mounts, or a manual city wrapper for custom outputs.")
+  }
+  cfg
 }

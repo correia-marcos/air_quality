@@ -183,6 +183,7 @@ cdmx_prepare_pollution <- function(cfg, inputs, stations, quiet = FALSE) {
   dataset <- cdmx_merge_pollution_data(primary_data_dir = inputs["primary"],
     secondary_data_dir = inputs["secondary"], stations_sf = station_data,
     tz = cfg$processing_tz, years = cfg$years, verbose = !quiet, cleanup = FALSE,
+    include_source_metadata = TRUE,
     out_dir = here::here(cfg$out_dir, "monitoring_stations"), out_name = "cdmx_metro")
   city_pollution_outputs("cdmx", cfg)
 }
