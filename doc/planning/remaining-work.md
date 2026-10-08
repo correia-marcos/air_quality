@@ -1,6 +1,6 @@
 # Workflow inventory and remaining work
 
-Updated 6 October 2026; individual execution records retain their original dates.
+Updated 8 October 2026; individual execution records retain their original dates.
 Every R entry point and Quarto report under scripts/ has
 one row below. Targets declarations own manuscript dependencies; scripts remain
 executable RStudio recipes. The inventory is descriptive, not another scheduler.
@@ -87,6 +87,36 @@ for zero residual degrees of freedom. The five reported São Paulo PM2.5 series 
 26, 53, 23, 20 and 20 gaps respectively (Capão Redondo, Carapicuíba, Interlagos, Santo Amaro,
 Taboão da Serra). These are December-slice checks, not a full-year or downstream rerun.
 
+## Compact observed audit schema — 8 October 2026
+
+Marcos accepted the three retained Primaria Revolución readings and approved five columns
+per pollutant: original standardized input, source validation, screening reason,
+statistical reason and final concentration. This replaces redundant QA states, gates,
+statistical flags and observed-use booleans in newly generated cleaned panels. The four
+screening codes and statistical codes are specified in the
+[data dictionary](../reference/data_dictionary.md#9-observed-particulate-quality-fields).
+Statistical reason is missing for unavailable or screened-out input. In imputed datasets,
+the existing `*_imputed_from` field identifies OLS predictions, while these audit fields
+continue to describe observed input.
+
+Source contributions for every CDMX station-hour/pollutant, input partition identities,
+and station-month SD diagnostics remain in file-backed `_audit/` tables owned by the
+cleaned dataset target. The active decision-file dependency and optional per-reading
+eligibility/review APIs are removed; the empty old CSV and dated evidence are historical.
+Existing review-record target names and filenames are compatibility names for screened
+records, not a manual disposition workflow. Bounds and statistical parameters are unchanged.
+
+Schema verification compares newly generated four-city 2023 panels with the previous
+2,000/6,000-bound candidate, checking concentrations, keys, missingness, original inputs,
+source status, removal decisions, hourly summaries and episode data. The evidence is
+recorded separately in `data/verification/particulate-schema-20261008/`; results there
+are bounded implementation checks, not a complete manuscript reproduction. Production
+panels need regeneration to adopt the new schema. All generated audit partitions must
+be covered by a reviewed revision-matched baseline during full acceptance; the registry
+includes CDMX source links for the currently available 2000–2023 partitions and the shared
+diagnostic/input-identity tables. Add coverage when input years or source metadata expand.
+Docker build and complete isolated execution remain separate from these host checks.
+
 ## Parameterized particulate screening and execution corrections
 
 **6 October 2026 — initial implementation approved by Marcos.** A configurable quality
@@ -120,7 +150,7 @@ clock remain unchanged. This does not screen every unaggregated contributing sou
 | Agency-invalid flag, documented invalid sentinel, or documented monitor-range failure | Exclude the affected measurement or documented affected interval, with a reason and supporting evidence. Obtain instrument/range information rather than infer it from an air-quality index. |
 | Hourly PM2.5 **> 2,000 µg/m³** or hourly PM10 **> 6,000 µg/m³** | Withhold uniformly before p99 and all reference moments, independently of source validation status. These configurable screening bounds are not physical maxima. |
 | Repeated or quantized values, abrupt scale changes, prolonged flat segments, or same-hour PM2.5 > PM10 | Deferred for coauthor discussion; no corresponding exclusion rule is activated. |
-| Individual exceptions or further suspicious-period exclusions | Not activated in the main analysis. The existing optional review interface is retained pending the compact schema decision; do not populate it to force particular results. |
+| Individual exceptions or further suspicious-period exclusions | Not activated in the main analysis. The compact interface removes optional per-reading overrides; exceptions require a separately approved method. |
 
 The selected bounds are supported by examples rather than a universal cap.
 [SINAICA Manual 5](https://sinaica.inecc.gob.mx/archivo/guias/5%20-%20Protocolo%20de%20Manejo%20de%20Datos%20de%20la%20Calidad%20del%20Aire.pdf),
@@ -152,16 +182,18 @@ Primaria Revolución readings exceed p99 = 489.84 but pass the temporal band, so
 CDMX IT2 results are 7 episodes/28 hours. No percentile or SD rule is changed to force their
 removal. Evidence is under `data/verification/particulate-bounds-20261008/`. Update the
 current appendix numerical table and temporal exports from this run; keep the earlier
-500/1,000 results as dated historical comparisons. The compact numerical reason proposal
-in the data dictionary, and removal of unused override machinery, remain a separate schema
-decision. Main-analysis screening does not require individual reviews.
+500/1,000 results as dated historical comparisons. The later compact schema is documented
+above and in the data dictionary; it removes unused override machinery. Main-analysis
+screening does not require individual reviews.
 
 **8 October execution diagnosis:** the host Docker run built its image and found all
 declared sources, but the R subprocess died during Bogotá 2018 census processing. A
 17.25 GB Docker memory allocation is reported; resource exhaustion is not yet established.
-The host probe confirms Arrow 24.0.0 lacks Zstandard. The image now requests its build
-feature and checks a compressed round trip; actual image verification is pending. The
-unsupported `expect_length(info=...)` call and host-only inventory entries are corrected.
+The earlier host probe confirmed Arrow 24.0.0 lacked Zstandard. The image requests its
+build feature and checks a compressed round trip. Marcos subsequently rebuilt
+`air-monitoring-verification:bounds-20261008` and reported `zstd = TRUE` and a successful
+compressed write/read round trip on 8 October; the codec defect is resolved in that image.
+The unsupported `expect_length(info=...)` call and host-only inventory entries are corrected.
 Complete container checks require a fresh run; the old baseline is also revision-mismatched.
 `references.bib` is now supplied. Compile the exported copy with it; the authors defer
 manuscript layout repairs to Overleaf. Rendering acceptance remains open.
@@ -205,7 +237,11 @@ availability changes geographic coverage and can change the exposure estimand.
 Prefer **pollutant-specific source status** over a single `verified` column. PM2.5 and
 PM10 at one station-hour can have different sources and validation histories.
 
-| Implemented field or record | Meaning |
+This table preserves the initial **6 October interface**, superseded by the compact schema
+above. Current field definitions are in the data dictionary. Historical evidence remains
+in its original form.
+
+| Historical field or record | Meaning |
 |---|---|
 | `pm25_source_status`, `pm10_source_status` | Provider-reported `validated`, `preliminary`, `raw_unvalidated`, `unknown`, or `mixed`; derive from acquisition evidence, never from an outlier flag. The SINAICA raw route is `raw_unvalidated`. |
 | `pm25_qa_status`, `pm10_qa_status` | Project review state: `not_flagged`, `pending_review`, `reviewed_retained`, `excluded`, or `missing`. `not_flagged` is not a certification of validity. |

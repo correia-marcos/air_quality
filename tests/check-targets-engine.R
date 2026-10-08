@@ -129,6 +129,32 @@ check_targets_engine <- function() {
   check(identical(paths_before, targets::tar_read_raw("data", store = path_store)))
   check(identical(readLines(file.path(work, "rendered.txt")), "11"))
 
+  # Arrow ignores underscore audit directories; file targets must still own them.
+  audit_script <- file.path(work, "audit-owner.R")
+  audit_store <- file.path(work, "audit-store")
+  audit_output <- file.path(work, "cleaned")
+  audit_file <- file.path(audit_output, "_audit", "report.txt")
+  writeLines(c(
+    paste0("audit_output <- ", encodeString(audit_output, quote = '"')),
+    "list(targets::tar_target(cleaned, {",
+    "  dir.create(file.path(audit_output, '_audit'), recursive=TRUE, showWarnings=FALSE)",
+    "  writeLines('observation', file.path(audit_output, 'data.txt'))",
+    "  writeLines('diagnostic', file.path(audit_output, '_audit', 'report.txt'))",
+    "  audit_output",
+    "}, format='file'))"), audit_script)
+  audit_make <- function() targets::tar_make(script = audit_script, store = audit_store,
+    callr_function = NULL, reporter = "silent", envir = new.env(parent = globalenv()))
+  audit_outdated <- function() targets::tar_outdated(script = audit_script,
+    store = audit_store, callr_function = NULL, reporter = "silent",
+    envir = new.env(parent = globalenv()))
+  audit_make()
+  check(length(audit_outdated()) == 0L)
+  unlink(audit_file)
+  check(identical(audit_outdated(), "cleaned"))
+  audit_make()
+  check(file.exists(audit_file))
+  check(length(audit_outdated()) == 0L)
+
   network <- targets::tar_network(script = here::here("_targets.R"),
     callr_function = NULL, envir = new.env(parent = globalenv()))
   parents <- function(target) network$edges$from[network$edges$to == target]
@@ -139,7 +165,7 @@ check_targets_engine <- function() {
   check(!"cdmx_config" %in% parents("bogota_geography"))
   check("bogota_2018_distances" %in% parents("bogota_outliers"))
   check("bogota_station_temporal_plots" %in% parents("figure_station_temporal"))
-  check("bogota_temporal_series_file" %in% parents("bogota_station_temporal_data"))
+  check("bogota_station_hourly_file" %in% parents("bogota_station_temporal_data"))
   check("exposure_plots" %in% parents("generate_exposure_plots"))
   check("exposure_plot_data" %in% parents("exposure_plots"))
   check("station_table_tex" %in% parents("render_station_tables"))

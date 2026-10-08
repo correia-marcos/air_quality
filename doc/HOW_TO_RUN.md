@@ -385,10 +385,11 @@ and clean-source limitations are in [RESOLUTION_SENSITIVITY.md](RESOLUTION_SENSI
 ## Prepare a comparison candidate
 
 The comparison registry covers station-hourly/episode data, quality summaries and linked
-review records, CDMX source manifests, reporting/threshold/availability summaries, observed
+screened records, CDMX source manifests, reporting/threshold/availability summaries, observed
 and imputed exposure coefficients, observed panels, IDW annual estimates, station-context
 plot data, imputation predictions, and exported manuscript TeX tables. The registry now
-contains 62 comparisons. Rendering review and any remaining unregistered plotting inputs
+also registers compact-schema input identities, station-month diagnostics and CDMX
+source-contribution partitions for 2000–2023. Rendering review and unregistered plotting inputs
 are still necessary for complete acceptance.
 Baseline filenames are
 relative to `AIR_BASELINE_ROOT` (default `data/verification/baseline`), mounted read-only as

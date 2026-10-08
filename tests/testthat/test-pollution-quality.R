@@ -4,12 +4,11 @@ test_that("particulate bounds retain equality and preserve original concentratio
     pm25 = c(0, -1, NA, 500, 501, 79999, Inf),
     pm10 = c(0, -1, NA, 1000, 1001, 999, Inf))
   result <- screen_pollution_quality(panel, upper_bounds = c(pm25 = 500, pm10 = 1000))
-  expect_identical(result$pm25_input, panel$pm25)
+  expect_identical(result$pm25_original, panel$pm25)
   expect_equal(result$pm25, c(0, NA, NA, 500, NA, NA, NA))
   expect_equal(result$pm10, c(0, NA, NA, 1000, NA, 999, NA))
-  expect_identical(result$pm25_qa_status,
-    c("not_flagged", "excluded", "missing", "not_flagged", "pending_review",
-      "pending_review", "excluded"))
+  expect_identical(result$pm25_screen_reason, c(0L, 2L, 3L, 0L, 1L, 1L, 3L))
+  expect_identical(result$pm25_source_validation, rep("unknown", nrow(panel)))
   expect_identical(panel$pm25[6], 79999)
   expect_equal(screen_pollution_quality(panel, upper_bounds = NULL)$pm25[6], 79999)
   expect_equal(screen_pollution_quality(panel,
@@ -31,46 +30,24 @@ test_that("approved broad defaults agree across settings and both functions", {
   result <- screen_pollution_quality(panel)
   expect_equal(result$pm25, c(915, 2000, NA, NA))
   expect_equal(result$pm10, c(5337.6, 6000, NA, NA))
-  expect_identical(result$pm25_input, panel$pm25)
-  expect_identical(result$pm10_input, panel$pm10)
+  expect_identical(result$pm25_original, panel$pm25)
+  expect_identical(result$pm10_original, panel$pm10)
 })
 
-test_that("independent logical gates cannot bypass a concentration hold", {
-  panel <- data.table::data.table(station = "s", datetime = as.POSIXct(
-    "2023-01-01", tz = "UTC") + 0:2 * 3600, pm25 = c(79999, 10, 20),
-    pm10 = c(40, 50, 60), gate25 = c(TRUE, NA, FALSE), gate10 = c(FALSE, TRUE, NA))
-  mapping <- c(pm25 = "gate25", pm10 = "gate10")
-  result <- screen_pollution_quality(panel, eligibility_cols = mapping)
-  expect_identical(result$pm25_qa_eligible, c(FALSE, FALSE, FALSE))
-  expect_identical(result$pm10_qa_eligible, c(FALSE, TRUE, FALSE))
-  expect_equal(result$pm10, c(NA, 50, NA))
-  expect_error(screen_pollution_quality(panel,
-    eligibility_cols = c(pm25 = "absent")), "must exist")
-  panel$gate25 <- c(1, 0, NA)
-  expect_error(screen_pollution_quality(panel, eligibility_cols = mapping), "logical")
-})
-
-test_that("documented decisions are bound to exact original inputs", {
-  panel <- data.table::data.table(station = "Calpúl", datetime = as.POSIXct(
-    "2023-01-01", tz = "UTC") + 0:1 * 3600, pm25 = c(79999, 30), input_id = "hash")
-  reviews <- data.frame(station = panel$station, datetime = panel$datetime,
-    pollutant = "pm25", input_id = "hash", value = panel$pm25,
-    decision = c("retain", "exclude"), evidence = "fixture operating record",
-    reviewer = "fixture reviewer", review_date = "2026-10-06")
-  result <- screen_pollution_quality(panel, review_decisions = reviews)
-  expect_equal(result$pm25, c(79999, NA))
-  expect_equal(result$pm25_qa_status, c("reviewed_retained", "excluded"))
-  changed <- reviews; changed$input_id[1] <- "stale"
-  expect_error(screen_pollution_quality(panel, review_decisions = changed), "identity")
-  changed <- reviews; changed$value[1] <- 80000
-  expect_error(screen_pollution_quality(panel, review_decisions = changed), "value")
-  changed <- reviews; changed$evidence[1] <- ""
-  expect_error(screen_pollution_quality(panel, review_decisions = changed), "complete")
-  expect_error(screen_pollution_quality(panel,
-    review_decisions = rbind(reviews, reviews[1, ])), "conflicting")
-  panel$gate <- FALSE
-  expect_false(screen_pollution_quality(panel, eligibility_cols = c(pm25 = "gate"),
-    review_decisions = reviews)$pm25_qa_eligible[1])
+test_that("screening separates negative and nonfinite input from source validation", {
+  panel <- data.frame(pm25 = c(-1, -Inf, NaN, Inf, 0, 79999),
+    pm10 = c(10, 10, 10, 10, 10, 10),
+    pm25_source_status = c("validated", "raw_unvalidated", NA, "mixed", "unknown",
+                          "validated"))
+  result <- screen_pollution_quality(panel)
+  expect_identical(result$pm25_original, panel$pm25)
+  expect_identical(result$pm25_screen_reason, c(2L, 3L, 3L, 3L, 0L, 1L))
+  expect_identical(result$pm10_screen_reason, rep(0L, nrow(panel)))
+  expect_identical(result$pm25_source_validation,
+    c("validated", "raw_unvalidated", "unknown", "mixed", "unknown", "validated"))
+  expect_false("pm25_source_status" %in% names(result))
+  expect_error(screen_pollution_quality(panel, review_decisions = data.frame()),
+               "unused argument")
 })
 
 test_that("held readings and boundary donors do not enter statistical benchmarks", {
@@ -80,6 +57,8 @@ test_that("held readings and boundary donors do not enter statistical benchmarks
   panel <- data.table::CJ(station = c("Calpúl", "peer"), datetime = as.POSIXct(
     "2022-12-31 00:00:00", tz = "UTC") + 0:47 * 3600)
   panel[, pm25 := ifelse(station == "Calpúl", 79999, 20)]
+  panel[, pm25_source_status := ifelse(station == "Calpúl", "raw_unvalidated", "mixed")]
+  panel[, pm25_source_ids := ifelse(station == "Calpúl", "raw-id", "raw-id;valid-id")]
   panel[, year := as.integer(format(datetime, "%Y", tz = "UTC"))]
   table <- arrow::Table$create(panel)$SetColumn(1L,
     arrow::field("datetime", arrow::timestamp("us")),
@@ -105,8 +84,12 @@ test_that("held readings and boundary donors do not enter statistical benchmarks
   expect_equal(outputs[[1]], outputs[[3]])
   held <- outputs[[1]][station == normalize_station("Calpúl")]
   expect_true(all(is.na(held$pm25)))
-  expect_true(all(held$pm25_input == 79999))
-  expect_true(all(!held$pm25_use & held$pm25_outlier_reason == 0L))
+  expect_true(all(held$pm25_original == 79999))
+  expect_true(all(held$pm25_screen_reason == 1L))
+  expect_true(all(is.na(held$pm25_outlier_reason)))
+  expect_setequal(grep("^pm25", names(held), value = TRUE),
+    c("pm25_original", "pm25_source_validation", "pm25_screen_reason",
+      "pm25_outlier_reason", "pm25"))
   disabled <- data.table::as.data.table(dplyr::collect(arrow::open_dataset(
     run("disabled", NULL))))
   expect_true(all(disabled[station == normalize_station("Calpúl"), pm25] == 79999))
@@ -119,35 +102,37 @@ test_that("held readings and boundary donors do not enter statistical benchmarks
   reference <- data.table::as.data.table(dplyr::collect(arrow::open_dataset(masked_path)))
   data.table::setorder(reference, station, datetime)
   expect_equal(as.numeric(outputs[[1]]$datetime), as.numeric(reference$datetime))
-  columns <- c("station", "pm25", "pm25_outlier", "pm25_outlier_reason")
+  columns <- c("station", "pm25", "pm25_outlier_reason")
   expect_equal(outputs[[1]][, ..columns], reference[, ..columns])
   summary <- summarize_pollution_quality(run("summary", c(pm25 = 500)), "pm25")
   expect_equal(sum(summary$hours), nrow(panel))
-  expect_equal(sum(summary[qa_status == "pending_review", hours]), 48)
+  expect_equal(sum(summary[screen_reason == 1L, hours]), 48)
   sentinel <- file.path(root, "protected_clean"); dir.create(sentinel)
   writeLines("keep", file.path(sentinel, "sentinel"))
   expect_error(detect_pollution_outliers(input, dist, root, "protected",
-    eligibility_cols = c(pm25 = "absent")), "must exist")
+    upper_bounds = c(pm25 = -1)), "bounds")
   expect_true(file.exists(file.path(sentinel, "sentinel")))
   expect_error(detect_pollution_outliers(input, dist, root, "protected",
-    eligibility_cols = c(pm25 = "absent"), overwrite = FALSE), "must exist")
-  identity <- pollution_input_identities(input)[year == 2023L, input_id]
-  review <- data.frame(station = "Calpúl", datetime = as.POSIXct("2023-01-01", tz = "UTC"),
-    pollutant = "pm25", input_id = identity, value = 79999, decision = "retain",
-    evidence = "fixture original label and partition", reviewer = "fixture reviewer",
-    review_date = "2026-10-06")
-  retained_path <- detect_pollution_outliers(input, dist, root, "retained",
-    pollutants = "pm25", review_decisions = review, quiet = TRUE)
-  retained <- data.table::as.data.table(dplyr::collect(arrow::open_dataset(retained_path)))
-  expect_equal(retained[pm25_qa_status == "reviewed_retained", pm25], 79999)
-  review$input_id <- "stale"
-  expect_error(detect_pollution_outliers(input, dist, root, "protected",
-    pollutants = "pm25", review_decisions = review, quiet = TRUE), "identity")
-  expect_true(file.exists(file.path(sentinel, "sentinel")))
-  records <- collect_pollution_review_records(retained_path, "pm25")
+    upper_bounds = c(pm25 = -1), overwrite = FALSE), "bounds")
+  path <- run("audit", c(pm25 = 500))
+  records <- collect_pollution_screening_records(path, "pm25")
   expect_equal(nrow(records), 48)
   expect_true(all(records$value == 79999))
   expect_true(all(records$station == "Calpúl"))
+  expect_true(all(records$source_ids == "raw-id"))
+  links <- dplyr::collect(arrow::open_dataset(
+    file.path(path, "_audit", "source_contributions")))
+  expect_equal(nrow(links), nrow(panel))
+  expect_true(all(links$source_ids[links$station == "PEER"] == "raw-id;valid-id"))
+  expect_true(all(links$source_validation[links$station == "PEER"] == "mixed"))
+  expect_equal(nrow(dplyr::collect(arrow::open_dataset(path))), nrow(panel))
+  counts <- arrow::read_parquet(file.path(path, "_audit",
+    "station_month_diagnostics.parquet"))
+  expect_equal(nrow(counts), 4L)
+  expect_equal(counts$n_missing_temporal_sd, rep(0L, 4))
+  expect_equal(data.table::fread(file.path(path, "_audit", "input_partitions.csv")),
+               pollution_input_identities(input))
+
 })
 
 test_that("timestamp serialization preserves integer-backed source clocks", {
@@ -161,4 +146,17 @@ test_that("timestamp serialization preserves integer-backed source clocks", {
   expect_equal(as.numeric(restored), as.numeric(clock))
   expect_equal(format(restored, tz = "UTC"), c("2023-01-01 00:00:00",
                                                "2023-01-01 01:00:00"))
+  audit <- tempfile("source-audit-")
+  on.exit(unlink(audit, recursive = TRUE), add = TRUE)
+  panel <- data.table::data.table(station = "A", station_original = "A",
+    datetime = clock, year = 2023L, input_id = "fixture", pm25 = 10,
+    pm25_source_validation = "mixed", pm25_source_ids = "raw;validated")
+  for (label in c("missing_temporal", "zero_temporal", "missing_spatial", "zero_spatial")) {
+    panel[, (paste0("pm25_n_", label, "_sd")) := 0L]
+  }
+  write_pollution_audit_partition(panel, audit, "pm25")
+  links <- arrow::read_parquet(file.path(audit, "source_contributions", "year=2023",
+                                        "data.parquet"))
+  expect_equal(as.numeric(links$datetime), as.numeric(clock))
+  expect_identical(links$source_ids, rep("raw;validated", 2))
 })

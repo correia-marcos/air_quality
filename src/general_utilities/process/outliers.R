@@ -28,9 +28,7 @@
 #' @param neighbor_eligibility string; "with_data" or "all". Default "with_data".
 #' @param overwrite          logical; skip if output exists. Default TRUE.
 #' @param quiet              logical; suppress messages. Default FALSE.
-#' @param upper_bounds Named quality-review bounds; NULL disables additional bounds.
-#' @param eligibility_cols Named pollutant-to-logical-column mapping; only TRUE passes.
-#' @param review_decisions Documented decisions tied to original input identities.
+#' @param upper_bounds Named screening bounds; NULL disables additional upper bounds.
 #' @return Directory of the complete cleaned, year-partitioned dataset, invisibly.
 # Writes the dataset during processing; no separate save is needed.
 #
@@ -47,17 +45,18 @@
 #   procedure.
 #
 #   Creates `{pollutant}_outlier_reason` columns:
-#     0 = Valid or not flagged
+#     NA = Not assessed: screened out or unavailable input
+#     0 = Assessed and retained (including values not above p99)
 #     1 = Flagged, no temporal benchmark, no feasible spatial rescue
 #     2 = Flagged, failed temporal, no feasible spatial rescue
 #     3 = Flagged, failed temporal, failed spatial
 #     4 = Flagged, no temporal benchmark, failed spatial
 #
-#   Also creates diagnostic count columns:
-#     `{pollutant}_n_missing_temporal_sd`
-#     `{pollutant}_n_zero_temporal_sd`
-#     `{pollutant}_n_missing_spatial_sd`
-#     `{pollutant}_n_zero_spatial_sd`
+#   Station-month diagnostic counts are stored once in _audit/:
+#     `n_missing_temporal_sd`
+#     `n_zero_temporal_sd`
+#     `n_missing_spatial_sd`
+#     `n_zero_spatial_sd`
 #
 #' @Written_on : 02/02/2026
 #' @Written_by : Marcos Paulo
@@ -75,9 +74,7 @@ detect_pollution_outliers <- function(
     neighbor_eligibility = "with_data",
     overwrite           = TRUE,
     quiet               = FALSE,
-    upper_bounds        = c(pm25 = 2000, pm10 = 6000),
-    eligibility_cols    = NULL,
-    review_decisions    = NULL
+    upper_bounds        = c(pm25 = 2000, pm10 = 6000)
 ) {
   
   # 0. Dependencies
@@ -146,39 +143,16 @@ detect_pollution_outliers <- function(
     dplyr::pull(year)   |>
     sort()
 
-  validate_pollution_quality_options(upper_bounds, eligibility_cols, pollutants)
-  for (column in unname(eligibility_cols)) {
-    if (!column %in% arrow_ds$schema$names ||
-        !arrow_ds$schema$GetFieldByName(column)$type$Equals(arrow::boolean())) {
-      stop("Eligibility column must exist and be logical: ", column)
-    }
-  }
+  validate_pollution_quality_options(upper_bounds, pollutants)
   identities <- pollution_input_identities(arrow_dir)
-  reviews <- pollution_review_decisions(review_decisions)
-  if (!is.null(reviews)) {
-    if (any(!reviews$pollutant %in% pollutants) ||
-        any(!reviews$input_id %in% identities$input_id)) {
-      stop("Review pollutant or input identity does not match the requested input.")
-    }
-    for (yr in years) {
-      selected <- reviews[reviews$input_id == identities[year == yr, input_id]]
-      if (!nrow(selected)) next
-      original <- arrow_ds |>
-        dplyr::filter(year == yr) |>
-        dplyr::collect() |>
-        data.table::as.data.table()
-      original[, input_id := identities[year == yr, input_id]]
-      match_pollution_reviews(original, selected)
-    }
-  }
 
-  # Explicit reuse does not bypass the input or review-decision contracts.
+  # Explicit reuse does not bypass the input contracts.
   if (!overwrite && dir.exists(out_path)) {
     if (!quiet) message("Output exists; overwrite=FALSE — skipping.")
     return(invisible(out_path))
   }
 
-  # Input contracts and review evidence have passed before replacing any output.
+  # Input contracts have passed before replacing any output.
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
   if (dir.exists(out_path)) unlink(out_path, recursive = TRUE)
   dir.create(out_path)
@@ -186,10 +160,7 @@ detect_pollution_outliers <- function(
   .screen_input <- function(panel, yr) {
     if (!nrow(panel)) return(panel)
     panel[, input_id := identities[year == yr, input_id]]
-    selected <- if (is.null(reviews)) NULL else
-      reviews[panel[, .(station, datetime)], on = .(station, datetime), nomatch = 0L]
-    panel <- screen_pollution_quality(panel, pollutants, upper_bounds,
-                                      eligibility_cols, selected)
+    panel <- screen_pollution_quality(panel, pollutants, upper_bounds)
     panel[, station_original := station]
     panel[, station := normalize_station(station)]
     panel
@@ -527,6 +498,13 @@ detect_pollution_outliers <- function(
     invisible(NULL)
   }
   
+  # Audit sidecars belong to this file target, but Arrow ignores the _audit directory
+  # when opening the analytical dataset. They remain independently readable and tracked.
+  audit_dir <- file.path(out_path, "_audit")
+  dir.create(audit_dir)
+  data.table::fwrite(identities, file.path(audit_dir, "input_partitions.csv"))
+  diagnostics <- list()
+
   # 5. Year loop
   # -----------------------------------------------------------------------
   for (yr in years) {
@@ -611,13 +589,12 @@ detect_pollution_outliers <- function(
 
     # Synthetic missing hours have no observed reading and cannot become donors.
     for (pol in intersect(pollutants, names(dt_bal))) {
-      dt_bal[is.na(get(paste0(pol, "_qa_status"))),
-        (paste0(pol, c("_qa_status", "_qa_reason", "_qa_eligible"))) :=
-          list("missing", "missing_input", FALSE)]
-      dt_bal[is.na(get(paste0(pol, "_source_status"))),
-        (paste0(pol, "_source_status")) := "unknown"]
+      dt_bal[is.na(get(paste0(pol, "_screen_reason"))),
+        (paste0(pol, "_screen_reason")) := 3L]
+      dt_bal[is.na(get(paste0(pol, "_source_validation"))),
+        (paste0(pol, "_source_validation")) := "unknown"]
     }
-    
+
     # Ensure shift() uses the correct station-hour order.
     data.table::setorder(dt_bal, station, datetime)
     
@@ -638,13 +615,22 @@ detect_pollution_outliers <- function(
         neigh_elig = neighbor_eligibility
       )
       if (pol %in% names(dt_bal)) {
-        dt_bal[, (paste0(pol, "_use")) :=
-          get(paste0(pol, "_qa_eligible")) & is.finite(get(pol))]
+        dt_bal[get(paste0(pol, "_screen_reason")) != 0L,
+          (paste0(pol, "_outlier_reason")) := NA_integer_]
       }
     }
-    
-    # Drop boundary rows before saving.
+
+    # Drop donors, preserve detailed audit tables, and keep only compact per-row fields.
     dt_out <- dt_bal[in_yr]
+    diagnostics[[as.character(yr)]] <-
+      write_pollution_audit_partition(dt_out, audit_dir, pollutants)
+    for (pol in intersect(pollutants, names(dt_out))) {
+      drop <- intersect(paste0(pol, c("_outlier", "_source_ids", "_source_status",
+        "_n_missing_temporal_sd", "_n_zero_temporal_sd", "_n_missing_spatial_sd",
+        "_n_zero_spatial_sd")),
+        names(dt_out))
+      dt_out[, (drop) := NULL]
+    }
     dt_out[, datetime := as.POSIXct(as.numeric(datetime),
                                     origin = "1970-01-01", tz = "UTC")]
     output <- arrow::Table$create(dt_out)$SetColumn(
@@ -667,5 +653,7 @@ detect_pollution_outliers <- function(
     gc(verbose = FALSE)
   }
   
+  arrow::write_parquet(data.table::rbindlist(diagnostics),
+    file.path(audit_dir, "station_month_diagnostics.parquet"), compression = "snappy")
   invisible(out_path)
 }
