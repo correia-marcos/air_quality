@@ -141,20 +141,14 @@ test_that("fixed evaluation CRS and returned points preserve default distances",
                                                                             crs = 4326))
   stations <- sf::st_as_sf(data.frame(station = "s", x = .005, y = .005),
                           coords = c("x", "y"), crs = 4326)
-  root <- tempfile(); dir.create(root)
-  old <- compute_distance_matrices(stations, "station", geo, "geo_id", root,
-                                    "default", quiet = TRUE, return_points = TRUE)
-  fixed <- compute_distance_matrices(stations, "station", geo, "geo_id", root,
-    "fixed", quiet = TRUE, evaluation_crs = old$evaluation_crs, return_points = TRUE)
+  old <- compute_distance_matrices(stations, "station", geo, "geo_id",
+                                    quiet = TRUE, return_points = TRUE)
+  fixed <- compute_distance_matrices(stations, "station", geo, "geo_id",
+    quiet = TRUE, evaluation_crs = old$evaluation_crs, return_points = TRUE)
   expect_equal(old$geo_station_matrix, fixed$geo_station_matrix)
   expect_equal(nrow(fixed$representative_points), 2)
-  cached <- compute_distance_matrices(stations, "station", geo, "geo_id", root,
-    "fixed", quiet = TRUE, overwrite = FALSE)
-  expect_named(cached, c("station_matrix", "geo_station_matrix"))
-  expect_error(compute_distance_matrices(stations, "station", geo, "geo_id", root,
-    "fixed", quiet = TRUE, overwrite = FALSE, return_points = TRUE), "overwrite")
-  expect_error(compute_distance_matrices(stations, "station", geo, "geo_id", root,
-    "bad", evaluation_crs = 4326), "projected metre")
+  expect_error(compute_distance_matrices(stations, "station", geo, "geo_id",
+    evaluation_crs = 4326), "projected metre")
   union <- resolution_dissolve(geo, data.table::data.table(geo_id = c("a", "b"),
                                                           parent_id = "p"))
   expect_equal(nrow(union), 1)
@@ -200,4 +194,102 @@ test_that("a nested ladder can have non-monotonic gaps while variance declines",
     resolution_variance(x$y, x$pop)
   }, numeric(1))
   expect_true(all(diff(v) < 0))
+})
+
+test_that("education levels: gap and HC1 match the regression over populated levels", {
+  # Sao Paulo shape: level 4 (college_incomplete) cannot occur, so it is not a group.
+  levels <- c(1L, 2L, 3L, 5L, 6L)
+  cells <- data.table::CJ(geo_id = sprintf("g%03d", 1:80), edu_level = levels)
+  cells[, person_weight := 1 + ((seq_len(.N) * 7L) %% 13L)]
+  a <- data.table::data.table(geo_id = sprintf("g%03d", 1:80),
+    parent_id = sprintf("g%03d", 1:80), y = (1:80)^.5)
+  exp <- a[, .(geo_id, year = 2023L, avg_pm10 = y)]
+  reg <- compute_exposure_regressions(exp, cells, group_col = "edu_level",
+    group_values = levels, base_group = 6L, normalized = FALSE, quiet = TRUE,
+    outcome_pattern = "^avg_pm10$")
+  e <- resolution_estimate(cells, a, TRUE, group_col = "edu_level", groups = levels)
+  expect_equal(e$contrast$gap, reg[group == 1, estimate], tolerance = 1e-10)
+  expect_equal(e$contrast$se, reg[group == 1, std_error], tolerance = 1e-10)
+  expect_equal(e$contrast$inference_status, "conditional_cluster_HC1")
+  expect_equal(e$profile$edu_level, levels)
+  expect_equal(e$contrast$gap, e$contrast$low_mean - e$contrast$high_mean)
+  expect_false(any(c("q1", "q5") %in% names(e$contrast)))
+  # Quintile runs keep the saved q1/q5 schema.
+  q <- resolution_estimate(data.table::data.table(geo_id = "a", edu_quintile = 1L,
+    person_weight = 1), data.table::data.table(geo_id = "a", parent_id = "p", y = 1))
+  expect_true(all(c("q1", "q5") %in% names(q$contrast)))
+})
+
+test_that("level bootstrap pairs the lowest and highest levels only", {
+  cells <- data.table::data.table(geo_id = c(letters[1:4], "a", "c"),
+    edu_level = c(1L, 6L, 1L, 6L, 3L, 3L), person_weight = c(2, 1, 1, 3, 50, 50))
+  pair <- data.table::data.table(geo_id = letters[1:4], parent_id = c("x", "x", "y", "y"),
+                                 y0 = c(8, 2, 10, 4), y1 = c(6, 6, 5.5, 5.5))
+  draws <- matrix(c(1, 1, 1, 2, 2, 2), 2)
+  boot <- resolution_bootstrap(cells, pair, draws = draws, group_col = "edu_level",
+                               groups = c(1L, 3L, 6L))
+  # Same endpoint cells as the quintile fixture above; level 3 never enters.
+  expect_equal(boot$replicates$baseline[c(1, 3)], c(6, 6))
+  expect_equal(boot$replicates$baseline[2], 26 / 3 - 14 / 4)
+  expect_equal(boot$replicates$comparison[2], 17.5 / 3 - 22.5 / 4)
+})
+
+test_that("area median levels use the lower median and never force endpoint groups", {
+  cells <- data.table::data.table(geo_id = c("a", "b", "c", "c"),
+    edu_level = c(2L, 5L, 3L, 6L), person_weight = c(1, 1, 1, 3))
+  keys <- data.table::data.table(geo_id = c("a", "b", "c", "d", "e"), level = "coarse",
+    parent_id = c("x", "x", "y", "z", NA))
+  class <- resolution_classify_median(cells, keys)
+  setkey(class, geo_id)
+  # x: half the weight at level 2 -> lower median 2; y: 3/4 at level 6 -> 6.
+  expect_identical(class$area_level, c(2L, 2L, 6L, NA, NA))
+  # Assigning area levels can leave the bottom level empty: the gap is unavailable.
+  cc <- merge(cells, class[!is.na(area_level), .(geo_id, area_level)], by = "geo_id")
+  cc[, edu_level := area_level]
+  e <- resolution_estimate(cc[, .(geo_id, edu_level, person_weight)],
+    data.table::data.table(geo_id = c("a", "b", "c"), parent_id = c("x", "x", "y"),
+                           y = c(1, 2, 3)), group_col = "edu_level", groups = 1:6)
+  expect_equal(e$contrast$inference_status, "missing_endpoint_group")
+  expect_equal(e$profile$population, c(0, 2, 0, 0, 0, 4))
+})
+
+test_that("each grouping and buffer writes to its own folder", {
+  groupings <- c("edu_quintile", "edu_quintile_split", "edu_level", "edu_group3")
+  roots <- unlist(lapply(groupings, function(g) {
+    c(resolution_buffer_root(3, g), resolution_buffer_root(20, g))
+  }))
+  expect_equal(anyDuplicated(roots), 0L)
+  expect_equal(resolution_buffer_root(3, "edu_level"),
+               file.path(resolution_buffer_root(3), "education_level"))
+  expect_error(resolution_buffer_root(3, "income"))
+})
+
+test_that("level cells keep the quintile run's people and weights per unit", {
+  bands <- c("no_education", "high_school_incomplete", "high_school_complete",
+             "college_incomplete", "college_complete", "graduate_educ")
+  people <- data.table::data.table(geo_id = c("a", "a", "a", "b"),
+    person_weight = c(1.5, 2, 4, 3), adult = 1, educ_years = c(0, 17, NA, 12))
+  for (k in seq_along(bands)) {
+    data.table::set(people, j = bands[k],
+                    value = as.numeric(c(1L, 5L, NA, 3L) == k))
+  }
+  path <- tempfile(fileext = ".parquet")
+  arrow::write_parquet(people, path)
+  quintile <- data.table::data.table(geo_id = c("a", "a", "b"),
+    edu_quintile = c(1L, 5L, 3L), person_weight = c(1.5, 2, 3))
+  out <- resolution_group_cells(path, quintile, "edu_level", bands)
+  data.table::setkey(out$cells, geo_id, edu_level)
+  expect_equal(out$cells$edu_level, c(1L, 5L, 3L))
+  expect_equal(out$cells$person_weight, c(1.5, 2, 3))
+  expect_equal(out$max_error, 0)
+  expect_error(resolution_group_cells(path, quintile[-1], "edu_level", bands))
+  # Three groups merge bands 1-2, 3-4 and 5-6.
+  out <- resolution_group_cells(path, quintile, "edu_group3", bands,
+                                c(1L, 1L, 2L, 2L, 3L, 3L))
+  data.table::setkey(out$cells, geo_id, edu_group3)
+  expect_equal(out$cells$edu_group3, c(1L, 3L, 2L))
+  # Split quintiles keep each unit's total weight.
+  out <- resolution_group_cells(path, quintile, "edu_quintile_split", bands)
+  expect_equal(out$cells[, sum(person_weight), keyby = geo_id]$V1, c(3.5, 3))
+  expect_lt(out$max_error, 1e-12)
 })

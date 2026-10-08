@@ -433,15 +433,15 @@ resolution_reference_figure_save <- function(
 }
 
 # inputs for the preserved resolution specification.
-#' @param  Named input or setting from the preceding operation.
+#' @param grouping "edu_quintile" (default) or "edu_level"; selects the products read.
 #' @return Named intermediate objects; existing diagnostic writes are preserved.
 #' @details See doc/RESOLUTION_SENSITIVITY.md for populations and A/B/C definitions.
-resolution_multicity_figure_inputs <- function() {
+resolution_multicity_figure_inputs <- function(grouping = "edu_quintile") {
   x <- NULL
   cities <- c("bogota_2018", "santiago_2017", "sao_paulo_2010")
   city_labels <- c(bogota_2018 = "Bogota", santiago_2017 = "Santiago",
                    sao_paulo_2010 = "Sao Paulo")
-  dir_in <- here::here("data", "processed", "resolution_sensitivity")
+  dir_in <- resolution_buffer_root(3, grouping)
   dir_out <- here::here("results", "figures", "diagnostics")
   dir.create(dir_out, recursive = TRUE, showWarnings = FALSE)
   for (city in cities) {
@@ -491,16 +491,28 @@ resolution_multicity_figure_inputs <- function() {
 #' @param axis_labels Named input or setting from the preceding operation.
 #' @param objects Named input or setting from the preceding operation.
 #' @param x Named input or setting from the preceding operation.
+#' @param group_col Profile group column: "edu_quintile" or "edu_level".
+#' @param group_labels Axis labels of the groups, lowest first.
+#' @param group_name Plural group noun in captions: "quintiles" or "levels".
+#' @param gap_label Headline contrast, e.g. "Q1 - Q5".
+#' @param profile_note Caption of the A and B profile figures.
 #' @return Named intermediate objects; existing diagnostic writes are preserved.
 #' @details See doc/RESOLUTION_SENSITIVITY.md for populations and A/B/C definitions.
 resolution_multicity_figure_contrasts <- function(
   levels,
   axis_labels,
   objects,
-  x) {
+  x,
+  group_col = "edu_quintile",
+  group_labels = paste0("Q", 1:5),
+  group_name = "quintiles",
+  gap_label = "Q1 - Q5",
+  profile_note = paste("Group means use existing person weights;",
+    "consult coverage tables for each population.")) {
   p <- NULL
   plots <- list()
-  notes_a <- paste("Fixed education-reporting adults and individual quintiles.",
+  notes_a <- paste(paste0("Fixed education-reporting adults and individual ",
+    group_name, "."),
     "Exposure aggregated with all-adult weights; locality branch shown separately.")
   notes_b <- paste("Native and common samples vary by level;",
     "P = education-reporting adults.",
@@ -531,8 +543,9 @@ resolution_multicity_figure_contrasts <- function(
         "annual mean exposure" else paste("annual hours at or above",
           toupper(outcome_type))),
         x = "Geographic support (coarse to fine)",
-        y = if (outcome_type == "avg") "Q1 - Q5 (micrograms per cubic metre)" else
-          "Q1 - Q5 (hours)", colour = NULL, shape = NULL,
+        y = if (outcome_type == "avg") {
+          paste(gap_label, "(micrograms per cubic metre)")
+        } else paste(gap_label, "(hours)"), colour = NULL, shape = NULL,
         caption = if (design == "A") notes_a else notes_b) +
       theme(legend.position = "bottom", panel.grid.minor = element_blank(),
         panel.grid.major.x = element_blank(), axis.text.x = element_text(size = 9),
@@ -553,7 +566,7 @@ resolution_multicity_figure_contrasts <- function(
     scale_x_discrete(labels = axis_labels, drop = TRUE) +
     labs(title = "Bogota: separate locality branch",
       x = "Geographic support (coarse to fine)",
-         y = "Q1 - Q5 (micrograms per cubic metre)",
+         y = paste(gap_label, "(micrograms per cubic metre)"),
            caption = "Descriptive comparisons.") +
     theme(legend.position = "none", panel.grid.minor = element_blank())
   for (design_name in c("A", "B_common")) {
@@ -568,7 +581,8 @@ resolution_multicity_figure_contrasts <- function(
       scale_x_discrete(labels = axis_labels) +
       labs(title = paste(if (design_name == "A") "Design A" else "Common-sample B",
                       "- change relative to finest support"),
-        x = "Geographic support (coarse to fine)", y = "Change in absolute Q1 - Q5 gap",
+        x = "Geographic support (coarse to fine)",
+        y = paste("Change in absolute", gap_label, "gap"),
         caption = paste("95% conditional geographic-cluster bootstrap intervals;",
           "999 draws.",
           "Coarse comparisons are descriptive.",
@@ -580,10 +594,10 @@ resolution_multicity_figure_contrasts <- function(
     x <- objects$profiles[design == design_name & grepl("^avg", outcome)]
     x <- merge(x, levels[, .(city_id, level, label)], by = c("city_id", "level"))
     plots[[paste0(design_name, "_profiles")]] <-
-      ggplot(x, aes(edu_quintile, mean, colour = label, group = label)) +
+      ggplot(x, aes(.data[[group_col]], mean, colour = label, group = label)) +
       geom_line(linewidth = .5, na.rm = TRUE) + geom_point(size = 1.6, na.rm = TRUE) +
       facet_wrap(vars(city, pollutant), ncol = 2, scales = "free_y") +
-      scale_x_continuous(breaks = 1:5, labels = paste0("Q", 1:5)) +
+      scale_x_continuous(breaks = seq_along(group_labels), labels = group_labels) +
       scale_colour_manual(values = c("Fine census unit" = "#263746",
         "Zona censal" = "#263746", "Area de ponderacao" = "#263746",
         "Seccion" = "#527D93", "Distrito censal" = "#527D93", "Sector" = "#9B6137",
@@ -592,14 +606,13 @@ resolution_multicity_figure_contrasts <- function(
       labs(title = paste(if (design_name == "B_native") "Native B" else design_name,
                            "- full education-group profiles"),
         x = if (design_name == "C") "Area education group" else
-          "Individual education quintile",
+          paste("Individual education", sub("s$", "", group_name)),
         y = "Mean exposure (micrograms per cubic metre)", colour = "Geographic support",
         caption = if (design_name == "C") paste(
           "Classification only; finest exposure fixed.",
           "Empty area groups remain unavailable.",
-          "These groups differ from A/B quintiles.") else
-          paste("Group means use existing person weights;",
-            "consult coverage tables for each population.")) +
+          paste0("These groups differ from A/B ", group_name, ".")) else
+          profile_note) +
       theme(legend.position = "bottom", plot.caption = element_text(hjust = 0, size = 8),
             panel.grid.minor = element_blank())
   }
@@ -620,6 +633,7 @@ resolution_multicity_figure_contrasts <- function(
 #' @param objects Named input or setting from the preceding operation.
 #' @param x Named input or setting from the preceding operation.
 #' @param plots Named input or setting from the preceding operation.
+#' @param gap_label Headline contrast, e.g. "Q1 - Q5".
 #' @return Named intermediate objects; existing diagnostic writes are preserved.
 #' @details See doc/RESOLUTION_SENSITIVITY.md for populations and A/B/C definitions.
 resolution_multicity_figure_diagnostics <- function(
@@ -631,7 +645,8 @@ resolution_multicity_figure_diagnostics <- function(
   axis_labels,
   objects,
   x,
-  plots) {
+  plots,
+  gap_label = "Q1 - Q5") {
   x <- objects$matrices[!(city_id == "bogota_2018" & level == "localidad")]
   m <- melt(x, id.vars = c("city", "pollutant", "axis"),
     measure.vars = c("adult_coverage_share", "median_nearest_active_km",
@@ -699,7 +714,8 @@ resolution_multicity_figure_diagnostics <- function(
     scale_colour_manual(values = c(Bogota = "#263746", Santiago = "#9B6137",
                                    `Sao Paulo` = "#718355")) +
     labs(title = "Design A: covered-unit counts as a supplementary resolution measure",
-         x = "Covered estimation units (log scale; coarse to fine)", y = "Q1 - Q5",
+         x = "Covered estimation units (log scale; coarse to fine)",
+         y = gap_label,
            colour = NULL,
          caption = paste(
            "Unit counts do not harmonize geographic concepts across cities.",
@@ -726,24 +742,26 @@ resolution_multicity_figure_diagnostics <- function(
 #' @param dir_out Named input or setting from the preceding operation.
 #' @param plots Named input or setting from the preceding operation.
 #' @param p Named input or setting from the preceding operation.
+#' @param file_prefix Figure-file prefix; the packet and index take the same stem.
 #' @return Named intermediate objects; existing diagnostic writes are preserved.
 #' @details See doc/RESOLUTION_SENSITIVITY.md for populations and A/B/C definitions.
 resolution_multicity_figure_save <- function(
   dir_out,
   plots,
-  p) {
+  p,
+  file_prefix = "resolution_multicity_") {
   # Save individual vector figures and a single review packet; never export to the manuscript.
   for (name in names(plots)) {
-    ggsave(file.path(dir_out, paste0("resolution_multicity_", name, ".pdf")),
+    ggsave(file.path(dir_out, paste0(file_prefix, name, ".pdf")),
       plots[[name]],
            width = 11.7, height = 8.3, units = "in", device = grDevices::cairo_pdf)
   }
-  grDevices::cairo_pdf(file.path(dir_out, "resolution_multicity.pdf"), width = 11.7,
-    height = 8.3)
+  grDevices::cairo_pdf(file.path(dir_out, paste0(sub("_$", "", file_prefix), ".pdf")),
+    width = 11.7, height = 8.3)
   for (p in plots) print(p)
   grDevices::dev.off()
-  fwrite(data.table(figure = names(plots), file = paste0("resolution_multicity_",
-    names(plots),
-    ".pdf")), here::here("results", "tables", "resolution_multicity_figure_index.csv"))
+  fwrite(data.table(figure = names(plots), file = paste0(file_prefix, names(plots),
+    ".pdf")), here::here("results", "tables",
+      paste0(file_prefix, "figure_index.csv")))
   invisible(NULL)
 }

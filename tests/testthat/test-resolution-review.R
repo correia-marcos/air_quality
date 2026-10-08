@@ -85,4 +85,49 @@ test_that("buffer comparison aligns designs and reports the gap change", {
   x <- resolution_buffer_comparison(base, alternative)
   expect_equal(x$gap_change, -.5)
   expect_equal(x$population_20km, 20)
+  # Education-level contrasts carry low_mean/high_mean instead of q1/q5.
+  data.table::setnames(base, c("q1", "q5"), c("low_mean", "high_mean"))
+  data.table::setnames(alternative, c("q1", "q5"), c("low_mean", "high_mean"))
+  x <- resolution_buffer_comparison(base, alternative, means = c("low_mean", "high_mean"))
+  expect_equal(x$high_mean_20km, 20)
+  expect_equal(x$gap_change, -.5)
+})
+
+test_that("headline summary reports the shares of the lowest and highest groups", {
+  contrasts <- data.table::data.table(city_id = "c", design = "A", level = "fine",
+    outcome = "avg_pm10", gap = 2, normalized_pct = 10, population = 10)
+  profiles <- data.table::data.table(city_id = "c", design = "A", level = "fine",
+    outcome = "avg_pm10", edu_group3 = 1:3, share = c(.5, .3, .2))
+  x <- resolution_headline_summary(contrasts, profiles, "edu_group3")
+  expect_equal(c(x$low_share, x$high_share, x$gap), c(.5, .2, 2))
+  expect_true("edu_group3" %in% names(profiles))
+})
+
+test_that("buffer plot data keeps native B of cities run at both buffers", {
+  base <- data.table::data.table(city_id = c("a", "a", "b"),
+    design = c("B_native", "A", "B_native"), level = "fine",
+    outcome = c("avg_pm10", "avg_pm10", "hrs_d_pm25_it2"), gap = 1:3, population = 1)
+  alternative <- base[city_id == "a"]
+  levels <- data.table::data.table(city_id = c("a", "b"), level = "fine",
+                                   label = "Fine census unit")
+  x <- resolution_buffer_plot_data(base, alternative, levels,
+    city_labels = c(a = "City A", b = "City B"), support_order = "Fine census unit")
+  expect_equal(nrow(x), 2L)
+  expect_equal(levels(x$buffer), c("3 km", "20 km"))
+  expect_equal(unique(x$panel), "City A: annual mean")
+  expect_equal(unique(x$pollutant), "pm10")
+})
+
+test_that("tie splits report quintile cuts inside one schooling value by geo_id", {
+  groups <- data.table::data.table(geo_id = c("a", "b", "c", "d", "e"),
+    educ_years = c(5, 8, 9, 11, 12), person_weight = 1, adult = 1L)
+  assign_socio_group(groups, "educ_years", "person_weight", 5L, "edu_quintile")
+  ties <- resolution_tie_splits(groups)
+  expect_equal(nrow(ties), 0)
+  groups <- data.table::data.table(geo_id = c("a", "b", "c", "d"), educ_years = 8,
+    person_weight = 1, adult = 1L, edu_quintile = c(1L, 1L, 2L, 2L))
+  ties <- resolution_tie_splits(groups)
+  expect_equal(ties$share_of_value, c(.5, .5))
+  expect_equal(ties$first_geo_id, c("a", "c"))
+  expect_equal(ties$share_of_all_adults, c(.5, .5))
 })

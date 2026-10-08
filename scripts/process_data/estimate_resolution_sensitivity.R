@@ -8,6 +8,9 @@
 # reconstructed IDW B, and classification-only C for Bogota, Santiago, and Sao Paulo.
 # --buffer-km=20 repeats multicity at another IDW distance in its own output folder;
 # --city=<id> runs one city, and the combined tables then cover every completed city.
+# --grouping= replaces the frozen quintiles (multicity only): edu_group3 (three
+# attainment groups), edu_level (six harmonized bands) or edu_quintile_split (quintiles
+# with tied schooling split proportionally). These reuse the quintile run's B exposures.
 # --duckdb-mem-gb=<n> raises the DuckDB memory limit of the B rebuild (default 4).
 # Definitions, populations, inference, outputs, and limitations are documented in
 # doc/RESOLUTION_SENSITIVITY.md.
@@ -25,6 +28,7 @@
 # I: Import data
 # ============================================================================================
 source(here::here("src", "general_utilities", "config_utils_resolution.R"))
+source(here::here("config", "analysis_settings.R"))
 
 resolution_args <- commandArgs(trailingOnly = TRUE)
 resolution_scope <- sub("^--scope=", "", grep("^--scope=", resolution_args, value = TRUE))
@@ -33,9 +37,12 @@ if (length(resolution_scope) != 1L ||
     !resolution_scope %in% c("reference", "multicity")) stop("Invalid --scope.")
 all_cities <- c("bogota_2018", "santiago_2017", "sao_paulo_2010")
 if (any(!grepl(paste0("^--scope=|^--output-dir=|^--reuse-b$|^--buffer-km=[0-9]+$|",
-                      "^--city=|^--duckdb-mem-gb=[0-9]+$"), resolution_args))) {
+                      "^--city=|^--duckdb-mem-gb=[0-9]+$|",
+                      "^--grouping=(edu_quintile|edu_quintile_split|edu_level|",
+                      "edu_group3)$"), resolution_args))) {
   stop("Supported options: --scope=reference|multicity, --output-dir=, --reuse-b, ",
-       "--buffer-km=<km>, --city=<id>, --duckdb-mem-gb=<n> (multicity only)")
+       "--buffer-km=<km>, --city=<id>, --duckdb-mem-gb=<n>, ",
+       "--grouping=edu_quintile|edu_quintile_split|edu_level|edu_group3 (multicity only)")
 }
 mem_gb <- as.numeric(sub("^--duckdb-mem-gb=", "",
                          grep("^--duckdb-mem-gb=", resolution_args, value = TRUE)))
@@ -46,8 +53,13 @@ if (!all(cities %in% all_cities)) stop("Unknown --city.")
 buffer_km <- as.numeric(sub("^--buffer-km=", "",
                             grep("^--buffer-km=", resolution_args, value = TRUE)))
 if (!length(buffer_km)) buffer_km <- 3
-if ((buffer_km != 3 || !setequal(cities, all_cities)) && resolution_scope != "multicity") {
-  stop("--buffer-km and --city need --scope=multicity.")
+
+# Individual education groups: frozen quintiles, or one of the alternative groupings.
+grouping <- sub("^--grouping=", "", grep("^--grouping=", resolution_args, value = TRUE))
+if (!length(grouping)) grouping <- "edu_quintile"
+if ((buffer_km != 3 || !setequal(cities, all_cities) || grouping != "edu_quintile") &&
+    resolution_scope != "multicity") {
+  stop("--buffer-km, --city and --grouping need --scope=multicity.")
 }
 set.seed(20260910)
 
@@ -168,13 +180,18 @@ if (resolution_scope == "reference") {
   for (city in cities) {
     inputs_result <- resolution_multicity_inputs(
       city = city,
-      buffer_km = buffer_km)
+      buffer_km = buffer_km,
+      grouping = grouping,
+      education_bands = education_level_bands,
+      education_group_map = education_group3_of_level)
     inputs <- inputs_result$inputs
     out <- inputs_result$out
     paths <- inputs_result$paths
     keys <- inputs_result$keys
     population <- inputs_result$population
     cells <- inputs_result$cells
+    group_col <- inputs_result$group_col
+    groups <- inputs_result$groups
     ladder <- inputs_result$ladder
     exposure <- inputs_result$exposure
     outcomes <- inputs_result$outcomes
@@ -196,6 +213,7 @@ if (resolution_scope == "reference") {
     c_map <- inputs_result$c_map
     c_common <- inputs_result$c_common
     matrix_root <- inputs_result$matrix_root
+    exposure_root <- inputs_result$exposure_root
 
     for (lv in ladder$level) {
       rebuild_b_result <- resolution_multicity_rebuild_b(
@@ -213,7 +231,9 @@ if (resolution_scope == "reference") {
         checks = checks,
         matrix_root = matrix_root,
         buffer_km = buffer_km,
-        mem_gb = mem_gb)
+        mem_gb = mem_gb,
+        grouping = grouping,
+        exposure_root = exposure_root)
       k <- rebuild_b_result$k
       bdir <- rebuild_b_result$bdir
       checks <- rebuild_b_result$checks
@@ -245,7 +265,9 @@ if (resolution_scope == "reference") {
         k = k,
         b = b,
         a = a,
-        error = error)
+        error = error,
+        group_col = group_col,
+        groups = groups)
       composition <- contrasts_result$composition
       differences <- contrasts_result$differences
       bootstraps <- contrasts_result$bootstraps
@@ -303,7 +325,9 @@ if (resolution_scope == "reference") {
       variances = variances,
       movements = movements,
       oc = oc,
-      good_keys = good_keys)
+      good_keys = good_keys,
+      group_col = group_col,
+      groups = groups)
     nesting <- verify_city_result$nesting
     direct <- verify_city_result$direct
     all_tables <- verify_city_result$all_tables
@@ -311,8 +335,8 @@ if (resolution_scope == "reference") {
       matrices = matrices, reconciliations = reconciliations, checks = checks)
 
   }
-  # The historical Bogota anchor exists only for the 3 km specification.
-  if (buffer_km == 3 && "bogota_2018" %in% cities) {
+  # The historical Bogota anchor exists only for the 3 km quintile specification.
+  if (buffer_km == 3 && grouping == "edu_quintile" && "bogota_2018" %in% cities) {
     reference_anchor_result <- resolution_multicity_reference_anchor(
       z = z,
       direct = direct)
@@ -321,7 +345,7 @@ if (resolution_scope == "reference") {
 
   # Combined tables cover every city whose run at this buffer is complete.
   complete_cities <- all_cities[vapply(all_cities, function(x) {
-    status <- file.path(resolution_buffer_root(buffer_km), x, "STATUS.txt")
+    status <- file.path(resolution_buffer_root(buffer_km, grouping), x, "STATUS.txt")
     file.exists(status) && readLines(status, n = 1L) == "complete"
   }, logical(1))]
 
@@ -337,7 +361,8 @@ if (resolution_scope == "reference") {
     exact = exact,
     passed = passed,
     nesting = nesting,
-    buffer_km = buffer_km)
+    buffer_km = buffer_km,
+    grouping = grouping)
   verification_summary <- save_tables_result$verification_summary
   patterns <- save_tables_result$patterns
   exposure <- save_tables_result$exposure
