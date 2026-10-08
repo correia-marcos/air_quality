@@ -291,3 +291,30 @@ flags and input identities for both pollutants. See [particulate screening](part
 for the field definitions, parameter contract, decision registry and linked CDMX source manifests.
 Statistical removal reasons remain separate. Imputed predictions retain their existing
 identification; the observed flags do not certify them as agency-validated observations.
+
+### Proposed compact screening code (not implemented)
+
+The approved main analysis uses uniform upper bounds of 2,000 µg/m³ for PM2.5 and
+6,000 µg/m³ for PM10, accepts equality and zero, and has no individual overrides. A
+numerical `<pollutant>_screen_reason` would describe only this first screening step:
+
+| Proposed code | Label | Meaning |
+|---|---|---|
+| 0 | `within_bounds` | Finite, nonnegative concentration at or below the pollutant bound; eligible for statistical outlier detection. |
+| 1 | `above_upper_bound` | Finite concentration strictly above the upper bound; original preserved, analytical concentration missing. This is not confirmation of error. |
+| 2 | `negative_value` | Finite concentration below zero; original preserved, analytical concentration missing. Zero does not receive this code. |
+| 3 | `missing_or_nonfinite` | Missing/NaN or infinite input cannot be used numerically; original preserved where supplied, analytical concentration missing. |
+
+Code 0 would not mean that the final observed reading is kept: the later statistical
+procedure may remove it. `<pollutant>_outlier_reason` and an observed-usability flag would
+remain separate. Codes are categories, not scores. Source validation would still have its
+own field; an unvalidated source may have an in-bounds reading, and a validated source may
+have an above-bound reading.
+
+The current `negative_or_nonfinite` quality reason combines negative values and infinities;
+this proposal separates negative values explicitly and combines unavailable numerical
+inputs in code 3. Negative raw contributions already removed during source processing
+appear as missing standardized inputs, so source losses must also be read from the linked
+source diagnostics. This section proposes the interface; it does not claim the current
+Parquet schema already has these codes. Optional eligibility and review APIs would require
+a separate compatibility decision when simplifying that schema.

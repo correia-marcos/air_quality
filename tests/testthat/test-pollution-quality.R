@@ -3,7 +3,7 @@ test_that("particulate bounds retain equality and preserve original concentratio
     "2023-01-01", tz = "UTC") + 0:6 * 3600,
     pm25 = c(0, -1, NA, 500, 501, 79999, Inf),
     pm10 = c(0, -1, NA, 1000, 1001, 999, Inf))
-  result <- screen_pollution_quality(panel)
+  result <- screen_pollution_quality(panel, upper_bounds = c(pm25 = 500, pm10 = 1000))
   expect_identical(result$pm25_input, panel$pm25)
   expect_equal(result$pm25, c(0, NA, NA, 500, NA, NA, NA))
   expect_equal(result$pm10, c(0, NA, NA, 1000, NA, 999, NA))
@@ -17,6 +17,22 @@ test_that("particulate bounds retain equality and preserve original concentratio
   expect_true(is.na(screen_pollution_quality(panel,
     upper_bounds = c(pm25 = 499))$pm25[4]))
   expect_error(screen_pollution_quality(panel, upper_bounds = c(pm25 = -1)), "bounds")
+})
+
+test_that("approved broad defaults agree across settings and both functions", {
+  settings <- new.env(parent = globalenv())
+  sys.source(here::here("config", "analysis_settings.R"), envir = settings)
+  bounds <- c(pm25 = 2000, pm10 = 6000)
+  expect_identical(settings$pollution_upper_bounds, bounds)
+  expect_identical(eval(formals(screen_pollution_quality)$upper_bounds), bounds)
+  expect_identical(eval(formals(detect_pollution_outliers)$upper_bounds), bounds)
+  panel <- data.frame(pm25 = c(915, 2000, 2001, 79999),
+                      pm10 = c(5337.6, 6000, 6001, 79999))
+  result <- screen_pollution_quality(panel)
+  expect_equal(result$pm25, c(915, 2000, NA, NA))
+  expect_equal(result$pm10, c(5337.6, 6000, NA, NA))
+  expect_identical(result$pm25_input, panel$pm25)
+  expect_identical(result$pm10_input, panel$pm10)
 })
 
 test_that("independent logical gates cannot bypass a concentration hold", {

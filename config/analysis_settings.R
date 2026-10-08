@@ -12,8 +12,8 @@ manuscript_seed <- 20230901L
 outlier_missing_temporal <- "continue"
 outlier_missing_neighbor <- "second"
 
-# Review holds precede statistical cleaning; equality passes, NULL disables the bounds.
-pollution_upper_bounds <- c(pm25 = 500, pm10 = 1000)
+# Gross-value screening precedes statistical cleaning; equality passes, NULL disables bounds.
+pollution_upper_bounds <- c(pm25 = 2000, pm10 = 6000)
 pollution_eligibility_cols <- NULL
 pollution_review_path <- here::here("config", "pollution_quality_reviews.csv")
 

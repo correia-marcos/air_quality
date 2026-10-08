@@ -108,7 +108,7 @@ match_pollution_reviews <- function(data, reviews) {
 #   documented retain clears this quality hold, but does not bypass statistical cleaning
 #   or an independent eligibility hold. Original values stay in {pollutant}_input.
 screen_pollution_quality <- function(data, pollutants = c("pm10", "pm25"),
-    upper_bounds = c(pm25 = 500, pm10 = 1000), eligibility_cols = NULL,
+    upper_bounds = c(pm25 = 2000, pm10 = 6000), eligibility_cols = NULL,
     review_decisions = NULL) {
   validate_pollution_quality_options(upper_bounds, eligibility_cols, pollutants)
   out <- data.table::as.data.table(data.table::copy(data))

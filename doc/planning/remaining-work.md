@@ -89,10 +89,12 @@ Taboão da Serra). These are December-slice checks, not a full-year or downstrea
 
 ## Parameterized particulate screening and execution corrections
 
-**6 October 2026 — implementation approved by Marcos.** A configurable quality hold for
-PM2.5 and PM10 now precedes statistical cleaning across all four cities. Defaults are
-500/1,000 µg/m³; equality passes, and above-bound values remain preserved but withheld
-pending documented review. Implementation is separate from scientific acceptance. Its
+**6 October 2026 — initial implementation approved by Marcos.** A configurable quality
+hold preceded statistical cleaning across all four cities, initially using 500/1,000 µg/m³.
+**8 October 2026 — revised bounds approved:** 2,000/6,000 µg/m³ now apply uniformly before
+statistical cleaning, with equality and zero eligible and no individual retain/exclude
+decisions in the main analysis. Original values remain preserved. The earlier default
+and its dated checks remain historical evidence. Implementation is separate from acceptance. Its
 effects on analytical inputs and usable reporting-station counts require review apart from
 the structural migration. See the [parameter and dataset contract](../reference/particulate_quality.md).
 
@@ -116,16 +118,15 @@ clock remain unchanged. This does not screen every unaggregated contributing sou
 | Negative or nonfinite concentration | Preserve the original record; represent it as missing in the analytical copy. Negative masking already precedes averaging. |
 | Zero concentration | Keep the existing nonnegative-value rule. Current code accepts `>= 0`, not strictly positive values. Any detection-limit treatment requires a separate documented decision. |
 | Agency-invalid flag, documented invalid sentinel, or documented monitor-range failure | Exclude the affected measurement or documented affected interval, with a reason and supporting evidence. Obtain instrument/range information rather than infer it from an air-quality index. |
-| Hourly PM2.5 **> 500 µg/m³** or hourly PM10 **> 1,000 µg/m³** | Hold pending review independently of p99 and source validation status. These configurable project review triggers are not physical maxima. |
+| Hourly PM2.5 **> 2,000 µg/m³** or hourly PM10 **> 6,000 µg/m³** | Withhold uniformly before p99 and all reference moments, independently of source validation status. These configurable screening bounds are not physical maxima. |
 | Repeated or quantized values, abrupt scale changes, prolonged flat segments, or same-hour PM2.5 > PM10 | Deferred for coauthor discussion; no corresponding exclusion rule is activated. |
-| Flagged record or period with unresolved quality concerns | Mark `pending_review`; withhold it from analytical calculations until a documented review retains it or excludes it. This also applies to a suspicious value from a validated feed. |
-| Reviewed, credible extreme event | Retain its original concentration and the evidence supporting that decision. Do not winsorize it or replace it with the review threshold. |
+| Individual exceptions or further suspicious-period exclusions | Not activated in the main analysis. The existing optional review interface is retained pending the compact schema decision; do not populate it to force particular results. |
 
 The selected bounds are supported by examples rather than a universal cap.
 [SINAICA Manual 5](https://sinaica.inecc.gob.mx/archivo/guias/5%20-%20Protocolo%20de%20Manejo%20de%20Datos%20de%20la%20Calidad%20del%20Aire.pdf),
 §3.2.1.1 and Cuadro 3 (printed p. 17), lists **both 0–500 and 0–1,000 µg/m³ for each
 particulate pollutant**, with local operating limits potentially differing. It does not
-assign one range to PM2.5 and the other to PM10. Our differing defaults are project choices.
+assign one range to PM2.5 and the other to PM10. They are not the revised exclusion bounds.
 The [current BAM-1020 datasheet](https://metone.com/wp-content/uploads/2026/03/MetOne-BAM-1020-Datasheet-v2.2-20260319-1.pdf)
 reports a measurement range extending to 10,000 µg/m³; the
 [older manual](https://metone.com/wp-content/uploads/2019/05/BAM-1020-9800-Manual-Rev-W.pdf)
@@ -140,6 +141,30 @@ and their operating logs. Its historical exclusion of zeros is not adopted here.
 A [primary field study of prescribed-fire smoke](https://amt.copernicus.org/articles/11/1087/2018/)
 reported a 24-hour PM2.5 mean of 915 µg/m³: 500 cannot be defended as an absolute physical
 limit. That different setting does not substantiate the CDMX measurements.
+[Shahsavani et al. (2012), abstract reproduced by EPA](https://hero.epa.gov/reference/1255944/)
+reports an overall PM10 maximum of 5,337.6 µg/m³; 2,028 describes the longest event's
+reported peak rather than the overall maximum. These examples support choosing broader
+screening thresholds, not universal physical ceilings or estimated probabilities of error.
+
+**8 October bounded verification:** current defaults withhold 44 CDMX PM2.5 readings;
+there are no above-bound PM10 readings in the four-city 2023 comparison. All three remaining
+Primaria Revolución readings exceed p99 = 489.84 but pass the temporal band, so they remain.
+CDMX IT2 results are 7 episodes/28 hours. No percentile or SD rule is changed to force their
+removal. Evidence is under `data/verification/particulate-bounds-20261008/`. Update the
+current appendix numerical table and temporal exports from this run; keep the earlier
+500/1,000 results as dated historical comparisons. The compact numerical reason proposal
+in the data dictionary, and removal of unused override machinery, remain a separate schema
+decision. Main-analysis screening does not require individual reviews.
+
+**8 October execution diagnosis:** the host Docker run built its image and found all
+declared sources, but the R subprocess died during Bogotá 2018 census processing. A
+17.25 GB Docker memory allocation is reported; resource exhaustion is not yet established.
+The host probe confirms Arrow 24.0.0 lacks Zstandard. The image now requests its build
+feature and checks a compressed round trip; actual image verification is pending. The
+unsupported `expect_length(info=...)` call and host-only inventory entries are corrected.
+Complete container checks require a fresh run; the old baseline is also revision-mismatched.
+`references.bib` is now supplied. Compile the exported copy with it; the authors defer
+manuscript layout repairs to Overleaf. Rendering acceptance remains open.
 
 A new read-only scan of the existing 2023 partitions gives the following diagnostic
 counts. They do not establish source validity or the effect of a new cleaning pipeline.
@@ -240,7 +265,8 @@ acceptance record; bounded checks are not a full clean-source rebuild.
 The completed 2023 source replay matches existing CDMX concentrations, keys and missingness.
 Disabled-screening cleaner output matches the preserved statistical implementation for
 all four cities on identical bounded inputs, including the previous-year donor hour.
-The new holds affect 56 CDMX PM2.5 hours, five CDMX PM10 hours and two São Paulo PM10 hours;
+The **6 October checks with the initial 500/1,000 bounds** affected 56 CDMX PM2.5 hours,
+five CDMX PM10 hours and two São Paulo PM10 hours;
 the other 2023 panels have no above-bound readings. CDMX's PM2.5 statistical decisions
 change at 95 hours: 40 previously removed extremes now have separate quality holds,
 and 55 other readings change classification when eligible-data benchmarks are recomputed.

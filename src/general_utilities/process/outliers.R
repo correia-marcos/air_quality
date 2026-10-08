@@ -75,7 +75,7 @@ detect_pollution_outliers <- function(
     neighbor_eligibility = "with_data",
     overwrite           = TRUE,
     quiet               = FALSE,
-    upper_bounds        = c(pm25 = 500, pm10 = 1000),
+    upper_bounds        = c(pm25 = 2000, pm10 = 6000),
     eligibility_cols    = NULL,
     review_decisions    = NULL
 ) {
