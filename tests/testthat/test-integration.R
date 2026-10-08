@@ -8,7 +8,8 @@ test_that("small prepared inputs connect through the analytical and export stage
     x = c(.005, .008, .012, .015), y = .001), coords = c("x", "y"), crs = 4326)
   geos <- sf::st_buffer(sf::st_transform(geos, 3857), 10) |> sf::st_transform(4326)
   dist <- compute_distance_matrices(stations, "station", geos, "geo_id",
-    out_dir = root, out_name = "toy", distance_metric = "haversine", quiet = TRUE)
+    distance_metric = "haversine", quiet = TRUE)
+  distance_files <- write_distance_matrices(dist, out_dir = root, out_name = "toy")
   expect_equal(nrow(dist$geo_station_matrix), 8L)
   expect_true(all(dist$geo_station_matrix$distance_km > 0))
   panel <- expand.grid(station = c("s1", "s2"), hour = 0:2)
@@ -18,7 +19,7 @@ test_that("small prepared inputs connect through the analytical and export stage
                        file.path(root, "panel"), partitioning = "year")
   census <- data.frame(geo_id = paste0("g", 1:4), pop_total = 100, education_mean = 1:4)
   out <- aggregate_idw_exposure(file.path(root, "panel"),
-    file.path(root, "toy_geo_station_distances.parquet"), census_col = census,
+    distance_files[["geography"]], census_col = census,
     pop_col = "pop_total", group_var = "education_mean", n_groups = 2L,
     group_name = "edu_half", quintile_level = "geo", buffer_km = 3,
     distance_power = 1, target_years = 2023, pollutants = "pm10", mem_gb = 1,
@@ -68,10 +69,10 @@ test_that("isolated peaks distinguish temporal failure and missing neighbors", {
   expect_equal(sum(a$pm10 == 0, na.rm = TRUE), 20)
   # A simultaneous neighbor tracks the peak. Differences alternate +/-1:
   # the spatial deviation is within two sample SDs, so the peak is rescued.
-  values <- c(rep(0, 10), 100, rep(0, 10))
+  values <- c(rep(20, 10), 120, rep(20, 10))
   rescued <- run(values, "rescue", values + (-1)^seq_along(values))
   expect_equal(rescued$pm10[rescued$station == "A" & rescued$datetime ==
-    as.POSIXct("2023-01-01", tz = "UTC") + 11 * 3600], 100)
+    as.POSIXct("2023-01-01", tz = "UTC") + 11 * 3600], 120)
   # No adjacent reading around the peak: no temporal or spatial rescue exists.
   b <- run(c(0, NA, 100, NA, 0), "missing")
   expect_equal(sum(b$pm10_outlier_reason == 1L), 1)

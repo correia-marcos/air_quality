@@ -4,7 +4,7 @@
 #' @Goal: Functions for hourly outlier detection.
 #
 #' @Description: Compare each station with its own history and nearest neighbours,
-# using DuckDB to process the partitioned data. Source base_utils.R for shared helpers.
+# processing one Arrow year at a time. Source base_utils.R and pollution_quality.R.
 #
 #' @Summary:
 #   1. detect_pollution_outliers
@@ -28,13 +28,16 @@
 #' @param neighbor_eligibility string; "with_data" or "all". Default "with_data".
 #' @param overwrite          logical; skip if output exists. Default TRUE.
 #' @param quiet              logical; suppress messages. Default FALSE.
+#' @param upper_bounds Named quality-review bounds; NULL disables additional bounds.
+#' @param eligibility_cols Named pollutant-to-logical-column mapping; only TRUE passes.
+#' @param review_decisions Documented decisions tied to original input identities.
 #' @return Directory of the complete cleaned, year-partitioned dataset, invisibly.
 # Writes the dataset during processing; no separate save is needed.
 #
 #' @details
 #   `neighbor_eligibility` decides which stations may serve as the neighbor:
-#     "with_data" = the paper's rule: only stations with at least one non-missing
-#                   reading for this pollutant in this year are candidates.
+#     "with_data" = existing rule: candidates have a non-missing eligible reading
+#                   in the year-level frame, including appended boundary hours.
 #     "all"       = the static distance matrix alone decides, so a station that
 #                   never reported can still be picked as nearest.
 #                   Its readings are then all NA, the spatial check is infeasible,
@@ -71,7 +74,10 @@ detect_pollution_outliers <- function(
     on_missing_neighbor = "second",
     neighbor_eligibility = "with_data",
     overwrite           = TRUE,
-    quiet               = FALSE
+    quiet               = FALSE,
+    upper_bounds        = c(pm25 = 500, pm10 = 1000),
+    eligibility_cols    = NULL,
+    review_decisions    = NULL
 ) {
   
   # 0. Dependencies
@@ -106,27 +112,6 @@ detect_pollution_outliers <- function(
   # -----------------------------------------------------------------------
   out_path <- file.path(out_dir, paste0(out_name, "_clean"))
   
-  # Skip computation only when explicitly requested.
-  if (!overwrite && dir.exists(out_path)) {
-    if (!quiet) {
-      message("Output exists; overwrite=FALSE — skipping.")
-    }
-    
-    return(invisible(out_path))
-  }
-  
-  # Create output root if needed.
-  if (!dir.exists(out_dir)) {
-    dir.create(out_dir, recursive = TRUE)
-  }
-  
-  # Replace previous output when overwrite = TRUE.
-  if (dir.exists(out_path)) {
-    unlink(out_path, recursive = TRUE)
-  }
-  
-  dir.create(out_path)
-  
   # 2. Load and validate station-distance table
   # -----------------------------------------------------------------------
   # This table is used only to define nearest monitoring stations.
@@ -160,6 +145,55 @@ detect_pollution_outliers <- function(
     dplyr::collect()    |>
     dplyr::pull(year)   |>
     sort()
+
+  validate_pollution_quality_options(upper_bounds, eligibility_cols, pollutants)
+  for (column in unname(eligibility_cols)) {
+    if (!column %in% arrow_ds$schema$names ||
+        !arrow_ds$schema$GetFieldByName(column)$type$Equals(arrow::boolean())) {
+      stop("Eligibility column must exist and be logical: ", column)
+    }
+  }
+  identities <- pollution_input_identities(arrow_dir)
+  reviews <- pollution_review_decisions(review_decisions)
+  if (!is.null(reviews)) {
+    if (any(!reviews$pollutant %in% pollutants) ||
+        any(!reviews$input_id %in% identities$input_id)) {
+      stop("Review pollutant or input identity does not match the requested input.")
+    }
+    for (yr in years) {
+      selected <- reviews[reviews$input_id == identities[year == yr, input_id]]
+      if (!nrow(selected)) next
+      original <- arrow_ds |>
+        dplyr::filter(year == yr) |>
+        dplyr::collect() |>
+        data.table::as.data.table()
+      original[, input_id := identities[year == yr, input_id]]
+      match_pollution_reviews(original, selected)
+    }
+  }
+
+  # Explicit reuse does not bypass the input or review-decision contracts.
+  if (!overwrite && dir.exists(out_path)) {
+    if (!quiet) message("Output exists; overwrite=FALSE — skipping.")
+    return(invisible(out_path))
+  }
+
+  # Input contracts and review evidence have passed before replacing any output.
+  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+  if (dir.exists(out_path)) unlink(out_path, recursive = TRUE)
+  dir.create(out_path)
+
+  .screen_input <- function(panel, yr) {
+    if (!nrow(panel)) return(panel)
+    panel[, input_id := identities[year == yr, input_id]]
+    selected <- if (is.null(reviews)) NULL else
+      reviews[panel[, .(station, datetime)], on = .(station, datetime), nomatch = 0L]
+    panel <- screen_pollution_quality(panel, pollutants, upper_bounds,
+                                      eligibility_cols, selected)
+    panel[, station_original := station]
+    panel[, station := normalize_station(station)]
+    panel
+  }
   
   # 4. Inner helper: flag one pollutant at a time
   # -----------------------------------------------------------------------
@@ -198,7 +232,7 @@ detect_pollution_outliers <- function(
     
     # -- (1) Nearest neighbors -------------------------------------------
     # "with_data": a neighbor must have at least one non-missing observation for this 
-    # pollutant in the current year-level data
+    # pollutant in the current year-level frame, including boundary donors.
     if (neigh_elig == "with_data") {
       has_data <- dt[!is.na(get(pol)), unique(station)]
 
@@ -511,7 +545,7 @@ detect_pollution_outliers <- function(
     }
     
     # Normalize station identifiers before balancing and joining.
-    dt_yr[, station := normalize_station(station)]
+    dt_yr <- .screen_input(dt_yr, yr)
     
     all_sta  <- unique(dt_yr$station)
     yr_start <- min(dt_yr$datetime)
@@ -526,24 +560,29 @@ detect_pollution_outliers <- function(
     # written from UTC, so a session-zone read here would look in the wrong partition
     prev_yr     <- as.integer(format(prev_cutoff, "%Y", tz = "UTC"))
     next_yr     <- as.integer(format(next_cutoff, "%Y", tz = "UTC"))
+
+    # Match Arrow's timestamp type without converting the stored source clock.
+    timestamp_type <- arrow_ds$schema$GetFieldByName("datetime")$type
+    prev_scalar <- arrow::Scalar$create(prev_cutoff, type = timestamp_type)
+    next_scalar <- arrow::Scalar$create(next_cutoff, type = timestamp_type)
     
     bnd_prev <- arrow_ds |>
-      dplyr::filter(year == prev_yr, datetime == prev_cutoff) |>
+      dplyr::filter(year == prev_yr, datetime == prev_scalar) |>
       dplyr::collect() |>
       data.table::as.data.table()
     
     if (nrow(bnd_prev) > 0L) {
-      bnd_prev[, station := normalize_station(station)]
+      bnd_prev <- .screen_input(bnd_prev, prev_yr)
       bnd_prev <- bnd_prev[station %in% all_sta]
     }
     
     bnd_next <- arrow_ds |>
-      dplyr::filter(year == next_yr, datetime == next_cutoff) |>
+      dplyr::filter(year == next_yr, datetime == next_scalar) |>
       dplyr::collect() |>
       data.table::as.data.table()
     
     if (nrow(bnd_next) > 0L) {
-      bnd_next[, station := normalize_station(station)]
+      bnd_next <- .screen_input(bnd_next, next_yr)
       bnd_next <- bnd_next[station %in% all_sta]
     }
     
@@ -569,6 +608,15 @@ detect_pollution_outliers <- function(
       fill = TRUE,
       use.names = TRUE
     )
+
+    # Synthetic missing hours have no observed reading and cannot become donors.
+    for (pol in intersect(pollutants, names(dt_bal))) {
+      dt_bal[is.na(get(paste0(pol, "_qa_status"))),
+        (paste0(pol, c("_qa_status", "_qa_reason", "_qa_eligible"))) :=
+          list("missing", "missing_input", FALSE)]
+      dt_bal[is.na(get(paste0(pol, "_source_status"))),
+        (paste0(pol, "_source_status")) := "unknown"]
+    }
     
     # Ensure shift() uses the correct station-hour order.
     data.table::setorder(dt_bal, station, datetime)
@@ -589,23 +637,33 @@ detect_pollution_outliers <- function(
         miss_neigh = on_missing_neighbor,
         neigh_elig = neighbor_eligibility
       )
+      if (pol %in% names(dt_bal)) {
+        dt_bal[, (paste0(pol, "_use")) :=
+          get(paste0(pol, "_qa_eligible")) & is.finite(get(pol))]
+      }
     }
     
     # Drop boundary rows before saving.
     dt_out <- dt_bal[in_yr]
+    dt_out[, datetime := as.POSIXct(as.numeric(datetime),
+                                    origin = "1970-01-01", tz = "UTC")]
+    output <- arrow::Table$create(dt_out)$SetColumn(
+      which(names(dt_out) == "datetime") - 1L,
+      arrow::field("datetime", timestamp_type),
+      arrow::ChunkedArray$create(dt_out$datetime, type = timestamp_type))
     
     # Write partitioned output in the same year=YYYY structure.
     yr_dir <- file.path(out_path, paste0("year=", yr))
     dir.create(yr_dir, showWarnings = FALSE)
     
     arrow::write_parquet(
-      dt_out,
+      output,
       file.path(yr_dir, "data.parquet"),
       compression = "snappy"
     )
     
     # Explicit cleanup after each year helps with large city panels.
-    rm(dt_yr, dt_bal, dt_out, grid, bnd_prev, bnd_next, in_yr)
+    rm(dt_yr, dt_bal, dt_out, output, grid, bnd_prev, bnd_next, in_yr)
     gc(verbose = FALSE)
   }
   

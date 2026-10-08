@@ -12,12 +12,29 @@ manuscript_seed <- 20230901L
 outlier_missing_temporal <- "continue"
 outlier_missing_neighbor <- "second"
 
+# Review holds precede statistical cleaning; equality passes, NULL disables the bounds.
+pollution_upper_bounds <- c(pm25 = 500, pm10 = 1000)
+pollution_eligibility_cols <- NULL
+pollution_review_path <- here::here("config", "pollution_quality_reviews.csv")
+
 # IDW uses 2023 at 3/5/20 km; regression results use only the 3 and 5 km estimates.
 analysis_year <- 2023L
 idw_buffers_km <- c(3, 5, 20)
 idw_distance_power <- 1
 exposure_buffers_km <- c(3L, 5L)
 individual_exposure_buffer_km <- 3L
+
+# Harmonized education levels: the six bands each census module derives from educ_years,
+# lowest to highest. Bogota's "Some tertiary" includes completed tecnica and normalista.
+education_level_bands <- c("no_education", "high_school_incomplete", "high_school_complete",
+                           "college_incomplete", "college_complete", "graduate_educ")
+education_level_labels <- c("None", "Below secondary", "Secondary", "Some tertiary",
+                            "Bachelor's", "Graduate")
+
+# Three attainment groups merge the six bands: the group of each band, lowest band first.
+education_group3_of_level <- c(1L, 1L, 2L, 2L, 3L, 3L)
+education_group3_labels <- c("Below secondary", "Secondary to some tertiary",
+                             "Bachelor's or more")
 
 # The imputed robustness specification uses education quintiles at 3 km in 2023.
 imputation_year <- 2023L
@@ -126,7 +143,4 @@ kernel_city_colours <- c("Bogotá" = "black", "Mexico City" = "black",
 kernel_city_linetypes <- c("Bogotá" = "solid", "Mexico City" = "dashed",
                            "São Paulo" = "dotdash", "Santiago" = "solid")
 
-# Original MERRA-2 extraction: polygon means, with the existing RAM-based parallel choice.
-# merra2_extraction_fun <- "mean"
-# merra2_parallel <- TRUE
-# merra2_num_cores <- NULL
+# Optional satellite extraction choices live in config/merra2_settings.R.
