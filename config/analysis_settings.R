@@ -14,8 +14,6 @@ outlier_missing_neighbor <- "second"
 
 # Gross-value screening precedes statistical cleaning; equality passes, NULL disables bounds.
 pollution_upper_bounds <- c(pm25 = 2000, pm10 = 6000)
-pollution_eligibility_cols <- NULL
-pollution_review_path <- here::here("config", "pollution_quality_reviews.csv")
 
 # IDW uses 2023 at 3/5/20 km; regression results use only the 3 and 5 km estimates.
 analysis_year <- 2023L

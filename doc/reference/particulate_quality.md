@@ -53,55 +53,46 @@ type. The implementation preserves the cleaner's existing use of appended bounda
 when assessing neighbor availability; a review of its narrower documented year-only
 interpretation is separate work.
 
-| Field, for each pollutant | Meaning |
-|---|---|
-| `pm25_source_status` | Acquisition evidence: `validated`, `raw_unvalidated`, `mixed`, or `unknown`. This is independent of project screening. |
-| `pm25_source_ids` | Actual nonnegative, finite contributing source IDs, linked to the CDMX manifest. Missing when none contribute. |
-| `pm25_input` | Original standardized hourly concentration before project screening or statistical removal. |
-| `pm25_qa_status` | `not_flagged`, `pending_review`, `reviewed_retained`, `excluded`, or `missing`. `not_flagged` does not certify validity. |
-| `pm25_qa_reason` | Quality reason, independent of statistical removal reasons. |
-| `pm25_qa_eligible` | Logical permission to enter the statistical cleaner. |
-| `pm25_use` | Logical usability of the final observed concentration. |
-| `pm25_outlier`, `pm25_outlier_reason` | Existing statistical decision and reason code. A held reading can have reason zero because it never enters that calculation. |
-| `input_id`, `station_original` | Partition SHA-256 identity and original station label for review keys. |
+The analytical panel now uses the five-column interface in the
+[data dictionary](data_dictionary.md#9-observed-particulate-quality-fields): original
+concentration, source validation, screening reason, statistical reason and final value.
+In observed datasets a finite final value identifies a retained observation, without a
+separate boolean. Statistical reason is missing when screening prevented assessment.
+Source status from the merger becomes `source_validation` in the cleaned panel.
 
-PM10 has the same fields. Other cities receive `unknown` source status unless the input
-already contains documented pollutant-specific status. The current CDMX source status
-comes from its archived acquisition routes, which do not supply an individual validation
-flag for every reading. It is not inferred from concentration magnitude or outlier flags.
+Actual CDMX source contributions are retained in the cleaned dataset's
+`_audit/source_contributions/` partitions, including links for readings that survive.
+The four temporal/spatial SD diagnostic counts are retained once per station-month in
+`_audit/station_month_diagnostics.parquet`. Input identities are recorded separately in
+`_audit/input_partitions.csv` and on original rows. These file-backed tables preserve
+traceability without repeating the metadata throughout the hourly panel. Opening the
+cleaned Arrow dataset excludes `_audit/`; its contents remain independently readable and
+belong to the same targets file output.
 
-## Change settings or document a decision
+## Change screening settings
 
 Parameters enter through reusable functions. Recipes and targets pass the same named
-settings from `config/analysis_settings.R`:
+setting from `config/analysis_settings.R`:
 
 ```r
 pollution_upper_bounds <- c(pm25 = 2000, pm10 = 6000)
-pollution_eligibility_cols <- NULL
 ```
 
-Use `upper_bounds = NULL` to disable the added bounds, or `c(pm25 = Inf, pm10 = 6000)`
-to disable only PM2.5. `eligibility_cols = c(pm25 = "pm25_qa_eligible")` requires an
-existing logical column: only TRUE permits use; FALSE excludes and NA holds. The function
-rejects missing or nonlogical mapped columns. An eligibility flag cannot clear a bound.
+Use `upper_bounds = NULL` to disable the added upper bounds, or
+`c(pm25 = Inf, pm10 = 6000)` to disable only PM2.5. Negative and nonfinite inputs remain
+unusable. There are no per-observation eligibility gates or documented-decision overrides
+in the current interface. The empty `config/pollution_quality_reviews.csv` remains a
+historical artifact and is not read by recipes or targets. Activating exceptions would
+require a separate approved method and a schema that records them explicitly.
 
-The initially empty `config/pollution_quality_reviews.csv` and optional decision interface
-are retained for compatibility; no individual decision is activated in the main analysis.
-Supplying such decisions would change the approved uniform policy. Each decision requires
-the original station, timestamp, pollutant, partition
-`input_id`, original `value`, `decision` (`retain` or `exclude`), evidence, reviewer and
-review date. A retained extreme still undergoes statistical cleaning and any independent
-eligibility gate. Stale identities, mismatched values, unmatched keys and conflicting
-reviews fail before existing cleaned output is replaced. A new source or changed partition
-requires renewed review. No CALPULALPAN station-year exclusion is activated.
-
-The outlier recipe exposes four named quality summaries and review-record tables in
-RStudio. Targets cache those objects separately and declare their CSV files under
-`data/processed/pollution_quality/`. Summaries count source status, quality reason,
-statistical reason and observed usability separately. Review records retain the value and
-input identity needed to investigate a hold; join explicit decisions to the registry by
-those keys. The existing station catalog and balanced station-year rows remain present.
-Usable reporting-station counts may change.
+The direct outlier recipe exposes four named quality summaries and screened-record tables
+in RStudio. Targets cache those objects separately and declare CSV files under
+`data/processed/pollution_quality/`. Existing `*_quality_review_records` target names and
+`*_review_records.csv` filenames remain compatibility names: their contents are bound or
+negative screening exclusions, not a pending-review workflow or manual decisions.
+Summaries count source validation, screening codes and statistical reasons separately.
+The station catalog and balanced station-year rows remain present. Usable reporting counts
+may change when screening settings change.
 
 ## Revised 2023 comparison and column simplification
 
@@ -115,10 +106,9 @@ They remain eligible; no manual exclusion is introduced to obtain a preferred re
 The two São Paulo PM10 extremes are already statistical removals with reason 3.
 These checks are not a complete source-to-manuscript rebuild or a reviewed release baseline.
 
-The current implementation still stores the QA fields listed above. A compact numerical
-`<pollutant>_screen_reason` is proposed in the [data dictionary](data_dictionary.md#9-observed-particulate-quality-fields),
-with no `pending_review` state in the final analytical dataset. Its schema and removal of
-unused per-observation override machinery remain pending; the bounds are implemented now.
+The compact schema was approved and implemented on 8 October 2026 after these bounds
+were accepted. Earlier evidence retains its older column names and categories; it must
+not be treated as a revision-matched release baseline for newly generated audit products.
 
 ## Inspect CDMX provenance
 
@@ -139,8 +129,8 @@ Do not run acquisition merely to populate historical metadata.
 
 ## Keep imputation and unresolved source work distinct
 
-The observed-use fields describe observed readings even in an imputed robustness dataset.
-OLS predictions retain the existing `OLS_imputed` identification; they do not become agency
+Original values and reasons describe the observed input even in an imputed robustness
+dataset. OLS predictions retain the existing `OLS_imputed` identification; they do not become agency
 validated observations. The existing imputation policy may fill quality-held gaps and may
 change the first-finite-reading window. That behavior requires explicit sensitivity review;
 the current implementation does not select a different model.

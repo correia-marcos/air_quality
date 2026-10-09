@@ -1,7 +1,5 @@
 # Distance idw target declarations. Scientific functions live in src/.
 list(
-  targets::tar_target(pollution_review_file, pollution_review_path, format = "file"),
-
   targets::tar_target(bogota_distance_stations,
     sf::st_read(
       bogota_stations_filter[basename(bogota_stations_filter) ==
@@ -32,14 +30,9 @@ list(
       out_dir = here::here("data", "processed", "distances_matrices", "bogota_2018")),
     format = "file"),
 
-  targets::tar_target(bogota_quality_reviews,
-    read_pollution_quality_reviews(pollution_review_file, "bogota")),
-
   targets::tar_target(bogota_outliers,
     detect_pollution_outliers(
         upper_bounds = pollution_upper_bounds,
-        eligibility_cols = pollution_eligibility_cols,
-        review_decisions = bogota_quality_reviews,
         arrow_dir = bogota_pollution_parquet[basename(bogota_pollution_parquet) ==
             "bogota_metro_dataset"],
         station_dist_path = bogota_2018_distances[basename(bogota_2018_distances) ==
@@ -55,7 +48,7 @@ list(
     summarize_pollution_quality(bogota_outliers)),
 
   targets::tar_target(bogota_quality_review_records,
-    collect_pollution_review_records(bogota_outliers)),
+    collect_pollution_screening_records(bogota_outliers)),
 
   targets::tar_target(bogota_quality_report,
     c(write_pollution_quality_summary(bogota_quality_summary,
@@ -125,14 +118,9 @@ list(
       out_dir = here::here("data", "processed", "distances_matrices", "cdmx_2020")),
     format = "file"),
 
-  targets::tar_target(cdmx_quality_reviews,
-    read_pollution_quality_reviews(pollution_review_file, "cdmx")),
-
   targets::tar_target(cdmx_outliers,
     detect_pollution_outliers(
         upper_bounds = pollution_upper_bounds,
-        eligibility_cols = pollution_eligibility_cols,
-        review_decisions = cdmx_quality_reviews,
         arrow_dir = cdmx_pollution_parquet[basename(cdmx_pollution_parquet) ==
             "cdmx_metro_dataset"],
         station_dist_path = cdmx_2020_distances[basename(cdmx_2020_distances) ==
@@ -148,7 +136,7 @@ list(
     summarize_pollution_quality(cdmx_outliers)),
 
   targets::tar_target(cdmx_quality_review_records,
-    collect_pollution_review_records(cdmx_outliers)),
+    collect_pollution_screening_records(cdmx_outliers)),
 
   targets::tar_target(cdmx_quality_report,
     c(write_pollution_quality_summary(cdmx_quality_summary,
@@ -234,14 +222,9 @@ list(
       out_dir = here::here("data", "processed", "distances_matrices", "santiago_2017")),
     format = "file"),
 
-  targets::tar_target(santiago_quality_reviews,
-    read_pollution_quality_reviews(pollution_review_file, "santiago")),
-
   targets::tar_target(santiago_outliers,
     detect_pollution_outliers(
         upper_bounds = pollution_upper_bounds,
-        eligibility_cols = pollution_eligibility_cols,
-        review_decisions = santiago_quality_reviews,
         arrow_dir = santiago_pollution_parquet[basename(santiago_pollution_parquet) ==
             "santiago_metro_dataset"],
         station_dist_path = santiago_2017_distances[basename(santiago_2017_distances) ==
@@ -257,7 +240,7 @@ list(
     summarize_pollution_quality(santiago_outliers)),
 
   targets::tar_target(santiago_quality_review_records,
-    collect_pollution_review_records(santiago_outliers)),
+    collect_pollution_screening_records(santiago_outliers)),
 
   targets::tar_target(santiago_quality_report,
     c(write_pollution_quality_summary(santiago_quality_summary,
@@ -384,14 +367,9 @@ list(
       out_dir = here::here("data", "processed", "distances_matrices", "sao_paulo_2010")),
     format = "file"),
 
-  targets::tar_target(sao_paulo_quality_reviews,
-    read_pollution_quality_reviews(pollution_review_file, "sao_paulo")),
-
   targets::tar_target(sao_paulo_outliers,
     detect_pollution_outliers(
         upper_bounds = pollution_upper_bounds,
-        eligibility_cols = pollution_eligibility_cols,
-        review_decisions = sao_paulo_quality_reviews,
         arrow_dir = sao_paulo_pollution_parquet[basename(sao_paulo_pollution_parquet) ==
             "sao_paulo_metro_dataset"],
         station_dist_path = sao_paulo_2010_distances[basename(sao_paulo_2010_distances) ==
@@ -407,7 +385,7 @@ list(
     summarize_pollution_quality(sao_paulo_outliers)),
 
   targets::tar_target(sao_paulo_quality_review_records,
-    collect_pollution_review_records(sao_paulo_outliers)),
+    collect_pollution_screening_records(sao_paulo_outliers)),
 
   targets::tar_target(sao_paulo_quality_report,
     c(write_pollution_quality_summary(sao_paulo_quality_summary,

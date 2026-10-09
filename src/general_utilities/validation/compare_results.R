@@ -658,6 +658,14 @@ compare_outlier_procedure <- function(
     new_clean <- new_clean[station %in% legacy_names]
   }
   
+  # Reconstruct historical flags for this comparison only; production stores reasons.
+  for (pol in pollutants) {
+    reason <- paste0(pol, "_outlier_reason")
+    if (reason %in% names(new_clean)) {
+      new_clean[, (paste0(pol, "_outlier")) := as.integer(get(reason) %in% 1:4)]
+    }
+  }
+
   # 3) Build step-level summary pulling the new Diagnostic Reason Codes
   step_list <- list()
   for (pol in pollutants) {

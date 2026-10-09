@@ -285,36 +285,69 @@ Santiago 2017 and São Paulo 2010 census vintages remain approved analytical inp
 
 ## 9. Observed particulate quality fields
 
-The cleaned observed partitions retain source status, original standardized concentrations,
-project quality categories and reasons, logical quality eligibility, final observed-use
-flags and input identities for both pollutants. See [particulate screening](particulate_quality.md)
-for the field definitions, parameter contract, decision registry and linked CDMX source manifests.
-Statistical removal reasons remain separate. Imputed predictions retain their existing
-identification; the observed flags do not certify them as agency-validated observations.
+The cleaner writes five columns per particulate pollutant. PM10 uses the same suffixes.
+The original is the **standardized station-hour concentration**, after source aggregation;
+it is not an unmodified individual source record. Shared `station_original` and `input_id`
+columns link the rows to their original station labels and SHA-256 partition identities.
 
-### Proposed compact screening code (not implemented)
-
-The approved main analysis uses uniform upper bounds of 2,000 µg/m³ for PM2.5 and
-6,000 µg/m³ for PM10, accepts equality and zero, and has no individual overrides. A
-numerical `<pollutant>_screen_reason` would describe only this first screening step:
-
-| Proposed code | Label | Meaning |
+| Column | Type | Meaning |
 |---|---|---|
-| 0 | `within_bounds` | Finite, nonnegative concentration at or below the pollutant bound; eligible for statistical outlier detection. |
-| 1 | `above_upper_bound` | Finite concentration strictly above the upper bound; original preserved, analytical concentration missing. This is not confirmation of error. |
-| 2 | `negative_value` | Finite concentration below zero; original preserved, analytical concentration missing. Zero does not receive this code. |
-| 3 | `missing_or_nonfinite` | Missing/NaN or infinite input cannot be used numerically; original preserved where supplied, analytical concentration missing. |
+| `pm25_original` | Numeric | Standardized input before screening and statistical cleaning; preserved even when withheld. |
+| `pm25_source_validation` | Character | Acquisition evidence: `validated`, `raw_unvalidated`, `mixed`, or `unknown`; independent of project cleaning. |
+| `pm25_screen_reason` | Integer category, 0–3 | Result of uniform concentration screening, defined below. |
+| `pm25_outlier_reason` | Integer category, 0–4 or missing | Statistical result; missing means the reading was unavailable or screened out before this procedure. |
+| `pm25` | Numeric | Final observed analytical concentration, or missing when unavailable or removed. |
 
-Code 0 would not mean that the final observed reading is kept: the later statistical
-procedure may remove it. `<pollutant>_outlier_reason` and an observed-usability flag would
-remain separate. Codes are categories, not scores. Source validation would still have its
-own field; an unvalidated source may have an in-bounds reading, and a validated source may
-have an above-bound reading.
+The approved defaults are 2,000 µg/m³ for PM2.5 and 6,000 µg/m³ for PM10. Equality and
+zero pass. The main analysis uses no individual retain/exclude overrides. Codes describe
+categories, not confidence scores or confirmations of measurement error.
 
-The current `negative_or_nonfinite` quality reason combines negative values and infinities;
-this proposal separates negative values explicitly and combines unavailable numerical
-inputs in code 3. Negative raw contributions already removed during source processing
-appear as missing standardized inputs, so source losses must also be read from the linked
-source diagnostics. This section proposes the interface; it does not claim the current
-Parquet schema already has these codes. Optional eligibility and review APIs would require
-a separate compatibility decision when simplifying that schema.
+| Screening code | Label | Meaning |
+|---|---|---|
+| 0 | `within_bounds` | Finite, nonnegative input at or below the bound; enters statistical cleaning. |
+| 1 | `above_upper_bound` | Finite input strictly above the bound; original preserved, analytical concentration missing. |
+| 2 | `negative_value` | Finite input below zero; original preserved, analytical concentration missing. |
+| 3 | `missing_or_nonfinite` | NA, NaN or infinite input, or a balanced hour with no supplied reading; analytical concentration missing. |
+
+| Statistical code | Meaning |
+|---|---|
+| Missing | Not assessed: screening code 1, 2 or 3. |
+| 0 | Assessed and retained; includes observations not above the station-month p99. |
+| 1 | Above p99; no temporal benchmark and no feasible spatial rescue. |
+| 2 | Above p99; failed temporal comparison and no feasible spatial rescue. |
+| 3 | Above p99; failed temporal and spatial comparisons. |
+| 4 | Above p99; no temporal benchmark and failed spatial comparison. |
+
+Screening code 0 alone does not mean the reading survived statistical cleaning. In the
+**observed** dataset, a finite final concentration provides that conclusion, so no extra
+usability flag is stored. Source validation describes the archived acquisition route;
+CDMX sources do not provide an individual validation flag for every reading. In-bounds
+or statistically retained observations are not thereby agency validated. Other cities
+receive `unknown` unless their inputs contain documented pollutant-specific status.
+
+In the **imputed robustness** dataset, the same final pollutant column may instead contain
+an OLS prediction. The existing `pm25_imputed_from = "OLS_imputed"` identifies it;
+missing `pm25_imputed_from` means no prediction was inserted. Original values, source
+validation and both reasons still describe the observed input. Observed usability can be
+derived from `pm25_screen_reason == 0` and `pm25_outlier_reason == 0`, treating a missing
+reason as FALSE. Predictions do not become agency-validated readings.
+
+The cleaner preserves detailed metadata under each cleaned dataset's `_audit/` directory.
+Arrow ignores this directory when opening the analytical dataset; open the sidecars
+explicitly to inspect them. The file target owns the entire directory, including sidecars.
+
+| Audit table | Contents and join keys |
+|---|---|
+| `_audit/input_partitions.csv` | `year`, `input_id`; match to the shared year/input identity on original rows. Identities hash all input files in that year and are independent of absolute location. |
+| `_audit/station_month_diagnostics.parquet` | One row per `station`, `year`, `month`, `pollutant`, with counts of missing/zero temporal and spatial SD for above-p99 observations. |
+| `_audit/source_contributions/year=YYYY/data.parquet` | Where source IDs are supplied (currently CDMX), actual contributing `source_ids` and source validation for each station-hour/pollutant, including retained readings. Join by `station`, `datetime`, `year`, `pollutant`, `input_id`; original labels are also retained. |
+
+CDMX source IDs join to the interim source manifest and coverage reports. Empty links mean
+no identified contribution; they do not imply validation. Negative raw contributions
+already removed upstream appear as missing standardized inputs, so their losses must also
+be read from source diagnostics and preserved downloads. The old repeated diagnostic
+columns, duplicate statistical flag and QA state/eligibility/use fields are removed from
+newly generated cleaned panels. Existing historical evidence retains its original schema.
+
+See [particulate screening](particulate_quality.md) for the rationale, parameters and
+remaining source-quality limitations.

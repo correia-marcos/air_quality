@@ -220,3 +220,28 @@ test_that("saturated models and series without usable neighbours are skipped", {
   expect_equal(result$fits[station_id == "A", status], "no_varying_neighbors")
   expect_false(any(result$fits$fitted))
 })
+
+
+test_that("imputation preserves original screening and identifies predictions", {
+  panel <- expand.grid(hour = 0:503, station = c("A", "B"))
+  panel$datetime <- as.POSIXct("2023-01-01", tz = "UTC") + panel$hour * 3600
+  panel$year <- 2023L
+  signal <- 20 + sin(panel$hour / 4) + cos(panel$hour / 11)
+  panel$pm25 <- ifelse(panel$station == "A", 10 + 2 * signal, signal)
+  gap <- panel$station == "A" & panel$hour == 100
+  panel$pm25[gap] <- 79999
+  panel$pm25_source_status <- "raw_unvalidated"
+  screened <- screen_pollution_quality(panel, "pm25")
+  screened[, pm25_outlier_reason := ifelse(pm25_screen_reason == 0L, 0L, NA_integer_)]
+  result <- run_imputation_policy_fixture(as.data.frame(screened), "pm25")
+  expected <- 10 + 2 * signal[gap]
+  expect_equal(result$panel$pm25[gap], expected, tolerance = 1e-8)
+  expect_identical(result$panel$pm25_imputed_from[gap], "OLS_imputed")
+  expect_equal(result$panel$pm25_original[gap], 79999)
+  expect_identical(result$panel$pm25_screen_reason[gap], 1L)
+  expect_true(is.na(result$panel$pm25_outlier_reason[gap]))
+  expect_identical(result$panel$pm25_source_validation[gap], "raw_unvalidated")
+  observed <- !gap
+  expect_equal(result$panel$pm25[observed], panel$pm25[observed], tolerance = 0)
+  expect_true(all(is.na(result$panel$pm25_imputed_from[observed])))
+})
