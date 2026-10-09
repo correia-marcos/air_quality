@@ -1,157 +1,95 @@
 # ========================================================================================
 # IDB: Air monitoring
 # ========================================================================================
-#' @Goal: Plot hourly PM2.5 profiles and pollution-episode durations.
+#' @Goal: Plot observed hourly PM2.5 profiles and IT2 episode durations.
 #
-#' @Description: Read the prepared station/MERRA-2 series. Compare hourly averages,
-# plot station-reading distributions by hour and summarize consecutive exceedances.
-# Preserve the existing threshold definitions; bar-chart error bars show one standard
-# error. The manuscript's ridgelines and episode plots are saved without titles.
+#' @Description: Read city-hour station means and preserve missing hours between episodes.
 #
 #' @Summary:
-#   I.   Import data: source functions and settings, set paths and read inputs.
-#   II.  Process data: build hourly profiles and episode-duration plots.
-#   III. Save outputs: save the results in the same order.
+#   I.   Import data: source definitions and read hourly station checkpoints.
+#   II.  Process data: retain four ridgelines and the IT2 episode plot.
+#   III. Save outputs: preserve the five manuscript filenames.
 #
-#' @Date: September 2026
-#' @Author: Marcos
+#' @Date: October 2026
+#' @Author: Project contributors
 # ========================================================================================
+
 
 # ========================================================================================
 # I: Import data
 # ========================================================================================
-# Source the scientific functions and their shared helpers
 source(here::here("src", "general_utilities", "base_utils.R"))
 source(here::here("src", "general_utilities", "plot", "timeseries_hourly.R"))
+source(here::here("src", "general_utilities", "process", "station_temporal.R"))
+source(here::here("src", "general_utilities", "plot", "exposure_figures.R"))
 source(here::here("src", "general_utilities", "theme_paper.R"))
 source(here::here("config", "analysis_settings.R"))
-
-# Use the manuscript font and theme
 set_paper_theme()
 
-# Set the prepared time-series folder and figure destination
-dir_series <- here::here("data", "processed", "merra2_stations_pm25")
+dir_series <- here::here("data", "processed", "station_hourly")
+file_episode_data <- here::here(dir_series,
+  sprintf("episodes_it2_%d.csv", analysis_year))
 outdir_fig <- here::here("results", "figures", "temporal")
 
-# Read one merged hourly series per city
-series_bogota   <- read.csv(here::here(dir_series,
-                                       "bogota_pm25_stations_merra2.csv"))
-series_santiago <- read.csv(here::here(dir_series,
-                                     "santiago_pm25_stations_merra2.csv"))
-series_cdmx     <- read.csv(here::here(dir_series,
-                                         "ciudad_mexico_pm25_stations_merra2.csv"))
-series_sp       <- read.csv(here::here(dir_series,
-                                           "sao_paulo_pm25_stations_merra2.csv"))
+series_bogota <- arrow::read_parquet(here::here(dir_series,
+  sprintf("bogota_pm25_%d.parquet", analysis_year)))
+series_cdmx <- arrow::read_parquet(here::here(dir_series,
+  sprintf("cdmx_pm25_%d.parquet", analysis_year)))
+series_santiago <- arrow::read_parquet(here::here(dir_series,
+  sprintf("santiago_pm25_%d.parquet", analysis_year)))
+series_sao_paulo <- arrow::read_parquet(here::here(dir_series,
+  sprintf("sao_paulo_pm25_%d.parquet", analysis_year)))
 
 # ========================================================================================
 # II: Process data
 # ========================================================================================
-# Compare hourly means, then show the station-reading distribution by hour
-bar_bogota <- plot_hourly_avg_pollution(df          = series_bogota,
-                                        region_name = "Bogota",
-                                        plot_ci     = TRUE,
-                                        bar_width   = 0.7)
-
-ridge_bogota <- plot_hourly_ridgeline_pollution(df            = series_bogota,
-                                                region_name   = "Bogota",
-                                                pollution_var = "pm25_stations") +
+ridge_bogota <- plot_hourly_ridgeline_pollution(df = series_bogota,
+  region_name = "Bogota", pollution_var = "pm25_stations") +
   ggplot2::labs(title = NULL) + ggplot2::theme(plot.title = ggplot2::element_blank())
 
-bar_santiago <- plot_hourly_avg_pollution(df          = series_santiago,
-                                          region_name = "Santiago",
-                                          plot_ci     = TRUE,
-                                          bar_width   = 0.7)
-
-ridge_santiago <- plot_hourly_ridgeline_pollution(df            = series_santiago,
-                                                  region_name   = "Santiago",
-                                                  pollution_var = "pm25_stations") +
+ridge_cdmx <- plot_hourly_ridgeline_pollution(df = series_cdmx,
+  region_name = "Ciudad de México", pollution_var = "pm25_stations") +
   ggplot2::labs(title = NULL) + ggplot2::theme(plot.title = ggplot2::element_blank())
 
-bar_cdmx <- plot_hourly_avg_pollution(df          = series_cdmx,
-                                      region_name = "Ciudad de México",
-                                      plot_ci     = TRUE,
-                                      bar_width   = 0.7)
-
-ridge_cdmx <- plot_hourly_ridgeline_pollution(df            = series_cdmx,
-                                              region_name   = "Ciudad de México",
-                                              pollution_var = "pm25_stations") +
+ridge_santiago <- plot_hourly_ridgeline_pollution(df = series_santiago,
+  region_name = "Santiago", pollution_var = "pm25_stations") +
   ggplot2::labs(title = NULL) + ggplot2::theme(plot.title = ggplot2::element_blank())
 
-bar_sp <- plot_hourly_avg_pollution(df          = series_sp,
-                                    region_name = "São Paulo",
-                                    plot_ci     = TRUE,
-                                    bar_width   = 0.7)
-
-ridge_sp <- plot_hourly_ridgeline_pollution(df            = series_sp,
-                                            region_name   = "São Paulo",
-                                            pollution_var = "pm25_stations") +
+ridge_sao_paulo <- plot_hourly_ridgeline_pollution(df = series_sao_paulo,
+  region_name = "São Paulo", pollution_var = "pm25_stations") +
   ggplot2::labs(title = NULL) + ggplot2::theme(plot.title = ggplot2::element_blank())
 
-# Compare episode durations across cities for each interim target
-city_series <- list("Bogota" = series_bogota, "Santiago" = series_santiago,
-                    "Ciudad de México" = series_cdmx, "São Paulo" = series_sp)
-episodes_it1 <- plot_time_spans_ridgeline(list_of_dfs   = city_series,
-                                          target        = "IT1",
-                                          pollution_var = "pm25_stations") +
-  ggplot2::labs(title = NULL) + ggplot2::theme(plot.title = ggplot2::element_blank())
-
-episodes_it2 <- plot_time_spans_ridgeline(list_of_dfs   = city_series,
-                                          target        = "IT2",
-                                          pollution_var = "pm25_stations") +
+episodes_data_it2 <- dplyr::bind_rows(
+  compute_time_spans_above_target(series_bogota, "Bogota", "IT2"),
+  compute_time_spans_above_target(series_cdmx, "Ciudad de México", "IT2"),
+  compute_time_spans_above_target(series_santiago, "Santiago", "IT2"),
+  compute_time_spans_above_target(series_sao_paulo, "São Paulo", "IT2"))
+episodes_it2 <- plot_episode_spans_ridgeline(episodes_data_it2, target = "IT2") +
   ggplot2::labs(title = NULL) + ggplot2::theme(plot.title = ggplot2::element_blank())
 
 # ========================================================================================
 # III: Save outputs
 # ========================================================================================
-# Save each city's bar and ridge plots, followed by the two episode plots
 dir.create(outdir_fig, recursive = TRUE, showWarnings = FALSE)
 
-ggplot2::ggsave(filename  = here::here(outdir_fig, "bogota_bar_plot.pdf"),
-                plot      = bar_bogota,
-                device    = grDevices::cairo_pdf,
-                width     = 16, height = 9, dpi = 300, limitsize = FALSE)
+file_bogota <- save_plot_pdf(plot_obj = ridge_bogota,
+  path = here::here(outdir_fig, "bogota_ridge_plot.pdf"),
+  width = 16, height = 9, bg = NULL, limitsize = FALSE)
 
-ggplot2::ggsave(filename  = here::here(outdir_fig, "bogota_ridge_plot.pdf"),
-                plot      = ridge_bogota,
-                device    = grDevices::cairo_pdf,
-                width     = 16, height = 9, dpi = 300, limitsize = FALSE)
+file_cdmx <- save_plot_pdf(plot_obj = ridge_cdmx,
+  path = here::here(outdir_fig, "ciudad_mexico_ridge_plot.pdf"),
+  width = 16, height = 9, bg = NULL, limitsize = FALSE)
 
-ggplot2::ggsave(filename  = here::here(outdir_fig, "santiago_bar_plot.pdf"),
-                plot      = bar_santiago,
-                device    = grDevices::cairo_pdf,
-                width     = 16, height = 9, dpi = 300, limitsize = FALSE)
+file_santiago <- save_plot_pdf(plot_obj = ridge_santiago,
+  path = here::here(outdir_fig, "santiago_ridge_plot.pdf"),
+  width = 16, height = 9, bg = NULL, limitsize = FALSE)
 
-ggplot2::ggsave(filename  = here::here(outdir_fig, "santiago_ridge_plot.pdf"),
-                plot      = ridge_santiago,
-                device    = grDevices::cairo_pdf,
-                width     = 16, height = 9, dpi = 300, limitsize = FALSE)
+file_sao_paulo <- save_plot_pdf(plot_obj = ridge_sao_paulo,
+  path = here::here(outdir_fig, "sao_paulo_ridge_plot.pdf"),
+  width = 16, height = 9, bg = NULL, limitsize = FALSE)
 
-ggplot2::ggsave(filename  = here::here(outdir_fig, "ciudad_mexico_bar_plot.pdf"),
-                plot      = bar_cdmx,
-                device    = grDevices::cairo_pdf,
-                width     = 16, height = 9, dpi = 300, limitsize = FALSE)
+file_episodes <- save_plot_pdf(plot_obj = episodes_it2,
+  path = here::here(outdir_fig, "distribution_hours_above_IT2.pdf"),
+  width = 16, height = 9, bg = NULL, limitsize = FALSE)
 
-ggplot2::ggsave(filename  = here::here(outdir_fig, "ciudad_mexico_ridge_plot.pdf"),
-                plot      = ridge_cdmx,
-                device    = grDevices::cairo_pdf,
-                width     = 16, height = 9, dpi = 300, limitsize = FALSE)
-
-ggplot2::ggsave(filename  = here::here(outdir_fig, "sao_paulo_bar_plot.pdf"),
-                plot      = bar_sp,
-                device    = grDevices::cairo_pdf,
-                width     = 16, height = 9, dpi = 300, limitsize = FALSE)
-
-ggplot2::ggsave(filename  = here::here(outdir_fig, "sao_paulo_ridge_plot.pdf"),
-                plot      = ridge_sp,
-                device    = grDevices::cairo_pdf,
-                width     = 16, height = 9, dpi = 300, limitsize = FALSE)
-
-ggplot2::ggsave(filename  = here::here(outdir_fig, "distribution_hours_above_IT1.pdf"),
-                plot      = episodes_it1,
-                device    = grDevices::cairo_pdf,
-                width     = 16, height = 9, dpi = 300, limitsize = FALSE)
-
-ggplot2::ggsave(filename  = here::here(outdir_fig, "distribution_hours_above_IT2.pdf"),
-                plot      = episodes_it2,
-                device    = grDevices::cairo_pdf,
-                width     = 16, height = 9, dpi = 300, limitsize = FALSE)
+file_episode_data <- write_station_episodes(episodes_data_it2, file_episode_data)

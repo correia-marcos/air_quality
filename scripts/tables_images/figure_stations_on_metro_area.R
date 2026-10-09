@@ -1,26 +1,26 @@
 # ============================================================================================
-# IDB: Air monitoring - NEED TO UPDATE!!!!!
+# IDB: Air monitoring
 # ============================================================================================
-#' @Goal: Visualize the location of four metropolitan areas on Latin American
-#  NEED TO UPDATE!!!!!
-#' @Description: This script creates a high-resolution map of Latin America, highlighting the 
-# metropolitan areas of Bogotá, Ciudad de México, Santiago, and São Paulo. 
-# NEED TO UPDATE!!!!!
-#' @Summary: This program performs the following steps:
-#   I.   Import shapefiles for city boundaries and continents NEED TO UPDATE!!!!!
-#   II.  Process the data to exclude unnecessary regions and combine shapefiles
-#   III. Create and export a map of Latin America with the highlighted cities
-# NEED TO UPDATE!!!!!
+#' @Goal: Inspect historical CDMX station membership in interactive maps.
+#' @Description: Reads the historical input paths below and saves two HTML widgets.
+# These paths need a separate provenance review; the script is outside the manuscript.
+# This cleanup preserves the existing sample and does not replace missing inputs.
+#
+#' @Summary:
+#   I. Import data.
+#   II. Process data.
+#   III. Save data.
+#
 #' @Date: Sep 2025
 #' @Author: Marcos Paulo
 # ============================================================================================
 
 # Get all libraries and functions
-source(here::here("src", "general_utilities", "config_utils_plot_tables.R"))
-
 # ============================================================================================
 # I: Import data
 # ============================================================================================
+source(here::here("src", "general_utilities", "config_utils_plot_tables.R"))
+
 # Define the location of datasets
 dir_cdmx_stations_data   <- here::here("data", "raw","air_monitoring_stations",
                                        "cdmx_metro_buffer_stations_dataset")
@@ -59,10 +59,10 @@ cdmx_has_pm_stations_entity_scheme <- plot_metro_area_interactive(
 )
 
 # ============================================================================================
-# II: Save data
+# III: Save data
 # ============================================================================================
 # Ensure output folder exists
-outdir <- here("results", "figures", "maps")
+outdir <- here::here("results", "figures", "maps")
 dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
 
 # Save plot

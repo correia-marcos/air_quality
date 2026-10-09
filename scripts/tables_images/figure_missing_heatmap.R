@@ -6,26 +6,26 @@
 #' @Description: Month × hour missing-pattern diagnostic. For each city we query
 # DuckDB for the exact two-way share of missing observations (month × hour) and
 # render it with `plot_missing_heatmap()`. One PDF per (city × pollutant) in
-# results/figures/satellite/missing_heatmap/.
+# results/figures/diagnostics/.
 #
 #' @Summary:
-#   I.   Define Arrow datasets + output folder
-#   II.  Call plot_missing_heatmap() per (city × pollutant)
-#   III. Save PDFs
+#   I. Import data.
+#   II. Build figures.
+#   III. Save figures.
 #
 #' @Date: April 2026
 #' @Author: Marcos
 # ============================================================================================
 
+# ============================================================================================
+# I: Import data
+# ============================================================================================
 source(here::here("src", "general_utilities", "config_utils_plot_tables.R"))
 source(here::here("src", "general_utilities", "config_utils_process_data.R"))
 
 # Register Tex Gyre Pagella and set the paper ggplot theme for this script.
 set_paper_theme()
 
-# ============================================================================================
-# I: Import data
-# ============================================================================================
 dir_pollution  <- here::here("data", "interim", "monitoring_stations")
 dir_missing    <- here::here("data", "processed", "missing_proportions")
 outdir_figs    <- here::here("results", "figures", "diagnostics")
@@ -39,8 +39,9 @@ arrow_dirs <- list(
 )
 
 # ============================================================================================
-# II and III: Plot + save
+# II: Build figures
 # ============================================================================================
+plots <- list()
 for (city in names(arrow_dirs)) {
   adir <- arrow_dirs[[city]]
   if (!dir.exists(adir)) {
@@ -70,13 +71,18 @@ for (city in names(arrow_dirs)) {
       city_label   = city,
       arrow_dir    = adir
     )
-    ggplot2::ggsave(
-      filename = file.path(outdir_figs,
-                           sprintf("missing_%s_month_hour_%s.pdf", slug, pol)),
-      plot     = p, device = cairo_pdf,
-      width    = 7, height = 5, dpi = 300, bg = "white"
-    )
+    name <- sprintf("missing_%s_month_hour_%s", slug, pol)
+    plots[[name]] <- p
   }
+}
+
+# ============================================================================================
+# III: Save figures
+# ============================================================================================
+for (name in names(plots)) {
+  ggplot2::ggsave(here::here(outdir_figs, paste0(name, ".pdf")),
+    plot = plots[[name]], device = cairo_pdf,
+    width = 7, height = 5, dpi = 300, bg = "white")
 }
 
 cat("Script from the IDB project executed successfully in the Docker container!\n")

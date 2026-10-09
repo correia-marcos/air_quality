@@ -12,22 +12,25 @@
 #   the Marco Geoestadistico urban AGEB shapefiles (see section I) downloaded beforehand.
 #
 #' @Summary:
-#   I.   Setup: load dependencies, city config, and check required input files.
-#   II.  Pollution: export cleaned hourly PM 2023 to CSV, masking sentinel values.
-#   III. Distances: AGEB-to-station matrix at AGEB level, exported to CSV.
+#   I. Setup and input checks.
+#   II. Pollution — cleaned hourly PM data, 2023.
+#   III. Distances — AGEB representative points to stations.
 #
 #' @Date: July 2026
 #' @Author: Marcos
 # ============================================================================================
 
-# Get all libraries and functions
-source(here::here("src", "general_utilities", "config_utils_process_data.R"))
-source(here::here("src", "city_specific", "registry.R"))
-source(here::here("src", "city_specific", "cdmx.R"))
+# Geographic contract pending review: this recipe checks for 2020 sources but reads
+# the existing 2024 AGEB product below. Do not substitute a vintage during cleanup.
 
+# Get all libraries and functions
 # ============================================================================================
 # I: Setup and input checks
 # ============================================================================================
+source(here::here("src", "general_utilities", "config_utils_process_data.R"))
+source(here::here("src", "city_specific", "registry.R"))
+load_city_modules()
+
 # Cleaned pollution data (outliers already masked) and station locations.
 arrow_cdmx_2023 <- here::here("data", "processed", "monitoring_stations_outliers",
                               "cdmx_metro_clean", "year=2023")
@@ -104,10 +107,12 @@ ageb_distances <- compute_distance_matrices(
   geo_sf               = agebs_metro,
   geo_id_col           = "CVEGEO",
   distance_metric      = "aeqd",
-  representative_point = "point_on_surface",
-  out_dir              = here::here("data", "processed", "distances_matrices",
-                                    "cdmx_2020_ageb"),
-  out_name             = "matrix_ageb"
+  representative_point = "point_on_surface"
+)
+ageb_distance_files <- write_distance_matrices(
+  result = ageb_distances,
+  out_dir = here::here("data", "processed", "distances_matrices", "cdmx_2020_ageb"),
+  out_name = "matrix_ageb"
 )
 
 # Export the geo-station matrix as the CSV the lab script reads; keep all pairs

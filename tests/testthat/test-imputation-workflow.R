@@ -142,6 +142,8 @@ test_that("a missing diagnostic PDF reruns saving without rebuilding its plots",
   quote_text <- function(x) encodeString(x, quote = '"')
   writeLines(c(
     paste0("source(", quote_text(here::here("src/general_utilities/theme_paper.R")), ")"),
+    paste0("source(", quote_text(here::here(
+      "src/general_utilities/plot/exposure_figures.R")), ")"),
     "imputation_pollutants <- c('pm10', 'pm25')",
     "list(",
     paste0("targets::tar_target(paper_font, ",

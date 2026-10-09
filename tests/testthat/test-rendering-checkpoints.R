@@ -141,7 +141,7 @@ test_that("exposure saving preserves observed and imputed filename selection", {
 test_that("manuscript export rejects existing files absent from current target outputs", {
   e <- new.env(parent = globalenv())
   sys.source(here::here("src/city_specific/processing.R"), e)
-  sys.source(here::here("src/pipeline/contracts.R"), e)
+  sys.source(here::here("src/general_utilities/reproducibility.R"), e)
   root <- tempfile("rendered-selection-"); dir.create(root)
   on.exit(unlink(root, recursive = TRUE), add = TRUE)
   current <- file.path(root, "current.tex")

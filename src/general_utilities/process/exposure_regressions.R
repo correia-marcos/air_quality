@@ -25,6 +25,8 @@
 #   13. stack_exposure_runs
 #   14. set_meta_cols_first
 #   15. save_table_parquet_csv / save_exposure_tables
+#   16. assign_education_level
+#   17. split_socio_group_cells
 #
 #' @Date: August 2026
 #' @Author: Marcos Paulo
@@ -1034,4 +1036,98 @@ save_exposure_tables <- function(tables, out_dir, buffer_km, year) {
   }
 
   invisible(files)
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: assign_education_level
+#
+#' @param dt      data.table of individuals; modified in place. Must contain educ_years and
+#                 the band columns.
+#' @param bands   character; the six 0/1 education-band columns, lowest level first
+#                 (education_level_bands in config/analysis_settings.R).
+#' @param out_col string; name of the integer level column to create. Default "edu_level".
+#
+#' @return  the same data.table, invisibly, with `out_col` added: k where band k is 1,
+#           NA where educ_years is missing. Stops if a reporting row is in 0 or 2+ bands.
+#
+#' @details
+#   The harmonized alternative to education quintiles. Each census module derives the
+#   bands from the harmonized educ_years with its own source rules (Bogota 2018 records
+#   secondary complete as 11; Sao Paulo credits partial college as 12), so the level is
+#   read from the bands rather than re-cut from educ_years here. Unlike
+#   assign_socio_group(), a level never splits a tied schooling value, and empty levels
+#   stay empty (Sao Paulo's college_incomplete; see doc/reference/data_dictionary.md).
+#
+#' @Written_on : October 2026
+#' @Written_by : Marcos Paulo
+# --------------------------------------------------------------------------------------------
+assign_education_level <- function(dt, bands, out_col = "edu_level") {
+
+  # Every adult reporting education must sit in exactly one band.
+  reporting <- !is.na(dt$educ_years)
+  n_bands   <- Reduce(`+`, lapply(bands, function(b) dt[[b]]))[reporting]
+
+  if (anyNA(n_bands) || any(n_bands != 1)) {
+    stop(sum(is.na(n_bands) | n_bands != 1),
+         " reporting row(s) are not in exactly one education band.")
+  }
+
+  # Level k marks band k; rows without education keep NA.
+  level <- rep(NA_integer_, nrow(dt))
+  for (k in seq_along(bands)) {
+    level[reporting & dt[[bands[k]]] %in% 1] <- k
+  }
+
+  dt[, (out_col) := level]
+  invisible(dt)
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: split_socio_group_cells
+#
+#' @param dt      data.table of individuals with geo_id, var and wcol; not modified.
+#' @param var     string; ranking variable, e.g. "educ_years".
+#' @param wcol    string; weight column, e.g. "person_weight".
+#' @param n       integer; number of equal-population groups.
+#' @param out_col string; name of the group column in the result.
+#
+#' @return  data.table of geo_id x group cells; wcol holds the weight assigned to each
+#           group. Rows with missing var or weight are dropped, as in assign_socio_group().
+#
+#' @details
+#   assign_socio_group() gives a tied value to group k or k + 1 by geo_id and row order.
+#   Here each value's cumulative weight share (F(v-), F(v)] is divided among the groups
+#   whose interval ((k - 1)/n, k/n] it overlaps, in proportion to the overlap. Every adult
+#   with that value receives the same shares, so no geographic order enters, and each
+#   group holds exactly 1/n of the weight. Overlaps below 1e-12 are floating-point noise
+#   at a boundary and are dropped before the shares are renormalized.
+#
+#' @Written_on : October 2026
+#' @Written_by : Marcos Paulo
+# --------------------------------------------------------------------------------------------
+split_socio_group_cells <- function(dt, var, wcol, n, out_col) {
+
+  # Collapse to geo_id x value cells; every adult with one value shares one split.
+  x <- dt[!is.na(get(var)) & !is.na(get(wcol)), .(w = sum(get(wcol))),
+          by = c("geo_id", var)]
+
+  # Cumulative weight interval of each value.
+  values <- x[, .(w = sum(w)), keyby = var]
+  values[, upper := cumsum(w) / sum(w)]
+  values[, lower := data.table::shift(upper, fill = 0)]
+
+  # Share of each value in every group interval it overlaps.
+  k <- seq_len(n)
+  shares <- values[, {
+    overlap <- pmax(0, pmin(upper, k / n) - pmax(lower, (k - 1) / n))
+    keep <- overlap > 1e-12
+    .(group = k[keep], share = overlap[keep] / sum(overlap[keep]))
+  }, by = var]
+
+  cells <- merge(x, shares, by = var, allow.cartesian = TRUE)
+  cells <- cells[, .(w = sum(w * share)), by = .(geo_id, group)]
+  data.table::setnames(cells, c("group", "w"), c(out_col, wcol))
+  cells[]
 }

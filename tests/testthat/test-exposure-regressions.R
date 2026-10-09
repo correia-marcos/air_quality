@@ -134,3 +134,50 @@ test_that("clustered intervals use the t(G-1) critical value", {
   expect_equal(non_base$estimate - non_base$ci_low,
                crit * non_base$std_error, tolerance = 1e-10)
 })
+
+# Six bands as the city modules build them: Bogota 2018 codes secondary complete as 11,
+# Sao Paulo credits partial college as 12; both are the secondary-complete band.
+make_level_toy <- function() {
+  bands <- c("no_education", "high_school_incomplete", "high_school_complete",
+             "college_incomplete", "college_complete", "graduate_educ")
+  dt <- data.table::data.table(educ_years = c(0, 5, 11, 12, 14, 17, 19, NA))
+  band <- c(1L, 2L, 3L, 3L, 4L, 5L, 6L, NA)
+  for (k in seq_along(bands)) {
+    data.table::set(dt, j = bands[k], value = as.numeric(band == k))
+  }
+  list(dt = dt, bands = bands)
+}
+
+test_that("education levels follow the city bands and leave missing schooling NA", {
+  toy <- make_level_toy()
+  assign_education_level(toy$dt, toy$bands)
+
+  expect_identical(toy$dt$edu_level, c(1L, 2L, 3L, 3L, 4L, 5L, 6L, NA))
+})
+
+test_that("a reporting row outside exactly one band stops level assignment", {
+  toy <- make_level_toy()
+  data.table::set(toy$dt, i = 3L, j = "college_complete", value = 1)
+  expect_error(assign_education_level(toy$dt, toy$bands), "exactly one")
+
+  toy <- make_level_toy()
+  data.table::set(toy$dt, i = 3L, j = "high_school_complete", value = 0)
+  expect_error(assign_education_level(toy$dt, toy$bands), "exactly one")
+})
+
+test_that("split quintile cells share tied values in proportion, whatever the geo order", {
+  # Values 5, 5, 5, 9 with unit weights and two groups: value 5 spans (0, .75], so
+  # each adult with 5 puts 2/3 in group 1 and 1/3 in group 2; value 9 is all group 2.
+  dt <- data.table::data.table(geo_id = c("d", "a", "c", "b"), educ_years = c(5, 5, 5, 9),
+                               person_weight = 1)
+  cells <- split_socio_group_cells(dt, "educ_years", "person_weight", 2L, "g")
+  data.table::setkey(cells, geo_id, g)
+  expect_equal(cells[geo_id %in% c("a", "c", "d") & g == 1L, person_weight], rep(2 / 3, 3))
+  expect_equal(cells[geo_id %in% c("a", "c", "d") & g == 2L, person_weight], rep(1 / 3, 3))
+  expect_equal(cells[geo_id == "b", g], 2L)
+  expect_equal(cells[, sum(person_weight), keyby = g]$V1, c(2, 2))
+  # A value ending exactly at a cut is not split.
+  even <- split_socio_group_cells(data.table::data.table(geo_id = c("a", "b"),
+    educ_years = c(1, 2), person_weight = 1), "educ_years", "person_weight", 2L, "g")
+  expect_equal(nrow(even), 2L)
+})

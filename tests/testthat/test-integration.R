@@ -65,7 +65,7 @@ test_that("isolated peaks distinguish temporal failure and missing neighbors", {
   }
   # Twenty ordinary zeros and one isolated 100: benchmark=0, temporal SD<100/2.
   a <- run(c(rep(0, 10), 100, rep(0, 10)), "peak")
-  expect_equal(sum(a$pm10_outlier_reason == 2L), 1)
+  expect_equal(sum(a$pm10_outlier_reason == 2L, na.rm = TRUE), 1)
   expect_equal(sum(a$pm10 == 0, na.rm = TRUE), 20)
   # A simultaneous neighbor tracks the peak. Differences alternate +/-1:
   # the spatial deviation is within two sample SDs, so the peak is rescued.
@@ -75,6 +75,6 @@ test_that("isolated peaks distinguish temporal failure and missing neighbors", {
     as.POSIXct("2023-01-01", tz = "UTC") + 11 * 3600], 120)
   # No adjacent reading around the peak: no temporal or spatial rescue exists.
   b <- run(c(0, NA, 100, NA, 0), "missing")
-  expect_equal(sum(b$pm10_outlier_reason == 1L), 1)
+  expect_equal(sum(b$pm10_outlier_reason == 1L, na.rm = TRUE), 1)
   expect_true(all(is.na(b$pm10[b$pm10_outlier_reason > 0])))
 })

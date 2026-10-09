@@ -1,101 +1,71 @@
-# ============================================================================================
+# ========================================================================================
 # IDB: Air monitoring
-# ============================================================================================
-#' @Goal: Render the appendix tables that report exposure by socioeconomic group.
+# ========================================================================================
+#' @Goal: Render the appendix exposure tables by socioeconomic group.
 #
-#' @Description: Turns the group summaries and regression estimates written by
-# estimate_exposure.R into the four .tex fragments the appendix prints: mean and median
-# concentration by group, and average hours above IT1/IT2 by group, each for education
-# and for income. Nothing is estimated here; the same artefacts already drive the exposure
-# figures, so table and figure cannot disagree. Only the paper's 3 km specification is
-# rendered. Fragments are bare tabulars, so the manuscript keeps its own float, caption
-# and label; each is written once under results/tables/.
+#' @Description: Format four tables from saved 3 km exposure summaries and regressions.
+# Education uses quintiles; the income table accommodates CDMX quintiles and
+# São Paulo deciles. Santiago 2024 remains outside these manuscript tables.
 #
 #' @Summary:
-#   I.   Import data: the 3 km education and income artefacts.
-#   II.  Render: two table shapes, education then income.
-#   III. Report where each .tex landed.
+#   I.   Import data: source functions, set paths and read saved summaries.
+#   II.  Process data: format mean concentrations and hours above thresholds by group.
+#   III. Save outputs: write the education and income tables in that order.
 #
 #' @Date: September 2026
 #' @Author: Marcos
-# ============================================================================================
+# ========================================================================================
 
-# Get all libraries and functions
-source(here::here("src", "general_utilities", "config_utils_plot_tables.R"))
-
-# ============================================================================================
+# ========================================================================================
 # I: Import data
-# ============================================================================================
-# Define input and output folders
-dir_reg      <- here::here("data", "processed", "idw_regressions")
-outdir_paper <- here::here("results", "tables")
+# ========================================================================================
+source(here::here("src", "general_utilities", "base_utils.R"))
+source(here::here("src", "general_utilities", "plot", "latex_tables.R"))
+source(here::here("config", "analysis_settings.R"))
 
-analysis_year <- 2023L
-buffer_km     <- 3L
+buffer_km <- individual_exposure_buffer_km
+dir_reg    <- here::here("data", "processed", "idw_regressions")
+dir_tables <- here::here("results", "tables")
 
-summary_edu <- data.table::as.data.table(arrow::read_parquet(here::here(
-  dir_reg, sprintf("exposure_group_summaries_education_%dkm_%d.parquet",
-                   buffer_km, analysis_year))))
-summary_inc <- data.table::as.data.table(arrow::read_parquet(here::here(
-  dir_reg, sprintf("exposure_group_summaries_income_%dkm_%d.parquet",
-                   buffer_km, analysis_year))))
-ci_edu <- data.table::as.data.table(arrow::read_parquet(here::here(
-  dir_reg, sprintf("exposure_ci_estimates_education_%dkm_%d.parquet",
-                   buffer_km, analysis_year))))
-ci_inc <- data.table::as.data.table(arrow::read_parquet(here::here(
-  dir_reg, sprintf("exposure_ci_estimates_income_%dkm_%d.parquet",
-                   buffer_km, analysis_year))))
+file_summary_edu <- here::here(dir_reg,
+  sprintf("exposure_group_summaries_education_%dkm_%d.parquet", buffer_km, analysis_year))
+file_summary_inc <- here::here(dir_reg,
+  sprintf("exposure_group_summaries_income_%dkm_%d.parquet", buffer_km, analysis_year))
+file_ci_edu <- here::here(dir_reg,
+  sprintf("exposure_ci_estimates_education_%dkm_%d.parquet", buffer_km, analysis_year))
+file_ci_inc <- here::here(dir_reg,
+  sprintf("exposure_ci_estimates_income_%dkm_%d.parquet", buffer_km, analysis_year))
+out_means_edu <- here::here(dir_tables, "table_means_education_quintiles.tex")
+out_means_inc <- here::here(dir_tables, "table_means_income_groups.tex")
+out_hours_edu <- here::here(dir_tables, "table_hours_above_education_quintiles.tex")
+out_hours_inc <- here::here(dir_tables, "table_hours_above_income_groups.tex")
 
-# The manuscript's panel order. Santiago's 2024 commune run is a robustness vintage and
-# is deliberately absent from these tables.
-cities_edu <- c("Bogota", "CDMX", "Santiago", "Sao Paulo")
-cities_inc <- c("CDMX", "Sao Paulo")
+summary_edu <- data.table::as.data.table(arrow::read_parquet(file_summary_edu))
+summary_inc <- data.table::as.data.table(arrow::read_parquet(file_summary_inc))
+ci_edu      <- data.table::as.data.table(arrow::read_parquet(file_ci_edu))
+ci_inc      <- data.table::as.data.table(arrow::read_parquet(file_ci_inc))
 
-# Panel headings. The income ones name their own grouping, because the two panels are not
-# cut the same way: 63 municipalities cannot identify ten income coefficients in CDMX.
-labels_edu <- c(Bogota = "Bogota", CDMX = "Mexico City",
-                Santiago = "Santiago", `Sao Paulo` = "Sao Paulo")
-labels_inc <- c(CDMX = "Mexico City (income quintiles)",
-                `Sao Paulo` = "Sao Paulo (income deciles)")
+# ========================================================================================
+# II: Process data
+# ========================================================================================
+tex_means_edu <- latex_exposure_means_by_group(summary_dt = summary_edu, ci_dt = ci_edu,
+  panel_cities = exposure_table_cities_edu, panel_labels = exposure_table_labels_edu,
+  n_groups = 5L)
 
-dir.create(outdir_paper, recursive = TRUE, showWarnings = FALSE)
+tex_means_inc <- latex_exposure_means_by_group(summary_dt = summary_inc, ci_dt = ci_inc,
+  panel_cities = exposure_table_cities_inc, panel_labels = exposure_table_labels_inc,
+  n_groups = 10L)
 
-# Write each canonical fragment once.
-write_both <- function(lines, stem) {
-  for (d in outdir_paper) {
-    writeLines(lines, file.path(d, paste0(stem, ".tex")), useBytes = TRUE)
-  }
-  message("Wrote: ", stem, ".tex")
-}
+tex_hours_edu <- latex_exposure_hours_by_group(summary_dt = summary_edu,
+  panel_cities = exposure_table_cities_edu, panel_labels = exposure_table_labels_edu)
 
-# ============================================================================================
-# II: Render tables
-# ============================================================================================
-# Mean and median concentration by group. Education is five quintiles everywhere; the
-# income table spans ten columns because Sao Paulo is estimated in deciles while CDMX,
-# with too few clusters for ten coefficients, is estimated in quintiles.
-tab_means_edu <- latex_exposure_means_by_group(
-  summary_dt = summary_edu, ci_dt = ci_edu,
-  panel_cities = cities_edu, panel_labels = labels_edu, n_groups = 5L)
+tex_hours_inc <- latex_exposure_hours_by_group(summary_dt = summary_inc,
+  panel_cities = exposure_table_cities_inc, panel_labels = exposure_table_labels_inc)
 
-tab_means_inc <- latex_exposure_means_by_group(
-  summary_dt = summary_inc, ci_dt = ci_inc,
-  panel_cities = cities_inc, panel_labels = labels_inc, n_groups = 10L)
-
-# Average hours above IT1 and IT2 by group; groups run down the rows.
-tab_hours_edu <- latex_exposure_hours_by_group(summary_edu, cities_edu, labels_edu)
-tab_hours_inc <- latex_exposure_hours_by_group(summary_inc, cities_inc, labels_inc)
-
-write_both(tab_means_edu, "table_means_education_quintiles")
-write_both(tab_means_inc, "table_means_income_groups")
-write_both(tab_hours_edu, "table_hours_above_education_quintiles")
-write_both(tab_hours_inc, "table_hours_above_income_groups")
-
-# ============================================================================================
-# III: Report
-# ============================================================================================
-message("Exposure tables written to: ", outdir_paper)
-
-
-# Print a success message for when running inside Docker Container
-cat("Script from the IDB project executed successfully in the Docker container!\n")
+# ========================================================================================
+# III: Save outputs
+# ========================================================================================
+write_latex_table(tex_means_edu, out_means_edu, use_bytes = TRUE)
+write_latex_table(tex_means_inc, out_means_inc, use_bytes = TRUE)
+write_latex_table(tex_hours_edu, out_hours_edu, use_bytes = TRUE)
+write_latex_table(tex_hours_inc, out_hours_inc, use_bytes = TRUE)

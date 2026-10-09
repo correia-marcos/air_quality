@@ -1,191 +1,107 @@
-# ============================================================================================
+# ========================================================================================
 # IDB: Air monitoring
-# ============================================================================================
-#' @Goal: Produce the paper's Figure 1 — pooled PM10 and PM2.5 concentration distributions
-#   in the four metropolitan areas — its appendix 2019/2022 panels, and the exceedance
-#   companion.
+# ========================================================================================
+#' @Goal: Compare hourly PM distributions across cities.
 #
-#' @Description: Kernel densities of hourly station concentrations from the four cleaned
-#   metro panels (monitoring_stations_outliers/<city>_metro_clean), one curve per city,
-#   with the WHO 24-hour interim targets (IT1/IT2) as dashed lines; and a bar chart of
-#   the share of station-hours at or above each target. The published figure's look —
-#   Santiago red for contrast, the other three black and told apart by linetype, no fill
-#   under the curves — is set once in the knob block in Section I and passed to every
-#   call, so a trial run means editing a knob and re-running one block. Seven PDFs land
-#   in results/figures/temporal/.
+#' @Description: Read cleaned station readings for the analysis year and the two
+# reference years. Density bandwidths use all finite readings; x_max bounds the density
+# evaluation grid. Keep the density curves and threshold-share plots before saving.
 #
 #' @Summary:
-#   I.    Import data: the four cities' cleaned station panels + the styling knobs.
-#   II.   Figure 1 (2023): one pooled density per pollutant.
-#   III.  Appendix panels: the same densities for 2019 and 2022.
-#   IV.   Exceedance companion (2023): share of station-hours at or above IT1/IT2.
-#   V.    Save the six density PDFs and the stacked exceedance PDF.
+#   I.   Import data: source functions and settings, set paths and read inputs.
+#   II.  Process data: build density curves and exceedance-share plots.
+#   III. Save outputs: save the results in the same order.
 #
-#' @Date: August 2026
+#' @Date: September 2026
 #' @Author: Marcos
-# ============================================================================================
+# ========================================================================================
 
-# Get all libraries and functions
-source(here::here("src", "general_utilities", "config_utils_plot_tables.R"))
+# ========================================================================================
+# I: Import data
+# ========================================================================================
+# Source the scientific functions and their shared helpers
+source(here::here("src", "general_utilities", "base_utils.R"))
+source(here::here("src", "general_utilities", "plot", "concentration_distributions.R"))
+source(here::here("src", "general_utilities", "theme_paper.R"))
+source(here::here("config", "analysis_settings.R"))
 
-# Register Tex Gyre Pagella and set the paper ggplot theme for this script.
+# Use the manuscript font and theme
 set_paper_theme()
 
-# ============================================================================================
-# I: Import data
-# ============================================================================================
+# Set the cleaned hourly panels and figure destination
 dir_stations <- here::here("data", "processed", "monitoring_stations_outliers")
+outdir_fig   <- here::here("results", "figures", "temporal")
+city_panels <- list(
+  "Bogotá"      = here::here(dir_stations, "bogota_metro_clean"),
+  "Mexico City" = here::here(dir_stations, "cdmx_metro_clean"),
+  "São Paulo"   = here::here(dir_stations, "sao_paulo_metro_clean"),
+  "Santiago"    = here::here(dir_stations, "santiago_metro_clean"))
 
-# The six density panels are manuscript figures; the exceedance-share bar chart is the
-# repo's own companion, so the two go to different places.
-outdir_paper <- here::here("results", "figures", "temporal")
-outdir       <- here::here("results", "figures", "temporal")
+# ========================================================================================
+# II: Process data
+# ========================================================================================
+# Compute the two pollutant densities for each year; keep them in named lists
+density_pm10 <- density_pm25 <- list()
+for (year in c(analysis_year, kernel_reference_years)) {
+  key <- as.character(year)
+  pm25_limit <- if (year == analysis_year) kernel_pm25_limit else
+    kernel_pm25_reference_limit
+  density_pm10[[key]] <- plot_kernel_density_by_city(city_data       = city_panels,
+    pollutant       = "pm10",
+    year            = year,
+    x_max           = kernel_pm10_limit,
+    city_colours    = kernel_city_colours,
+    city_linetypes  = kernel_city_linetypes,
+    fill_alpha      = 0,
+    legend_position = "bottom")
 
-fig_width  <- 16
-fig_height <- 9
-fig_dpi    <- 300
+  density_pm25[[key]] <- plot_kernel_density_by_city(city_data       = city_panels,
+    pollutant       = "pm25",
+    year            = year,
+    x_max           = pm25_limit,
+    city_colours    = kernel_city_colours,
+    city_linetypes  = kernel_city_linetypes,
+    fill_alpha      = 0,
+    legend_position = "bottom")
 
-# The trial-and-error panel: the figure's look lives here, every call below reads it.
-city_colours <- c(
-  "Bogotá"      = "black",
-  "Mexico City" = "black",
-  "São Paulo"   = "black",
-  "Santiago"    = "red"
-)
-
-city_linetypes <- c(
-  "Bogotá"      = "solid",
-  "Mexico City" = "dashed",
-  "São Paulo"   = "dotdash",
-  "Santiago"    = "solid"
-)
-
-fill_alpha      <- 0
-legend_position <- "bottom"
-
-# List order is the legend order (the published figure's); colours come from the knobs,
-# so reordering this list never reassigns a colour.
-city_data <- list(
-  "Bogotá"      = file.path(dir_stations, "bogota_metro_clean"),
-  "Mexico City" = file.path(dir_stations, "cdmx_metro_clean"),
-  "São Paulo"   = file.path(dir_stations, "sao_paulo_metro_clean"),
-  "Santiago"    = file.path(dir_stations, "santiago_metro_clean")
-)
-
-# ============================================================================================
-# II: Process data — Figure 1 (2023)
-# ============================================================================================
-# x_max bounds the density evaluation grid; the bandwidth still uses all hours of the
-# year, so unflagged far-tail values no longer stretch the grid and inflate the y scale.
-p_pm10 <- plot_kernel_density_by_city(
-  city_data,
-  pollutant       = "pm10",
-  year            = 2023,
-  x_max           = 500,
-  city_colours    = city_colours,
-  city_linetypes  = city_linetypes,
-  fill_alpha      = fill_alpha,
-  legend_position = legend_position)
-
-p_pm25 <- plot_kernel_density_by_city(
-  city_data,
-  pollutant       = "pm25",
-  year            = 2023,
-  x_max           = 100,
-  city_colours    = city_colours,
-  city_linetypes  = city_linetypes,
-  fill_alpha      = fill_alpha,
-  legend_position = legend_position)
-
-# ============================================================================================
-# III: Process data — appendix panels (2019 and 2022)
-# ============================================================================================
-p_pm10_2019 <- plot_kernel_density_by_city(
-  city_data,
-  pollutant       = "pm10",
-  year            = 2019,
-  x_max           = 500,
-  city_colours    = city_colours,
-  city_linetypes  = city_linetypes,
-  fill_alpha      = fill_alpha,
-  legend_position = legend_position)
-
-p_pm25_2019 <- plot_kernel_density_by_city(
-  city_data,
-  pollutant       = "pm25",
-  year            = 2019,
-  x_max           = 250,
-  city_colours    = city_colours,
-  city_linetypes  = city_linetypes,
-  fill_alpha      = fill_alpha,
-  legend_position = legend_position)
-
-p_pm10_2022 <- plot_kernel_density_by_city(
-  city_data,
-  pollutant       = "pm10",
-  year            = 2022,
-  x_max           = 500,
-  city_colours    = city_colours,
-  city_linetypes  = city_linetypes,
-  fill_alpha      = fill_alpha,
-  legend_position = legend_position)
-
-p_pm25_2022 <- plot_kernel_density_by_city(
-  city_data,
-  pollutant       = "pm25",
-  year            = 2022,
-  x_max           = 250,
-  city_colours    = city_colours,
-  city_linetypes  = city_linetypes,
-  fill_alpha      = fill_alpha,
-  legend_position = legend_position)
-
-# ============================================================================================
-# IV: Process data — exceedance companion (2023)
-# ============================================================================================
-e_pm10 <- plot_exceedance_shares(
-  city_data,
-  pollutant       = "pm10",
-  year            = 2023,
-  legend_position = legend_position)
-
-e_pm25 <- plot_exceedance_shares(
-  city_data,
-  pollutant       = "pm25",
-  year            = 2023,
-  legend_position = legend_position)
-
-# The two exceedance panels stack into one figure; each panel is titled by its pollutant.
-exceedance_combined <- cowplot::plot_grid(e_pm10, e_pm25, nrow = 2)
-
-# ============================================================================================
-# V: Save figures
-# ============================================================================================
-dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
-dir.create(outdir_paper, recursive = TRUE, showWarnings = FALSE)
-
-# Name = file stem; the list answers "which plot -> which file" at a glance. The PM10
-# stems carry no pollutant token because that is how the manuscript cites them.
-density_figures <- list(
-  all           = p_pm10,
-  all_pm25      = p_pm25,
-  all_2019      = p_pm10_2019,
-  all_pm25_2019 = p_pm25_2019,
-  all_2022      = p_pm10_2022,
-  all_pm25_2022 = p_pm25_2022
-)
-
-for (stem in names(density_figures)) {
-  ggplot2::ggsave(
-    filename = file.path(outdir_paper, paste0(stem, ".pdf")),
-    plot     = density_figures[[stem]], device = cairo_pdf,
-    width    = fig_width, height = fig_height, dpi = fig_dpi)
 }
 
-ggplot2::ggsave(
-  filename = file.path(outdir, "exceedance_shares.pdf"),
-  plot     = exceedance_combined, device = cairo_pdf,
-  width    = fig_width, height = 12, dpi = fig_dpi)
+# Compare the shares of readings above each WHO threshold in the analysis year
+exceedance_pm10 <- plot_exceedance_shares(city_data       = city_panels,
+                                          pollutant       = "pm10",
+                                          year            = analysis_year,
+                                          legend_position = "bottom")
 
-# Print a success message for when running inside Docker Container
-cat("Script from the IDB project executed successfully in the Docker container!\n")
+exceedance_pm25 <- plot_exceedance_shares(city_data       = city_panels,
+                                          pollutant       = "pm25",
+                                          year            = analysis_year,
+                                          legend_position = "bottom")
+
+exceedance_combined <- cowplot::plot_grid(exceedance_pm10,
+                                          exceedance_pm25,
+                                          nrow = 2)
+
+# ========================================================================================
+# III: Save outputs
+# ========================================================================================
+# Save the paired density figures for each year, then the combined threshold figure
+dir.create(outdir_fig, recursive = TRUE, showWarnings = FALSE)
+for (year in c(analysis_year, kernel_reference_years)) {
+  key <- as.character(year)
+  tag <- if (year == analysis_year) "" else paste0("_", year)
+  ggplot2::ggsave(filename  = here::here(outdir_fig, paste0("all", tag, ".pdf")),
+                  plot      = density_pm10[[key]],
+                  device    = grDevices::cairo_pdf,
+                  width     = 16, height = 9, dpi = 300, limitsize = FALSE)
+
+  ggplot2::ggsave(filename  = here::here(outdir_fig, paste0("all_pm25", tag, ".pdf")),
+                  plot      = density_pm25[[key]],
+                  device    = grDevices::cairo_pdf,
+                  width     = 16, height = 9, dpi = 300, limitsize = FALSE)
+
+}
+
+ggplot2::ggsave(filename  = here::here(outdir_fig, "exceedance_shares.pdf"),
+                plot      = exceedance_combined,
+                device    = grDevices::cairo_pdf,
+                width     = 16, height = 12, dpi = 300, limitsize = FALSE)

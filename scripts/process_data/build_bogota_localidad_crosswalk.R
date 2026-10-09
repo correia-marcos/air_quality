@@ -12,20 +12,20 @@
 # data/interim/geospatial_data/bogota/bogota_manzana_localidad_crosswalk.parquet.
 #
 #' @Summary:
-#   I.   Import data: read the manzana and locality/municipio layers.
-#   II.  Process: representative points, spatial join, select output columns.
-#   III. Save: write the crosswalk as Parquet.
+#   I. Import data.
+#   II. Process.
+#   III. Save.
 #
 #' @Date: September 2026
 #' @Author: Marcos
 # ============================================================================================
 
 # Get all libraries and functions
-source(here::here("src", "general_utilities", "config_utils_process_data.R"))
-
 # ============================================================================================
 # I: Import data
 # ============================================================================================
+source(here::here("src", "general_utilities", "config_utils_process_data.R"))
+
 path_manzanas <- here::here("data", "interim", "geospatial_data", "bogota",
                             "bogota_area_metro_census_tracts_2018.gpkg")
 path_localities <- here::here("data", "interim", "geospatial_data", "bogota",

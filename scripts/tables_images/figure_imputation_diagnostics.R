@@ -1,150 +1,180 @@
-# ============================================================================================
+# ==========================================================================================
 # IDB: Air monitoring
-# ============================================================================================
-#' @Goal: Show what the hourly imputation predicted, and whether the filled hours differ.
+# ==========================================================================================
+#' @Goal: Compare imputation predictions with observed station readings.
 #
-#' @Description: Draws the manuscript's two imputation diagnostics from the fitted values
-# written by impute_missing_hourly.R. The first family puts the linear prediction against
-# the observed series, one panel per station, for each city and pollutant. The second
-# divides each station's mean prediction over its missing hours by the mean of its
-# observed hours, with stations ordered by the mean years of schooling of the area they
-# sit in, which is what would reveal missingness concentrated in low-education areas.
+#' @Description: Plot fitted and observed time series for each station. Then compare the
+# predicted mean during missing hours with the mean during observed hours, ordering stations
+# by nearby education. These are descriptive model diagnostics, not validation of readings
+# that were never observed. The ratio tables and plots remain named objects before saving.
 #
 #' @Summary:
-#   I.   Setup: load dependencies, set the paper theme, define paths.
-#   II.  Read the fitted values and the station-level socioeconomic data.
-#   III. Prediction-versus-observed series, one figure per city and pollutant.
-#   IV.  Predicted-missing to observed ratios, one figure per city and pollutant.
+#   I.   Import data: read predictions and station education; declare figure paths.
+#   II.  Process data: compute station ratios and create both plot families.
+#   III. Save outputs: write the series plots, followed by the ratio plots.
 #
-#' @Date: August 2026
+#' @Date: September 2026
 #' @Author: Marcos
-# ============================================================================================
+# ==========================================================================================
 
-# Get all libraries and functions
-source(here::here("src", "general_utilities", "config_utils_plot_tables.R"))
-
-# Register Tex Gyre Pagella and set the paper ggplot theme for this script.
+# ==========================================================================================
+# I: Import data
+# ==========================================================================================
+source(here::here("src", "general_utilities", "plot", "imputation_diagnostics.R"))
+source(here::here("src", "general_utilities", "plot", "station_monitoring.R"))
+source(here::here("src", "general_utilities", "theme_paper.R"))
+source(here::here("config", "analysis_settings.R"))
 set_paper_theme()
 
-# ============================================================================================
-# I: Setup
-# ============================================================================================
-# Define input and output folders
+# Set the input and output folders
 dir_imputed <- here::here("data", "processed", "imputed_ols")
 dir_station <- here::here("data", "processed", "station_socio_exposure")
-outdir_fig  <- here::here("results", "figures", "imputation")
+dir_figures <- here::here("results", "figures", "imputation")
 
-dir.create(outdir_fig, recursive = TRUE, showWarnings = FALSE)
+# The fitted values are saved beside the hourly imputed panels.
+file_pred_bogota   <- here::here(dir_imputed, "bogota_imputed_predictions.parquet")
+file_pred_cdmx     <- here::here(dir_imputed, "cdmx_imputed_predictions.parquet")
+file_pred_santiago <- here::here(dir_imputed, "santiago_imputed_predictions.parquet")
+file_pred_sp       <- here::here(dir_imputed, "sao_paulo_imputed_predictions.parquet")
 
-# Define the fitted-value paths written alongside each imputed panel
-pred_bogota_pq   <- here::here(dir_imputed, "bogota_imputed_predictions.parquet")
-pred_cdmx_pq     <- here::here(dir_imputed, "cdmx_imputed_predictions.parquet")
-pred_santiago_pq <- here::here(dir_imputed, "santiago_imputed_predictions.parquet")
-pred_sp_pq       <- here::here(dir_imputed, "sao_paulo_imputed_predictions.parquet")
+# Station education orders the ratio plots.
+file_station_bogota   <- here::here(dir_station, "bogota_2018",
+                                   "bogota_2018_2023_3km_station_socio.parquet")
+file_station_cdmx     <- here::here(dir_station, "cdmx_2020",
+                                   "cdmx_2020_2023_station_socio.parquet")
+file_station_santiago <- here::here(dir_station, "santiago_2017",
+                                   "santiago_2017_2023_station_socio.parquet")
+file_station_sp       <- here::here(dir_station, "sao_paulo_2010",
+                                   "sao_paulo_2010_2023_station_socio.parquet")
 
-# Define station-level socioeconomic exposure paths, the source of the education ordering
-station_bogota_pq   <- here::here(dir_station, "bogota_2018",
-                                  "bogota_2018_2023_3km_station_socio.parquet")
-station_cdmx_pq     <- here::here(dir_station, "cdmx_2020",
-                                  "cdmx_2020_2023_station_socio.parquet")
-station_santiago_pq <- here::here(dir_station, "santiago_2017",
-                                  "santiago_2017_2023_station_socio.parquet")
-station_sp_pq       <- here::here(dir_station, "sao_paulo_2010",
-                                  "sao_paulo_2010_2023_station_socio.parquet")
+# PM10 retains the manuscript filename without a pollutant suffix.
+files_series_bogota <- c(pm10 = here::here(dir_figures, "model2_bogota.pdf"),
+                         pm25 = here::here(dir_figures, "model2_bogota_pm25.pdf"))
+files_ratio_bogota <- c(pm10 = here::here(dir_figures, "model2_bogota_scatter.pdf"),
+                        pm25 = here::here(dir_figures, "model2_bogota_scatter_pm25.pdf"))
 
-# ============================================================================================
-# II: Read processed data
-# ============================================================================================
-pred_bogota   <- safe_read_parquet(pred_bogota_pq)
-pred_cdmx     <- safe_read_parquet(pred_cdmx_pq)
-pred_santiago <- safe_read_parquet(pred_santiago_pq)
-pred_sp       <- safe_read_parquet(pred_sp_pq)
+files_series_cdmx <- c(pm10 = here::here(dir_figures, "model2_mexico.pdf"),
+                       pm25 = here::here(dir_figures, "model2_mexico_pm25.pdf"))
+files_ratio_cdmx <- c(pm10 = here::here(dir_figures, "model2_mexico_scatter.pdf"),
+                      pm25 = here::here(dir_figures, "model2_mexico_scatter_pm25.pdf"))
 
-station_bogota   <- safe_read_parquet(station_bogota_pq)
-station_cdmx     <- safe_read_parquet(station_cdmx_pq)
-station_santiago <- safe_read_parquet(station_santiago_pq)
-station_sp       <- safe_read_parquet(station_sp_pq)
+files_series_santiago <- c(pm10 = here::here(dir_figures, "model2_santiago.pdf"),
+                           pm25 = here::here(dir_figures, "model2_santiago_pm25.pdf"))
+files_ratio_santiago <- c(pm10 = here::here(dir_figures, "model2_santiago_scatter.pdf"),
+    pm25 = here::here(dir_figures, "model2_santiago_scatter_pm25.pdf"))
 
-# Sao Paulo stores education x1000 in the source census; correct it once per city.
+files_series_sp <- c(pm10 = here::here(dir_figures, "model2_saopaulo.pdf"),
+                     pm25 = here::here(dir_figures, "model2_saopaulo_pm25.pdf"))
+files_ratio_sp <- c(pm10 = here::here(dir_figures, "model2_saopaulo_scatter.pdf"),
+                    pm25 = here::here(dir_figures, "model2_saopaulo_scatter_pm25.pdf"))
+
+# Read predictions and station summaries.
+pred_bogota   <- arrow::read_parquet(file_pred_bogota)
+pred_cdmx     <- arrow::read_parquet(file_pred_cdmx)
+pred_santiago <- arrow::read_parquet(file_pred_santiago)
+pred_sp       <- arrow::read_parquet(file_pred_sp)
+
+station_bogota   <- arrow::read_parquet(file_station_bogota)
+station_cdmx     <- arrow::read_parquet(file_station_cdmx)
+station_santiago <- arrow::read_parquet(file_station_santiago)
+station_sp       <- arrow::read_parquet(file_station_sp)
+
+# Preserve the existing scale correction when education values exceed 100.
 station_bogota   <- rescale_station_education(station_bogota, "Bogota")
-station_cdmx     <- rescale_station_education(station_cdmx, "Mexico City")
-station_santiago <- rescale_station_education(station_santiago, "Gran Santiago")
+station_cdmx     <- rescale_station_education(station_cdmx, "CDMX")
+station_santiago <- rescale_station_education(station_santiago, "Santiago")
 station_sp       <- rescale_station_education(station_sp, "Sao Paulo")
 
-# ============================================================================================
-# III: Prediction versus observed series
-# ============================================================================================
-# The two pollutants differ only in which rows they read and what the manuscript calls
-# the file, so the pollutant is the loop and the cities are written out. PM10 carries no
-# pollutant token in the file name, because that is how the manuscript cites it.
-for (pol in c("pm10", "pm25")) {
+# ==========================================================================================
+# II: Process data
+# ==========================================================================================
+# Keep results for both pollutants, with explicit city calls inside each loop.
+ratios_bogota <- series_bogota <- plots_ratio_bogota <- list()
+ratios_cdmx <- series_cdmx <- plots_ratio_cdmx <- list()
+ratios_santiago <- series_santiago <- plots_ratio_santiago <- list()
+ratios_sp <- series_sp <- plots_ratio_sp <- list()
 
-  pol_tag <- if (pol == "pm10") "" else "_pm25"
-
-  plot_imputation_series(
-    pred_dt    = pred_bogota,
-    pollutant  = pol,
-    city_label = "Bogotá",
-    out_file   = file.path(outdir_fig, paste0("model2_bogota", pol_tag, ".pdf")))
-
-  plot_imputation_series(
-    pred_dt    = pred_cdmx,
-    pollutant  = pol,
-    city_label = "Mexico City",
-    out_file   = file.path(outdir_fig, paste0("model2_mexico", pol_tag, ".pdf")))
-
-  plot_imputation_series(
-    pred_dt    = pred_santiago,
-    pollutant  = pol,
-    city_label = "Santiago",
-    out_file   = file.path(outdir_fig, paste0("model2_santiago", pol_tag, ".pdf")))
-
-  plot_imputation_series(
-    pred_dt    = pred_sp,
-    pollutant  = pol,
-    city_label = "São Paulo",
-    out_file   = file.path(outdir_fig, paste0("model2_saopaulo", pol_tag, ".pdf")))
+pollutant <- imputation_pollutants[1]
+for (pollutant in imputation_pollutants) {
+  ratios_bogota[[pollutant]] <- summarize_imputation_ratios(pred_dt = pred_bogota,
+      station_dt = station_bogota, pollutant = pollutant)
+  ratios_cdmx[[pollutant]] <- summarize_imputation_ratios(pred_dt = pred_cdmx,
+      station_dt = station_cdmx, pollutant = pollutant)
+  ratios_santiago[[pollutant]] <- summarize_imputation_ratios(pred_dt = pred_santiago,
+      station_dt = station_santiago, pollutant = pollutant)
+  ratios_sp[[pollutant]] <- summarize_imputation_ratios(pred_dt = pred_sp,
+      station_dt = station_sp, pollutant = pollutant)
 }
 
-# ============================================================================================
-# IV: Predicted-missing to observed ratios
-# ============================================================================================
-for (pol in c("pm10", "pm25")) {
+for (pollutant in imputation_pollutants) {
+  series_bogota[[pollutant]] <- plot_imputation_series(pred_dt = pred_bogota,
+      pollutant = pollutant, city_label = "Bogotá")
 
-  pol_tag <- if (pol == "pm10") "" else "_pm25"
+  series_cdmx[[pollutant]] <- plot_imputation_series(pred_dt = pred_cdmx,
+      pollutant = pollutant, city_label = "Mexico City")
 
-  plot_imputation_ratio_by_station(
-    pred_dt    = pred_bogota,
-    station_dt = station_bogota,
-    pollutant  = pol,
-    city_label = "Bogotá",
-    out_file   = file.path(outdir_fig,
-                           paste0("model2_bogota_scatter", pol_tag, ".pdf")))
+  series_santiago[[pollutant]] <- plot_imputation_series(pred_dt = pred_santiago,
+      pollutant = pollutant, city_label = "Santiago")
 
-  plot_imputation_ratio_by_station(
-    pred_dt    = pred_cdmx,
-    station_dt = station_cdmx,
-    pollutant  = pol,
-    city_label = "Mexico City",
-    out_file   = file.path(outdir_fig,
-                           paste0("model2_mexico_scatter", pol_tag, ".pdf")))
-
-  plot_imputation_ratio_by_station(
-    pred_dt    = pred_santiago,
-    station_dt = station_santiago,
-    pollutant  = pol,
-    city_label = "Santiago",
-    out_file   = file.path(outdir_fig,
-                           paste0("model2_santiago_scatter", pol_tag, ".pdf")))
-
-  plot_imputation_ratio_by_station(
-    pred_dt    = pred_sp,
-    station_dt = station_sp,
-    pollutant  = pol,
-    city_label = "São Paulo",
-    out_file   = file.path(outdir_fig,
-                           paste0("model2_saopaulo_scatter", pol_tag, ".pdf")))
+  series_sp[[pollutant]] <- plot_imputation_series(pred_dt = pred_sp,
+      pollutant = pollutant, city_label = "São Paulo")
 }
 
-# Print a success message for when running inside Docker Container
-cat("Script from the IDB project executed successfully in the Docker container!\n")
+for (pollutant in imputation_pollutants) {
+  plots_ratio_bogota[[pollutant]] <- plot_imputation_ratio_by_station(
+      ratio_dt = ratios_bogota[[pollutant]], pollutant = pollutant,
+      city_label = "Bogotá")
+
+  plots_ratio_cdmx[[pollutant]] <- plot_imputation_ratio_by_station(
+      ratio_dt = ratios_cdmx[[pollutant]], pollutant = pollutant,
+      city_label = "Mexico City")
+
+  plots_ratio_santiago[[pollutant]] <- plot_imputation_ratio_by_station(
+      ratio_dt = ratios_santiago[[pollutant]], pollutant = pollutant,
+      city_label = "Santiago")
+
+  plots_ratio_sp[[pollutant]] <- plot_imputation_ratio_by_station(
+      ratio_dt = ratios_sp[[pollutant]], pollutant = pollutant,
+      city_label = "São Paulo")
+}
+
+# ==========================================================================================
+# III: Save outputs
+# ==========================================================================================
+dir.create(dir_figures, recursive = TRUE, showWarnings = FALSE)
+
+for (pollutant in imputation_pollutants) {
+  ggplot2::ggsave(filename = files_series_bogota[[pollutant]],
+                  plot = series_bogota[[pollutant]], width = 12, height = 8,
+                  dpi = 300, device = grDevices::cairo_pdf, limitsize = FALSE, bg = "white")
+
+  ggplot2::ggsave(filename = files_series_cdmx[[pollutant]],
+                  plot = series_cdmx[[pollutant]], width = 12, height = 8,
+                  dpi = 300, device = grDevices::cairo_pdf, limitsize = FALSE, bg = "white")
+
+  ggplot2::ggsave(filename = files_series_santiago[[pollutant]],
+                  plot = series_santiago[[pollutant]], width = 12, height = 8,
+                  dpi = 300, device = grDevices::cairo_pdf, limitsize = FALSE, bg = "white")
+
+  ggplot2::ggsave(filename = files_series_sp[[pollutant]],
+                  plot = series_sp[[pollutant]], width = 12, height = 8,
+                  dpi = 300, device = grDevices::cairo_pdf, limitsize = FALSE, bg = "white")
+}
+
+for (pollutant in imputation_pollutants) {
+  ggplot2::ggsave(filename = files_ratio_bogota[[pollutant]],
+                  plot = plots_ratio_bogota[[pollutant]], width = 8.5, height = 5.8,
+                  dpi = 300, device = grDevices::cairo_pdf, limitsize = FALSE, bg = "white")
+
+  ggplot2::ggsave(filename = files_ratio_cdmx[[pollutant]],
+                  plot = plots_ratio_cdmx[[pollutant]], width = 8.5, height = 5.8,
+                  dpi = 300, device = grDevices::cairo_pdf, limitsize = FALSE, bg = "white")
+
+  ggplot2::ggsave(filename = files_ratio_santiago[[pollutant]],
+                  plot = plots_ratio_santiago[[pollutant]], width = 8.5, height = 5.8,
+                  dpi = 300, device = grDevices::cairo_pdf, limitsize = FALSE, bg = "white")
+
+  ggplot2::ggsave(filename = files_ratio_sp[[pollutant]],
+                  plot = plots_ratio_sp[[pollutant]], width = 8.5, height = 5.8,
+                  dpi = 300, device = grDevices::cairo_pdf, limitsize = FALSE, bg = "white")
+}
