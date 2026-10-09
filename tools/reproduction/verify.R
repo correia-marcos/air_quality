@@ -184,14 +184,10 @@ if (!nrow(comparisons) || !file.exists(review_path)) {
     identical(review$candidate_code_sha256, report$code_sha256)
   if (!valid_review) report$findings <- c(report$findings,
     "Baseline review lacks reviewer or matching candidate revision.")
-  generated <- c(list.files("data/processed", pattern = "[.](parquet|csv)$",
-    recursive = TRUE, full.names = TRUE),
-    list.files("data/interim/geospatial_data", pattern = "[.]gpkg$", recursive = TRUE,
-      full.names = TRUE),
-    list.files("results/tables", pattern = "[.](csv|tex)$", full.names = TRUE))
+  generated <- verification_product_paths(root)
   omitted <- setdiff(generated, comparisons$actual_path)
   if (length(omitted)) report$findings <- c(report$findings,
-    paste("Uncompared processed products:", paste(omitted, collapse = "; ")))
+    paste("Uncompared analytical products:", paste(omitted, collapse = "; ")))
   for (i in seq_len(nrow(comparisons))) {
     x <- comparisons[i, ]
     report$comparisons[[x$comparison_id]] <- tryCatch({

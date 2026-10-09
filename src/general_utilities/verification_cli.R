@@ -6,15 +6,26 @@ verification_sha <- function(p) digest::digest(file = p, algo = "sha256",
 # Execute an external verification command and record its exit status.
 #' @param cmd,args Command and argument vector.
 #' @param log Output log filename.
-#' @return Command, elapsed seconds, log basename and exit status.
+#' @return Command, elapsed seconds, log basename, exit status and available memory events.
+#' @details Linux cgroup counters describe the container, not an individual R process.
 verification_command <- function(cmd, args, log) {
   started <- Sys.time()
+  memory_events <- function() {
+    path <- "/sys/fs/cgroup/memory.events"
+    if (file.exists(path)) readLines(path, warn = FALSE) else NULL
+  }
+  memory_before <- memory_events()
   status <- tryCatch(system2(cmd, args, stdout = log, stderr = log), error = function(e) {
     writeLines(conditionMessage(e), log); 127L
   })
-  list(command = cmd, args = args, exit_status = status,
+  result <- list(command = cmd, args = args, exit_status = status,
        seconds = as.numeric(difftime(Sys.time(), started, units = "secs")),
          log = basename(log))
+  if (!is.null(memory_before)) {
+    result$memory_events_before <- memory_before
+    result$memory_events_after <- memory_events()
+  }
+  result
 }
 # Capture a diagnostic command's output or error message.
 #' @param cmd,args Command and argument vector.
@@ -53,6 +64,23 @@ verification_code_inventory <- function(root) {
   paths <- file.path(root, root_code)
   rbind(code, data.frame(path = root_code, bytes = file.info(paths)$size,
     sha256 = vapply(paths, verification_sha, character(1))))
+}
+
+# List generated tables and geography eligible for registered baseline comparisons.
+#' @param root Repository or isolated rebuild root.
+#' @return Sorted relative paths, including station source manifests and coverage tables.
+#' @details Original inputs and rendered PDFs are excluded. Rendering requires review.
+verification_product_paths <- function(root) {
+  root <- normalizePath(root, mustWork = TRUE)
+  patterns <- c("data/processed" = "[.](parquet|csv)$",
+    "data/interim/geospatial_data" = "[.]gpkg$",
+    "data/interim/monitoring_stations" = "[.]csv$",
+    "results/tables" = "[.](csv|tex)$")
+  files <- unlist(lapply(names(patterns), function(directory) {
+    list.files(file.path(root, directory), pattern = patterns[[directory]],
+      recursive = TRUE, full.names = TRUE)
+  }), use.names = FALSE)
+  sort(unique(substring(files, nchar(root) + 2L)))
 }
 
 # Persist the current verification report.

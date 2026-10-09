@@ -19,3 +19,4 @@ services:
       - ./data/processed:/air_monitoring/data/processed
       - ./data/validation:/air_monitoring/data/validation
       - ./results:/air_monitoring/results
+      - ./_targets:/air_monitoring/_targets

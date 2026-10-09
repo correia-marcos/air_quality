@@ -61,7 +61,7 @@ Results/validation_old_version/**/*.gpkg
 # ---------------------------------------------------------------------------
 # Results — untracked interactive map build artefacts
 # ---------------------------------------------------------------------------
-results/figures/maps_interactive/*_files/
+results/figures/maps/*_files/
  
  
 # ---------------------------------------------------------------------------
@@ -77,6 +77,7 @@ Thumbs.db
 # ---------------------------------------------------------------------------
 tests/_cache/
 tests/_out/
+/_targets/
 .positai
 
 

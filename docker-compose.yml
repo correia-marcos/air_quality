@@ -48,6 +48,8 @@ services:
       retries: 10
     volumes:
       - ./src:/air_monitoring/src
+      - ./_targets.R:/air_monitoring/_targets.R:ro
+      - ./_targets:/air_monitoring/_targets
       - ./scripts:/air_monitoring/scripts
       - ./tests:/air_monitoring/tests:ro
       - ./config:/air_monitoring/config:ro

@@ -209,6 +209,46 @@ compare_numerical_tables <- function(actual, expected, keys, atol = 1e-10, rtol 
   invisible(TRUE)
 }
 
+# ----------------------------------------------------------------------------------------
+# Function: compare_registered_artifact
+#' @param actual_path,baseline_path Generated product and reviewed baseline filenames.
+#' @param keys Unique table identifiers. Empty for literal TeX comparisons.
+#' @param atol,rtol Declared numeric tolerances, as in compare_numerical_tables().
+#' @return TRUE invisibly, or a comparison error. Does not modify either file.
+#' @details CSV and Parquet compare keyed tables; TeX compares literal lines. GeoPackages
+# compare attributes and exact geometry/CRS. PDF/PNG rendering needs separate human review,
+# paired with numerical plot-data comparisons; byte equality is not a rendering criterion.
+# ----------------------------------------------------------------------------------------
+compare_registered_artifact <- function(actual_path, baseline_path, keys,
+                                        atol = 1e-10, rtol = 1e-8) {
+  extension <- tolower(tools::file_ext(actual_path))
+  if (!identical(extension, tolower(tools::file_ext(baseline_path)))) {
+    stop("Comparison file formats differ.")
+  }
+  if (extension == "tex") {
+    if (!identical(readLines(actual_path, warn = FALSE),
+      readLines(baseline_path, warn = FALSE))) stop("TeX content differs.")
+    return(invisible(TRUE))
+  }
+  read_table <- function(path) {
+    if (extension == "parquet") return(as.data.frame(arrow::read_parquet(path)))
+    if (extension == "csv") return(utils::read.csv(path, stringsAsFactors = FALSE))
+    if (extension == "gpkg") {
+      spatial <- sf::st_read(path, quiet = TRUE)
+      table <- sf::st_drop_geometry(spatial)
+      table$.geometry <- vapply(sf::st_as_binary(sf::st_geometry(spatial)),
+        digest::digest, character(1), algo = "sha256", serialize = FALSE)
+      attr(table, "crs") <- sf::st_crs(spatial)
+      return(table)
+    }
+    stop("Unsupported numerical comparison format: ", extension)
+  }
+  actual <- read_table(actual_path)
+  baseline <- read_table(baseline_path)
+  if (!identical(attr(actual, "crs"), attr(baseline, "crs"))) stop("CRS differs.")
+  compare_numerical_tables(actual, baseline, keys, atol, rtol)
+}
+
 # --------------------------------------------------------------------------------------------
 # Function: require_local_sources
 #' @param paths Required source files.
@@ -312,4 +352,26 @@ verification_revision <- function(root, revision = Sys.getenv("AIR_CODE_REVISION
   list(revision = revision, git_available = has_git,
     changes = if (has_git) git(c("status", "--porcelain")) else NULL,
     patch = if (has_git) git(c("diff", "--binary", "HEAD")) else NULL)
+}
+
+#' @param artifacts Upstream figure and table outputs.
+#' @param manifest_file Canonical export mapping tracked as a file target.
+#' @return Exported manuscript files and integrity manifest under data/processed/paper.
+#' @details Required files must be reported by current targets, even if old copies exist.
+prepare_paper_export <- function(artifacts, manifest_file) {
+  processing_files(artifacts, "manuscript artifacts")
+  manifest <- artifact_manifest(manifest_file)
+  required <- here::here(manifest$source_path)
+  missing <- !normalizePath(required, mustWork = FALSE) %in%
+    normalizePath(artifacts, mustWork = TRUE)
+  if (any(missing)) {
+    stop("Current targets did not report manuscript artifacts: ",
+         paste(manifest$source_path[missing], collapse = ", "))
+  }
+  destination <- here::here("data", "processed", "paper")
+  exported <- export_paper_artifacts(manifest, here::here(), destination,
+                                     dry_run = FALSE, overwrite = TRUE)
+  inventory <- here::here(destination, "export-manifest.csv")
+  utils::write.csv(exported, inventory, row.names = FALSE)
+  processing_files(c(exported$destination, inventory))
 }
