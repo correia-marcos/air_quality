@@ -7,13 +7,12 @@
 # dependencies, but each spells every basename as its own literal string. A `git mv`
 # updates neither, so a rename desynchronises both silently and the break only surfaces at
 # run time. This test turns that into a failing test instead: it extracts the script paths
-# from both files and checks them against disk, then checks the reverse direction so a new
-# script cannot be added without a conscious decision about wiring it in.
+# from both files and checks them against disk, while the complete workflow inventory check accounts for all entry points.
 #
 #' @Summary:
 #   I.   Extract the script paths each file claims to run.
 #   II.  Every claimed path exists on disk.
-#   III. Every script on disk is either wired in or listed as a known exception.
+#   III. Transitional schedulers execute the same manuscript selection.
 #
 #' @Date: August 2026
 #' @Author: Marcos Paulo (initial draft by Claude Code)
@@ -35,7 +34,7 @@ pipeline_script_paths <- function(path) {
 # The Makefile writes the same paths literally, as prerequisites and as recipe commands.
 makefile_script_paths <- function(path) {
   lines <- readLines(path, warn = FALSE)
-  unique(unlist(regmatches(lines, gregexpr("scripts/[^ \t\\\\]+\\.R", lines))))
+  unique(unlist(regmatches(lines, gregexpr("(?:scripts|tools/reproduction)/[^ \t\\\\]+\\.R", lines))))
 }
 
 root          <- here::here()
@@ -54,42 +53,7 @@ test_that("every script path in the Makefile exists on disk", {
   expect_equal(missing, character(0))
 })
 
-# Scripts that run outside the default pipeline on purpose. Adding a script here is the
-# conscious opt-out; leaving it out is what makes the reverse check fail.
-known_unwired <- c(
-  # Optional methodological preparation is wired only to resolution-multicity.
-  "scripts/process_data/prepare_resolution_inputs.R",
-  "scripts/process_data/generate_inegi_lab_inputs.R",
-  # Diagnostics that no manuscript figure depends on; see doc/planning/remaining-work.md.
-  "scripts/tables_images/figure_missing_heatmap.R",
-  "scripts/tables_images/figure_pollution_stations_by_hour.R",
-  "scripts/tables_images/figure_stations_on_metro_area.R"
-)
-
-test_that("every process_data and tables_images script is wired in or opted out", {
-  stage_dirs <- c("scripts/process_data", "scripts/tables_images")
-  on_disk <- list.files(file.path(root, stage_dirs), pattern = "\\.R$",
-                        full.names = TRUE)
-  on_disk <- sub(paste0("^", root, "/"), "", on_disk)
-
-  unaccounted <- setdiff(on_disk, c(pipeline_refs, makefile_refs, known_unwired))
-  expect_equal(unaccounted, character(0))
-})
-
-# The two orchestrators must agree, not merely cover the set between them. Checking only
-# the union let compute_station_scatter_inputs.R sit in run_pipeline.R and nowhere in the
-# Makefile, which made `make figures` read whatever inputs happened to be on disk.
-test_that("run_pipeline.R and the Makefile reference the same stage scripts", {
-  stage_dirs <- c("scripts/process_data/", "scripts/tables_images/")
-  in_stage   <- function(x) x[startsWith(x, stage_dirs[1]) |
-                                startsWith(x, stage_dirs[2])]
-
-  pipeline_stage <- setdiff(in_stage(pipeline_refs), known_unwired)
-  makefile_stage <- setdiff(in_stage(makefile_refs), known_unwired)
-
-  expect_equal(sort(setdiff(pipeline_stage, makefile_stage)), character(0))
-  expect_equal(sort(setdiff(makefile_stage, pipeline_stage)), character(0))
-})
+# Complete entry-point coverage lives in test-reader-workflows.R and the inventory.
 
 # Compare executable commands, so commented optional paths cannot mask disagreement.
 test_that("default orchestrators execute the same manuscript stages", {
@@ -104,10 +68,9 @@ test_that("default orchestrators execute the same manuscript stages", {
   make_stages <- sub("^Rscript ", "", dry_run[grepl("^Rscript ", dry_run)])
   expect_setequal(r_stages, make_stages)
   expect_false(anyDuplicated(make_stages) > 0L)
-  expect_true(match("scripts/process_data/generate_panel_air_quality.R", make_stages) <
-                match("scripts/process_data/prepare_station_temporal.R", make_stages))
-  expect_true(match("scripts/process_data/prepare_station_temporal.R", make_stages) <
+  expect_true(match("scripts/process_data/prepare_station_hourly.R", make_stages) <
                 match("scripts/tables_images/figure_station_temporal.R", make_stages))
-  expect_false(any(grepl(paste0("process_merra2_panels|figure_merra2_vs_stations|",
+  expect_false(any(grepl(paste0("generate_panel_air_quality|prepare_station_temporal|",
+                                 "process_merra2_panels|figure_merra2_vs_stations|",
                                  "figure_aerosol_composition"), make_stages)))
 })

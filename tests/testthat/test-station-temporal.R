@@ -45,7 +45,7 @@ test_that("city aerosol extraction returns the hand-computed four-cell means", {
   root <- tempfile("aerosol-fixture-", tmpdir = here::here("tests/_cache"))
   dir.create(root, recursive = TRUE)
   on.exit(unlink(root, recursive = TRUE), add = TRUE)
-  fixture <- write_temporal_fixture(root)
+  fixture <- write_temporal_fixture(root, exact_values = TRUE)
   e <- new.env(parent = globalenv())
   sys.source(here::here("src/general_utilities/process/merra2.R"), e)
   before <- list.files(root, recursive = TRUE)
@@ -57,122 +57,49 @@ test_that("city aerosol extraction returns the hand-computed four-cell means", {
   expect_equal(result$Date, rep(as.Date("2023-01-01"), 24))
   fields <- c("DUSMASS25", "OCSMASS", "BCSMASS", "SSSMASS25", "SO4SMASS")
   for (i in seq_along(fields)) {
-    expect_equal(result[[fields[i]]] * 1e9, 2.5 + i + 0:23, tolerance = 1e-10)
+    expect_equal(result[[fields[i]]], (2.5 + i + 0:23) * 2^-30, tolerance = 0)
   }
   expect_identical(list.files(root, recursive = TRUE), before)
   expect_identical(tools::md5sum(file.path(root, before)), hashes)
 })
 
-test_that("temporal recipes and targets agree, cache computations and track source files", {
-  root <- tempfile("temporal-targets-", tmpdir = here::here("tests/_cache"))
+test_that("optional satellite joins use current hourly station summaries", {
+  e <- new.env(parent = globalenv())
+  sys.source(here::here("src/general_utilities/process/merra2.R"), e)
+  hourly <- data.frame(Date = as.Date("2023-01-01"), Hour = 0:3,
+    pm25_stations = c(20, NA, 40, 80), n_reporting = c(2L, 0L, 1L, 1L))
+  satellite <- data.frame(Date = rep("2023-01-01", 4), Hour = c(0, 0, 1, 4),
+    pm25_estimate = c(5, 6, 7, 8))
+  result <- e$join_station_hourly_merra2(hourly, satellite)
+  expect_equal(result$pm25_stations, c(20, 20, NA, NA))
+  expect_equal(result$pm25_merra2, satellite$pm25_estimate)
+  expect_equal(result$n_reporting, c(2L, 2L, 0L, NA))
+  expect_error(e$join_station_hourly_merra2(rbind(hourly, hourly[1, ]), satellite),
+    "unique")
+})
+
+test_that("optional extraction precision is explicit for decimal raster values", {
+  root <- tempfile("aerosol-precision-", tmpdir = here::here("tests/_cache"))
   dir.create(root, recursive = TRUE)
   on.exit(unlink(root, recursive = TRUE), add = TRUE)
   fixture <- write_temporal_fixture(root)
-  script <- file.path(root, "pipeline.R")
-  store <- file.path(root, "store")
-  redirect <- function(x, route) {
-    if (!is.call(x)) return(x)
-    if (identical(x[[1]], quote(source))) x$local <- TRUE
-    if (identical(x[[1]], quote(here::here)) && length(x) > 2L &&
-        identical(x[[2]], "data")) {
-      x[[2]] <- if (identical(x[[3]], "raw")) root else file.path(root, route)
-    }
-    for (i in seq_along(x)[-1]) if (is.call(x[[i]])) x[[i]] <- redirect(x[[i]], route)
-    x
-  }
   e <- new.env(parent = globalenv())
-  for (recipe in c("generate_panel_air_quality", "prepare_station_temporal")) {
-    for (expr in parse(here::here("scripts/process_data", paste0(recipe, ".R")))) {
-      eval(redirect(expr, "manual"), e)
-      e$merra2_parallel <- FALSE
-    }
+  sys.source(here::here("src/general_utilities/process/merra2.R"), e)
+  result <- e$process_merra2_region_hourly(fixture$geography, fixture$nc_file,
+    region_name = "toy precision", extraction_fun = "mean", parallel = FALSE)
+  # Installed extraction returns means on the float32 grid, despite the FLT8S fixture.
+  # Check that boundary and its half-ULP rounding error against independent double means.
+  values <- terra::values(terra::rast(fixture$nc_file))
+  expected <- colMeans(values)
+  fields <- c("DUSMASS25", "OCSMASS", "BCSMASS", "SSSMASS25", "SO4SMASS")
+  for (i in seq_along(fields)) {
+    actual <- result[[fields[i]]]
+    means <- expected[(i - 1L) * 24 + 1:24]
+    float32 <- readBin(writeBin(actual, raw(), size = 4),
+      what = "double", n = length(actual), size = 4)
+    expect_identical(actual, float32)
+    half_ulp <- 2^(floor(log2(abs(means))) - 24)
+    double_rounding <- 4 * .Machine$double.eps * abs(means)
+    expect_true(all(abs(actual - means) <= half_ulp + double_rounding))
   }
-  expect_equal(e$series_bogota$pm25_stations[1], 140 / 3)
-  expect_equal(e$series_sp$pm25_stations[1], 20)
-  expect_equal(nrow(e$series_bogota), 24L)
-  expect_true(is.nan(e$series_bogota$pm25_stations[2]))
-  expect_true(all(is.na(e$series_bogota$pm25_stations[4:24])))
-
-  graph <- targets::tar_manifest(fields = c("name", "command", "format"),
-    script = here::here("_targets.R"), callr_function = NULL,
-    envir = new.env(parent = globalenv()))
-  edges <- targets::tar_network(script = here::here("_targets.R"), callr_function = NULL,
-    envir = new.env(parent = globalenv()))$edges
-  needed <- c("generate_panel_air_quality", "prepare_station_temporal")
-  repeat {
-    more <- union(needed, intersect(edges$from[edges$to %in% needed], graph$name))
-    if (setequal(more, needed)) break
-    needed <- more
-  }
-  quote_text <- function(x) encodeString(x, quote = '"')
-  declarations <- vapply(needed, function(name) {
-    row <- graph[graph$name == name, ]
-    command <- redirect(str2lang(row$command), "targets")
-    paste0("targets::tar_target_raw(", quote_text(name), ", quote(",
-      paste(deparse(command), collapse = "\n"), "), format = ", quote_text(row$format), ")")
-  }, character(1))
-  write_pipeline <- function(extraction = "mean") {
-    writeLines(c(paste0("source(", quote_text(here::here(
-      "src/general_utilities/process/merra2.R")), ")"),
-      paste0("source(", quote_text(here::here("config/analysis_settings.R")), ")"),
-      "merra2_parallel <- FALSE", paste0("merra2_extraction_fun <- ", quote_text(extraction)),
-      "list(", paste(declarations, collapse = ",\n"), ")"), script)
-  }
-  make <- function() targets::tar_make(script = script, store = store,
-    callr_function = NULL, reporter = "silent", envir = new.env(parent = globalenv()))
-  read <- function(name) targets::tar_read_raw(name, store = store)
-  metadata <- function() {
-    x <- targets::tar_meta(fields = c("name", "time"), store = store)
-    x[order(x$name), ]
-  }
-  write_pipeline()
-  make()
-  files <- c(read("generate_panel_air_quality"), read("prepare_station_temporal"))
-  expect_length(files, 12L)
-  for (file in files) {
-    manual <- sub("/targets/", "/manual/", file, fixed = TRUE)
-    expect_identical(readLines(file), readLines(manual))
-  }
-  before <- metadata()
-  make()
-  expect_identical(metadata(), before)
-  unlink(c(read("bogota_aerosol_file"), read("bogota_temporal_series_file")))
-  make()
-  expect_true(all(file.exists(files)))
-  after <- metadata()
-  computed <- c("bogota_aerosol_panel", "bogota_temporal_series")
-  expect_identical(after[after$name %in% computed, ], before[before$name %in% computed, ])
-
-  # The temporal sample follows the supplied RDS file, and other cities stay cached.
-  path <- read("bogota_temporal_station_input")
-  data <- readRDS(path); data$pm25[1] <- 70; saveRDS(data, path)
-  before <- metadata()
-  make()
-  expect_equal(read("bogota_temporal_series")$pm25_stations[1], 200 / 3)
-  after <- metadata()
-  expect_identical(after[startsWith(after$name, "cdmx_"), ],
-                   before[startsWith(before$name, "cdmx_"), ])
-
-  # An added day enters every city panel; removing it restores the original support.
-  added <- file.path(dirname(fixture$nc_file), "toy.20230102.nc4")
-  expect_true(file.copy(fixture$nc_file, added))
-  make()
-  expect_equal(nrow(read("bogota_aerosol_panel")), 48L)
-  expect_equal(nrow(read("cdmx_temporal_series")), 48L)
-  unlink(added)
-  make()
-  expect_equal(nrow(read("bogota_aerosol_panel")), 24L)
-  # A .prj change is tracked even when its equivalent CRS leaves the result unchanged.
-  prj <- list.files(read("bogota_temporal_geography_inputs"), pattern = "[.]prj$",
-                    full.names = TRUE)
-  before <- metadata()
-  writeLines(c(readLines(prj, warn = FALSE), ""), prj)
-  make()
-  after <- metadata()
-  expect_false(identical(after[after$name == "bogota_temporal_geography", ],
-                        before[before$name == "bogota_temporal_geography", ]))
-  mean <- read("bogota_aerosol_panel")$DUSMASS25
-  write_pipeline(extraction = "sum")
-  make()
-  expect_equal(read("bogota_aerosol_panel")$DUSMASS25, mean * 4, tolerance = 1e-10)
 })

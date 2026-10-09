@@ -1008,6 +1008,9 @@ plot_group_levels <- function(summary_table,
 #' @param path    string; destination PDF path.
 #' @param width   numeric; figure width in inches. Default 6.
 #' @param height  numeric; figure height in inches. Default 4.5.
+#' @param dpi numeric; resolution for raster layers. Default 300.
+#' @param bg Background colour; NULL uses the plot theme, as in ggsave().
+#' @param limitsize Reject figures exceeding ggsave's size limit when TRUE.
 #
 #' @return  The PDF path invisibly. A missing plot is an error.
 #
@@ -1018,13 +1021,15 @@ plot_group_levels <- function(summary_table,
 #' @Written_by : Marcos Paulo
 #' @Updated_on : August 2026
 # --------------------------------------------------------------------------------------------
-save_plot_pdf <- function(plot_obj, path, width = 6, height = 4.5) {
+save_plot_pdf <- function(plot_obj, path, width = 6, height = 4.5,
+                          dpi = 300, bg = "white", limitsize = TRUE) {
   if (is.null(plot_obj)) {
     stop("Cannot write a missing plot: ", path)
   }
 
-  ggplot2::ggsave(filename = path, plot = plot_obj, device = cairo_pdf,
-                  width = width, height = height, dpi = 300, bg = "white")
+  ggplot2::ggsave(filename = path, plot = plot_obj, device = grDevices::cairo_pdf,
+                  width = width, height = height, dpi = dpi, bg = bg,
+                  limitsize = limitsize)
 
   invisible(path)
 }

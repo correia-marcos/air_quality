@@ -3,9 +3,9 @@
 # ============================================================================================
 # A thin, stage-level wrapper around the same R scripts that scripts/run_pipeline.R sources.
 # It adds two things without touching any R code: (1) ordered stages, and (2) skip-unchanged
-# rebuilds via stamp files. It is a convenience layer, NOT the reproducibility guarantee
-# (that stays Docker + renv + here::here()). For a dependency-aware, R-native pipeline see
-# doc/TARGETS_MIGRATION_PLAN.md.
+# rebuilds via stamp files. Scientific reproduction needs executed, reviewed verification.
+# Docker and renv record the environment. For a dependency-aware, R-native pipeline see
+# doc/planning/targets-migration.md. Targets is opt-in until parity is accepted.
 #
 # Usage:
 #   make                 # build the analysis: process -> distances -> outliers -> exposure
@@ -37,7 +37,7 @@ SRC := $(shell find src -name '*.R')
 # ---- Phony convenience targets -------------------------------------------------------------
 .PHONY: all download process merra2 distances outliers exposure descriptives \
         scatter imputed temporal figures tables context-maps resolution \
-        resolution-multicity validate clean help
+        resolution-multicity resolution-multicity-grouping validate clean help
 
 all: figures tables
 
@@ -65,7 +65,7 @@ $(STAMP)/distances.stamp: scripts/process_data/generate_distance_matrices.R $(ST
 
 # 3. Outlier detection.
 outliers: $(STAMP)/outliers.stamp
-$(STAMP)/outliers.stamp: scripts/process_data/detect_outliers.R $(STAMP)/process.stamp
+$(STAMP)/outliers.stamp: scripts/process_data/detect_outliers.R $(STAMP)/distances.stamp
 	$(RUN) scripts/process_data/detect_outliers.R
 	touch $@
 
@@ -124,16 +124,17 @@ tables: exposure descriptives
 	$(RUN) scripts/tables_images/render_census_tables.R
 	$(RUN) scripts/tables_images/render_exposure_tables.R
 
-# Shared temporal inputs preserve MERRA-2 timestamp support for manuscript figures.
+# Observed station-only summaries supply the manuscript appendix.
 temporal: $(STAMP)/temporal.stamp
-$(STAMP)/temporal.stamp: scripts/process_data/generate_panel_air_quality.R \
-                         scripts/process_data/prepare_station_temporal.R $(SRC) | $(STAMP)
-	$(RUN) scripts/process_data/generate_panel_air_quality.R
-	$(RUN) scripts/process_data/prepare_station_temporal.R
+$(STAMP)/temporal.stamp: scripts/process_data/prepare_station_hourly.R $(SRC) \
+                         $(STAMP)/outliers.stamp | $(STAMP)
+	$(RUN) scripts/process_data/prepare_station_hourly.R
 	touch $@
 
-# Optional comparisons reuse the city series, adding country/NASA and inversion inputs.
+# Satellite preparation and comparison are optional and use current city products.
 merra2: temporal
+	$(RUN) scripts/process_data/generate_panel_air_quality.R
+	$(RUN) scripts/process_data/prepare_station_temporal.R
 	$(RUN) scripts/process_data/process_merra2_panels.R
 	$(RUN) scripts/tables_images/figure_merra2_vs_stations.R
 	$(RUN) scripts/tables_images/figure_aerosol_composition.R
@@ -150,6 +151,16 @@ resolution-multicity:
 	$(RUN) scripts/process_data/prepare_resolution_inputs.R
 	$(RUN) scripts/process_data/estimate_resolution_sensitivity.R --scope=multicity
 	$(RUN) scripts/tables_images/figure_resolution_sensitivity.R --scope=multicity
+
+# Another education grouping instead of the frozen quintiles: GROUPING=edu_group3
+# (default), edu_level or edu_quintile_split. Reuses the frozen inputs and the quintile
+# run's B exposures, so `resolution-multicity` must have completed first.
+GROUPING ?= edu_group3
+resolution-multicity-grouping:
+	$(RUN) scripts/process_data/estimate_resolution_sensitivity.R --scope=multicity \
+		--grouping=$(GROUPING)
+	$(RUN) scripts/tables_images/figure_resolution_sensitivity.R --scope=multicity \
+		--grouping=$(GROUPING)
 
 # Context maps are not manuscript artifacts; the terrain version may contact Stadia.
 context-maps: process
@@ -175,7 +186,8 @@ clean:
 help:
 	@echo "Targets: all process distances outliers exposure descriptives scatter"
 	@echo "         imputed temporal figures tables"
-	@echo "         merra2 context-maps resolution resolution-multicity download validate clean"
+	@echo "         merra2 context-maps resolution resolution-multicity"
+	@echo "         resolution-multicity-grouping [GROUPING=] download validate clean"
 	@echo "Add DOCKER=1 to run each step inside the compose \"analysis\" service."
 
 
@@ -185,8 +197,16 @@ test:
 test-release:
 	$(RUN) tests/testthat.R --mode=release
 verify:
-	$(RUN) scripts/verification/verify.R
+	$(RUN) tools/reproduction/verify.R
 verify-full:
-	$(RUN) scripts/verification/verify.R --full
+	$(RUN) tools/reproduction/verify.R --full
 export-dry-run:
-	$(RUN) scripts/export/export_paper.R --destination data/verification/export-preview --dry-run
+	$(RUN) tools/reproduction/export_paper.R --destination data/verification/export-preview --dry-run
+
+# Candidate graph: stage prerequisites are declared only in the R graph.
+STAGE ?= all
+.PHONY: targets targets-outdated
+targets:
+	$(RUN) scripts/run_targets.R $(STAGE)
+targets-outdated:
+	$(RUN) scripts/run_targets.R $(STAGE) --outdated

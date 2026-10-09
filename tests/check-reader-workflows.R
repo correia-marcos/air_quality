@@ -11,11 +11,12 @@ check_reader_workflows <- function() {
   begin <- match("<!-- workflow-inventory:start -->", text)
   end <- match("<!-- workflow-inventory:end -->", text)
   check(!is.na(begin) && !is.na(end) && begin < end, "Inventory markers missing")
-  rows <- grep("^\\| \\[scripts/", text[seq.int(begin, end)], value = TRUE)
+  rows <- grep("^\\| \\[(scripts|tools/reproduction)/", text[seq.int(begin, end)], value = TRUE)
   paths <- sub("^\\| \\[([^]]+)\\].*$", "\\1", rows)
   files <- list.files(file.path(root, "scripts"), pattern = "[.](R|qmd)$",
                       recursive = TRUE)
-  files <- paste0("scripts/", files)
+  files <- c(paste0("scripts/", files), paste0("tools/reproduction/",
+    list.files(file.path(root, "tools/reproduction"), pattern = "[.]R$")))
   check(!anyDuplicated(paths), "An entry point has multiple inventory rows")
   check(setequal(paths, files), paste("Inventory mismatch:",
     paste(setdiff(files, paths), collapse = ", "),
@@ -78,18 +79,18 @@ check_reader_workflows <- function() {
   work <- tempfile("reader-contracts-", tmpdir = cache)
   dir.create(work)
   on.exit(unlink(work, recursive = TRUE), add = TRUE)
-  series <- file.path(work, "merra2_stations_pm25")
+  series <- file.path(work, "station_hourly")
   dir.create(series)
   cities <- c("bogota", "santiago", "ciudad_mexico", "sao_paulo")
   for (i in seq_along(cities)) {
-    write.csv(data.frame(fixture = i), file.path(series,
-      paste0(cities[i], "_pm25_stations_merra2.csv")), row.names = FALSE)
+    arrow::write_parquet(data.frame(fixture = i), file.path(series,
+      paste0(cities[i], "_hourly.parquet")))
   }
   explicit <- list.files(series, full.names = TRUE)
   slugs <- c("bogota", "santiago", "cdmx", "sao_paulo")
   for (i in seq_along(slugs)) {
-    e[[paste0(slugs[i], "_temporal_series_file")]] <- explicit[
-      basename(explicit) == paste0(cities[i], "_pm25_stations_merra2.csv")]
+    e[[paste0(slugs[i], "_station_hourly_file")]] <- explicit[
+      basename(explicit) == paste0(cities[i], "_hourly.parquet")]
   }
   names <- paste0(c("bogota", "santiago", "cdmx", "sao_paulo"), "_station_temporal_data")
   values <- vapply(names, function(name) {

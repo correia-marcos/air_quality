@@ -1,34 +1,29 @@
 # ============================================================================================
-# IDB: Air monitoring
+# IDB: Air monitoring — transitional runner; targets cutover awaits acceptance
 # ============================================================================================
 #' @Goal: Master orchestrator to execute the entire data pipeline sequentially.
-# 
-#' @Description: This script allows coauthors and reviewers to reproduce the entire 
-# project by running a single file top-to-bottom. It sources individual module scripts 
+#
+#' @Description: This script allows coauthors and reviewers to reproduce the entire
+# project by running a single file top-to-bottom. It sources individual module scripts
 # in the strict dependency order required for the data architecture.
-# 
+#
 #' @Summary:
-#   0.   Download all raw data (Ground Stations, Census, MERRA-2)
-#   1.   Process and format city-specific data
-#   2.   Generate distance matrices
-#   3.   Detect and flag outliers
-#   4.   Estimate exposure (IDW)
-#   5.   Exposure regressions
-#   6.   Descriptive tables
-#   7.   Preserved temporal preparation
-#   8.   Tables and figures
+#   I. City preparation.
+#   II. Analysis and temporal preparation.
+#   III. Figures and tables.
 #
 #' @Date: August 2026
 #' @Author: Marcos Paulo
 # ============================================================================================
 
-# Load `here` to ensure pathing is robust regardless of the working directory
-library(here)
+# ============================================================================================
+# I: City preparation
+# ============================================================================================
 
 # ============================================================================================
-# Step 0: Download Raw Data
+# Download Raw Data
 # ============================================================================================
-# WARNING: These scripts fetch large datasets. If data/raw/ is already 
+# WARNING: These scripts fetch large datasets. If data/raw/ is already
 # populated, you should skip this section to save time and bandwidth.
 
 # source(here::here("scripts", "download_data", "download_bogota_data.R"))
@@ -38,9 +33,9 @@ library(here)
 # source(here::here("scripts", "download_data", "download_merra2_data.R"))
 
 # ============================================================================================
-# Step 1: Process City Data
+# Process City Data
 # ============================================================================================
-# These scripts format the raw inputs into standardized structures. 
+# These scripts format the raw inputs into standardized structures.
 # They do not depend on each other and can technically be run in any order here.
 
 source(here::here("scripts", "process_data", "process_bogota_data.R"))
@@ -49,30 +44,34 @@ source(here::here("scripts", "process_data", "process_santiago_data.R"))
 source(here::here("scripts", "process_data", "process_sao_paulo_data.R"))
 
 # ============================================================================================
-# Step 2: Generate Distance Matrices
+# Generate Distance Matrices
 # ============================================================================================
 # Calculates distances between census tracts and monitoring stations.
 # Depends entirely on the outputs generated in Step 1.
 
+
+# ============================================================================================
+# II: Analysis and temporal preparation
+# ============================================================================================
 source(here::here("scripts", "process_data", "generate_distance_matrices.R"))
 
 # ============================================================================================
-# Step 3: Outlier Detection
+# Outlier Detection
 # ============================================================================================
 # Flags anomalous pollution readings based on pre-defined thresholds.
 
 source(here::here("scripts", "process_data", "detect_outliers.R"))
 
 # ============================================================================================
-# Step 4: Estimate IDW Exposure
+# Estimate IDW Exposure
 # ============================================================================================
-# Estimates exposure using Inverse Distance Weighting. 
+# Estimates exposure using Inverse Distance Weighting.
 # Can utilize outlier flags from Step 3 for sensitivity analysis.
 
 source(here::here("scripts", "process_data", "estimate_idw.R"))
 
 # ============================================================================================
-# Step 5: Exposure Regressions
+# Exposure Regressions
 # ============================================================================================
 # Turns the geo-level exposure of Step 4 into quintile/decile gaps relative to the
 # top group, with clustered confidence intervals. Produces the inputs of Figures 7-8.
@@ -80,7 +79,7 @@ source(here::here("scripts", "process_data", "estimate_idw.R"))
 source(here::here("scripts", "process_data", "estimate_exposure.R"))
 
 # ============================================================================================
-# Step 6: Descriptive Tables
+# Descriptive Tables
 # ============================================================================================
 # Station counts, missing-data shares, WHO exceedances and the census summary. Needs the
 # cleaned panels from Step 3, the distance matrices from Step 2 and the processed census.
@@ -92,18 +91,20 @@ source(here::here("scripts", "process_data", "impute_missing_hourly.R"))
 source(here::here("scripts", "process_data", "estimate_exposure_imputed.R"))
 
 # ============================================================================================
-# Step 7: Preserved Temporal Preparation
+# Station-only temporal preparation
 # ============================================================================================
-# Preserve the manuscript's legacy station samples and MERRA-2 time support.
-# This includes the slow .nc4 extraction; pre-existing panels are not prerequisites.
-source(here::here("scripts", "process_data", "generate_panel_air_quality.R"))
-source(here::here("scripts", "process_data", "prepare_station_temporal.R"))
+# Average current observed metropolitan station measurements onto a complete hourly grid.
+source(here::here("scripts", "process_data", "prepare_station_hourly.R"))
 
 # ============================================================================================
-# Step 8: Tables & Images
+# Tables & Images
 # ============================================================================================
 # Final publication artefacts. These read only from data/processed/ or data/interim/.
 
+
+# ============================================================================================
+# III: Figures and tables
+# ============================================================================================
 source(here::here("scripts", "tables_images", "render_station_tables.R"))
 source(here::here("scripts", "tables_images", "render_missing_tables.R"))
 source(here::here("scripts", "tables_images", "render_census_tables.R"))
@@ -127,6 +128,8 @@ source(here::here("scripts", "tables_images", "figure_quintile_kernel_distributi
 # source(here::here("scripts", "tables_images", "figure_resolution_sensitivity.R"))
 
 # Optional supporting analyses: run `make merra2` after acquiring its extra inputs.
+# source(here::here("scripts", "process_data", "generate_panel_air_quality.R"))
+# source(here::here("scripts", "process_data", "prepare_station_temporal.R"))
 # source(here::here("scripts", "process_data", "process_merra2_panels.R"))
 # source(here::here("scripts", "tables_images", "figure_merra2_vs_stations.R"))
 # source(here::here("scripts", "tables_images", "figure_aerosol_composition.R"))
