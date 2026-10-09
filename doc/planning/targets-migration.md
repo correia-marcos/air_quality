@@ -1,6 +1,22 @@
 # Readable R scripts and a simpler targets pipeline
 
-## Current implementation — 5 October 2026
+## Current continuation — 8 October 2026
+
+The current checkout is `ffbe43f`. Marcos has committed several migration and particulate
+screening batches, but required helpers, recipes, tests and integration changes still differ
+from HEAD. The working candidate constructs 352 targets; the committed checkout cannot
+construct its graph without the missing station-hourly source. No agent staged or committed.
+
+The approved 2,000/6,000 µg/m³ screening bounds and compact observed audit schema supersede
+the unresolved CDMX treatment described below. Current production outputs and the release
+baseline still require regeneration and review. The supplied Docker run failed during
+Bogotá 2018 census reading; its cause is unconfirmed. Only Marcos runs Docker commands.
+
+See [the continuation and Docker handoff](migration-continuation-20261008.md) and
+[the exact pending file list](migration-review-files-20261008.csv). The 5 October checks
+below retain their original scope. Scientific acceptance and scheduler cutover remain open.
+
+## Implementation record — 5 October 2026
 
 Marcos authorized the revised station-only migration plan in the implementation session.
 The manuscript graph now has a 48-line entry point, 14 declaration modules and 340 targets.

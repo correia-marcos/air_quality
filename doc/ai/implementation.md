@@ -1,6 +1,8 @@
 # Implementation and evidence
 
-Current status: [station-only migration, 5 October 2026](../planning/station-only-targets-implementation.md).
+Current status: [migration continuation, 8 October 2026](../planning/migration-continuation-20261008.md).
+The [5 October station-only record](../planning/station-only-targets-implementation.md)
+retains that implementation's checks and limits.
 The dated records below retain earlier implementation and validation evidence; they are
 not the current execution specification.
 

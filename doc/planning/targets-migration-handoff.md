@@ -1,6 +1,16 @@
 # Targets migration: handoff for the next model
 
-## Current implementation — 5 October 2026
+## Current continuation — 8 October 2026
+
+Resume from [the continuation and Docker handoff](migration-continuation-20261008.md),
+including [the exact pending file list](migration-review-files-20261008.csv). The current
+working candidate constructs 352 targets; committed HEAD `ffbe43f` lacks required source
+files. Approved particulate screening and schema decisions are documented in
+[the screening guide](../reference/particulate_quality.md). Preserve those decisions and
+the historical evidence below. Only Marcos runs Docker commands; acceptance and the final
+scheduler cutover remain pending.
+
+## Implementation record — 5 October 2026
 
 Marcos authorized the revised station-only migration plan in the implementation session.
 The manuscript graph now has a 48-line entry point, 14 declaration modules and 340 targets.

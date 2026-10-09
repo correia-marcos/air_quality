@@ -1,0 +1,83 @@
+path,state,review_group,changed_in_this_continuation,note
+doc/HOW_TO_RUN.md,M,Current documentation,yes,Changed during this continuation; review together with existing hunks.
+doc/ai/evidence.md,M,Current documentation,yes,Changed during this continuation; review together with existing hunks.
+doc/ai/implementation.md,M,Current documentation,yes,Changed during this continuation; review together with existing hunks.
+doc/planning/migration-continuation-20261008.md,??,Current documentation,yes,Changed during this continuation; review together with existing hunks. File is absent from committed HEAD.
+doc/planning/migration-review-files-20261008.csv,??,Current documentation,yes,Exact pending-file inventory; include with the continuation handoff.
+doc/planning/station-only-targets-implementation.md,M,Current documentation,yes,Changed during this continuation; review together with existing hunks.
+doc/planning/targets-migration-handoff.md,M,Current documentation,yes,Changed during this continuation; review together with existing hunks.
+doc/planning/targets-migration.md,M,Current documentation,yes,Changed during this continuation; review together with existing hunks.
+scripts/validation_old_version/compare_bogota.R,M,Legacy validation,no,Already pending at task start; review status cannot be inferred from Git.
+scripts/validation_old_version/compare_bogota_raw_ground_stations.R,M,Legacy validation,no,Already pending at task start; review status cannot be inferred from Git.
+scripts/validation_old_version/compare_cdmx_raw_ground_stations.R,M,Legacy validation,no,Already pending at task start; review status cannot be inferred from Git.
+scripts/validation_old_version/compare_ground_stations_data.R,M,Legacy validation,no,Already pending at task start; review status cannot be inferred from Git.
+scripts/validation_old_version/plot_bogota_quintiles.R,M,Legacy validation,no,Already pending at task start; review status cannot be inferred from Git.
+src/general_utilities/config_utils_validation_old_version.R,M,Legacy validation,no,Already pending at task start; review status cannot be inferred from Git.
+src/general_utilities/validation/report_helpers.R,??,Legacy validation,no,Already pending at task start; review status cannot be inferred from Git. File is absent from committed HEAD.
+src/general_utilities/config_utils_resolution.R,M,Optional resolution,no,Already pending at task start; review status cannot be inferred from Git.
+src/general_utilities/process/resolution_review.R,M,Optional resolution,no,Already pending at task start; review status cannot be inferred from Git.
+src/general_utilities/process/resolution_sensitivity.R,M,Optional resolution,no,Already pending at task start; review status cannot be inferred from Git.
+src/general_utilities/process/resolution_workflow.R,??,Optional resolution,no,Already pending at task start; review status cannot be inferred from Git. File is absent from committed HEAD.
+scripts/download_data/download_merra2_data.R,M,Optional satellite/context work,no,Already pending at task start; review status cannot be inferred from Git.
+scripts/process_data/generate_panel_air_quality.R,M,Optional satellite/context work,no,Already pending at task start; review status cannot be inferred from Git.
+scripts/process_data/prepare_station_temporal.R,M,Optional satellite/context work,no,Already pending at task start; review status cannot be inferred from Git.
+scripts/tables_images/figure_aerosol_composition.R,M,Optional satellite/context work,no,Already pending at task start; review status cannot be inferred from Git.
+scripts/tables_images/figure_merra2_vs_stations.R,M,Optional satellite/context work,no,Already pending at task start; review status cannot be inferred from Git.
+scripts/tables_images/figure_pollution_stations_by_hour.R,M,Optional satellite/context work,no,Already pending at task start; review status cannot be inferred from Git.
+scripts/tables_images/figure_study_area_maps.R,M,Optional satellite/context work,no,Already pending at task start; review status cannot be inferred from Git.
+src/general_utilities/config_utils_download_data.R,M,Optional satellite/context work,no,Already pending at task start; review status cannot be inferred from Git.
+src/general_utilities/config_utils_plot_tables.R,M,Optional satellite/context work,no,Already pending at task start; review status cannot be inferred from Git.
+src/general_utilities/plot/merra2_figures.R,??,Optional satellite/context work,no,Already pending at task start; review status cannot be inferred from Git. File is absent from committed HEAD.
+src/general_utilities/process/merra2.R,M,Optional satellite/context work,no,Already pending at task start; review status cannot be inferred from Git.
+config/analysis_settings.R,M,Particulate integration,no,Already pending at task start; review status cannot be inferred from Git.
+config/targets/distance_idw.R,M,Particulate integration,no,Already pending at task start; review status cannot be inferred from Git.
+doc/reference/data_dictionary.md,M,Particulate integration,no,Already pending at task start; review status cannot be inferred from Git.
+doc/reference/particulate_quality.md,M,Particulate integration,no,Already pending at task start; review status cannot be inferred from Git.
+src/general_utilities/validation/compare_results.R,M,Particulate integration,no,Already pending at task start; review status cannot be inferred from Git.
+tests/testthat/test-imputation-policy.R,M,Particulate integration,no,Already pending at task start; review status cannot be inferred from Git.
+scripts/process_data/build_bogota_localidad_crosswalk.R,M,Reader-facing recipes,no,Already pending at task start; review status cannot be inferred from Git.
+scripts/process_data/estimate_exposure_imputed.R,M,Reader-facing recipes,no,Already pending at task start; review status cannot be inferred from Git.
+scripts/process_data/generate_inegi_lab_inputs.R,M,Reader-facing recipes,no,Already pending at task start; review status cannot be inferred from Git.
+scripts/tables_images/figure_imputation_diagnostics.R,M,Reader-facing recipes,no,Already pending at task start; review status cannot be inferred from Git.
+scripts/tables_images/figure_kernel_distributions.R,M,Reader-facing recipes,no,Already pending at task start; review status cannot be inferred from Git.
+scripts/tables_images/figure_missing_heatmap.R,M,Reader-facing recipes,no,Already pending at task start; review status cannot be inferred from Git.
+scripts/tables_images/figure_stations_on_metro_area.R,M,Reader-facing recipes,no,Already pending at task start; review status cannot be inferred from Git.
+scripts/tables_images/render_exposure_tables.R,M,Reader-facing recipes,no,Already pending at task start; review status cannot be inferred from Git.
+scripts/tables_images/render_station_tables.R,M,Reader-facing recipes,no,Already pending at task start; review status cannot be inferred from Git.
+src/general_utilities/process/exposure_regressions.R,M,Reader-facing recipes,no,Already pending at task start; review status cannot be inferred from Git.
+tests/testthat/test-exposure-regressions.R,M,Reader-facing recipes,no,Already pending at task start; review status cannot be inferred from Git.
+tests/testthat/test-imputation-workflow.R,M,Reader-facing recipes,no,Already pending at task start; review status cannot be inferred from Git.
+tests/testthat/test-integration.R,M,Reader-facing recipes,no,Already pending at task start; review status cannot be inferred from Git.
+tests/testthat/test-rendering-checkpoints.R,M,Reader-facing recipes,no,Already pending at task start; review status cannot be inferred from Git.
+Makefile,M,Station route and graph checks,no,Already pending at task start; review status cannot be inferred from Git.
+scripts/process_data/prepare_station_hourly.R,??,Station route and graph checks,no,Already pending at task start; review status cannot be inferred from Git. File is absent from committed HEAD.
+scripts/run_pipeline.R,M,Station route and graph checks,no,Already pending at task start; review status cannot be inferred from Git.
+scripts/run_targets.R,??,Station route and graph checks,no,Already pending at task start; review status cannot be inferred from Git. File is absent from committed HEAD.
+scripts/tables_images/figure_station_temporal.R,M,Station route and graph checks,no,Already pending at task start; review status cannot be inferred from Git.
+src/general_utilities/plot/exposure_figures.R,M,Station route and graph checks,no,Already pending at task start; review status cannot be inferred from Git.
+src/general_utilities/plot/timeseries_hourly.R,M,Station route and graph checks,no,Already pending at task start; review status cannot be inferred from Git.
+src/general_utilities/process/station_temporal.R,??,Station route and graph checks,no,Already pending at task start; review status cannot be inferred from Git. File is absent from committed HEAD.
+tests/check-reader-workflows.R,M,Station route and graph checks,no,Already pending at task start; review status cannot be inferred from Git.
+tests/check-targets-contracts.R,M,Station route and graph checks,no,Already pending at task start; review status cannot be inferred from Git.
+tests/testthat/helper-temporal.R,??,Station route and graph checks,no,Already pending at task start; review status cannot be inferred from Git. File is absent from committed HEAD.
+tests/testthat/test-bogota-geography.R,??,Station route and graph checks,no,Already pending at task start; review status cannot be inferred from Git. File is absent from committed HEAD.
+tests/testthat/test-city-preparation-targets.R,??,Station route and graph checks,no,Already pending at task start; review status cannot be inferred from Git. File is absent from committed HEAD.
+tests/testthat/test-distance-matrices.R,??,Station route and graph checks,no,Already pending at task start; review status cannot be inferred from Git. File is absent from committed HEAD.
+tests/testthat/test-distance-targets.R,??,Station route and graph checks,no,Already pending at task start; review status cannot be inferred from Git. File is absent from committed HEAD.
+tests/testthat/test-pipeline-paths.R,M,Station route and graph checks,no,Already pending at task start; review status cannot be inferred from Git.
+tests/testthat/test-station-figure-checkpoints.R,??,Station route and graph checks,no,Already pending at task start; review status cannot be inferred from Git. File is absent from committed HEAD.
+tests/testthat/test-station-hourly.R,??,Station route and graph checks,no,Already pending at task start; review status cannot be inferred from Git. File is absent from committed HEAD.
+tests/testthat/test-station-temporal.R,M,Station route and graph checks,no,Already pending at task start; review status cannot be inferred from Git.
+.gitignore,M,Verification and packaging,no,Already pending at task start; review status cannot be inferred from Git.
+config/paper_artifacts.csv,M,Verification and packaging,no,Already pending at task start; review status cannot be inferred from Git.
+docker-compose.release.yml,M,Verification and packaging,no,Already pending at task start; review status cannot be inferred from Git.
+docker-compose.verify.yml,M,Verification and packaging,no,Already pending at task start; review status cannot be inferred from Git.
+docker-compose.yml,M,Verification and packaging,no,Already pending at task start; review status cannot be inferred from Git.
+scripts/export/export_paper.R,D,Verification and packaging,no,Already pending at task start; review status cannot be inferred from Git. Superseded by the committed tools/reproduction path.
+scripts/verification/check_manuscript.R,D,Verification and packaging,no,Already pending at task start; review status cannot be inferred from Git. Superseded by the committed tools/reproduction path.
+scripts/verification/run_stage.R,D,Verification and packaging,no,Already pending at task start; review status cannot be inferred from Git. Superseded by the committed tools/reproduction path.
+scripts/verification/verify.R,D,Verification and packaging,no,Already pending at task start; review status cannot be inferred from Git. Superseded by the committed tools/reproduction path.
+src/general_utilities/reproducibility.R,M,Verification and packaging,no,Already pending at task start; review status cannot be inferred from Git.
+src/general_utilities/verification_cli.R,M,Verification and packaging,yes,Changed during this continuation; review together with existing hunks.
+tests/testthat/test-artifact-comparisons.R,??,Verification and packaging,yes,Changed during this continuation; review together with existing hunks. File is absent from committed HEAD.
+tools/reproduction/verify.R,M,Verification and packaging,yes,Changed during this continuation; review together with existing hunks.

@@ -1,5 +1,10 @@
 # Station-only manuscript migration — 5 October 2026
 
+This is the dated 5 October implementation record. For subsequent human commits, approved
+particulate screening/schema changes, current checks and pending files, read
+[the 8 October continuation](migration-continuation-20261008.md). The extreme-value and
+missing-appendix findings below describe the earlier checkout, not today's accepted treatment.
+
 The station-only graph and tooling changes are implemented in the working tree. Scientific acceptance
 and the default scheduler cutover are still pending. No files were staged or committed.
 The starting checkout was `7e75514`, with 66 modified tracked files, 177 untracked files and

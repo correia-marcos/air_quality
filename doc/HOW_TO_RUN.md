@@ -269,18 +269,27 @@ known limitations; it is not a clean-room reproduction claim.
 
 ```sh
 Rscript tools/reproduction/verify.R --full
+Rscript tools/reproduction/verify.R --full --targets
 ```
 
 `--full` builds the image and invokes `docker-compose.verify.yml`. The verifier mounts
 `data/raw/`, `data/downloads/`, and `data/_legacy/` read-only; starts generated directories
-empty; uses image-baked code; and disables runtime networking. It executes `make -B all`, so
-geography and other derived products must be recreated from the declared source copies.
+empty; uses image-baked code; and disables runtime networking. The default executes
+`make -B all`; `--targets` selects the candidate manuscript graph with a fresh cache.
+Both routes recreate geography and derived products from the declared source copies.
 
 The verifier reports missing prerequisites before expensive stages where possible. It records
 the supplied code revision and patch separately from the container's code inventory; it only
 queries Git when repository metadata is present. A failed stage, missing source, skipped
 required check, incomplete manuscript inspection, or missing reviewed baseline remains a
 failure or limitation in the report.
+
+If a container R worker crashes, its stage record includes `memory_events_before` and
+`memory_events_after` when Linux cgroup counters are available. An increase in `oom_kill`
+supports a container memory-limit kill; the generic callr crash message alone does not.
+These counters describe the container rather than an individual R process. For the current
+human-run Docker command and pending acceptance work, see
+[the continuation handoff](planning/migration-continuation-20261008.md).
 
 Keep a tested image by identity rather than mutable tag:
 
