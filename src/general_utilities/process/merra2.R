@@ -546,3 +546,20 @@ compute_correlations_for_cities <- function(city_dfs,
   }
   return(results)
 }
+
+# ----------------------------------------------------------------------------------------
+# Function: join_station_hourly_merra2
+#' @param hourly Observed city-hour summary with Date, Hour, pm25_stations, n_reporting.
+#' @param merra2 PM2.5 conversion with Date, Hour and pm25_estimate columns.
+#' @return Optional comparison on MERRA timestamp support, including duplicate MERRA hours.
+#' @details Joins already summarized current stations without reweighting individual readings.
+# Original balanced-panel comparisons remain available through legacy validation functions.
+# ----------------------------------------------------------------------------------------
+join_station_hourly_merra2 <- function(hourly, merra2) {
+  station <- dplyr::select(hourly, Date, Hour, pm25_stations, n_reporting)
+  station$Date <- as.Date(station$Date)
+  if (anyDuplicated(station[c("Date", "Hour")])) stop("Station city-hours must be unique.")
+  satellite <- dplyr::select(merra2, Date, Hour, pm25_merra2 = pm25_estimate)
+  satellite$Date <- as.Date(satellite$Date)
+  dplyr::left_join(satellite, station, by = c("Date", "Hour"))
+}

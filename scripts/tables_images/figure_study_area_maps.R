@@ -11,24 +11,24 @@
 # in figure_stations_on_metro_area.R.
 #
 #' @Summary:
-#   I.   Import data: city and metro shapefiles, country and state boundaries.
-#   II.  Continental map: the four cities within Latin America.
-#   III. National map: the CDMX metro area within Mexico, plain and over a basemap.
+#   I. Import data.
+#   II. Continental map — the four cities within Latin America.
+#   III. National map — the CDMX metro area within Mexico.
 #
 #' @Date: August 2026
 #' @Author: Marcos Paulo
 # ============================================================================================
 
 # Get all libraries and functions
+# ============================================================================================
+# I: Import data
+# ============================================================================================
 source(here::here("src", "general_utilities", "config_utils_plot_tables.R"))
 
 # Register Tex Gyre Pagella and set the paper ggplot theme for this script.
 set_paper_theme()
 
-# ============================================================================================
-# I: Import data
-# ============================================================================================
-dir_shapefiles <- here::here("data", "raw", "cities_shapefiles")
+dir_shapefiles <- here::here("data", "interim", "geospatial_data")
 outdir_maps    <- here::here("results", "figures", "maps")
 
 # Figure geometry, shared by every map here.
@@ -37,10 +37,14 @@ fig_height <- 9
 fig_dpi    <- 300
 
 # City metro boundaries for the continental map
-bogota        <- sf::st_read(file.path(dir_shapefiles, "Bogota_metro"))
-ciudad_mexico <- sf::st_read(file.path(dir_shapefiles, "Mexico_city"))
-santiago      <- sf::st_read(file.path(dir_shapefiles, "Santiago"))
-sao_paulo     <- sf::st_read(file.path(dir_shapefiles, "Sao_Paulo"))
+bogota        <- sf::st_read(file.path(dir_shapefiles, "bogota",
+    "bogota_area_metro_2018.gpkg"))
+ciudad_mexico <- sf::st_read(file.path(dir_shapefiles, "cdmx",
+    "cdmx_area_metro_2024.gpkg"))
+santiago      <- sf::st_read(file.path(dir_shapefiles, "santiago",
+    "gran_santiago_area_2024.gpkg"))
+sao_paulo     <- sf::st_read(file.path(dir_shapefiles, "sao_paulo",
+    "sao_paulo_metro_2010.gpkg"))
 
 # Country and state boundaries
 north_america <- ne_countries(continent = "North America", returnclass = "sf")

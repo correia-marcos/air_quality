@@ -11,23 +11,23 @@
 # were previously repeated across six near-identical blocks.
 #
 #' @Summary:
-#   I.   Import data: the four cities' MERRA-2 PM2.5 panels.
-#   II.  One cross-city distribution per aerosol species.
-#   III. One multi-species distribution set per city.
+#   I. Import data.
+#   II. Cross-city distribution per aerosol species.
+#   III. Per-city distribution sets.
 #
 #' @Date: August 2026
 #' @Author: Marcos
 # ============================================================================================
 
 # Get all libraries and functions
+# ============================================================================================
+# I: Import data
+# ============================================================================================
 source(here::here("src", "general_utilities", "config_utils_plot_tables.R"))
 
 # Register Tex Gyre Pagella and set the paper ggplot theme for this script.
 set_paper_theme()
 
-# ============================================================================================
-# I: Import data
-# ============================================================================================
 dir_pm25       <- here::here("data", "processed", "merra2_pm25")
 outdir_joint   <- here::here("results", "figures", "satellite")
 outdir_bycity  <- here::here("results", "figures", "satellite")
@@ -69,6 +69,7 @@ species_specs <- data.frame(
   stringsAsFactors = FALSE
 )
 
+species_plots <- list()
 for (i in seq_len(nrow(species_specs))) {
   p <- plot_variable_across_cities(
     city_data,
@@ -77,6 +78,7 @@ for (i in seq_len(nrow(species_specs))) {
     max_y_limit = if (is.na(species_specs$max_y[i])) NULL else species_specs$max_y[i],
     max_x_limit = species_specs$max_x[i])
 
+  species_plots[[species_specs$variable[i]]] <- p
   ggplot2::ggsave(
     filename = file.path(outdir_joint, paste0(species_specs$file_stem[i], ".pdf")),
     plot     = p, device = cairo_pdf,

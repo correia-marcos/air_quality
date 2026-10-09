@@ -2,26 +2,25 @@
 # IDB: Air monitoring
 # ============================================================================================
 #' @Goal: Download MERRA-2 aerosol diagnostics files for a specified date range
-# 
-#' @Description: This script uses functions previously created on the config utilities file to 
+#
+#' @Description: This script uses functions previously created on the config utilities file to
 # generate daily URLs as a vector and then download all .nc4 files the vector defines
-# 
-#' @Summary: 
-#   I.   Load packages and utility functions
-#   II.  Parse command-line arguments
-#   III. Generate MERRA-2 URLs
-#   IV.  Download files and report status
-# 
+#
+#' @Summary:
+#   I. Import (create) data.
+#   II. Download data.
+#   III. Check acquisition outputs.
+#
 #' @Date: Apr 2025
 #' @Author: Marcos Paulo
 # ============================================================================================
 
 # Get all libraries and functions
-source(here::here("src", "general_utilities", "config_utils_download_data.R"))
-
 # ============================================================================================
 # I: Import (create) data
 # ============================================================================================
+source(here::here("src", "general_utilities", "config_utils_download_data.R"))
+
 # If we’re inside RStudio or other IDE (interactive format), supply sensible defaults:
 if (interactive()) {
   start_date      <- "2023-01-01"
@@ -33,7 +32,7 @@ if (interactive()) {
   # running via Rscript / Docker entrypoint
   args <- commandArgs(trailingOnly = TRUE)
   if (length(args) < 4) {
-    stop("Usage: Rscript run_download_merra2.R",
+    stop("Usage: Rscript scripts/download_data/download_merra2_data.R",
          "<start_date> <end_date> <dataset_version> <dest_dir> [var_name]")
   }
   start_date      <- args[1]                # "YYYY-MM-DD"
@@ -44,10 +43,10 @@ if (interactive()) {
 }
 
 # ============================================================================================
-# II: Process and download data 
+# II: Download data
 # ============================================================================================
 # Ensure output folder exists
-outdir <- here("data", "raw", "merra2_aerosol_products")
+outdir <- here::here("data", "raw", "merra2_aerosol_products")
 dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
 
 # Generate URLs
@@ -67,12 +66,15 @@ results <- download_merra2_files(
 # Check the download process
 # ---
 
+# ============================================================================================
+# III: Check acquisition outputs
+# ============================================================================================
 # Summary
 total   <- length(results)
 success <- sum(results)
 failed  <- total - success
 
-# Show the result 
+# Show the result
 cat(sprintf("Downloaded %d/%d files successfully. %d failed.\n", success, total, failed))
 if (failed > 0) {
   quit(status = 1)

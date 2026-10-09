@@ -12,26 +12,26 @@
 # are where the two sources diverge most.
 #
 #' @Summary:
-#   I.   Import data: merged MERRA-2/station series, inversion flags, rasters, shapefiles.
-#   II.  Time series per city, smoothed and raw.
+#   I. Import data.
+#   II. Time series per city, smoothed and raw.
 #   III. Santiago excluding thermal-inversion hours.
-#   IV.  MERRA-2 grid footprint over each metro area.
+#   IV. MERRA-2 grid footprint over each metro area.
 #
 #' @Date: August 2026
 #' @Author: Marcos Paulo
 # ============================================================================================
 
 # Get all libraries and functions
+# ============================================================================================
+# I: Import data
+# ============================================================================================
 source(here::here("src", "general_utilities", "config_utils_plot_tables.R"))
 
 # Register Tex Gyre Pagella and set the paper ggplot theme for this script.
 set_paper_theme()
 
-# ============================================================================================
-# I: Import data
-# ============================================================================================
 dir_series     <- here::here("data", "processed", "merra2_stations_pm25")
-dir_shapefiles <- here::here("data", "raw", "cities_shapefiles")
+dir_shapefiles <- here::here("data", "interim", "geospatial_data")
 
 outdir_series  <- here::here("results", "figures", "satellite")
 outdir_ti      <- here::here("results", "figures", "satellite")
@@ -72,13 +72,17 @@ nc_files <- list.files(here::here("data", "raw", "merra2_aerosol_products"),
                        full.names = TRUE)
 
 metro_specs <- list(
-  list(sf = sf::st_read(file.path(dir_shapefiles, "Bogota_metro")),
+  list(sf = sf::st_read(file.path(dir_shapefiles, "bogota",
+    "bogota_area_metro_2018.gpkg")),
        stem = "bogota",        label = "Bogotá Metro Area"),
-  list(sf = sf::st_read(file.path(dir_shapefiles, "Mexico_city")),
+  list(sf = sf::st_read(file.path(dir_shapefiles, "cdmx",
+    "cdmx_area_metro_2024.gpkg")),
        stem = "ciudad_mexico", label = "Ciudad de México"),
-  list(sf = sf::st_read(file.path(dir_shapefiles, "Santiago")),
+  list(sf = sf::st_read(file.path(dir_shapefiles, "santiago",
+    "gran_santiago_area_2024.gpkg")),
        stem = "santiago",      label = "Santiago"),
-  list(sf = sf::st_read(file.path(dir_shapefiles, "Sao_Paulo")),
+  list(sf = sf::st_read(file.path(dir_shapefiles, "sao_paulo",
+    "sao_paulo_metro_2010.gpkg")),
        stem = "sao_paulo",     label = "Sao Paulo")
 )
 
@@ -87,7 +91,7 @@ metro_specs <- list(
 # ============================================================================================
 dir.create(outdir_series, recursive = TRUE, showWarnings = FALSE)
 
-# Two versions of each series. The rolling mean is what the paper shows; the raw series is
+# Two versions of each series. The rolling mean smooths the optional comparison; the raw series is
 # kept because the correlation annotation differs sharply between them.
 for (s in city_specs) {
   smoothed <- plot_pm25_timeseries_smooth(
@@ -109,6 +113,14 @@ for (s in city_specs) {
     file.path(outdir_series, paste0(s$stem, "_time_series_pm25.pdf")),
     raw, device = cairo_pdf,
     width = fig_width, height = fig_height, dpi = fig_dpi)
+}
+
+# Source-comparison bar charts belong to the optional satellite route.
+for (s in city_specs) {
+  bar_plot <- plot_hourly_avg_pollution(df = s$df, region_name = s$label)
+  save_plot_pdf(bar_plot, file.path(outdir_series,
+    paste0(s$stem, "_hourly_avg_pm25_barplot.pdf")), width = fig_width,
+    height = fig_height, dpi = fig_dpi, bg = NULL)
 }
 
 # ============================================================================================

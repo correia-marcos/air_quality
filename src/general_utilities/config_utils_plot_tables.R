@@ -11,15 +11,16 @@
 # ============================================================================================
 
 # List of required packages
-source(here::here("src", "pipeline", "packages.R"))
-pkgs <- pipeline_packages("plot")
+pkgs <- c("arrow", "cowplot", "data.table", "dplyr", "ggmap", "ggplot2", "ggspatial",
+    "ggridges", "haven", "here", "htmltools", "kableExtra", "leaflet", "lubridate",
+    "rlang", "rnaturalearth", "rnaturalearthdata", "rnaturalearthhires", "sp", "sf",
+    "showtext", "terra", "tidyr", "viridisLite", "viridis", "zoo")
 
 # Shared setup mechanism, leaf helpers and the paper theme (one copy project-wide).
 source(here::here("src", "general_utilities", "setup_packages.R"))
 source(here::here("src", "general_utilities", "base_utils.R"))
 source(here::here("src", "general_utilities", "theme_paper.R"))
 
-ensure_installed(pkgs)
 attach_packages(pkgs)
 rm(pkgs)
 
@@ -32,6 +33,7 @@ source(here::here("src", "general_utilities", "process", "geo_ids.R"))
 source(here::here("src", "general_utilities", "process", "exposure_regressions.R"))
 source(here::here("src", "general_utilities", "plot", "maps.R"))
 source(here::here("src", "general_utilities", "plot", "timeseries_hourly.R"))
+source(here::here("src", "general_utilities", "plot", "merra2_figures.R"))
 source(here::here("src", "general_utilities", "plot", "exposure_figures.R"))
 source(here::here("src", "general_utilities", "plot", "latex_tables.R"))
 source(here::here("src", "general_utilities", "plot", "station_monitoring.R"))

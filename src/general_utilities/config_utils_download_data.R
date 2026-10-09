@@ -43,7 +43,6 @@ source(here::here("src", "general_utilities", "setup_packages.R"))
 source(here::here("src", "general_utilities", "base_utils.R"))
 source(here::here("src", "general_utilities", "reproducibility.R"))
 
-ensure_installed(pkgs)
 attach_packages(pkgs)
 rm(pkgs)
 
