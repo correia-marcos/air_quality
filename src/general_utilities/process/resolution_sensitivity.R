@@ -69,21 +69,28 @@ resolution_aggregate <- function(fine, keys) {
   x[]
 }
 
-#' @param cells Fine geo_id, edu_quintile and person_weight.
+#' @param cells Fine geo_id, the group column and person_weight.
 #' @param assignment Fine geo_id,y,parent_id.
 #' @param inference Whether sufficiently supported geographic-cluster CIs are requested.
-#' @return List of full five-group profile and a one-row contrast/feasibility table.
-#' @details HC1 matches the existing saturated weighted group regression. Missing
-#   endpoint groups or a zero Q5 mean produce NA, never an arbitrary denominator.
-resolution_estimate <- function(cells, assignment, inference = FALSE) {
+#' @param group_col Individual group column: "edu_quintile" or "edu_level".
+#' @param groups The city's groups, lowest first; the gap is first minus last.
+#' @return List of the full group profile and a one-row contrast/feasibility table.
+#' @details HC1 matches the existing saturated weighted group regression and needs every
+#   group populated. Missing endpoint groups or a zero top-group mean produce NA, never
+#   an arbitrary denominator. Endpoint means are q1/q5 for quintiles, which saved
+#   products and the review workflow read, and low_mean/high_mean otherwise.
+resolution_estimate <- function(cells, assignment, inference = FALSE,
+                                group_col = "edu_quintile", groups = 1:5) {
   if (anyDuplicated(assignment$geo_id)) stop("Duplicate exposure assignment.")
+  k <- length(groups)
   x <- merge(cells, assignment[, .(geo_id, parent_id, y)], by = "geo_id")
   x <- x[is.finite(y) & is.finite(person_weight) & person_weight > 0 &
-           edu_quintile %in% 1:5 & !is.na(parent_id)]
+           get(group_col) %in% groups & !is.na(parent_id)]
   p <- x[, .(population = sum(person_weight),
-             mean = stats::weighted.mean(y, person_weight)), by = edu_quintile]
-  p <- merge(data.table::data.table(edu_quintile = 1:5), p,
-             by = "edu_quintile", all.x = TRUE)
+             mean = stats::weighted.mean(y, person_weight)), by = group_col]
+  frame <- data.table::data.table(groups)
+  data.table::setnames(frame, group_col)
+  p <- merge(frame, p, by = group_col, all.x = TRUE)
   p[is.na(population), population := 0]
   p[, share := if (sum(population) > 0) population / sum(population) else NA_real_]
   pop <- sum(p$population)
@@ -91,59 +98,67 @@ resolution_estimate <- function(cells, assignment, inference = FALSE) {
   g <- nrow(cluster_pop)
   effective <- if (pop > 0) 1 / sum((cluster_pop$w / pop)^2) else 0
   max_share <- if (pop > 0) max(cluster_pop$w) / pop else NA_real_
-  gap <- p$mean[1] - p$mean[5]
-  normalized <- if (is.finite(p$mean[5]) && p$mean[5] != 0) {
-    100 * (p$mean[1] / p$mean[5] - 1)
+  gap <- p$mean[1] - p$mean[k]
+  normalized <- if (is.finite(p$mean[k]) && p$mean[k] != 0) {
+    100 * (p$mean[1] / p$mean[k] - 1)
   } else NA_real_
   status <- if (!is.finite(gap)) "missing_endpoint_group" else "descriptive"
   se <- low <- high <- NA_real_
   # Geographic cells reproduce the existing regression's row count and HC1 factor.
   z <- x[, .(w = sum(person_weight), y = stats::weighted.mean(y, person_weight)),
-         by = .(parent_id, edu_quintile)]
+         by = c("parent_id", group_col)]
   n <- nrow(z)
   if (inference && all(p$population > 0) && g >= 50L && effective >= 30 &&
-      max_share < 0.2 && n > 5L) {
-    z <- merge(z, p[, .(edu_quintile, population, mean)], by = "edu_quintile")
+      max_share < 0.2 && n > k) {
+    z <- merge(z, p[, c(group_col, "population", "mean"), with = FALSE], by = group_col)
     z[, score := w * (y - mean) / population *
-         data.table::fifelse(edu_quintile == 1, 1,
-           data.table::fifelse(edu_quintile == 5, -1, 0))]
+         data.table::fifelse(get(group_col) == groups[1], 1,
+           data.table::fifelse(get(group_col) == groups[k], -1, 0))]
     scores <- z[, .(score = sum(score)), by = parent_id]
-    se <- sqrt(sum(scores$score^2) * g / (g - 1) * (n - 1) / (n - 5))
+    se <- sqrt(sum(scores$score^2) * g / (g - 1) * (n - 1) / (n - k))
     low <- gap - stats::qt(0.975, g - 1) * se
     high <- gap + stats::qt(0.975, g - 1) * se
     status <- "conditional_cluster_HC1"
   } else if (inference && is.finite(gap)) status <- "insufficient_cluster_support"
-  list(profile = p, contrast = data.table::data.table(
-    gap = gap, normalized_pct = normalized, q1 = p$mean[1], q5 = p$mean[5],
+  contrast <- data.table::data.table(
+    gap = gap, normalized_pct = normalized, low_mean = p$mean[1], high_mean = p$mean[k],
     population = pop, n_units = data.table::uniqueN(x$geo_id), n_clusters = g,
     effective_clusters = effective, max_cluster_share = max_share,
     populated_groups = sum(p$population > 0), n_cells = n, se = se,
-    lower = low, upper = high, inference_status = status))
+    lower = low, upper = high, inference_status = status)
+  if (group_col == "edu_quintile") {
+    data.table::setnames(contrast, c("low_mean", "high_mean"), c("q1", "q5"))
+  }
+  list(profile = p, contrast = contrast)
 }
 
-#' @param cells Fine-unit quintile population cells.
+#' @param cells Fine-unit group population cells.
 #' @param pair Fine geo_id,parent_id,y0,y1 assignments.
 #' @param draws Optional parent-index matrix, one column per replication.
 #' @param n_boot Number of replications.
 #' @param seed Reproducible seed; the cluster is the comparison parent.
+#' @param group_col Individual group column: "edu_quintile" or "edu_level".
+#' @param groups The city's groups, lowest first; the endpoints are first and last.
 #' @return Replicate estimates and percentile intervals for paired absolute differences.
 #' @details Whole-parent resampling leaves each parent's population-weighted A mean
 #   unchanged. Precollapsing numerators is algebraically identical to recomputing it
 #   separately for each drawn parent, with unique draw identifiers (no cross-products).
 resolution_bootstrap <- function(cells, pair, n_boot = 999L, seed = 20260910L,
-                                 draws = NULL) {
+                                 draws = NULL, group_col = "edu_quintile",
+                                 groups = 1:5) {
   if (anyDuplicated(pair$geo_id)) stop("Duplicate paired assignment.")
+  endpoints <- c(groups[1], groups[length(groups)])
   x <- merge(cells, pair, by = "geo_id")
-  x <- x[edu_quintile %in% c(1L, 5L) & person_weight > 0 &
+  x <- x[get(group_col) %in% endpoints & person_weight > 0 &
            is.finite(y0) & is.finite(y1) & !is.na(parent_id)]
   parents <- sort(unique(pair$parent_id[!is.na(pair$parent_id)]))
   if (length(parents) < 2L) stop("Paired inference requires multiple parent clusters.")
   sums <- x[, .(w = sum(person_weight), a = sum(person_weight * y0),
-                b = sum(person_weight * y1)), by = .(parent_id, edu_quintile)]
+                b = sum(person_weight * y1)), by = c("parent_id", group_col)]
   mat <- matrix(0, length(parents), 6L)
-  for (q in c(1L, 5L)) {
-    z <- sums[edu_quintile == q]
-    offset <- if (q == 1L) 0L else 3L
+  for (q in endpoints) {
+    z <- sums[get(group_col) == q]
+    offset <- if (q == endpoints[1]) 0L else 3L
     mat[match(z$parent_id, parents), offset + 1:3] <- as.matrix(z[, .(w, a, b)])
   }
   if (is.null(draws)) {
@@ -187,6 +202,25 @@ resolution_classify <- function(census, keys) {
     assign_socio_group(areas, "education_mean", "pop_total", 5L, "area_quintile")
     merge(keys[level == lv], areas[, .(parent_id = geo_id, area_quintile)],
           by = "parent_id", all.x = TRUE)
+  }))
+}
+
+#' @param cells Fine geo_id, the level column and person_weight (education-reporting).
+#' @param keys Long crosswalk.
+#' @param group_col Individual level column. Default "edu_level".
+#' @return Long fine-ID to area-level mapping (area_level), including unclassified units.
+#' @details Each parent takes the weighted median level of its education-reporting
+#   adults (resolution_weighted_quantile(): lower median on ties). Levels are ordinal,
+#   so no categories are averaged and no group is forced to exist.
+resolution_classify_median <- function(cells, keys, group_col = "edu_level") {
+  area_col <- sub("^edu_", "area_", group_col)
+  data.table::rbindlist(lapply(unique(keys$level), function(lv) {
+    x <- merge(cells, keys[level == lv & !is.na(parent_id)], by = "geo_id")
+    areas <- x[, .(area = as.integer(resolution_weighted_quantile(get(group_col),
+                                                                  person_weight, .5))),
+               by = parent_id]
+    data.table::setnames(areas, "area", area_col)
+    merge(keys[level == lv], areas, by = "parent_id", all.x = TRUE)
   }))
 }
 

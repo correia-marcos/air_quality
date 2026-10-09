@@ -14,6 +14,10 @@
 #   6. resolution_monitoring_summary
 #   7. resolution_bogota_class_breakdown
 #   8. resolution_buffer_comparison
+#   9. resolution_label_supports
+#   10. resolution_buffer_plot_data
+#   11. resolution_headline_summary
+#   12. resolution_tie_splits
 #' @Date: September 2026
 #' @Author: Marcos Paulo
 # ==========================================================================================
@@ -232,15 +236,119 @@ resolution_bogota_class_breakdown <- function(keys, population) {
 #' @param base        Saved contrasts of the baseline buffer.
 #' @param alternative Saved contrasts of the alternative buffer.
 #' @param labels      Suffixes for the two buffers, e.g. c("3km", "20km").
+#' @param means       Endpoint-mean columns: c("q1", "q5") for quintiles,
+#   c("low_mean", "high_mean") for harmonized education levels.
 #
 #' @return  data.table per city, design, level and outcome with gap, normalized gap,
-#   population, units and clusters under both buffers, and the gap change.
+#   endpoint means, population, units and clusters under both buffers, and the gap change.
 # ------------------------------------------------------------------------------------------
-resolution_buffer_comparison <- function(base, alternative, labels = c("3km", "20km")) {
-  cols <- c("gap", "normalized_pct", "q1", "q5", "population", "n_units", "n_clusters")
+resolution_buffer_comparison <- function(base, alternative, labels = c("3km", "20km"),
+                                         means = c("q1", "q5")) {
+  cols <- c("gap", "normalized_pct", means, "population", "n_units", "n_clusters")
   keys <- c("city_id", "design", "level", "outcome")
   x <- merge(base[, c(keys, cols), with = FALSE], alternative[, c(keys, cols),
              with = FALSE], by = keys, all = TRUE, suffixes = paste0("_", labels))
   x[, gap_change := get(paste0("gap_", labels[2])) - get(paste0("gap_", labels[1]))]
   x[]
+}
+
+# ------------------------------------------------------------------------------------------
+# Function: resolution_label_supports
+#
+#' @param x             Saved contrasts or summaries with city_id, level and outcome.
+#' @param levels        Support ladder with city_id, level and label.
+#' @param city_labels   Named city labels for the panel titles.
+#' @param support_order Support labels, coarse to fine.
+#
+#' @return  x merged with its support label, plus ordered level_label, pollutant and a
+#   city-outcome panel title. Labelling only; values are unchanged.
+# ------------------------------------------------------------------------------------------
+resolution_label_supports <- function(x, levels, city_labels, support_order) {
+  x <- merge(x, levels[, .(city_id, level, label)], by = c("city_id", "level"))
+  x[, `:=`(
+    level_label = factor(label, levels = support_order),
+    pollutant = data.table::fifelse(grepl("pm25", outcome), "pm25", "pm10"),
+    panel = paste0(city_labels[city_id], ": ", data.table::fcase(
+      grepl("^avg", outcome), "annual mean", grepl("it1$", outcome), "hours >= IT1",
+      grepl("it2$", outcome), "hours >= IT2")))]
+  x[]
+}
+
+# ------------------------------------------------------------------------------------------
+# Function: resolution_buffer_plot_data
+#
+#' @param base          Saved 3 km contrasts.
+#' @param alternative   Saved 20 km contrasts.
+#' @param levels        Support ladder with city_id, level and label.
+#' @param city_labels   Named city labels for the panel titles.
+#' @param support_order Support labels, coarse to fine.
+#
+#' @return  data.table of native-B contrasts for the cities run at both buffers, with
+#   buffer, ordered support label, pollutant and a city-outcome panel title.
+#
+#' @details
+#   Only labelling and ordering: the gaps and populations are the saved values. The same
+#   preparation serves the quintile and the education-level runs.
+# ------------------------------------------------------------------------------------------
+resolution_buffer_plot_data <- function(base, alternative, levels, city_labels,
+                                        support_order) {
+  cities <- unique(alternative$city_id)
+  x <- rbind(base[design == "B_native" & city_id %in% cities][, buffer := "3 km"],
+             alternative[design == "B_native"][, buffer := "20 km"])
+  x <- resolution_label_supports(x, levels, city_labels, support_order)
+  x[, buffer := factor(buffer, levels = c("3 km", "20 km"))]
+  x[]
+}
+
+# ------------------------------------------------------------------------------------------
+# Function: resolution_headline_summary
+#
+#' @param contrasts Saved contrasts of one grouping and buffer.
+#' @param profiles  The matching saved profiles.
+#' @param group_col Group column of those profiles, e.g. "edu_quintile" or "edu_group3".
+#
+#' @return  data.table per city, design, level and outcome: headline gap, normalized gap,
+#   estimation population, and the population shares of the lowest and highest groups.
+#
+#' @details
+#   Groupings differ in which part of the population their headline compares. The
+#   endpoint shares make that visible beside each gap; the gaps are the saved values.
+# ------------------------------------------------------------------------------------------
+resolution_headline_summary <- function(contrasts, profiles, group_col) {
+  keys <- c("city_id", "design", "level", "outcome")
+  p <- data.table::copy(profiles)
+  data.table::setnames(p, group_col, "group")
+  ends <- p[, .(low_share = share[group == min(group)],
+                high_share = share[group == max(group)]), by = keys]
+  merge(contrasts[, c(keys, "gap", "normalized_pct", "population"), with = FALSE],
+        ends, by = keys, all.x = TRUE)
+}
+
+# ------------------------------------------------------------------------------------------
+# Function: resolution_tie_splits
+#
+#' @param groups Individual adults with geo_id, educ_years, person_weight, adult and the
+#   frozen edu_quintile (a city's *_indiv_groups.parquet).
+#
+#' @return  data.table, one row per schooling value and quintile where one value spans
+#   several quintiles: adults, shares of the value, of the quintile and of all adults,
+#   and the first and last geo_id assigned to that quintile within the value.
+#
+#' @details
+#   assign_socio_group() sorts by schooling, then geo_id, then row, so a quintile cut
+#   inside a tied schooling value is decided by geographic identifier order. The geo_id
+#   ranges show that split; nothing here changes the frozen quintiles.
+# ------------------------------------------------------------------------------------------
+resolution_tie_splits <- function(groups) {
+  g <- groups[adult == 1 & !is.na(edu_quintile) & is.finite(person_weight)]
+  total <- sum(g$person_weight)
+  quintile_adults <- g[, .(quintile_adults = sum(person_weight)), by = edu_quintile]
+  x <- g[, .(adults = sum(person_weight), first_geo_id = min(geo_id),
+             last_geo_id = max(geo_id)), by = .(educ_years, edu_quintile)]
+  x[, n_quintiles := .N, by = educ_years]
+  x <- merge(x[n_quintiles > 1], quintile_adults, by = "edu_quintile")
+  x[, share_of_value := adults / sum(adults), by = educ_years]
+  x[, `:=`(share_of_quintile = adults / quintile_adults,
+           share_of_all_adults = adults / total)]
+  x[order(educ_years, edu_quintile)]
 }

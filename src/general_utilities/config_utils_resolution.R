@@ -20,7 +20,8 @@ suppressMessages(sf::sf_use_s2(TRUE))
 source(here::here("src", "general_utilities", "base_utils.R"))
 source(here::here("src", "general_utilities", "theme_paper.R"))
 for (file in c("geo_ids.R", "distances.R", "idw_exposure.R",
-               "exposure_regressions.R", "resolution_sensitivity.R")) {
+               "exposure_regressions.R", "resolution_sensitivity.R",
+               "resolution_workflow.R", "resolution_review.R")) {
   source(here::here("src", "general_utilities", "process", file))
 }
 rm(resolution_packages, package, file)
