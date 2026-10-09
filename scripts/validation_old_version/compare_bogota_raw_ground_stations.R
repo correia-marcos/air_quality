@@ -2,24 +2,24 @@
 # IDB: Air monitoring
 # ============================================================================================
 #' @Goal: COMPARE LASTEST VERSION AND THE NEW ONE
-# 
+#
 #' @Description: From 2000 to 2023 (NEED TO FINISH DOCUMENTATION)
-# 
-#' @Summary: 
-#   I.   Load libraries, utility functions and necessary data
-#   II.  
-#   III. 
-# 
+#
+#' @Summary:
+#   I. Import  data.
+#   II. Process  data.
+#   III. Save  data.
+#
 #' @Date: May 2025
 #' @Author: Marcos
 # ============================================================================================
-source(here::here("src", "general_utilities", "config_utils_validation_old_version.R"))
-source(here::here("src","city_specific", "registry.R"))
-source(here::here("src","city_specific", "bogota.R"))
-
 # ============================================================================================
 # I: Import  data
 # ============================================================================================
+source(here::here("src", "general_utilities", "config_utils_validation_old_version.R"))
+source(here::here("src","city_specific", "registry.R"))
+load_city_modules()
+
 # Define the output general folders
 legacy_dir_area   <- here::here("data", "_legacy", "cities_shapefiles")
 legacy_dir_pol    <- here::here("data", "_legacy", "pollution_data", "bogota")
@@ -27,8 +27,10 @@ outdir_pollution  <- here::here(bogota_cfg$out_dir, "monitoring_stations")
 outdir_geospatial <- here::here(bogota_cfg$out_dir, "geospatial_data")
 
 # Define the file's specific location
-bogota_metro_2018_gpkg <- here::here(outdir_geospatial, "bogota", "bogota_area_metro_2018.gpkg")
-bogota_metro_2005_gpkg <- here::here(outdir_geospatial, "bogota", "bogota_area_metro_2005.gpkg")
+bogota_metro_2018_gpkg <- here::here(outdir_geospatial, "bogota",
+  "bogota_area_metro_2018.gpkg")
+bogota_metro_2005_gpkg <- here::here(outdir_geospatial, "bogota",
+  "bogota_area_metro_2005.gpkg")
 bogota_pollution       <- here::here(outdir_pollution, "bogota_metro_dataset")
 legacy_metro_2005_shp  <- here::here(legacy_dir_area, "Bogota_metro")
 legacy_pollution_files <- here::here("data", "_legacy", "pollution", "Bogota")
@@ -81,7 +83,7 @@ bogota_old <- prepare_legacy_bogota(
   rename_map    = station_map,
   tz            = "UTC",
   verbose       = TRUE) %>%
-  arrange(station, datetime) %>% 
+  arrange(station, datetime) %>%
   filter(year == 2023)
 
 # Apply function to harmonize the new dataframe making it like the legacy one
@@ -115,15 +117,15 @@ differences       <- res$diffs_long
 
 # Quick check on the non missing data
 differences_no_na <- differences %>%
-  filter(within_tol == FALSE) %>% 
+  filter(within_tol == FALSE) %>%
   filter(year == 2023)
 
 # Are there big differences?
-big_diff <- differences_no_na %>% 
-  filter(absv >= 1) 
+big_diff <- differences_no_na %>%
+  filter(absv >= 1)
 #  32
 
-differences_na <- differences |> 
+differences_na <- differences |>
   filter(within_tol == TRUE)
 
 # Quick check on the missing data for PM10
@@ -140,10 +142,10 @@ differences_na_pm25 <- differences %>%
 # Quick check on the missing data from before
 new_only <- res$only_new %>%
   distinct(station, year, month, day, hour) %>%
-  arrange(station, year, month, day, hour) %>% 
+  arrange(station, year, month, day, hour) %>%
   filter(year == 2023)
 
-no_dec <- differences_na_pm10 %>% 
+no_dec <- differences_na_pm10 %>%
   filter(month != 12)
 # ============================================================================================
 # III: Save  data

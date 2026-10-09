@@ -1,37 +1,33 @@
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-#' @Goal  : Compare raw ground-station air quality data across all cities.
+#' @Goal: Compare raw ground-station air quality data across all cities.
 #
-#' @Description: Validates the new scraping/API pipeline against the legacy datasets from MP. 
-# For each city we match records on station x year x month x day x hour, identify rows present 
+#' @Description: Validates the new scraping/API pipeline against the legacy datasets from MP.
+# For each city we match records on station x year x month x day x hour, identify rows present
 # in only one source, and measure cell-level pollutant differences.
 # Station names are normalised (with .std_name) before matching. A small residual_map inside
-# each city cfg handles entries normalisation cannot resolve. All comparison parameters live 
+# each city cfg handles entries normalisation cannot resolve. All comparison parameters live
 # inside cfg$compare (see src/city_specific/bogota.R and equivalents). No separate
 # comparison_config.R is needed.
 #
 #' @Summary:
-#   I.   Load libraries, utility functions, city configs via registry.
-#   II.  Set run parameters.
-#   III. Run compare_ground_stations() for each city.
-#   IV.  Print console summary; render per-city Quarto report.
+#   I. Parameters.
+#   II. Run comparisons.
+#   III. Console summary + Quarto reports.
 #
-#' @Date  : March 2026
+#' @Date: March 2026
 #' @Author: Marcos Paulo
 # ============================================================================================
 
 # Load utility functions and city configs
-source(here::here("src", "general_utilities", "config_utils_validation_old_version.R"))
-source(here::here("src", "city_specific", "registry.R"))
-source(here::here("src", "city_specific", "bogota.R"))
-source(here::here("src", "city_specific", "cdmx.R"))
-source(here::here("src", "city_specific", "santiago.R"))
-source(here::here("src", "city_specific", "sao_paulo.R"))
-
 # ============================================================================================
 # I: Parameters
 # ============================================================================================
+source(here::here("src", "general_utilities", "config_utils_validation_old_version.R"))
+source(here::here("src", "city_specific", "registry.R"))
+load_city_modules()
+
 # Root folder where per-city comparison artefacts will be written
 out_root <- here::here("results", "validation_rep_package")
 
@@ -57,7 +53,7 @@ for (city_id in cities_to_run) {
   message("\n", strrep("=", 60))
   message("City: ", cfg$id)
   message(strrep("=", 60))
-  
+
   results[[city_id]] <- tryCatch(
     compare_ground_stations(
       cfg      = cfg,
@@ -81,7 +77,7 @@ for (city_id in cities_to_run) {
 for (city_id in cities_to_run) {
   res <- results[[city_id]]
   if (is.null(res)) next
-  
+
   cfg <- city_cfg(city_id)
   message("\n--- ", cfg$id, " ---")
   message(
@@ -93,12 +89,12 @@ for (city_id in cities_to_run) {
     format(nrow(res$only_new), big.mark = ",")
   )
   print(res$diff_summary)
-  
+
   html_name        <- paste0("ground_stations_report_", city_id, ".html")
   qmd_path         <- here::here(out_root, "bogota", "ground_stations_report.qmd")
   html_next_to_qmd <- file.path(dirname(qmd_path), html_name)
   report_dest      <- file.path(out_root, city_id, html_name)
-  
+
   tryCatch({
     quarto::quarto_render(
       input          = qmd_path,

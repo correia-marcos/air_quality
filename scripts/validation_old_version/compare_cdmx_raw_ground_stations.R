@@ -2,16 +2,20 @@
 # IDB: Air monitoring
 # ============================================================================================
 #' @Goal: COMPARE LASTEST VERSION AND THE NEW ONE
-# 
+#
 #' @Description: From 2000 to 2023 (NEED TO FINISH DOCUMENTATION)
-# 
-#' @Summary: 
-#   I.   Load libraries, utility functions and necessary data
-#   II.  
-#   III. 
-# 
+#
+#' @Summary:
+#   I. Import  data.
+#   II. Process  data.
+#   III. Generate figures/tables.
+#   IV. Save figures/data.
+#
 #' @Date: May 2025
 #' @Author: Marcos
+# ============================================================================================
+# ============================================================================================
+# I: Import  data
 # ============================================================================================
 source(here::here("src", "general_utilities", "config_utils_process_data.R"))
 source(here::here("src", "general_utilities", "config_utils_plot_tables.R"))
@@ -20,9 +24,6 @@ source(here::here("src", "general_utilities", "config_utils_validation_old_versi
 # Make sure the Arrow package will interpret the time of dataframes in the correct TZ
 options(arrow.local_tz = "UTC")
 
-# ============================================================================================
-# I: Import  data
-# ============================================================================================
 # Define the location of datasets
 dir_cdmx_stations_data   <- here::here("data", "raw","air_monitoring_stations",
                                        "cdmx_metro_buffer_stations_dataset")
@@ -67,7 +68,7 @@ raw_comparison <- compare_panels(
   values                = c("pm10", "pm25", "o3", "co", "no2"),
   restrict_to_old_codes = TRUE,
   prefer_station        = c(ATI = "Atizapán"),
-  new_shift_hours       = 0L 
+  new_shift_hours       = 0L
 )
 
 # Apply function to Compare both datasets shifting hours
@@ -78,7 +79,7 @@ res <- compare_panels(
   values                = c("pm10", "pm25", "o3", "co", "no2"),
   restrict_to_old_codes = TRUE,
   prefer_station        = c(ATI = "Atizapán"),
-  new_shift_hours       = +1L 
+  new_shift_hours       = +1L
 )
 
 # Quick summaries for the console
@@ -87,9 +88,9 @@ message("Rows only in new    : ", nrow(res$only_new))
 print(res$diff_summary)
 
 # Separate values to save
-differences_shifting_hour <- res$diffs_long %>% 
+differences_shifting_hour <- res$diffs_long %>%
   filter(year == 2023)
-differences_no_shifting   <- raw_comparison$diffs_long %>% 
+differences_no_shifting   <- raw_comparison$diffs_long %>%
   filter(year == 2023)
 
 # Quick check on the non missing data
@@ -165,7 +166,7 @@ cdmx_has_pm25_2022_stations_legacy_scheme <- plot_metro_area_interactive(
 # IV: Save figures/data
 # ============================================================================================
 # Ensure output folder exists
-outdir <- here("results", "validation_rep_package", "CDMX")
+outdir <- here::here("results", "validation_rep_package", "CDMX")
 dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
 
 # Save plot
@@ -189,7 +190,7 @@ htmlwidgets::saveWidget(
   here::here(outdir, "cdmx_pm25_stations_in_2022_by_presence.html"),
   selfcontained = TRUE)
 # ================= CHECKS ====================================================================
-cdmx_new_2023 <- cdmx_new %>% 
+cdmx_new_2023 <- cdmx_new %>%
   filter(year == 2023) %>%
   select(datehour, station_code, pm25, pm10)
 
@@ -203,11 +204,3 @@ stations_2023_with_pm10_data <- cdmx_new_2023 %>%
   group_by(station_code) %>%
   filter() %>%
   pull(station_code)
-
-checkson <- readr::read_csv("/Users/correia-marcos/Downloads/contaminantes_2010.csv",
-                            skip = 10)
-
-checkson <- checkson %>% 
-  arrange(cve_station)
-
-renv::snapshot(prompt = FALSE)

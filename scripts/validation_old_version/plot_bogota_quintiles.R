@@ -2,30 +2,29 @@
 # IDB: Air monitoring
 # ============================================================================================
 #' @Goal: Visualize inequality and pollution monitoring distribution for the 4 metro areas.
-# 
-#' @Description: Creates high-resolution maps of Latin American metro areas highlighting census 
-#               education quintiles, active monitoring stations, and their respective spatial 
+#
+#' @Description: Creates high-resolution maps of Latin American metro areas highlighting census
+#               education quintiles, active monitoring stations, and their respective spatial
 #               buffers.
-# 
-#' @Summary: 
-#   I.   Import shapefiles, census collapsed microdata and pollution information for Bogotá
-#   II.  Process the data to exclude unnecessary regions and combine shapefiles
-#   III. Create and export a map of the metro areas with the quintiles of education and 
-# stations buffers
-# 
+#
+#' @Summary:
+#   I. Import data.
+#   II. Process & Plot.
+#   III. Save Data.
+#
 #' @Date: January 2026
 #' @Author: Marcos
 # ============================================================================================
 
 # Get all libraries and functions
+# ============================================================================================
+# I: Import data
+# ============================================================================================
 source(here::here("src", "general_utilities", "config_utils_plot_tables.R"))
 
 # Register Tex Gyre Pagella and set the paper ggplot theme for this script.
 set_paper_theme()
 
-# ============================================================================================
-# I: Import data
-# ============================================================================================
 # Define the output general folders
 dir_pollution   <- here::here("data", "interim", "monitoring_stations")
 dir_geospatial  <- here::here("data", "interim", "geospatial_data")
@@ -63,8 +62,8 @@ map_bogota_5km_extended_census_2005 <- plot_inequality_pollution(
   join_sf_col = "GEO_ID",          # <-- Fixed the underscore here
   join_df_col = "GEO_ID",          # <-- Fixed the underscore here
   station_col = "station_name",    # Ensure this matches the column in bogota_stations_sf
-  ed_col      = "escolaridad_avg", 
-  pop_col     = "n",               
+  ed_col      = "escolaridad_avg",
+  pop_col     = "n",
   pollutants  = c("pm25", "pm10"),
   year_filter = 2023,
   buffer_km   = 5,
@@ -82,8 +81,8 @@ map_bogota_3km_extended_census_2005 <- plot_inequality_pollution(
   join_sf_col = "GEO_ID",          # <-- Fixed the underscore here
   join_df_col = "GEO_ID",          # <-- Fixed the underscore here
   station_col = "station_name",    # Ensure this matches the column in bogota_stations_sf
-  ed_col      = "escolaridad_avg", 
-  pop_col     = "n",               
+  ed_col      = "escolaridad_avg",
+  pop_col     = "n",
   pollutants  = c("pm25", "pm10"),
   year_filter = 2023,
   buffer_km   = 3,
@@ -101,11 +100,13 @@ dir.create(outdir_figures, recursive = TRUE, showWarnings = FALSE)
 cat("Saving maps to", outdir_figures, "\n")
 
 # Save Bogotá
-ggsave(filename = here::here(outdir_figures, "map_bogota_new_metro_old_stations_2005_5km.pdf"), 
+ggsave(filename = here::here(outdir_figures,
+  "map_bogota_new_metro_old_stations_2005_5km.pdf"),
        plot     = map_bogota_5km_extended_census_2005,
        device   = cairo_pdf,
        width    = 12, height = 8, dpi = 300, bg = "white")
-ggsave(filename = here::here(outdir_figures, "map_bogota_new_metro_old_stations_2005_3km.pdf"), 
+ggsave(filename = here::here(outdir_figures,
+  "map_bogota_new_metro_old_stations_2005_3km.pdf"),
        plot     = map_bogota_3km_extended_census_2005,
        device   = cairo_pdf,
        width    = 12, height = 8, dpi = 300, bg = "white")
