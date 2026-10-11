@@ -27,12 +27,12 @@ source(here::here("src", "general_utilities", "process", "spatial_files.R"))
 source(here::here("src", "city_specific", "registry.R"))
 source(here::here("src", "city_specific", "processing.R"))
 
-# Load the city configurations and use spherical geometry for sf operations.
+# Load the city configurations and use spherical geometry for sf operations
 load_city_modules()
 sf::sf_use_s2(TRUE)
 cfg <- bogota_cfg
 
-# Set the source folders using the city configuration.
+# Set the source folders using the city configuration
 dir_sources    <- cfg$dl_dir
 dir_geography  <- here::here(dir_sources, "metro_area")
 dir_census     <- here::here(dir_sources, "census")
@@ -40,7 +40,7 @@ dir_pollution  <- here::here(dir_sources, "ground_stations")
 dir_metadata   <- here::here(dir_sources, "stations_metadata")
 dir_sisaire    <- here::here(dir_sources, "metro_ground_stations_hourly")
 
-# Set the output folders for geography, pollution and each census variant.
+# Set the output folders for geography, pollution and each census variant
 out_geography        <- here::here(cfg$out_dir, "geospatial_data", "bogota")
 out_pollution        <- here::here(cfg$out_dir, "monitoring_stations")
 out_extract_extended <- here::here(cfg$out_dir, "census_extracted", "bogota",
@@ -52,7 +52,7 @@ out_census_basic     <- here::here(cfg$out_dir, "census", "bogota_basic_2005")
 out_extract_2018     <- here::here(cfg$out_dir, "census_extracted", "bogota", "CNPV_2018")
 out_census_2018      <- here::here(cfg$out_dir, "census", "bogota_2018")
 
-# Name the input files so their role is clear in the function calls below.
+# Name the input files to be used as parameters in the functions below
 file_census_extended <- here::here(dir_census, "CG2005_AMPLIADO.zip")
 file_census_basic    <- here::here(dir_census, "CG2005_BASICO.zip")
 file_geography_2005  <- here::here(dir_geography, "SHP_MGN2005_COLOMBIA.zip")
@@ -84,28 +84,28 @@ municipalities_2005 <- bogota_prepare_metro_area(source_zips        = file_geogr
                                                  mgn_year           = 2005,
                                                  municipality_codes = cfg$city_code_metro)
 
-metro_2005  <- bogota_prepare_metro_area(source_zips        = file_geography_2005,
-                                         level              = "mpio_localidad",
-                                         mgn_year           = 2005,
-                                         municipality_codes = cfg$city_code_metro,
-                                         localities_file    = file_localities)
+metro_2005          <- bogota_prepare_metro_area(source_zips        = file_geography_2005,
+                                                 level              = "mpio_localidad",
+                                                 mgn_year           = 2005,
+                                                 municipality_codes = cfg$city_code_metro,
+                                                 localities_file    = file_localities)
 
-tracts_2005 <- bogota_prepare_metro_area(source_zips        = file_geography_2005,
-                                         level              = "manzana",
-                                         mgn_year           = 2005,
-                                         municipality_codes = cfg$city_code_metro)
+tracts_2005         <- bogota_prepare_metro_area(source_zips        = file_geography_2005,
+                                                 level              = "manzana",
+                                                 mgn_year           = 2005,
+                                                 municipality_codes = cfg$city_code_metro)
 
-metro_2018  <- bogota_prepare_metro_area(source_zips        = file_municipalities,
-                                         level              = "mpio_localidad",
-                                         mgn_year           = 2018,
-                                         municipality_codes = cfg$city_code_metro,
-                                         localities_file    = file_localities)
+metro_2018          <- bogota_prepare_metro_area(source_zips        = file_municipalities,
+                                                 level              = "mpio_localidad",
+                                                 mgn_year           = 2018,
+                                                 municipality_codes = cfg$city_code_metro,
+                                                 localities_file    = file_localities)
 
-tracts_2018 <- bogota_prepare_metro_area(source_zips        = c(file_urban_tracts,
-                                                                file_rural_tracts),
-                                         level              = "manzana",
-                                         mgn_year           = 2018,
-                                         municipality_codes = cfg$city_code_metro)
+tracts_2018        <- bogota_prepare_metro_area(source_zips        = c(file_urban_tracts,
+                                                                       file_rural_tracts),
+                                                level              = "manzana",
+                                                mgn_year           = 2018,
+                                                municipality_codes = cfg$city_code_metro)
 
 # Select stations separately for 2018 and 2005; pollution uses the 2018 selection.
 stations_2018 <- bogota_filter_stations_in_metro(rmcab_df     = station_locations,
