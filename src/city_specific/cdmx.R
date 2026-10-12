@@ -4252,6 +4252,47 @@ cdmx_download_census_data <- function(
 }
 
 
+# ------------------------------------------------------------------------------------------
+# Function: .cdmx_aggregate_pollution
+#' @param con DuckDB connection with the mapped source records in long_mapped.
+#' @param years Requested source-clock calendar years.
+#' @param include_source_metadata Retain contributor IDs and feed status.
+#' @param verbose Print the year being aggregated.
+#' @return NULL, invisibly; creates aggr in the supplied database.
+#' @details
+#   Each station/code/hour/pollutant group belongs to one year. Aggregating years separately
+#   bounds the ordered source-ID states without changing the groups or negative masking.
+#   Finite nonnegative readings retain distinct sorted contributor IDs and feed status.
+#   The caller still selects a canonical station code using all aggregated years together.
+#' @Written_on: October 2026
+# ------------------------------------------------------------------------------------------
+.cdmx_aggregate_pollution <- function(con, years, include_source_metadata = FALSE,
+                                     verbose = FALSE) {
+  DBI::dbExecute(con, paste0(
+    "CREATE TABLE aggr(datetime TIMESTAMP, station VARCHAR, station_code VARCHAR, ",
+    "year INTEGER, var VARCHAR, value DOUBLE, source_status VARCHAR, source_ids VARCHAR);"))
+  source_sql <- if (include_source_metadata) paste0(
+    "CASE WHEN COUNT(DISTINCT CASE WHEN value >= 0 AND isfinite(value) ",
+    "THEN source_status END) > 1 THEN 'mixed' ELSE ",
+    "MAX(CASE WHEN value >= 0 AND isfinite(value) THEN source_status END) END ",
+    "AS source_status, ",
+    "STRING_AGG(DISTINCT CASE WHEN value >= 0 AND isfinite(value) ",
+    "THEN source_id END, '|' ORDER BY CASE WHEN value >= 0 AND isfinite(value) ",
+    "THEN source_id END) AS source_ids") else
+    "NULL AS source_status, NULL AS source_ids"
+
+  for (yy in sort(unique(years))) {
+    if (isTRUE(verbose)) message(sprintf("-> Aggregating year %d ...", yy))
+    DBI::dbExecute(con, paste0(
+      "INSERT INTO aggr SELECT datetime, station, station_code, year, var, ",
+      "AVG(CASE WHEN value >= 0 THEN value END) AS value, ", source_sql,
+      " FROM long_mapped WHERE var IS NOT NULL AND year = ", yy,
+      " GROUP BY 1,2,3,4,5;"))
+  }
+  invisible(NULL)
+}
+
+
 # --------------------------------------------------------------------------------------------
 # Helper: DUCKDB engine (disk-backed; partitioned Parquet dataset)
 #' @param csvs               character vector of CSV paths (Type 1 structure)
@@ -4273,6 +4314,7 @@ cdmx_download_census_data <- function(
 #   that shifts hours from POSIXct tzone attributes, and avoids AT TIME ZONE, which
 #   would *convert* (shift) a naive clock rather than relabel it. The stored clock
 #   equals the source clock for any tz argument.
+#   DuckDB uses at most four workers, or one when CPU detection is unavailable.
 # --------------------------------------------------------------------------------------------
 .cdmx_merge_duckdb_engine <- function(
     csvs,
@@ -4300,7 +4342,11 @@ cdmx_download_census_data <- function(
     try(unlink(dbdir, recursive = TRUE, force = TRUE), silent = TRUE)
   }, add = TRUE)
   
-  thr <- if (run_parallel) max(1L, (parallel::detectCores() - 2)) else 1L
+  thr <- 1L
+  if (isTRUE(run_parallel)) {
+    cores <- parallel::detectCores()
+    if (!is.na(cores)) thr <- max(1L, min(4L, cores - 2L))
+  }
   DBI::dbExecute(con, sprintf("PRAGMA threads=%d;", thr))
   DBI::dbExecute(con, "PRAGMA memory_limit='8GB';")
   
@@ -4579,18 +4625,9 @@ cdmx_download_census_data <- function(
     print(neg_rep, row.names = FALSE)
   }
 
-  DBI::dbExecute(con, paste0(
-    "CREATE TABLE aggr AS SELECT datetime, station, station_code, year, var, ",
-    "AVG(CASE WHEN value >= 0 THEN value END) AS value, ",
-    "CASE WHEN COUNT(DISTINCT CASE WHEN value >= 0 AND isfinite(value) ",
-    "THEN source_status END) > 1 THEN 'mixed' ELSE ",
-    "MAX(CASE WHEN value >= 0 AND isfinite(value) THEN source_status END) END ",
-    "AS source_status, ",
-    "STRING_AGG(DISTINCT CASE WHEN value >= 0 AND isfinite(value) ",
-    "THEN source_id END, '|' ORDER BY CASE WHEN value >= 0 AND isfinite(value) ",
-    "THEN source_id END) AS source_ids FROM long_mapped ",
-    "WHERE var IS NOT NULL GROUP BY 1,2,3,4,5;"
-  ))
+  .cdmx_aggregate_pollution(con, years = years,
+                           include_source_metadata = include_source_metadata,
+                           verbose = verbose)
 
   # One canonical code per name (handles slight code variations).
   DBI::dbExecute(con, paste0(
