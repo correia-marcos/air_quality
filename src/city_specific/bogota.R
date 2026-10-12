@@ -3412,7 +3412,7 @@ bogota_filter_census_2018 <- function(
 }
 
 
-# --------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------------------
 # Function: bogota_harmonize_census_2018_data
 #
 #' @param extract_paths list; output from bogota_filter_census_2018.
@@ -3421,6 +3421,7 @@ bogota_filter_census_2018 <- function(
 #' @param quiet        logical; suppress progress messages. Default FALSE.
 #
 #' @param return_data TRUE returns individual/collapsed tables; FALSE returns saved paths.
+#' @param chunk_size Person records per read; controls memory, not the analytical sample.
 #' @return Individual/collapsed tables, or named paths when return_data is FALSE.
 #           census_2018_metro_individual.parquet and census_2018_metro_collapsed.parquet.
 #           Parquet keeps GEO_ID character; a CSV roundtrip drops its leading zeros.
@@ -3440,219 +3441,176 @@ bogota_filter_census_2018 <- function(
 #              (normalista 13, tecnica profesional/tecnologica 14); 17 college_complete;
 #              >=18 graduate_educ. Every share therefore sums to 1. Before the two
 #              "incomplete" bands were added, 42.4% of adults fell into no category at
-#              all -- see doc/data_dictionary.md.
+#              all -- see doc/reference/data_dictionary.md.
+#
+#   Person files are read in chunks, with only the five required source columns. Filtered
+#   geography retains every matching row, including duplicate survey keys. The existing
+#   COD_ENCUESTAS join, source-row order, all ages, unit weights and missing values remain.
+#   Chunks are written to one individual Parquet; Arrow aggregates its adults by the
+#   original geographic code. Education means and shares use reporting adults. With
+#   return_data = FALSE, no complete person table is retained in R. TRUE explicitly reads
+#   the final individual file into memory. Both outputs retain canonical names/provenance.
 #
 #' @Written_on : 01/02/2026
 #' @Written_by : Marcos Paulo
-# --------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------------------
 bogota_harmonize_census_2018_data <- function(
     extract_paths,
     metro_codes = bogota_cfg$city_code_metro,
     out_dir     = here::here("data", "working_data"),
     quiet       = FALSE,
-    return_data = TRUE
+    return_data = TRUE,
+    chunk_size  = 10000L
 ) {
-  
-  # Check required packages
-  if (!requireNamespace("vroom", quietly = TRUE)) {
-    stop("vroom required.")
+  for (package in c("vroom", "readr", "dplyr", "stringr", "arrow")) {
+    if (!requireNamespace(package, quietly = TRUE)) stop(package, " required.")
   }
-  if (!requireNamespace("dplyr", quietly = TRUE)) {
-    stop("dplyr required.")
-  }
-  if (!requireNamespace("stringr", quietly = TRUE)) {
-    stop("stringr required.")
-  }
-  
-  # Create output folder
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
-  
-  # Map 2018 categorical schooling variable into approximate years
+  paths <- c(individual = file.path(out_dir, "census_2018_metro_individual.parquet"),
+    collapsed = file.path(out_dir, "census_2018_metro_collapsed.parquet"))
+  bog_meta <- list(city_id = "bogota_2018", census_year = 2018L,
+    geo_level = bogota_cfg$schema$geo_level, geo_id_source = "GEO_ID")
+  run_meta <- list(verification_run = Sys.getenv("AIR_RUN_ID"),
+    code_revision = Sys.getenv("AIR_CODE_REVISION"))
+  run_meta <- run_meta[nzchar(unlist(run_meta))]
+  micro_meta <- lapply(c(bog_meta, list(table_level = "micro"), run_meta), as.character)
+  writer <- NULL
+  sink <- NULL
+  empty_table <- NULL
+  on.exit({
+    if (!is.null(writer)) writer$Close()
+    if (!is.null(sink)) sink$close()
+  }, add = TRUE)
+
   map_education_2018 <- function(x) {
     dplyr::case_when(
-      x == 10 ~ 0,
-      x == 1  ~ 0,
-      x == 2  ~ 5,
-      x == 3  ~ 9,
-      x == 4  ~ 11,
-      x == 5  ~ 11,
-      x == 6  ~ 13,
-      x == 7  ~ 14,
-      x == 8  ~ 17,
-      x == 9  ~ 19,
-      TRUE    ~ NA_real_
-    )
+      x == 10 ~ 0, x == 1 ~ 0, x == 2 ~ 5, x == 3 ~ 9,
+      x == 4 ~ 11, x == 5 ~ 11, x == 6 ~ 13, x == 7 ~ 14,
+      x == 8 ~ 17, x == 9 ~ 19, TRUE ~ NA_real_)
   }
-  
-  # Process one department folder
+
   process_dept_files <- function(folder) {
-    if (is.null(folder)) {
-      return(NULL)
-    }
-    
-    # Identify person and geographic files
+    if (is.null(folder)) return(invisible(NULL))
     files <- list.files(folder, full.names = TRUE)
     f_per <- files[grepl("5PER", basename(files))][1]
     f_mgn <- files[grepl("MGN", basename(files))][1]
-    
     if (is.na(f_per) || is.na(f_mgn)) {
       warning("Missing PER or MGN file in: ", folder)
-      return(NULL)
+      return(invisible(NULL))
     }
-    
-    if (!quiet) {
-      message("Reading: ", basename(f_per), " + ", basename(f_mgn))
-    }
-    
-    # Read person file
-    df_per <- vroom::vroom(
-      f_per,
-      col_types = vroom::cols(.default = "c"),
-      show_col_types = FALSE
-    ) %>%
-      dplyr::select(
-        COD_ENCUESTAS,
-        P_SEXO,
-        P_EDADR,
-        P_NIVEL_ANOSR,
-        P_TRABAJO
-      )
-    
-    # Read geographic file
-    df_mgn <- vroom::vroom(
-      f_mgn,
-      col_types = vroom::cols(.default = "c"),
-      show_col_types = FALSE
-    ) %>%
-      dplyr::select(COD_ENCUESTAS, COD_DANE_ANM)
-    
-    # Merge people with geography and filter municipalities
-    joined <- df_per %>%
-      dplyr::inner_join(df_mgn, by = "COD_ENCUESTAS") %>%
-      dplyr::mutate(MUNI_CODE = stringr::str_sub(COD_DANE_ANM, 1, 5)) %>%
-      dplyr::filter(MUNI_CODE %in% metro_codes)
-    
-    # Harmonize variables
-    joined <- joined %>%
-      dplyr::mutate(
-        GEO_ID = COD_DANE_ANM,
-        women = as.numeric(P_SEXO == "2"),
-        
-        raw_group = as.numeric(P_EDADR),
-        edad      = (raw_group - 1) * 5 + 2.5,
-        adult     = as.numeric(raw_group >= 6),
-        
+    if (!quiet) message("Reading: ", basename(f_per), " + ", basename(f_mgn))
+
+    # Read the geographic keys and keep their metropolitan matches before the join.
+    df_mgn <- vroom::vroom(f_mgn, col_types = vroom::cols(.default = "c"),
+      col_select = c("COD_ENCUESTAS", "COD_DANE_ANM"),
+      show_col_types = FALSE, progress = FALSE)
+    df_mgn <- dplyr::mutate(df_mgn, MUNI_CODE = stringr::str_sub(COD_DANE_ANM, 1, 5))
+    df_mgn <- dplyr::filter(df_mgn, MUNI_CODE %in% metro_codes)
+    df_mgn <- data.table::as.data.table(df_mgn)
+    data.table::setindexv(df_mgn, "COD_ENCUESTAS")
+    person_cols <- c("COD_ENCUESTAS", "P_SEXO", "P_EDADR", "P_NIVEL_ANOSR", "P_TRABAJO")
+    header <- vroom::vroom(f_per, n_max = 0L, col_types = vroom::cols(.default = "c"),
+      show_col_types = FALSE, progress = FALSE)
+    delimiter <- attr(header, "spec")$delim
+    person_types <- do.call(readr::cols_only,
+      stats::setNames(rep(list(readr::col_character()), length(person_cols)), person_cols))
+
+    write_people <- function(people, position) {
+      people <- dplyr::select(people, dplyr::all_of(person_cols))
+      joined <- df_mgn[data.table::as.data.table(people), on = "COD_ENCUESTAS",
+        nomatch = 0L, allow.cartesian = TRUE]
+      data.table::setcolorder(joined, c(person_cols, "COD_DANE_ANM", "MUNI_CODE"))
+      joined <- dplyr::mutate(joined,
+        GEO_ID = COD_DANE_ANM, women = as.numeric(P_SEXO == "2"),
+        raw_group = as.numeric(P_EDADR), edad = (raw_group - 1) * 5 + 2.5,
+        adult = as.numeric(raw_group >= 6),
         escolaridad = map_education_2018(as.numeric(P_NIVEL_ANOSR)),
-        
-        # Six bands that partition the eight values map_education_2018() emits, so the
-        # shares sum to 1. See @details: education bands.
-        no_education           = as.numeric(escolaridad == 0),
+        no_education = as.numeric(escolaridad == 0),
         high_school_incomplete = as.numeric(escolaridad >= 1 & escolaridad <= 10),
-        high_school_complete   = as.numeric(escolaridad %in% 11:12),
-        college_incomplete     = as.numeric(escolaridad >= 13 & escolaridad <= 16),
-        college_complete       = as.numeric(escolaridad == 17),
-        graduate_educ          = as.numeric(escolaridad >= 18),
-        
-        employed = ifelse(
-          adult == 1,
-          as.numeric(P_TRABAJO %in% c("1", "2")),
-          NA_real_
-        ),
-        
-        fe = 1
-      )
-    
-    return(joined)
+        high_school_complete = as.numeric(escolaridad %in% 11:12),
+        college_incomplete = as.numeric(escolaridad >= 13 & escolaridad <= 16),
+        college_complete = as.numeric(escolaridad == 17),
+        graduate_educ = as.numeric(escolaridad >= 18),
+        employed = as.numeric(ifelse(adult == 1,
+          as.numeric(P_TRABAJO %in% c("1", "2")), NA_real_)), fe = 1)
+      canonical <- apply_canonical_names(joined, bogota_cfg$schema$census_micro,
+        bogota_cfg$schema$geo_level, bogota_cfg$schema$raw, quiet = TRUE)
+      if (!nrow(canonical)) canonical[, employed := logical()]
+      table <- arrow::as_arrow_table(canonical)
+      table$metadata <- c(table$metadata, micro_meta)
+      if (is.null(empty_table)) empty_table <<- table$Slice(0, 0)
+      if (!nrow(canonical)) return(invisible(NULL))
+
+      # Append this chunk to the single individual checkpoint, preserving source order.
+      if (is.null(writer)) {
+        sink <<- arrow::FileOutputStream$create(paths[["individual"]])
+        writer <<- arrow::ParquetFileWriter$create(table$schema, sink,
+          properties = arrow::ParquetWriterProperties$create(names(table)))
+      }
+      writer$WriteTable(table, chunk_size = chunk_size)
+      invisible(NULL)
+    }
+    readr::read_delim_chunked(f_per,
+      callback = readr::SideEffectChunkCallback$new(write_people),
+      delim = delimiter, col_types = person_types, chunk_size = chunk_size,
+      trim_ws = TRUE, show_col_types = FALSE, progress = FALSE)
+    invisible(NULL)
   }
-  
-  # Process Bogota and Cundinamarca
-  if (!quiet) {
-    message("Processing Bogota.")
+
+  if (!quiet) message("Processing Bogota.")
+  process_dept_files(extract_paths$bogota)
+  if (!quiet) message("Processing Cundinamarca.")
+  process_dept_files(extract_paths$cundinamarca)
+  if (is.null(writer)) {
+    if (is.null(empty_table)) stop("No person/geography census files were processed.")
+    arrow::write_parquet(empty_table, paths[["individual"]])
+  } else {
+    writer$Close()
+    writer <- NULL
+    sink$close()
+    sink <- NULL
   }
-  df_bog <- process_dept_files(extract_paths$bogota)
-  
-  if (!quiet) {
-    message("Processing Cundinamarca.")
-  }
-  df_cun <- process_dept_files(extract_paths$cundinamarca)
-  
-  # Bind all departments
-  all_census <- dplyr::bind_rows(df_bog, df_cun)
-  
-  # Collapse adults to block level
-  if (!quiet) {
-    message("Collapsing to block level using adults 25+.")
-  }
-  
-  collapse_data <- all_census %>%
-    dplyr::filter(adult == 1) %>%
-    dplyr::group_by(GEO_ID) %>%
-    dplyr::summarise(
-      weight    = sum(fe, na.rm = TRUE),
-      n_records = dplyr::n(),
+  empty_table <- NULL
 
-      # Adults who reported education. Everything education-related is measured over
-      # this population, not over all adults -- see @details: missing education.
-      pop_educ_known = sum(fe * !is.na(escolaridad), na.rm = TRUE),
-
-      education_mean = sum(escolaridad * fe, na.rm = TRUE) / pop_educ_known,
-
-      count_no_ed   = sum(no_education * fe, na.rm = TRUE),
-      count_hs_inc  = sum(high_school_incomplete * fe, na.rm = TRUE),
-      count_hs_com  = sum(high_school_complete * fe, na.rm = TRUE),
-      count_col_inc = sum(college_incomplete * fe, na.rm = TRUE),
-      count_col_com = sum(college_complete * fe, na.rm = TRUE),
-      count_grad    = sum(graduate_educ * fe, na.rm = TRUE),
-
-      count_employed = sum(employed * fe, na.rm = TRUE),
-      count_women    = sum(women * fe, na.rm = TRUE),
-
-      .groups = "drop"
-    ) %>%
-    dplyr::mutate(
-      # Education shares are over the reporting population, so the six sum to 1.
-      share_no_ed_pop   = count_no_ed / pop_educ_known,
-      share_hs_inc_pop  = count_hs_inc / pop_educ_known,
-      share_hs_com_pop  = count_hs_com / pop_educ_known,
-      share_col_inc_pop = count_col_inc / pop_educ_known,
-      share_col_com_pop = count_col_com / pop_educ_known,
-      share_grad_pop    = count_grad / pop_educ_known,
-
-      share_employed_pop = count_employed / weight,
-      share_women_pop    = count_women / weight
-    )
-
-  # DANE names -> canonical schema; the mapping lives in bogota_cfg$schema.
-  all_census    <- apply_canonical_names(all_census, bogota_cfg$schema$census_micro,
-                                         bogota_cfg$schema$geo_level,
-                                         bogota_cfg$schema$raw, quiet = quiet)
+  # Collapse the saved adults by their original geographic code, before canonical renaming.
+  if (!quiet) message("Collapsing to block level using adults 25+.")
+  individuals <- arrow::open_dataset(paths[["individual"]])
+  adults <- dplyr::filter(individuals, adult == 1)
+  adults <- dplyr::rename(adults, GEO_ID = "raw_COD_DANE_ANM")
+  groups <- dplyr::group_by(adults, GEO_ID)
+  collapse_data <- dplyr::summarise(groups,
+    weight = sum(person_weight, na.rm = TRUE), n_records = dplyr::n(),
+    pop_educ_known = sum(person_weight * as.numeric(!is.na(educ_years)), na.rm = TRUE),
+    education_sum = sum(educ_years * person_weight, na.rm = TRUE),
+    count_no_ed = sum(no_education * person_weight, na.rm = TRUE),
+    count_hs_inc = sum(high_school_incomplete * person_weight, na.rm = TRUE),
+    count_hs_com = sum(high_school_complete * person_weight, na.rm = TRUE),
+    count_col_inc = sum(college_incomplete * person_weight, na.rm = TRUE),
+    count_col_com = sum(college_complete * person_weight, na.rm = TRUE),
+    count_grad = sum(graduate_educ * person_weight, na.rm = TRUE),
+    count_employed = sum(as.numeric(employed) * person_weight, na.rm = TRUE),
+    count_women = sum(women * person_weight, na.rm = TRUE), .groups = "drop")
+  collapse_data <- dplyr::arrange(collapse_data, GEO_ID)
+  collapse_data <- dplyr::collect(collapse_data)
+  collapse_data <- dplyr::mutate(collapse_data,
+    n_records = as.integer(n_records), education_mean = education_sum / pop_educ_known,
+    share_no_ed_pop = count_no_ed / pop_educ_known,
+    share_hs_inc_pop = count_hs_inc / pop_educ_known,
+    share_hs_com_pop = count_hs_com / pop_educ_known,
+    share_col_inc_pop = count_col_inc / pop_educ_known,
+    share_col_com_pop = count_col_com / pop_educ_known,
+    share_grad_pop = count_grad / pop_educ_known,
+    share_employed_pop = count_employed / weight, share_women_pop = count_women / weight)
+  collapse_data <- dplyr::select(collapse_data, -education_sum)
+  collapse_data <- dplyr::relocate(collapse_data, education_mean, .after = pop_educ_known)
   collapse_data <- apply_canonical_names(collapse_data, bogota_cfg$schema$census_geo,
-                                         bogota_cfg$schema$geo_level, quiet = quiet)
-
-  # Save outputs
-  if (!quiet) {
-    message("Saving processed Bogota census files.")
-  }
-
-  # Provenance rides in the Parquet key-value metadata; see write_canonical_parquet().
-  bog_meta <- list(city_id = "bogota_2018", census_year = 2018L,
-                   geo_level = bogota_cfg$schema$geo_level,
-                   geo_id_source = "GEO_ID")
-
-  write_canonical_parquet(
-    all_census, file.path(out_dir, "census_2018_metro_individual.parquet"),
-    c(bog_meta, list(table_level = "micro")))
-
-  write_canonical_parquet(
-    collapse_data, file.path(out_dir, "census_2018_metro_collapsed.parquet"),
+    bogota_cfg$schema$geo_level, quiet = quiet)
+  write_canonical_parquet(collapse_data, paths[["collapsed"]],
     c(bog_meta, list(table_level = "geo")))
 
-  if (!return_data) {
-    return(c(
-      individual = file.path(out_dir, "census_2018_metro_individual.parquet"),
-      collapsed = file.path(out_dir, "census_2018_metro_collapsed.parquet")))
-  }
-  return(list(individual = all_census, collapsed = collapse_data))
+  if (!return_data) return(paths)
+  all_census <- data.table::as.data.table(arrow::read_parquet(paths[["individual"]]))
+  list(individual = all_census, collapsed = collapse_data)
 }
 
 
