@@ -133,7 +133,7 @@ $(STAMP)/temporal.stamp: scripts/process_data/prepare_station_hourly.R $(SRC) \
 
 # Satellite preparation and comparison are optional and use current city products.
 merra2: temporal
-	$(RUN) scripts/process_data/generate_panel_air_quality.R
+	$(RUN) scripts/process_data/generate_panel_air_quality_merra2.R
 	$(RUN) scripts/process_data/prepare_station_temporal.R
 	$(RUN) scripts/process_data/process_merra2_panels.R
 	$(RUN) scripts/tables_images/figure_merra2_vs_stations.R

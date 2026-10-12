@@ -128,7 +128,7 @@ source(here::here("scripts", "tables_images", "figure_quintile_kernel_distributi
 # source(here::here("scripts", "tables_images", "figure_resolution_sensitivity.R"))
 
 # Optional supporting analyses: run `make merra2` after acquiring its extra inputs.
-# source(here::here("scripts", "process_data", "generate_panel_air_quality.R"))
+# source(here::here("scripts", "process_data", "generate_panel_air_quality_merra2.R"))
 # source(here::here("scripts", "process_data", "prepare_station_temporal.R"))
 # source(here::here("scripts", "process_data", "process_merra2_panels.R"))
 # source(here::here("scripts", "tables_images", "figure_merra2_vs_stations.R"))
