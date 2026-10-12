@@ -27,25 +27,25 @@ source(here::here("src", "general_utilities", "process", "spatial_files.R"))
 source(here::here("src", "city_specific", "registry.R"))
 source(here::here("src", "city_specific", "processing.R"))
 
-# Load the city configurations and use spherical geometry for sf operations.
+# Load the city configurations and use spherical geometry for sf operations
 load_city_modules()
 sf::sf_use_s2(TRUE)
 cfg <- cdmx_cfg
 
-# Set the source folders using the city configuration.
+# Set the source folders using the city configuration
 dir_sources   <- cfg$dl_dir
 dir_geography <- here::here(dir_sources, "metro_area")
 dir_census    <- here::here(dir_sources, "census")
 dir_pollution <- here::here(dir_sources, "ground_stations")
 dir_secondary <- here::here(dir_sources, "ground_stations_raw_missing_data")
 
-# Set the output folders for geography, pollution and the extended 2020 census.
+# Set the output folders for geography, pollution and the extended 2020 census
 out_geography <- here::here(cfg$out_dir, "geospatial_data", "cdmx")
 out_pollution <- here::here(cfg$out_dir, "monitoring_stations")
 out_extracted <- here::here(cfg$out_dir, "census_extracted", "cdmx", "CPV2020_EXTENDED")
 out_census    <- here::here(cfg$out_dir, "census", "cdmx_extended_2020")
 
-# Name the input files used by the preparation functions.
+# Name the input files to be used as parameters in the functions below
 file_geography <- here::here(dir_geography, "mg_2024_integrado.zip")
 file_stations  <- here::here(dir_sources, "ground_stations_geolocation",
                              "all_station_location.csv")
@@ -80,15 +80,15 @@ stations <- cdmx_filter_stations_in_metro(station_location = station_locations,
                                           out_file         = NULL)
 
 # Merge pollution sources without deleting either source; outputs stay partitioned.
-pollution <- cdmx_merge_pollution_data(primary_data_dir   = dir_pollution,
-                                       secondary_data_dir = dir_secondary,
-                                       stations_sf        = stations,
-                                       tz                 = cfg$processing_tz,
-                                       years              = cfg$years,
-                                       cleanup            = FALSE,
+pollution <- cdmx_merge_pollution_data(primary_data_dir        = dir_pollution,
+                                       secondary_data_dir      = dir_secondary,
+                                       stations_sf             = stations,
+                                       tz                      = cfg$processing_tz,
+                                       years                   = cfg$years,
+                                       cleanup                 = FALSE,
                                        include_source_metadata = TRUE,
-                                       out_dir            = out_pollution,
-                                       out_name           = "cdmx_metro")
+                                       out_dir                 = out_pollution,
+                                       out_name                = "cdmx_metro")
 
 # Extract and harmonize the extended census; these calls also write the census files.
 extracted <- mexico_filter_census(census_dir = dir_census,
