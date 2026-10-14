@@ -73,11 +73,11 @@ metro_area     <- cdmx_prepare_metro_area(source_zip        = file_geography,
 # Correct only the configured station spellings; retain distinct real stations.
 station_locations <- cdmx_correct_station_names(locations   = station_locations,
                                                 corrections = cfg$station_nme_map)
-stations <- cdmx_filter_stations_in_metro(station_location = station_locations,
-                                          metro_area       = metro_area,
-                                          radius_km        = cfg$station_buffer_km,
-                                          dissolve         = TRUE,
-                                          out_file         = NULL)
+stations          <- cdmx_filter_stations_in_metro(station_location = station_locations,
+                                                   metro_area       = metro_area,
+                                                   radius_km        = cfg$station_buffer_km,
+                                                   dissolve         = TRUE,
+                                                   out_file         = NULL)
 
 # Merge pollution sources without deleting either source; outputs stay partitioned.
 pollution <- cdmx_merge_pollution_data(primary_data_dir        = dir_pollution,
@@ -94,12 +94,10 @@ pollution <- cdmx_merge_pollution_data(primary_data_dir        = dir_pollution,
 extracted <- mexico_filter_census(census_dir = dir_census,
                                   out_dir    = out_extracted,
                                   overwrite  = TRUE)
-archives <- list.files(dir_census, pattern = "Censo2020_CA_.*_csv\\.zip$",
-                       ignore.case = TRUE)
-census <- mexico_harmonize_census_data(extract_index = extracted,
-                                       metro_codes   = cfg$cities_in_metro,
-                                       out_dir       = out_census,
-                                       return_data   = FALSE)
+census    <- mexico_harmonize_census_data(extract_index = extracted,
+                                          metro_codes   = cfg$cities_in_metro,
+                                          out_dir       = out_census,
+                                          return_data   = FALSE)
 
 # ========================================================================================
 # III: Save outputs
