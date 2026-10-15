@@ -100,8 +100,10 @@ if (full) {
   }
   report$findings <- c(report$findings, if (!report$reproduction_verified)
     "Full reproduction incomplete; inspect stage logs and container report.")
-  verification_save_report(report,
-    run); quit(status = if (report$reproduction_verified) 0L else 1L)
+  verification_save_report(report, run)
+  status <- if (report$reproduction_verified) 0L else 1L
+  verification_print_summary(report, run, status)
+  quit(status = status)
 }
 inputs <- verification_inventory(c("data/raw", "data/downloads", "data/_legacy"), root)
 write.csv(inputs, file.path(run, "inputs.csv"), row.names = FALSE)
@@ -228,4 +230,6 @@ report$completed_utc <- format(Sys.time(), tz = "UTC", usetz = TRUE)
 verification_save_report(report, run)
 failed <- any(vapply(report$stages, function(s) s$exit_status != 0L, logical(1))) ||
   (mode == "release" && !report$reproduction_verified)
-quit(status = as.integer(failed))
+status <- as.integer(failed)
+verification_print_summary(report, run, status)
+quit(status = status)

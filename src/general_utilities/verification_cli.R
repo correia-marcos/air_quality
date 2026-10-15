@@ -91,3 +91,39 @@ verification_save_report <- function(report, run) {
   jsonlite::write_json(report, here::here(run, "report.json"), pretty = TRUE,
                        auto_unbox = TRUE, null = "null")
 }
+
+# Print the exit status and failed stages without replacing the saved evidence.
+#' @param report Verification report for the current process.
+#' @param run Directory containing that report and its stage logs.
+#' @param status Exit status that the caller will return.
+#' @return NULL, invisibly; prints diagnostic paths and available container-stage failures.
+#' @details A quiet terminal is not acceptance evidence. Full verification redirects stage
+#   output to logs; include the child report when the container produced one.
+verification_print_summary <- function(report, run, status) {
+  cat("Verification exit status:", status, "\n")
+  cat("Recorded reproduction status:",
+      if (isTRUE(report$reproduction_verified)) "verified" else "incomplete", "\n")
+  cat("Report:", file.path(run, "report.json"), "\n")
+  reports <- list(process = report)
+  roots <- c(process = run)
+  child <- file.path(run, "report", "report.json")
+  if (file.exists(child)) {
+    reports$container <- jsonlite::read_json(child)
+    roots <- c(roots, container = file.path(run, "report"))
+    cat("Container report:", child, "\n")
+  }
+  for (scope in names(reports)) {
+    current <- reports[[scope]]
+    for (name in names(current$stages)) {
+      stage <- current$stages[[name]]
+      if (isTRUE(stage$exit_status == 0L)) next
+      cat("Failed stage:", paste(scope, name, sep = "/"),
+          "(exit", stage$exit_status, ")\n")
+      if (!is.null(stage$log)) cat("Log:", file.path(roots[[scope]], stage$log), "\n")
+    }
+    if (length(current$findings)) {
+      cat(paste(current$findings, collapse = "\n"), "\n")
+    }
+  }
+  invisible(NULL)
+}
