@@ -5095,6 +5095,12 @@ mexico_filter_census <- function(
 #   labor variables, filters adults aged 25+, and collapses to municipality level.
 #   Income (INGTRMEN) is harmonized and winsorized so the IDW estimator can
 #   build income deciles downstream.
+#' @details
+#   Read only the twelve required source fields and select metropolitan municipalities
+#   before harmonizing them. Filtering does not materialize unused census columns.
+#   Retain all ages in the individual file. Income cutoffs pool all retained files and ages:
+#   the first percentile uses positive income, and the 99th uses all nonmissing income.
+#   Retain the R type-7 quantiles, schooling replacements, weights and adult collapse.
 #
 #' @Written_on : 05/02/2026
 #' @Written_by : Marcos Paulo
@@ -5121,8 +5127,7 @@ mexico_harmonize_census_data <- function(
   # Create output folder
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
   
-  # Winsorize income: cap at 1st/99th percentiles among positive values,
-  # keep zeros intact.
+  # Compute the pooled income caps; apply them to positive readings only.
   .winsorize_income <- function(x) {
     pos <- x[!is.na(x) & x > 0]
     
@@ -5209,26 +5214,33 @@ mexico_harmonize_census_data <- function(
       message("Processing: ", basename(path))
     }
     
-    # Read raw data as character for stable parsing
+    # Read the required fields as character, then select metropolitan municipalities.
+    required <- c("ENT", "MUN", "SEXO", "PARENTESCO", "PERTE_INDIGENA", "EDAD",
+                  "CONACT", "INGTRMEN", "FACTOR", "ESCOACUM", "NIVACAD", "ESCOLARI")
     raw <- vroom::vroom(
       path,
       col_types = vroom::cols(.default = "c"),
+      col_select = tidyselect::matches(
+        paste0("^(", paste(required, collapse = "|"), ")$"), ignore.case = TRUE),
       show_col_types = FALSE,
       delim = ",",
       trim_ws = TRUE,
       na = c("", " ", "NA", "999")
     ) %>%
-      dplyr::rename_with(toupper)
-    
-    # Harmonize variables
-    df <- raw %>%
+      dplyr::rename_with(toupper) %>%
       dplyr::mutate(
         CVE_MUN = as.numeric(sprintf(
           "%02d%03d",
           as.numeric(ENT),
           as.numeric(MUN)
-        )),
-        
+        )))
+    if (!is.null(metro_codes)) {
+      raw <- dplyr::filter(raw, CVE_MUN %in% metro_codes)
+    }
+
+    # Harmonize the selected records with the existing schooling and demographic rules.
+    df <- raw %>%
+      dplyr::mutate(
         women = as.numeric(SEXO == "3"),
         
         hh_head = as.numeric(PARENTESCO == "101"),
@@ -5253,11 +5265,6 @@ mexico_harmonize_census_data <- function(
         factor   = as.numeric(FACTOR)
       ) %>%
       harmonize_education_mx()
-    
-    # Filter metro area when requested
-    if (!is.null(metro_codes)) {
-      df <- df %>% dplyr::filter(CVE_MUN %in% metro_codes)
-    }
     
     # Keep analytical variables
     df %>%
