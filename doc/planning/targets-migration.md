@@ -1,6 +1,18 @@
 # Readable R scripts and a simpler targets pipeline
 
-## Current continuation — 8 October 2026
+## Current continuation — 14 October 2026
+
+The starting checkout is clean at `b6eb80b`; the required migration dependencies and recent
+memory/rename repairs are committed. The latest Docker image builds, but the isolated
+manuscript rebuild was killed during CDMX census processing. Scientific review remains
+in progress, and the user chose to repair verification before removing Make.
+
+Read [the current verification and repair record](migration-verification-20261014.md)
+for executed evidence, the new memory repair, exact review files and the next Docker command.
+Scientific acceptance and the default scheduler cutover remain pending. The dated records
+below describe their original checkouts rather than the current committed repository.
+
+## Historical continuation — 8 October 2026
 
 The current checkout is `ffbe43f`. Marcos has committed several migration and particulate
 screening batches, but required helpers, recipes, tests and integration changes still differ

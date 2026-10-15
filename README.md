@@ -12,6 +12,11 @@ revision-matched numerical comparisons, and review of plot data and rendering. H
 outputs are not a reviewed baseline. See [doc/HOW_TO_RUN.md](doc/HOW_TO_RUN.md) for the
 current procedure and limitations.
 
+The migration code and earlier memory repairs are committed. The latest isolated image
+build succeeds, but manuscript execution still needs a verified complete run after the
+CDMX census memory repair. Scientific review and the final scheduler switch remain pending;
+see [the 14 October verification record](doc/planning/migration-verification-20261014.md).
+
 Choose a route:
 
 | Goal | Start here |

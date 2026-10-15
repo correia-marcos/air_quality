@@ -278,6 +278,13 @@ empty; uses image-baked code; and disables runtime networking. The default execu
 `make -B all`; `--targets` selects the candidate manuscript graph with a fresh cache.
 Both routes recreate geography and derived products from the declared source copies.
 
+The verifier prints its exit status, reproduction status, failed stages and log paths.
+It also reports failures from the nested container report. Read the outer `report.json`
+and `report/report.json`: a successful Docker connection or image build does not establish
+that rebuilding, release tests or manuscript export completed. Detailed output remains in
+the stage logs. The [14 October verification record](planning/migration-verification-20261014.md)
+describes the current CDMX census repair and pending acceptance work.
+
 The verifier reports missing prerequisites before expensive stages where possible. It records
 the supplied code revision and patch separately from the container's code inventory; it only
 queries Git when repository metadata is present. A failed stage, missing source, skipped

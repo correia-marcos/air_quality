@@ -1,6 +1,18 @@
 # Targets migration: handoff for the next model
 
-## Current continuation — 8 October 2026
+## Current continuation — 14 October 2026
+
+Resume from [the current verification and repair record](migration-verification-20261014.md).
+The required migration files and earlier memory repairs are committed at the clean starting
+checkout `b6eb80b`. The 14 October container rebuild still recorded a memory kill during
+CDMX census processing; scientific review is in progress. The user chose verification repair
+before removing the existing scheduler. Only Marcos runs Docker commands.
+
+The new record identifies the smaller census reader repair, terminal failure reporting,
+bounded checks, exact review groups and remaining acceptance/cutover work. Preserve the
+dated evidence below; its pending-file inventories are historical.
+
+## Historical continuation — 8 October 2026
 
 Resume from [the continuation and Docker handoff](migration-continuation-20261008.md),
 including [the exact pending file list](migration-review-files-20261008.csv). The current

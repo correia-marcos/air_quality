@@ -1,6 +1,6 @@
 # Workflow inventory and remaining work
 
-Updated 8 October 2026; individual execution records retain their original dates.
+Updated 14 October 2026; individual execution records retain their original dates.
 Every R entry point and Quarto report under scripts/ has
 one row below. Targets declarations own manuscript dependencies; scripts remain
 executable RStudio recipes. The inventory is descriptive, not another scheduler.
@@ -11,6 +11,12 @@ that evidence remains incomplete; **blocked** identifies a known prerequisite or
 issue. Each row states the evidence source. Maintained does not mean scientifically accepted
 or fully reproduced.
 Absence from targets is not evidence for deletion.
+
+The migration dependencies and earlier memory/rename repairs are committed. The 14 October
+Docker image builds, but isolated rebuilding stopped with an OOM kill during CDMX census
+processing. The smaller census reader and terminal failure summary are prepared for review.
+Scientific baseline/results review is in progress; Make remains until verification and
+acceptance finish. See [the current verification record](migration-verification-20261014.md).
 
 Run commands from the project root, or execute the script sections in RStudio without
 a targets cache. Preserve scientific settings and protected source inputs. See
