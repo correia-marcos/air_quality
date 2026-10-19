@@ -13,6 +13,21 @@ test_that("manifest producers and result topics obey the shared contract", {
   }
 })
 
+test_that("only the specification-sensitivity pilot adds result subfolders", {
+  # Pilot of the subfolder layout; any other subfolder is unreviewed drift.
+  pilot <- "specification_sensitivity"
+  roles <- c("design_a", "robustness_designs", "review", "panel", "reference_bogota")
+  for (root in here::here("results", c("tables", "figures/diagnostics"))) {
+    if (!dir.exists(root)) next
+    subdirs <- list.dirs(root, full.names = FALSE, recursive = FALSE)
+    expect_true(all(subdirs %in% pilot), info = root)
+    if (dir.exists(file.path(root, pilot))) {
+      expect_true(all(list.dirs(file.path(root, pilot), full.names = FALSE,
+                                recursive = FALSE) %in% roles), info = root)
+    }
+  }
+})
+
 test_that("all four city configurations send generated products to interim", {
   e <- new.env(parent = environment())
   sys.source(here::here("src/city_specific/registry.R"), envir = e)
