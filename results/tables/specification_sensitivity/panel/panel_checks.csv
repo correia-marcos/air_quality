@@ -1,0 +1,10 @@
+check,value,detail
+unique_spec_id,1,spec_id is unique
+rows,3840,rows in the panel
+one_paper_baseline_per_city_outcome,1,"quintiles, finest, 3 km, p = 1"
+zero_delta_at_paper_baseline,1,delta_vs_paper
+zero_delta_at_fine_reference,1,delta_resolution
+decomposition_sums_to_total,1,max |total - exposure - composition|
+parity_with_robustness_design_a,1,0 of 480 rows differ
+manuscript_regression_anchor,1,0 of 18 outcomes differ
+missing_gaps,0,gaps not defined (an empty endpoint group)

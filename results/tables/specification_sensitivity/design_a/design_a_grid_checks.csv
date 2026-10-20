@@ -1,0 +1,10 @@
+check,cases,failed,max_error
+sample_power_invariance,18,0,
+sample_outcome_invariance,48,0,
+sample_buffer_nesting,27,0,
+single_station_power_invariance,36,0,3.5527136788005e-14
+single_station_threshold_hours,36,,56
+assignment_equals_sample,3840,0,
+variance_identity,3840,,7.3305272962898e-10
+sample_nested_with_reference,3840,0,
+decomposition_identity,3840,0,1.4210854715202e-14
