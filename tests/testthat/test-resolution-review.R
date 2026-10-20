@@ -118,6 +118,17 @@ test_that("buffer plot data keeps native B of cities run at both buffers", {
   expect_equal(unique(x$pollutant), "pm10")
 })
 
+test_that("buffer plot data can select Design A and keeps native B by default", {
+  base <- data.table::data.table(city_id = "a", design = c("B_native", "A"),
+    level = "fine", outcome = "avg_pm10", gap = c(1, 2), population = 1)
+  levels <- data.table::data.table(city_id = "a", level = "fine",
+                                   label = "Fine census unit")
+  args <- list(base = base, alternative = data.table::copy(base), levels = levels,
+               city_labels = c(a = "City A"), support_order = "Fine census unit")
+  expect_equal(do.call(resolution_buffer_plot_data, args)$gap, c(1, 1))
+  expect_equal(do.call(resolution_buffer_plot_data, c(args, design = "A"))$gap, c(2, 2))
+})
+
 test_that("tie splits report quintile cuts inside one schooling value by geo_id", {
   groups <- data.table::data.table(geo_id = c("a", "b", "c", "d", "e"),
     educ_years = c(5, 8, 9, 11, 12), person_weight = 1, adult = 1L)

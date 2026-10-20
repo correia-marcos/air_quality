@@ -1156,7 +1156,9 @@ resolution_multicity_inputs <- function(city, buffer_km = 3, grouping = "edu_qui
   for (oc in outcomes) set(exposure, j = oc, value = as.numeric(exposure[[oc]]))
   panel <- as.data.table(arrow::read_parquet(paths["pollution"]))
   panel[, station := normalize_station(station)]
-  source_dir <- dirname(dirname(paths["pollution"]))
+  # The frozen year=2023 partition only, as in the manuscript; the city folder also
+  # holds non-partition files (_audit/) that break hive partition reading.
+  source_dir <- dirname(paths["pollution"])
   writeLines("incomplete", file.path(out, "STATUS.txt"))
   profiles <- list(); contrasts <- list(); variances <- list()
   composition <- list(); differences <- list()
@@ -1291,7 +1293,9 @@ resolution_multicity_rebuild_b <- function(
         geo_sta_pq = matrix_file, buffer_km = buffer_km,
         census_col = groups, group_var = "edu_quintile", quintile_level = "individual",
         precomputed_group_col = "edu_quintile", target_years = 2023L,
-        mem_gb = mem_gb, n_threads = 2L, out_dir = bdir, out_name = "resolution",
+        mem_gb = mem_gb, n_threads = 2L,
+        duckdb_temp_dir = file.path(dirname(tempdir()), "resolution_b_duckdb_spill"),
+        out_dir = bdir, out_name = "resolution",
         overwrite = TRUE, quiet = FALSE)
       fwrite(signature, b_signature)
     }
@@ -1822,7 +1826,9 @@ resolution_multicity_save_tables <- function(
   nesting,
   buffer_km = 3,
   grouping = "edu_quintile") {
-  table_dir <- here::here("results", "tables")
+  table_dir <- here::here("results", "tables", "specification_sensitivity",
+                          "robustness_designs")
+  dir.create(table_dir, recursive = TRUE, showWarnings = FALSE)
   root <- resolution_buffer_root(buffer_km, grouping)
   folder <- basename(resolution_buffer_root(3, grouping))
   prefix <- paste0("resolution_multicity_",
@@ -1930,13 +1936,14 @@ resolution_multicity_save_tables <- function(
     paste0(prefix, "verification.csv")))
   fwrite(rbindlist(patterns), file.path(table_dir, paste0(prefix, "patterns.csv")))
   # Record the exact source files used for this optional execution, without a clean-tree claim.
-  code_paths <- c("scripts/process_data/prepare_resolution_inputs.R",
-    "scripts/process_data/estimate_resolution_sensitivity.R",
-    "scripts/tables_images/figure_resolution_sensitivity.R",
+  code_paths <- c(
+    "scripts/process_data/specification_sensitivity/prepare_resolution_inputs.R",
+    "scripts/process_data/specification_sensitivity/estimate_resolution_sensitivity.R",
+    "scripts/tables_images/specification_sensitivity/figure_resolution_sensitivity.R",
     "src/general_utilities/config_utils_resolution.R",
-    "src/general_utilities/process/resolution_sensitivity.R",
-    "src/general_utilities/process/resolution_workflow.R",
-    "src/general_utilities/plot/resolution_workflow.R",
+    "src/general_utilities/process/specification_sensitivity/resolution_sensitivity.R",
+    "src/general_utilities/process/specification_sensitivity/resolution_workflow.R",
+    "src/general_utilities/plot/specification_sensitivity/resolution_workflow.R",
     "src/general_utilities/process/idw_exposure.R",
     "src/general_utilities/process/distances.R",
     "src/general_utilities/process/exposure_regressions.R",

@@ -20,8 +20,14 @@ suppressMessages(sf::sf_use_s2(TRUE))
 source(here::here("src", "general_utilities", "base_utils.R"))
 source(here::here("src", "general_utilities", "theme_paper.R"))
 for (file in c("geo_ids.R", "distances.R", "idw_exposure.R",
-               "exposure_regressions.R", "resolution_sensitivity.R",
-               "resolution_workflow.R", "resolution_review.R")) {
+               "exposure_regressions.R")) {
   source(here::here("src", "general_utilities", "process", file))
+}
+# Specification-sensitivity modules: shared primitives, the A/B/C robustness workflow,
+# review summaries, then Design A, the IDW grid and the specification panel.
+for (file in c("resolution_sensitivity.R", "resolution_workflow.R", "resolution_review.R",
+               "design_a.R", "idw_grid.R", "specification_panel.R")) {
+  source(here::here("src", "general_utilities", "process", "specification_sensitivity",
+                    file))
 }
 rm(resolution_packages, package, file)

@@ -25,10 +25,13 @@ source(here::here("src", "general_utilities", "process", "geo_ids.R"))
 source(here::here("src", "general_utilities", "process", "idw_exposure.R"))
 source(here::here("src", "general_utilities", "process", "exposure_regressions.R"))
 
-for (file in c("distances.R", "pollution_quality.R", "outliers.R", "imputation.R",
-               "resolution_sensitivity.R",
-               "resolution_workflow.R", "resolution_review.R")) {
+for (file in c("distances.R", "pollution_quality.R", "outliers.R", "imputation.R")) {
   source(here::here("src", "general_utilities", "process", file))
+}
+for (file in c("resolution_sensitivity.R", "resolution_workflow.R", "resolution_review.R",
+               "design_a.R", "idw_grid.R", "specification_panel.R")) {
+  source(here::here("src", "general_utilities", "process", "specification_sensitivity",
+                    file))
 }
 source(here::here("src", "general_utilities", "test_runner.R"))
 source(here::here("src", "general_utilities", "reproducibility.R"))

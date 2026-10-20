@@ -20,18 +20,19 @@
 #' @Author: Marcos
 # ============================================================================================
 
-# Get all libraries and functions
+
 # ============================================================================================
 # I: Import data
 # ============================================================================================
+# Get all libraries and functions
 source(here::here("src", "general_utilities", "config_utils_process_data.R"))
 
-path_manzanas <- here::here("data", "interim", "geospatial_data", "bogota",
-                            "bogota_area_metro_census_tracts_2018.gpkg")
+path_manzanas   <- here::here("data", "interim", "geospatial_data", "bogota",
+                              "bogota_area_metro_census_tracts_2018.gpkg")
 path_localities <- here::here("data", "interim", "geospatial_data", "bogota",
                               "bogota_area_metro_2018.gpkg")
-path_out <- here::here("data", "interim", "geospatial_data", "bogota",
-                       "bogota_manzana_localidad_crosswalk.parquet")
+path_out        <- here::here("data", "interim", "geospatial_data", "bogota",
+                              "bogota_manzana_localidad_crosswalk.parquet")
 
 manzanas   <- sf::st_read(path_manzanas, quiet = TRUE)
 localities <- sf::st_read(path_localities, quiet = TRUE)

@@ -22,6 +22,14 @@ idw_distance_power <- 1
 exposure_buffers_km <- c(3L, 5L)
 individual_exposure_buffer_km <- 3L
 
+# Specification sensitivity only (never the manuscript): the IDW buffer x exponent grid on
+# which Design A is estimated. Its reference specification is 3 km with exponent 1.
+resolution_grid_buffers_km      <- c(1, 2, 3, 5, 8, 10, 12, 15, 17, 20)
+resolution_grid_distance_powers <- c(1, 2)
+# Exponent 2 runs on a subset of the buffers, a reduction for the runtime budget of the
+# 14 October 2026 run; exponent 1 runs on every buffer.
+resolution_grid_power2_buffers_km <- c(1, 2, 3, 5, 10, 20)
+
 # Harmonized education levels: the six bands each census module derives from educ_years,
 # lowest to highest. Bogota's "Some tertiary" includes completed tecnica and normalista.
 education_level_bands <- c("no_education", "high_school_incomplete", "high_school_complete",

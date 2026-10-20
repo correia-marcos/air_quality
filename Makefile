@@ -37,7 +37,8 @@ SRC := $(shell find src -name '*.R')
 # ---- Phony convenience targets -------------------------------------------------------------
 .PHONY: all download process merra2 distances outliers exposure descriptives \
         scatter imputed temporal figures tables context-maps resolution \
-        resolution-multicity resolution-multicity-grouping validate clean help
+        resolution-multicity resolution-multicity-grouping specification-grid \
+        specification-panel validate clean help
 
 all: figures tables
 
@@ -139,28 +140,47 @@ merra2: temporal
 	$(RUN) scripts/tables_images/figure_merra2_vs_stations.R
 	$(RUN) scripts/tables_images/figure_aerosol_composition.R
 
-# Resolution sensitivity re-keys the Bogota exposure to the reference census geographies.
-# Deliberately NOT a prerequisite of `all`: methodological, and not yet cited by the draft.
-resolution: exposure
-	$(RUN) scripts/process_data/build_bogota_localidad_crosswalk.R
-	$(RUN) scripts/process_data/estimate_resolution_sensitivity.R
-	$(RUN) scripts/tables_images/figure_resolution_sensitivity.R
+# Specification sensitivity (geographic support, IDW buffer and exponent, education
+# groupings). Optional and deliberately NOT a prerequisite of `all`. File map:
+# scripts/process_data/specification_sensitivity/README.md
+SPEC_PROCESS := scripts/process_data/specification_sensitivity
+SPEC_FIGURES := scripts/tables_images/specification_sensitivity
 
-# Three-city sensitivity consumes frozen derived inputs; it never invokes `exposure`.
+# Historical Bogota reference: re-keys the manzana exposure to the census geographies.
+resolution: exposure
+	$(RUN) $(SPEC_PROCESS)/build_bogota_localidad_crosswalk.R
+	$(RUN) $(SPEC_PROCESS)/estimate_resolution_sensitivity.R
+	$(RUN) $(SPEC_FIGURES)/figure_resolution_sensitivity.R
+
+# Robustness designs A/B/C consume frozen derived inputs; they never invoke `exposure`.
 resolution-multicity:
-	$(RUN) scripts/process_data/prepare_resolution_inputs.R
-	$(RUN) scripts/process_data/estimate_resolution_sensitivity.R --scope=multicity
-	$(RUN) scripts/tables_images/figure_resolution_sensitivity.R --scope=multicity
+	$(RUN) $(SPEC_PROCESS)/prepare_resolution_inputs.R
+	$(RUN) $(SPEC_PROCESS)/estimate_resolution_sensitivity.R --scope=multicity
+	$(RUN) $(SPEC_FIGURES)/figure_resolution_sensitivity.R --scope=multicity
 
 # Another education grouping instead of the frozen quintiles: GROUPING=edu_group3
-# (default), edu_level or edu_quintile_split. Reuses the frozen inputs and the quintile
-# run's B exposures, so `resolution-multicity` must have completed first.
+# (default), edu_level or edu_quintile_split, at BUFFER km (default 3). Reuses the frozen
+# inputs and the quintile run's B exposures at that buffer, which must exist first.
 GROUPING ?= edu_group3
+BUFFER ?= 3
 resolution-multicity-grouping:
-	$(RUN) scripts/process_data/estimate_resolution_sensitivity.R --scope=multicity \
+	$(RUN) $(SPEC_PROCESS)/estimate_resolution_sensitivity.R --scope=multicity \
+		--grouping=$(GROUPING) --buffer-km=$(BUFFER)
+	$(RUN) $(SPEC_FIGURES)/figure_resolution_sensitivity.R --scope=multicity \
 		--grouping=$(GROUPING)
-	$(RUN) scripts/tables_images/figure_resolution_sensitivity.R --scope=multicity \
-		--grouping=$(GROUPING)
+
+# Primary Design A: fine IDW over the buffer x exponent grid, then Design A estimates with
+# the fixed-sample decomposition. Needs the frozen inputs (prepare step).
+specification-grid:
+	$(RUN) $(SPEC_PROCESS)/estimate_idw_specification_grid.R
+	$(RUN) $(SPEC_PROCESS)/estimate_design_a_grid.R
+
+# One row per Design A specification, the exact variance decomposition and the grid
+# figures. The panel's parity check needs the A/B/C robustness runs at 3 and 20 km.
+specification-panel:
+	$(RUN) $(SPEC_PROCESS)/build_specification_panel.R
+	$(RUN) $(SPEC_PROCESS)/estimate_specification_variance_decomposition.R
+	$(RUN) $(SPEC_FIGURES)/figure_design_a_grid.R
 
 # Context maps are not manuscript artifacts; the terrain version may contact Stadia.
 context-maps: process
@@ -187,7 +207,8 @@ help:
 	@echo "Targets: all process distances outliers exposure descriptives scatter"
 	@echo "         imputed temporal figures tables"
 	@echo "         merra2 context-maps resolution resolution-multicity"
-	@echo "         resolution-multicity-grouping [GROUPING=] download validate clean"
+	@echo "         resolution-multicity-grouping [GROUPING=] [BUFFER=]"
+	@echo "         specification-grid specification-panel download validate clean"
 	@echo "Add DOCKER=1 to run each step inside the compose \"analysis\" service."
 
 

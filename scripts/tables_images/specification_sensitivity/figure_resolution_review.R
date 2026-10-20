@@ -7,10 +7,14 @@
 # products, and the Mexico City distance matrix. Builds the IT1/IT2 reading table, the
 # Bogota urban/rural class breakdown, Santiago's quintile composition by sample and by
 # comuna, monitoring diagnostics by support (kept apart from exposure estimation), and
-# the 3 km versus 20 km Design B comparison for every education grouping, and the
-# headline gaps of the four education definitions side by side. Writes
-# results/tables/resolution_review_*.csv and
-# results/figures/diagnostics/resolution_review_*.pdf. It estimates nothing new.
+# the 3 km versus 20 km comparison for every education grouping under native Design B
+# and under Design A (with the Design A samples and the fixed-sample decomposition from
+# estimate_design_a_grid.R), and the headline gaps of the four education definitions.
+# Reads the robustness tables in
+# results/tables/specification_sensitivity/robustness_designs/ and writes
+# results/tables/specification_sensitivity/review/resolution_review_*.csv and
+# results/figures/diagnostics/specification_sensitivity/review/resolution_review_*.pdf.
+# It estimates nothing new.
 #
 #' @Summary:
 #   I.   Import data: functions, settings, paths and the saved inputs.
@@ -26,7 +30,8 @@
 # ========================================================================================
 # Load the resolution functions, the review summaries and their figures.
 source(here::here("src", "general_utilities", "config_utils_resolution.R"))
-source(here::here("src", "general_utilities", "plot", "resolution_review.R"))
+source(here::here("src", "general_utilities", "plot", "specification_sensitivity",
+                  "resolution_review.R"))
 set_paper_theme(base_size = 10)
 
 # Settings: the three ladder cities, the station-count radii and the pollutants.
@@ -44,19 +49,22 @@ support_order <- c("Municipio", "Localidad/municipio", "Comuna", "Sector",
 # Set the folders
 dir_inputs    <- here::here("data", "interim", "resolution_sensitivity")
 dir_processed <- here::here("data", "processed", "resolution_sensitivity")
-dir_tables    <- here::here("results", "tables")
-dir_figures   <- here::here("results", "figures", "diagnostics")
+dir_robust    <- here::here("results", "tables", "specification_sensitivity",
+                            "robustness_designs")
+dir_tables    <- here::here("results", "tables", "specification_sensitivity", "review")
+dir_figures   <- here::here("results", "figures", "diagnostics",
+                            "specification_sensitivity", "review")
 
 # Read the saved multicity products for both buffers
-contrasts_3km    <- fread(file.path(dir_tables, "resolution_multicity_contrasts.csv"))
-contrasts_20km   <- fread(file.path(dir_tables, "resolution_multicity_20km_contrasts.csv"))
-profiles_3km     <- fread(file.path(dir_tables, "resolution_multicity_profiles.csv"))
-profiles_20km    <- fread(file.path(dir_tables, "resolution_multicity_20km_profiles.csv"))
-composition_3km  <- fread(file.path(dir_tables, "resolution_multicity_composition.csv"))
-composition_20km <- fread(file.path(dir_tables,
+contrasts_3km    <- fread(file.path(dir_robust, "resolution_multicity_contrasts.csv"))
+contrasts_20km   <- fread(file.path(dir_robust, "resolution_multicity_20km_contrasts.csv"))
+profiles_3km     <- fread(file.path(dir_robust, "resolution_multicity_profiles.csv"))
+profiles_20km    <- fread(file.path(dir_robust, "resolution_multicity_20km_profiles.csv"))
+composition_3km  <- fread(file.path(dir_robust, "resolution_multicity_composition.csv"))
+composition_20km <- fread(file.path(dir_robust,
                                     "resolution_multicity_20km_composition.csv"))
-matrices_3km     <- fread(file.path(dir_tables, "resolution_multicity_matrices.csv"))
-matrices_20km    <- fread(file.path(dir_tables, "resolution_multicity_20km_matrices.csv"))
+matrices_3km     <- fread(file.path(dir_robust, "resolution_multicity_matrices.csv"))
+matrices_20km    <- fread(file.path(dir_robust, "resolution_multicity_20km_matrices.csv"))
 
 # Alternative education groupings: table name, headline contrast and title words
 alt_groupings <- c(quintile_split   = "Q1 - Q5 (split ties)",
@@ -68,7 +76,7 @@ alt_titles    <- c(quintile_split   = "quintiles with split ties",
 alt_names     <- setNames(names(alt_groupings), names(alt_groupings))
 
 # Read their saved contrasts and profiles for both buffers
-read_alt <- function(g, what) fread(file.path(dir_tables,
+read_alt <- function(g, what) fread(file.path(dir_robust,
   paste0("resolution_multicity_", g, "_", what, ".csv")))
 alt_contrasts_3km  <- lapply(alt_names, read_alt, what = "contrasts")
 alt_contrasts_20km <- lapply(alt_names, read_alt, what = "20km_contrasts")
@@ -129,6 +137,12 @@ groups_cdmx    <- as.data.table(arrow::read_parquet(here::here("data", "processe
 panel_cdmx     <- as.data.table(arrow::read_parquet(here::here("data", "processed",
   "monitoring_stations_outliers", "cdmx_metro_clean", "year=2023", "data.parquet")))
 
+# Design A grid: samples and fixed-sample decomposition (3 and 20 km are on the grid)
+grid_samples <- as.data.table(arrow::read_parquet(file.path(dir_processed,
+  "design_a_grid", "design_a_grid_samples.parquet")))
+grid_parts   <- as.data.table(arrow::read_parquet(file.path(dir_processed,
+  "design_a_grid", "design_a_grid_decomposition.parquet")))
+
 # Set the output files
 csv_it_reading      <- file.path(dir_tables, "resolution_review_it_reading.csv")
 csv_bogota_classes  <- file.path(dir_tables, "resolution_review_bogota_classes.csv")
@@ -157,6 +171,18 @@ pdf_definitions     <- character()
 for (b in c("3km", "20km")) for (poll in pollutants) {
   pdf_definitions[paste(b, poll, sep = "_")] <- file.path(dir_figures,
     paste0("resolution_review_definitions_", b, "_", poll, ".pdf"))
+}
+csv_design_a_samples <- file.path(dir_tables,
+                                  "resolution_review_buffer_design_a_samples.csv")
+csv_design_a_parts   <- file.path(dir_tables,
+                                  "resolution_review_buffer_design_a_decomposition.csv")
+pdf_design_a         <- file.path(dir_figures,
+  paste0("resolution_review_buffer_design_a_", pollutants, ".pdf"))
+names(pdf_design_a)  <- pollutants
+pdf_alt_design_a     <- character()
+for (g in alt_names) for (poll in pollutants) {
+  pdf_alt_design_a[paste(g, poll, sep = "_")] <- file.path(dir_figures,
+    paste0("resolution_review_", g, "_buffer_design_a_", poll, ".pdf"))
 }
 
 # ========================================================================================
@@ -348,10 +374,67 @@ for (b in c("3 km", "20 km")) for (poll in pollutants) {
                           "education definition, ", b, " buffer"))
 }
 
+# 10. Design A at 3 and 20 km. Within a buffer the people are fixed across supports;
+#     between buffers the sample grows (nested), and the grid splits the change.
+design_a_samples <- grid_samples[distance_power == 1 & buffer_km %in% c(3, 20),
+  .(city_id, pollutant, buffer_km, sample_population, sample_fine_units,
+    sample_all_adults, sample_share_city, share_q1, share_q2, share_q3, share_q4,
+    share_q5, share_of_3km_sample_contained = overlap_with_reference)]
+design_a_samples[, adults_added_vs_3km := sample_population -
+                   sample_population[buffer_km == 3], by = .(city_id, pollutant)]
+design_a_parts <- grid_parts[distance_power == 1 & buffer_km == 20,
+  .(city_id, grouping, level, outcome, gap_3km = gap_ref_own, gap_20km = gap_own,
+    total_change, exposure_change_same_people = exposure_change,
+    sample_change = sample_expansion - sample_contraction,
+    gap_20km_on_3km_sample = gap_spec_common, common_population)]
+
+# Each panel notes its buffers' samples; supports carry the units reached (G)
+design_a_notes <- design_a_samples[order(buffer_km), .(label = paste0(buffer_km,
+  " km: N=", format(round(sample_population / 1e6, 2), nsmall = 2), "m, ",
+  format(sample_fine_units, big.mark = ",", trim = TRUE), " fine units",
+  collapse = "\n")), by = .(city_id, pollutant)]
+design_a_notes <- design_a_notes[rep(seq_len(.N), each = 3)]
+design_a_notes[, panel := paste0(city_labels[city_id], ": ",
+                                 c("annual mean", "hours >= IT1", "hours >= IT2"))]
+
+# Bogota's localidad branch does not nest sector: kept in the tables, off the line
+design_a_plot_data <- resolution_buffer_plot_data(
+  base          = contrasts_3km,
+  alternative   = contrasts_20km,
+  levels        = levels_dt,
+  city_labels   = city_labels,
+  support_order = support_order,
+  design        = "A")[!(city_id == "bogota_2018" & level == "localidad")]
+plots_design_a <- lapply(setNames(pollutants, pollutants), function(poll) {
+  plot_resolution_buffer_gaps(
+    comparison = design_a_plot_data[pollutant == poll],
+    title      = paste0(pollutant_names[[poll]], ": Design A gap at 3 km and 20 km"),
+    design     = "A",
+    notes      = design_a_notes[pollutant == poll])
+})
+
+# The same Design A figures for each alternative grouping
+alt_design_a_plots <- list()
+for (g in alt_names) for (poll in pollutants) {
+  x <- resolution_buffer_plot_data(base = alt_contrasts_3km[[g]],
+    alternative = alt_contrasts_20km[[g]], levels = levels_dt, city_labels = city_labels,
+    support_order = support_order, design = "A")
+  alt_design_a_plots[[paste(g, poll, sep = "_")]] <- plot_resolution_buffer_gaps(
+    comparison = x[pollutant == poll & !(city_id == "bogota_2018" & level == "localidad")],
+    title      = paste0(pollutant_names[[poll]], ": Design A gap at 3 km and 20 km, ",
+                        alt_titles[[g]]),
+    gap_label  = alt_groupings[[g]],
+    design     = "A",
+    notes      = design_a_notes[pollutant == poll])
+}
+
 # ========================================================================================
 # III: Save outputs
 # ========================================================================================
-# Save the tables
+# Create the review folders, then save the tables
+for (dir in c(dir_tables, dir_figures)) {
+  dir.create(dir, recursive = TRUE, showWarnings = FALSE)
+}
 fwrite(it_reading, csv_it_reading)
 fwrite(bogota_classes, csv_bogota_classes)
 fwrite(quintile_ties, csv_quintile_ties)
@@ -363,6 +446,8 @@ fwrite(buffer_coverage, csv_buffer_coverage)
 fwrite(buffer_parts, csv_buffer_parts)
 for (g in alt_names) fwrite(alt_gaps[[g]], csv_alt_gaps[[g]])
 fwrite(definition_comparison, csv_definitions)
+fwrite(design_a_samples, csv_design_a_samples)
+fwrite(design_a_parts, csv_design_a_parts)
 
 # Save the figures
 ggsave(pdf_santiago_units, plot_santiago_units, width = 8, height = 9.5)
@@ -375,4 +460,10 @@ for (name in names(alt_buffer_plots)) {
 }
 for (name in names(definition_plots)) {
   ggsave(pdf_definitions[[name]], definition_plots[[name]], width = 10, height = 8.5)
+}
+for (poll in pollutants) {
+  ggsave(pdf_design_a[[poll]], plots_design_a[[poll]], width = 10, height = 8)
+}
+for (name in names(alt_design_a_plots)) {
+  ggsave(pdf_alt_design_a[[name]], alt_design_a_plots[[name]], width = 10, height = 8)
 }

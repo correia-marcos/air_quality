@@ -24,7 +24,8 @@
 # ============================================================================================
 source(here::here("src", "general_utilities", "config_utils_resolution.R"))
 source(here::here("src", "general_utilities", "config_utils_plot_tables.R"))
-source(here::here("src", "general_utilities", "plot", "resolution_workflow.R"))
+source(here::here("src", "general_utilities", "plot", "specification_sensitivity",
+                  "resolution_workflow.R"))
 source(here::here("config", "analysis_settings.R"))
 resolution_args <- commandArgs(trailingOnly = TRUE)
 resolution_scope <- sub("^--scope=", "", grep("^--scope=", resolution_args, value = TRUE))

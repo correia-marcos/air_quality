@@ -4,7 +4,9 @@
 #' @details See doc/RESOLUTION_SENSITIVITY.md for populations and A/B/C definitions.
 resolution_reference_figure_inputs <- function() {
   dir_in  <- here::here("data", "processed", "resolution_sensitivity")
-  dir_out <- here::here("results", "figures", "diagnostics")
+  dir_out <- here::here("results", "figures", "diagnostics", "specification_sensitivity",
+                        "reference_bogota")
+  dir.create(dir_out, recursive = TRUE, showWarnings = FALSE)
 
   ci_pq       <- here::here(dir_in, "resolution_ci_bogota_3km_2023.parquet")
   boot_pq     <- here::here(dir_in, "resolution_bootstrap_bogota_3km_2023.parquet")
@@ -442,7 +444,8 @@ resolution_multicity_figure_inputs <- function(grouping = "edu_quintile") {
   city_labels <- c(bogota_2018 = "Bogota", santiago_2017 = "Santiago",
                    sao_paulo_2010 = "Sao Paulo")
   dir_in <- resolution_buffer_root(3, grouping)
-  dir_out <- here::here("results", "figures", "diagnostics")
+  dir_out <- here::here("results", "figures", "diagnostics", "specification_sensitivity",
+                        "robustness_designs")
   dir.create(dir_out, recursive = TRUE, showWarnings = FALSE)
   for (city in cities) {
     if (!identical(readLines(file.path(dir_in, city, "STATUS.txt"))[1], "complete")) {
@@ -761,7 +764,7 @@ resolution_multicity_figure_save <- function(
   for (p in plots) print(p)
   grDevices::dev.off()
   fwrite(data.table(figure = names(plots), file = paste0(file_prefix, names(plots),
-    ".pdf")), here::here("results", "tables",
-      paste0(file_prefix, "figure_index.csv")))
+    ".pdf")), here::here("results", "tables", "specification_sensitivity",
+      "robustness_designs", paste0(file_prefix, "figure_index.csv")))
   invisible(NULL)
 }

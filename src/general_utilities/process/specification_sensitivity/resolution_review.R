@@ -282,19 +282,22 @@ resolution_label_supports <- function(x, levels, city_labels, support_order) {
 #' @param levels        Support ladder with city_id, level and label.
 #' @param city_labels   Named city labels for the panel titles.
 #' @param support_order Support labels, coarse to fine.
+#' @param design        Design plotted: "B_native" (default) or "A".
 #
-#' @return  data.table of native-B contrasts for the cities run at both buffers, with
+#' @return  data.table of the design's contrasts for the cities run at both buffers, with
 #   buffer, ordered support label, pollutant and a city-outcome panel title.
 #
 #' @details
 #   Only labelling and ordering: the gaps and populations are the saved values. The same
-#   preparation serves the quintile and the education-level runs.
+#   preparation serves every education grouping. Design A keeps the people of each
+#   buffer fixed across supports; native B changes them by support.
 # ------------------------------------------------------------------------------------------
 resolution_buffer_plot_data <- function(base, alternative, levels, city_labels,
-                                        support_order) {
+                                        support_order, design = "B_native") {
   cities <- unique(alternative$city_id)
-  x <- rbind(base[design == "B_native" & city_id %in% cities][, buffer := "3 km"],
-             alternative[design == "B_native"][, buffer := "20 km"])
+  plotted <- design
+  x <- rbind(base[design == plotted & city_id %in% cities][, buffer := "3 km"],
+             alternative[design == plotted][, buffer := "20 km"])
   x <- resolution_label_supports(x, levels, city_labels, support_order)
   x[, buffer := factor(buffer, levels = c("3 km", "20 km"))]
   x[]

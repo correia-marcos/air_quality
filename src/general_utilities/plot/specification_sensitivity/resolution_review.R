@@ -1,7 +1,8 @@
 # ==========================================================================================
 # IDB: Air monitoring — figures for the review of the resolution-sensitivity analysis
 # ==========================================================================================
-#' @Goal: Plot the review tables built by src/general_utilities/process/resolution_review.R.
+#' @Goal: Plot the review tables built by
+#   process/specification_sensitivity/resolution_review.R.
 #' @Description: Each function takes a saved-table shape and returns a ggplot object; the
 #   calling script saves it. Education quintiles use one diverging blue-red scale with a
 #   grey midpoint (Q1 red, Q5 blue); buffers and groups use two fixed colours.
@@ -139,41 +140,67 @@ plot_resolution_monitoring <- function(summary, title) {
 # ------------------------------------------------------------------------------------------
 # Function: plot_resolution_buffer_gaps
 #
-#' @param comparison Long table: panel, level_label (ordered), buffer, gap, population.
+#' @param comparison Long table: panel, level_label (ordered), buffer, gap, population and
+#   n_clusters.
 #' @param title      Plot title.
 #' @param gap_label  Headline contrast on the y axis, e.g. "Q1 - Q5".
+#' @param design     "B_native" (default) or "A"; sets the point labels and caption.
+#' @param notes      Optional table of panel and label: one note per panel, top left.
 #
-#' @return  ggplot: native-B headline gap by support under the two buffers.
+#' @return  ggplot: headline gap by support under the two buffers.
 #
 #' @details
 #   Panels have free scales because units differ by outcome and supports differ by city.
-#   Labels give the native sample in millions of education-reporting adults: 3 km above
-#   the point, 20 km below.
+#   Native B labels give its sample in millions of education-reporting adults (3 km above
+#   the point, 20 km below), because that sample changes by support. Design A's people
+#   are fixed within each buffer, so its labels give the support units reached (G) and
+#   the notes give each buffer's sample once.
 # ------------------------------------------------------------------------------------------
-plot_resolution_buffer_gaps <- function(comparison, title, gap_label = "Q1 - Q5") {
-  ggplot2::ggplot(comparison, ggplot2::aes(level_label, gap, colour = buffer,
-                                           group = buffer)) +
+plot_resolution_buffer_gaps <- function(comparison, title, gap_label = "Q1 - Q5",
+                                        design = "B_native", notes = NULL) {
+  comparison <- data.table::copy(comparison)
+  if (design == "A") {
+    comparison[, point_label := paste0("G=", format(n_clusters, big.mark = ",",
+                                                    trim = TRUE))]
+    caption <- paste("Design A: fine exposure averaged over each support. The people of",
+      "each buffer are fixed across supports; the 20 km sample contains the 3 km sample.",
+      "\nPoint labels (G): support units with sampled adults. Notes: each buffer's",
+      "sample (education-reporting adults, fine units). The change between buffers is",
+      "split\ninto exposure and sample parts in",
+      "resolution_review_buffer_design_a_decomposition.csv.",
+      "Avg: concentration units; IT1/IT2: hours at or above the threshold in 2023.")
+  } else {
+    comparison[, point_label := paste0("N=", format(round(population / 1e6, 2),
+                                                    nsmall = 2), "m")]
+    caption <- paste("Native Design B: exposure rebuilt at each support. Point labels",
+      "(N) are sample sizes, not gaps: millions of education-reporting adults in covered",
+      "units.",
+      "\nAvg: concentration units; IT1/IT2: hours at or above the threshold in 2023.")
+  }
+  plot <- ggplot2::ggplot(comparison, ggplot2::aes(level_label, gap, colour = buffer,
+                                                   group = buffer)) +
     ggplot2::geom_hline(yintercept = 0, colour = "grey70", linewidth = .3) +
     ggplot2::geom_line(linewidth = .5, na.rm = TRUE) +
     ggplot2::geom_point(size = 2, na.rm = TRUE) +
-    ggplot2::geom_text(ggplot2::aes(label = paste0("N=", format(round(population / 1e6, 2),
-                                                                nsmall = 2), "m"),
+    ggplot2::geom_text(ggplot2::aes(label = point_label,
                                     vjust = ifelse(buffer == "3 km", -1, 2)),
                        size = 2.1, show.legend = FALSE, na.rm = TRUE) +
     ggplot2::facet_wrap(ggplot2::vars(panel), scales = "free", ncol = 3) +
     ggplot2::scale_colour_manual(values = c("3 km" = "#2a78d6", "20 km" = "#eb6834"),
                                  name = "IDW buffer") +
-    ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(.15, .25))) +
+    ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(.15, .3))) +
     ggplot2::labs(title = title, x = "Geographic support (coarse to fine)",
-      y = paste(gap_label, "(outcome units)"),
-      caption = paste("Native Design B: exposure rebuilt at each support. Point labels",
-        "(N) are sample sizes, not gaps: millions of education-reporting adults in covered",
-        "units.",
-        "\nAvg: concentration units; IT1/IT2: hours at or above the threshold in 2023.")) +
+                  y = paste(gap_label, "(outcome units)"), caption = caption) +
     ggplot2::theme(legend.position = "top", panel.grid.minor = ggplot2::element_blank(),
       axis.text.x = ggplot2::element_text(size = 7, angle = 30, hjust = 1),
       strip.text = ggplot2::element_text(size = 8),
       plot.caption = ggplot2::element_text(hjust = 0, size = 7))
+  if (!is.null(notes)) {
+    plot <- plot + ggplot2::geom_text(data = notes, ggplot2::aes(x = -Inf, y = Inf,
+      label = label), hjust = -0.03, vjust = 1.15, size = 1.9, colour = "grey30",
+      lineheight = .9, inherit.aes = FALSE)
+  }
+  plot
 }
 
 # ------------------------------------------------------------------------------------------

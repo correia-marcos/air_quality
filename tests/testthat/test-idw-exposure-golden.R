@@ -86,3 +86,50 @@ test_that("aggregate_idw_exposure reproduces the hand-computed toy values", {
   on_disk <- data.table::as.data.table(arrow::read_parquet(out$exposure_path))
   expect_setequal(on_disk$geo_id, c("g1", "g2"))
 })
+
+# Exponent 2 (specification sensitivity only) squares the weights, w = 1 / d^2:
+#   g1: h0 = (60*1 + 120/4) / 1.25 = 72;  h1 = 40;  avg = 56;  IT counts 0, 0, 0, 1
+#   g2: h0 = (60 + 120 + 300/4) / 2.25 = 113.33...;  h1 = (40 + 60/4) / 1.25 = 44
+#       avg = (113.33... + 44) / 2;  IT counts 0, 1, 1, 1
+# Eligibility and observed hours do not depend on the exponent.
+test_that("exponent 2 squares the weights and leaves eligibility and hours unchanged", {
+  testthat::skip_if_not_installed("arrow")
+  testthat::skip_if_not_installed("duckdb", minimum_version = "0.9.2")
+
+  root <- tempfile("idw_toy_p2_")
+  dir.create(root)
+  fx <- make_toy_fixture(root)
+  out <- suppressMessages(aggregate_idw_exposure(
+    arrow_dir      = fx$arrow,
+    geo_sta_pq     = fx$dist_pq,
+    census_col     = fx$census,
+    pop_col        = "pop_total",
+    group_var      = "education_mean",
+    n_groups       = 2L,
+    group_name     = "edu_half",
+    quintile_level = "geo",
+    buffer_km      = 3,
+    distance_power = 2,
+    target_years   = 2023,
+    pollutants     = "pm10",
+    mem_gb         = 1,
+    n_threads      = 1,
+    out_dir        = file.path(root, "out"),
+    out_name       = "toy_p2",
+    chunk_by_month = FALSE,
+    quiet          = TRUE,
+    return_data    = TRUE))
+
+  res <- data.table::as.data.table(out$exposure_yearly)
+  data.table::setkey(res, geo_id)
+  expect_setequal(res$geo_id, c("g1", "g2"))
+  expect_equal(res["g1"]$avg_pm10, 56)
+  expect_equal(res["g2"]$avg_pm10, (255 / 2.25 + 44) / 2)
+  expect_equal(as.numeric(res$total_hrs_pm10), c(2, 2))
+  expect_equal(as.numeric(unlist(res["g1", .(hrs_d_pm10_it1, hrs_d_pm10_it2,
+                                              hrs_d_pm10_it3, hrs_d_pm10_it4)])),
+               c(0, 0, 0, 1))
+  expect_equal(as.numeric(unlist(res["g2", .(hrs_d_pm10_it1, hrs_d_pm10_it2,
+                                              hrs_d_pm10_it3, hrs_d_pm10_it4)])),
+               c(0, 1, 1, 1))
+})
