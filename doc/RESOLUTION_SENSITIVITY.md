@@ -1,4 +1,13 @@
-# Geographic-resolution sensitivity
+# Specification sensitivity: geographic support, IDW buffer and exponent, education groups
+
+October 2026: the exercise grew beyond geographic resolution and is now the
+specification-sensitivity analysis. **Design A is the primary design**, estimated on a grid
+of IDW buffers (1–20 km) and exponents (1 and 2); Designs B and C are robustness checks at
+3 and 20 km with exponent 1. Its scripts, functions and outputs moved to
+`specification_sensitivity/` subfolders, the pilot of a subfolder layout; the
+[folder README](../scripts/process_data/specification_sensitivity/README.md) is the file
+map. Inputs were re-frozen on 14 October 2026 from the 13 October manuscript products; the
+previous outputs are archived in `data/{interim,processed}/resolution_sensitivity/_frozen_20261001/`.
 
 Migration review, 5 October 2026: the four supported education definitions and quintile
 default are retained. Portable numerical checks pass; this structural migration does not
@@ -24,10 +33,16 @@ make resolution-multicity
 This runs, in order:
 
 ```sh
-Rscript scripts/process_data/prepare_resolution_inputs.R
-Rscript scripts/process_data/estimate_resolution_sensitivity.R --scope=multicity
-Rscript scripts/tables_images/figure_resolution_sensitivity.R --scope=multicity
+Rscript scripts/process_data/specification_sensitivity/prepare_resolution_inputs.R
+Rscript scripts/process_data/specification_sensitivity/estimate_resolution_sensitivity.R \
+  --scope=multicity
+Rscript scripts/tables_images/specification_sensitivity/figure_resolution_sensitivity.R \
+  --scope=multicity
 ```
+
+The primary Design A grid then runs with `make specification-grid` and, after the 20 km
+robustness estimate, `make specification-panel`; the review script
+(`figure_resolution_review.R`) runs between them. See the folder README for the order.
 
 The preparation step records input MD5 hashes and refuses an unreviewed change to an
 existing input manifest. It does not download source replacements. A rerun may reuse B
@@ -41,8 +56,8 @@ caption now identify the joint specification and use its own population counts. 
 original saved sensitivity products:
 
 ```sh
-Rscript scripts/process_data/estimate_resolution_sensitivity.R --scope=reference \
-  --output-dir=data/processed/resolution_sensitivity/reference_rebuild
+Rscript scripts/process_data/specification_sensitivity/estimate_resolution_sensitivity.R \
+  --scope=reference --output-dir=data/processed/resolution_sensitivity/reference_rebuild
 Rscript tests/testthat.R --mode=synthetic
 ```
 
@@ -52,9 +67,10 @@ exposure-aggregation and area-classification specification, not classification-o
 
 ## Fixed definitions and city supports
 
-All designs use cleaned 2023 station data, the existing pollutant definitions,
-positive distances no greater than 3 km, inverse distance exponent 1, and hourly
-renormalization over available readings. Representative points use the existing
+All designs use cleaned 2023 station data, the existing pollutant definitions, and hourly
+renormalization over available readings. The robustness designs use positive distances no
+greater than 3 km (or 20 km) and inverse distance exponent 1; the Design A grid varies
+the buffer and the exponent (see below). Representative points use the existing
 `st_point_on_surface()` construction after UTM validity repair and transformation to
 WGS84. A city-specific evaluation CRS is fixed from the finest support for B.
 
@@ -149,6 +165,118 @@ profiles, actual population shares, and individual-to-area transition tables.
 Large areas can skip cumulative quintile bins. Empty groups are not forced into existence;
 missing Q1 or Q5 yields an unavailable gap. C changes the reference populations and must
 not be interpreted as the same Q1–Q5 contrast as A or B. C is supplementary and descriptive.
+
+## Design A over the IDW buffer and exponent grid (primary)
+
+`estimate_idw_specification_grid.R` reruns the maintained estimator,
+`aggregate_idw_exposure()`, on the frozen fine distance matrix and 2023 panel at buffers
+{1, 2, 3, 5, 8, 10, 12, 15, 17, 20} km with exponent 1, and at {1, 2, 3, 5, 10, 20} km
+with exponent 2 (`resolution_grid_*` in
+`config/analysis_settings.R`; the manuscript keeps `idw_distance_power <- 1`). Exponent-1
+files at 3, 5 and 20 km must reproduce the manuscript exposure files. Station catalogs
+extend 20 km beyond each metropolitan area, so no buffer exceeds 20 km.
+`estimate_design_a_grid.R` estimates Design A on every specification for the four
+groupings, supports and six outcomes (3,840 estimates). Exponent 2 covers six
+buffers because of the runtime budget of the 14 October 2026 run
+(`resolution_grid_power2_buffers_km`); the variance decomposition uses the buffers present
+at both exponents.
+
+*What each choice changes.* The buffer decides which stations are eligible (`0 < d ≤ b`)
+and therefore which fine units have exposure: the Design A sample grows with the buffer
+and the samples are nested. The exponent only reweights eligible stations (`w = 1/d^p`):
+samples, coverage and observed hours are identical at both exponents, so an exponent
+comparison at a fixed buffer is a pure-weighting comparison on the same people. A unit
+with one eligible station has the same exposure under any exponent; the exponent matters
+where two or more stations are in range, which is rare at 3 km and common at 20 km.
+Exponent 2 approaches nearest-station assignment and damps the smoothing of large
+buffers. Annual means, threshold hours (non-linear in the hourly value), group means,
+gaps, `sd0` and the variance retained by aggregation can change; distances, station
+counts and coverage cannot.
+
+*Threshold ties.* Threshold outcomes count interpolated hours at or above integer
+thresholds, and many station readings are integers. Where one station sets the hourly
+value, the interpolated `(v·w)/w` can round just below `v`, so an hour exactly at a
+threshold is counted or not depending on the weight. `design_a_grid_threshold_ties.csv`
+reports the share of station-hours exactly at each threshold, and
+`design_a_grid_single_station.csv` the hour differences between exponents for
+single-station units, which can only come from this rounding. The estimator is unchanged;
+these tables bound the numerical part of threshold-hour differences.
+
+## Fixed-sample decomposition across buffers
+
+Let G(s; S) be the Design A gap with exposure specification s = (buffer, exponent)
+averaged over sample S, r = (3 km, exponent 1) the reference at the same city, grouping,
+support and outcome, and S_c = S_s ∩ S_r the people covered by both:
+
+```text
+G(s; S_s) − G(r; S_r) =  [G(s; S_c) − G(r; S_c)]     exposure change, same people
+                       + [G(s; S_s) − G(s; S_c)]     people added by the larger buffer
+                       − [G(r; S_r) − G(r; S_c)]     people the reference has and s lacks
+```
+
+Samples are nested in the buffer, so one sample term is zero. The other ordering would need
+exposure for units outside the smaller buffer's coverage, which does not exist; this path
+is the only computable one, and it is not a Shapley average. The exposure term bundles
+more stations, more smoothing and different weights. A change dominated by the sample term
+means the larger buffer describes a different population; it does not show that the 3 km
+estimate is biased for its own population. Headline estimates always keep each buffer's
+own sample; the common-sample gaps are supplementary.
+
+| Comparison | People | What the difference measures |
+|---|---|---|
+| Supports, Design A, same buffer, exponent and grouping | Fixed (asserted) | Exposure aggregation only |
+| Exponents, Design A, same buffer | Fixed (asserted) | Weighting only |
+| Groupings, same specification | Same people and weights (asserted) | A different contrast |
+| Buffers, own samples | Nested, changing | Exposure construction and population represented |
+| Buffers, common sample | Fixed | Exposure construction only |
+| Native B across supports (robustness) | Changing | Rebuilt exposure and selection |
+| C across supports (robustness) | Fixed, area groups | Classification change |
+
+## Specification panel and variance decomposition
+
+`build_specification_panel.R` writes `specification_panel.csv`: one row per Design A
+estimate of the lowest-minus-highest gap for one city, outcome, grouping, buffer, exponent
+and support (a complete factorial within each city). B and C are excluded: they exist at
+two buffers and one exponent and change several things at once.
+
+| Field | Role | Definition | Units |
+|---|---|---|---|
+| `spec_id` | identifier | city, outcome, grouping, buffer, exponent, support | — |
+| `city_id`, `census_year`, `outcome`, `pollutant`, `metric`, `outcome_unit` | identifier | city and census vintage covary; metric is annual mean or hours at or above IT1/IT2 | — |
+| `grouping`, `n_groups`, `contrast_label` | choice | education grouping and its headline contrast | — |
+| `buffer_km`, `distance_power` | choice | IDW eligibility radius; IDW exponent | km; 1, 2 |
+| `level`, `level_label`, `level_rank`, `branch` | choice | support; rank 1 is finest; Bogotá's localidad branch | — |
+| `sample_key` | sample | city, pollutant and buffer: equal keys mean identical people | — |
+| `sample_population`, `sample_fine_units`, `sample_share_city` | sample | education-reporting adults, fine units, share of the city's education-reporting adults | persons; count; 0–1 |
+| `low_group_share`, `high_group_share` | sample | population shares of the endpoint groups in the sample | 0–1 |
+| `overlap_with_reference`, `share_in_reference` | sample | share of the 3 km sample in this sample; share of this sample in the 3 km sample | 0–1 |
+| `n_clusters`, `n_level_units` | mechanism | support units with sampled adults; units at the support | count |
+| `pw_unit_area_km2`, `median_unit_area_km2`, `pw_unit_population` | mechanism | area of the unit the average sampled adult lives in; median area; Σp²/Σp sampled adults | km²; km²; persons |
+| `share_variance_retained` | mechanism | exposure variance retained after averaging over the support | 0–1 |
+| `mean_eligible_stations`, `share_adults_multistation`, `mean_static_neff`, `mean_max_weight_share`, `median_nearest_eligible_km`, `mean_observed_hours` | mechanism | station weights of the specification, averaged over sampled adults | count; 0–1; count; 0–1; km; hours |
+| `gap`, `low_mean`, `high_mean`, `normalized_pct`, `standardized_gap`, `sd0` | estimate | lowest minus highest group; 100(low/high − 1); gap / sd0 of this specification | outcome units; %; SD |
+| `gap_paper_sd` | estimate | gap / sd0 of the paper baseline: one fixed scale per city and outcome | SD |
+| `se`, `lower`, `upper`, `inference_status` | estimate | HC1 where the existing screens pass | outcome units |
+| `gap_paper`, `delta_vs_paper`, `n_choices_vs_paper`, `sign_change_vs_paper` | reference | paper baseline (quintiles, finest, 3 km, exponent 1), change from it, choices changed | outcome units; count |
+| `gap_ref_exposure`, `delta_exposure_total`, `delta_exposure_fixed_sample`, `delta_exposure_composition` | reference | change from 3 km and exponent 1 at the same grouping and support, decomposed | outcome units |
+| `gap_ref_fine`, `delta_resolution` | reference | change from the finest support at the same specification (same people) | outcome units |
+
+Fixed constants (2023, AEQD distances, point-on-surface points, hourly renormalization,
+adults aged 25+, all-adult aggregation weights) are not columns. Groupings change the
+estimand, so compare them on `gap_paper_sd` or `normalized_pct` with the endpoint shares.
+`normalized_pct` is unstable when `high_mean` is near zero; no cutoff is applied.
+
+`estimate_specification_variance_decomposition.R` splits the variance of the gap over each
+city's complete grid exactly into main effects and interactions of support, grouping,
+buffer and exponent (a saturated factorial ANOVA, i.e. a functional-ANOVA or Sobol
+decomposition with every chosen value weighted equally). It reports first-order and total
+shares, for all buffers and for buffers of 3 km or more, because the shares describe the
+chosen grid. A buffer where some gap is undefined is dropped from that city's grid and
+recorded. There is no test or interval: rows are deterministic transformations of the same
+people and stations, not independent observations. For the same reason, and because
+sample descriptors are functions of the choices, choices are nested in cities and adjacent
+buffers are near-duplicates, a LASSO would select arbitrarily among aliased predictors;
+the exact decomposition is preferred.
 
 ## Estimands and conditional uncertainty
 
@@ -245,13 +373,12 @@ socioeconomic groups. The matrix diagnostics are rerun as an independent reconci
 
 ```sh
 make resolution-multicity-grouping GROUPING=edu_group3    # or edu_level, edu_quintile_split
-Rscript scripts/process_data/estimate_resolution_sensitivity.R --scope=multicity \
-  --grouping=edu_group3 --buffer-km=20
-Rscript scripts/tables_images/figure_resolution_review.R
+make resolution-multicity-grouping GROUPING=edu_group3 BUFFER=20
+Rscript scripts/tables_images/specification_sensitivity/figure_resolution_review.R
 ```
 
 `resolution-multicity` (and its 20 km run) must have completed first. Tables are named
-`results/tables/resolution_multicity_<folder>_[20km_]*`. The review script draws the
+`results/tables/specification_sensitivity/robustness_designs/resolution_multicity_<folder>_[20km_]*`. The review script draws the
 3 km versus 20 km native-B comparison for every grouping and the Design A headline gaps of
 the four definitions side by side (`resolution_review_definitions_*`). Quintile products,
 the frozen inputs and the historical Bogotá anchor, which applies to quintiles only, are
@@ -281,11 +408,16 @@ with the original; it can be reconstructed from the frozen inputs.
 | `data/interim/resolution_sensitivity/<city>/` | Frozen input/source manifests, raw/canonical ID ledger, crosswalks, adult/quintile cells, nesting, geometries, points, unit populations, displacement |
 | `data/processed/resolution_sensitivity/<city>/B/<level>/` | Rebuilt distances, exposure, frozen groups, eligible edges, station manifests, unit matrix diagnostics |
 | `data/processed/resolution_sensitivity/<city>/` | Profiles, contrasts, paired differences/replicates, variance, sample decomposition, classification transitions, audits and verification |
-| `results/tables/resolution_multicity_*.csv` | Compact three-city review tables |
-| `results/figures/diagnostics/resolution_multicity*.pdf` | Separate design figures and one multipage review packet |
+| `results/tables/specification_sensitivity/robustness_designs/resolution_multicity_*.csv` | Compact three-city robustness tables |
+| `results/figures/diagnostics/specification_sensitivity/robustness_designs/resolution_multicity*.pdf` | Separate design figures and one multipage review packet |
+| `data/processed/resolution_sensitivity/idw_grid/power_<p>/<city>/` | Fine IDW exposure per buffer and exponent; `grid_manifest`, `manuscript_anchors` |
+| `data/processed/resolution_sensitivity/design_a_grid/`, `results/tables/specification_sensitivity/design_a/` | Design A grid: samples, support sizes, station weights, contrasts, profiles, decomposition, threshold ties, single-station checks, checks |
+| `data/processed/resolution_sensitivity/specification_panel/`, `results/tables/specification_sensitivity/panel/` | Specification panel, profiles, parity and regression anchors, checks, variance decomposition |
+| `results/figures/diagnostics/specification_sensitivity/design_a/` | Design A grid figures and variance shares |
+| `results/tables/specification_sensitivity/review/`, `results/figures/diagnostics/specification_sensitivity/review/` | Coauthor review tables and figures, including the 3 km versus 20 km Design A comparison |
 | `data/processed/resolution_sensitivity/reference_rebuild/` | Isolated historical Bogotá rerun |
 | `data/processed/resolution_sensitivity/<folder>/[buffer_20km/]<city>/` | Same products for an alternative grouping (`quintile_split`, `education_group3`, `education_level`); its group cells; copied B exposures with `exposure_source.csv` |
-| `results/tables/resolution_multicity_<folder>_[20km_]*.csv`, `results/figures/diagnostics/resolution_multicity_<folder>*.pdf`, `resolution_review_<folder>_buffer_*`, `resolution_review_definitions_*` | Alternative-grouping tables, figure packets, 3 km versus 20 km figures and the four-definition comparison |
+| `.../robustness_designs/resolution_multicity_<folder>_[20km_]*.csv` and figures, `.../review/resolution_review_<folder>_buffer_*`, `resolution_review_definitions_*` | Alternative-grouping tables, figure packets, 3 km versus 20 km figures and the four-definition comparison |
 
 Main plots use named city-specific supports, coarse to fine, with separate Bogotá locality
 panels. Supplementary plots use log covered-unit counts without assuming geographic
@@ -513,6 +645,65 @@ versus 20 km native-B comparison for both groupings; the level versions are
 `resolution_review_education_level_buffer_{pm10,pm25}.pdf` and
 `resolution_review_education_level_buffer_gaps.csv`. Its quintile outputs were unchanged by
 this addition. Isolated release verification and researcher review were not done.
+
+### Specification grid and full rerun, 14–15 October 2026
+
+- **Snapshot.** The 1 October outputs were archived under
+  `data/interim/resolution_sensitivity/_frozen_20261001/` and
+  `data/processed/resolution_sensitivity/_frozen_20261001/` (including the former flat
+  `results/` tables and figures). Inputs were re-frozen from the 13 October derived files
+  (about 3 minutes). Every later step ran from this one snapshot. The grid script stops if
+  an input manifest or `snapshot.csv` differs.
+- **Robustness designs.** A/B/C ran at 3 and 20 km for all four groupings, exponent 1
+  (17:32–23:05, 14 October, including one run stopped for memory contention and rerun).
+  All eight verification tables pass, with the usual Santiago 3 km threshold-boundary
+  qualifications and descriptive São Paulo intervals.
+  - Two changes were needed:
+    - the B rebuild reads the panel's `year=2023` folder, because the new `_audit/`
+      Parquet broke hive-partition reading;
+    - DuckDB spills to a fixed temporary folder.
+  - Bogotá's 20 km B fine exposure was copied from the grid's identical exponent-1 file.
+    `exposure_source.csv` records this; the copy matched the manuscript file within
+    2.8e-14.
+- **IDW grid.** Ten buffers ran at exponent 1 and six at exponent 2 (1, 2, 3, 5, 10,
+  20 km). The exponent-2 subset was a runtime reduction: Bogotá at 20 km took 80 minutes.
+  Bogotá exponent-2 times were 34 s (1 km), 162 s (3 km) and 632 s (10 km).
+  - Two crashes forced a lower configuration: a bus error (external disk or swap) and a
+    DuckDB out-of-memory error at 4 threads. The grid then ran with 2 threads, 16 GB, a
+    spill on the internal disk, and a resumable loop (17:34, 14 October – 00:32,
+    15 October).
+  - Santiago and São Paulo exponent-2 files at 8, 12, 15 and 17 km remain from the first
+    attempt. They are unused.
+  - Grid exposures at exponent 1 equal the manuscript IDW files at 3, 5 and 20 km: 72 of
+    72 comparisons, max 6.8e-14. The md5 hashes of the 43 manuscript files in
+    `data/processed/idw_estimates/` were identical before and after; a Finder `.DS_Store`
+    file appeared in that folder.
+- **Design A grid** (27 minutes) and **panel.** All nine grid checks and all panel checks
+  pass:
+  - 3,840 rows;
+  - decomposition identity within 1.4e-14;
+  - variance identity within 7.3e-10;
+  - parity with the robustness Design A rows at 3 and 20 km: 480 of 480. This uses a
+    relative population tolerance of 1e-10, because exact equality of floating sums
+    failed on 156 rows;
+  - manuscript regression anchor: 18 of 18, within 1.3e-12.
+
+  The variance decomposition drops 8, 12, 15 and 17 km (no exponent 2) and records the
+  drop.
+- **Threshold ties.**
+  - Between 0.001% and 0.53% of station-hours equal a threshold exactly
+    (`design_a_grid_threshold_ties.csv`).
+  - For single-station units, annual means agree across exponents within 3.6e-14.
+    Threshold hours differ by up to 56 hours (Santiago PM2.5), because the hourly
+    $vw/w$ can round one unit in the last place below an integer threshold
+    (`design_a_grid_single_station.csv`).
+  - The estimator was not changed. The same arithmetic applies to the manuscript's
+    threshold outcomes.
+- **Tests and figures.**
+  - The synthetic suite passed **1,043 checks, zero failures, errors, skips or warnings**.
+  - The grid, review and variance figures were rendered and inspected. The exponent-change
+    figure was corrected to connect only buffers run at both exponents.
+  - Isolated release verification and researcher review were not done.
 
 ### Small implementation choices
 

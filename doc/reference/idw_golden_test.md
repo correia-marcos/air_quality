@@ -165,3 +165,34 @@ call `make_toy_fixture(<dir>)`, and run `aggregate_idw_exposure()` with
   grouping scenarios run against the real `assign_socio_group()`. All matched.
 - 2026-08-10 — full suite run locally (macOS, R + arrow/duckdb/testthat):
   22 expectations, 0 failures.
+
+## 6. The same problem with exponent 2 (specification sensitivity only)
+
+The manuscript uses $w = d^{-1}$. The specification-sensitivity analysis also uses
+$w = d^{-2}$, which gives nearer stations more weight. The buffer is unchanged, so the
+same pairs are eligible and the same hours are defined; only the weights move:
+
+| pair  | $d$ | $w = d^{-2}$ |
+|-------|-----|--------------|
+| g1–s1 | 1   | 1            |
+| g1–s2 | 2   | 1/4          |
+| g2–s1 | 1   | 1            |
+| g2–s2 | 1   | 1            |
+| g2–s3 | 2   | 1/4          |
+
+$$
+y_{g1,h0} = \frac{60 + 120/4}{1.25} = 72, \qquad y_{g1,h1} = 40, \qquad \bar{y}_{g1} = 56
+$$
+
+$$
+y_{g2,h0} = \frac{60 + 120 + 300/4}{2.25} = 113.\overline{3}, \qquad
+y_{g2,h1} = \frac{40 + 60/4}{1.25} = 44, \qquad \bar{y}_{g2} = 78.\overline{6}
+$$
+
+Threshold counts become (0, 0, 0, 1) for g1, because 72 no longer reaches 75, and stay
+(0, 1, 1, 1) for g2. Two hours remain defined for each unit. A unit served by one station
+gets that station's reading under any exponent, because a single weight cancels. In
+floating point, $(v \cdot w)/w$ can differ from $v$ by one rounding step; that matters only
+for a reading exactly at a threshold, which is then counted or not depending on $w$ (see
+the threshold-ties tables of the specification-sensitivity guide).
+`tests/testthat/test-idw-exposure-golden.R` checks these values (October 2026).
