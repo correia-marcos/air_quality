@@ -13,7 +13,7 @@
 # Reads the robustness tables in
 # results/tables/specification_sensitivity/robustness_designs/ and writes
 # results/tables/specification_sensitivity/review/resolution_review_*.csv and
-# results/figures/diagnostics/specification_sensitivity/review/resolution_review_*.pdf.
+# results/figures/specification_sensitivity/review/resolution_review_*.pdf.
 # It estimates nothing new.
 #
 #' @Summary:
@@ -52,8 +52,7 @@ dir_processed <- here::here("data", "processed", "resolution_sensitivity")
 dir_robust    <- here::here("results", "tables", "specification_sensitivity",
                             "robustness_designs")
 dir_tables    <- here::here("results", "tables", "specification_sensitivity", "review")
-dir_figures   <- here::here("results", "figures", "diagnostics",
-                            "specification_sensitivity", "review")
+dir_figures   <- here::here("results", "figures", "specification_sensitivity", "review")
 
 # Read the saved multicity products for both buffers
 contrasts_3km    <- fread(file.path(dir_robust, "resolution_multicity_contrasts.csv"))

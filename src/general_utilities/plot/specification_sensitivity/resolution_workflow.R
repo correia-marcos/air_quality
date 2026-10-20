@@ -4,7 +4,7 @@
 #' @details See doc/RESOLUTION_SENSITIVITY.md for populations and A/B/C definitions.
 resolution_reference_figure_inputs <- function() {
   dir_in  <- here::here("data", "processed", "resolution_sensitivity")
-  dir_out <- here::here("results", "figures", "diagnostics", "specification_sensitivity",
+  dir_out <- here::here("results", "figures", "specification_sensitivity",
                         "reference_bogota")
   dir.create(dir_out, recursive = TRUE, showWarnings = FALSE)
 
@@ -444,7 +444,7 @@ resolution_multicity_figure_inputs <- function(grouping = "edu_quintile") {
   city_labels <- c(bogota_2018 = "Bogota", santiago_2017 = "Santiago",
                    sao_paulo_2010 = "Sao Paulo")
   dir_in <- resolution_buffer_root(3, grouping)
-  dir_out <- here::here("results", "figures", "diagnostics", "specification_sensitivity",
+  dir_out <- here::here("results", "figures", "specification_sensitivity",
                         "robustness_designs")
   dir.create(dir_out, recursive = TRUE, showWarnings = FALSE)
   for (city in cities) {

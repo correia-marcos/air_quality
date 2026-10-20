@@ -9,7 +9,7 @@
 # the exponent difference, the samples and station weights behind each buffer, the
 # fixed-sample decomposition of the change from 3 km, and the variance shares of each
 # choice. Quintiles only; other groupings are in the tables. Writes PDFs to
-# results/figures/diagnostics/specification_sensitivity/design_a/. Estimates nothing.
+# results/figures/specification_sensitivity/design_a/. Estimates nothing.
 #
 #' @Summary:
 #   I.   Import data: functions, settings and the saved grid tables.
@@ -45,8 +45,7 @@ dir_inputs  <- here::here("data", "interim", "resolution_sensitivity")
 dir_grid    <- here::here("data", "processed", "resolution_sensitivity", "design_a_grid")
 dir_panel   <- here::here("data", "processed", "resolution_sensitivity",
                           "specification_panel")
-dir_figures <- here::here("results", "figures", "diagnostics", "specification_sensitivity",
-                          "design_a")
+dir_figures <- here::here("results", "figures", "specification_sensitivity", "design_a")
 
 # Read the grid tables, the variance shares and the support ladders
 read_grid <- function(name) as.data.table(arrow::read_parquet(file.path(dir_grid,

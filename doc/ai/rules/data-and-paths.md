@@ -38,4 +38,4 @@ Canonical outputs: results/figures/{maps,monitoring,exposure,imputation,temporal
 satellite,diagnostics}/ and flat results/tables/. Export uses config/paper_artifacts.csv.
 Layout pilot: the optional specification-sensitivity exercise writes to
 `results/tables/specification_sensitivity/<role>/` and
-`results/figures/diagnostics/specification_sensitivity/<role>/`; no other subfolders.
+`results/figures/specification_sensitivity/<role>/`; no other subfolders.

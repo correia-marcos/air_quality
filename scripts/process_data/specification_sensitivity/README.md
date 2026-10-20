@@ -25,7 +25,7 @@ B (exposure rebuilt at each support) and C (area classification) are robustness 
 | 5 | `../../tables_images/specification_sensitivity/figure_resolution_review.R` | Coauthor review | `resolution_buffer_plot_data()`, `plot_resolution_buffer_gaps()` | Robustness and grid tables → `review/` tables and figures (3 vs 20 km, Design A and native B) |
 | 6 | `build_specification_panel.R` | Analysis table | `specification_panel()`, `specification_add_baselines()` | Grid tables → `results/tables/specification_sensitivity/panel/specification_panel.csv` |
 | 7 | `estimate_specification_variance_decomposition.R` | Which choices matter | `specification_variance_decomposition()` | Panel → variance shares per choice |
-| 8 | `../../tables_images/specification_sensitivity/figure_design_a_grid.R` | Primary figures | `plot_design_a_*()`, `plot_variance_shares()` | Grid tables and shares → `results/figures/diagnostics/specification_sensitivity/design_a/` |
+| 8 | `../../tables_images/specification_sensitivity/figure_design_a_grid.R` | Primary figures | `plot_design_a_*()`, `plot_variance_shares()` | Grid tables and shares → `results/figures/specification_sensitivity/design_a/` |
 | — | `../../tables_images/specification_sensitivity/figure_resolution_sensitivity.R` | Robustness figures | `resolution_multicity_figure_*()` | Robustness tables → `robustness_designs/` figure packets |
 
 Make targets: `resolution-multicity` (steps 1, 2 at 3 km and its figures),
@@ -58,7 +58,7 @@ Plot functions are in `src/general_utilities/plot/specification_sensitivity/`
 | `results/tables/specification_sensitivity/robustness_designs/` | `resolution_multicity_[<grouping>_][20km_]*.csv` (A/B/C at 3 and 20 km) |
 | `results/tables/specification_sensitivity/review/` | `resolution_review_*.csv` (coauthor review, including the Design A buffer samples and decomposition) |
 | `results/tables/specification_sensitivity/panel/` | `specification_panel.csv`, profiles, parity and regression anchors, checks, variance decomposition |
-| `results/figures/diagnostics/specification_sensitivity/<role>/` | Figures of the same roles; `reference_bogota/` holds the historical Bogotá figures |
+| `results/figures/specification_sensitivity/<role>/` | Figures of the same roles; `reference_bogota/` holds the historical Bogotá figures |
 | `data/processed/resolution_sensitivity/` | Parquet checkpoints: per-run city folders, `idw_grid/`, `design_a_grid/`, `specification_panel/`; `_frozen_*` archives |
 
 This exercise is the pilot of a subfolder layout (`doc/ai/architecture.md`); the rest of

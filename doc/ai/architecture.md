@@ -78,14 +78,14 @@ config/targets/      Ordinary target declarations grouped by scientific stage
 tools/reproduction/  Verification, stage reporting, manifest checks and export
 config/analysis_settings.R  Plain named choices shared by migrated scripts and targets
 data/                raw/ interim/ processed/ downloads/ _legacy/   (all git-ignored)
-results/             Only figures/ (seven topic folders) and tables/ (flat, except the pilot).
+results/             figures/ (seven topics plus the pilot); tables/ (flat except the pilot).
 config/paper_artifacts.csv  Canonical source -> unchanged manuscript path + producer.
 data/validation/     Ignored legacy comparison artifacts and HTML.
 ```
 
 Layout pilot (October 2026): the optional specification-sensitivity exercise groups its
 scripts, functions and outputs in `specification_sensitivity/` subfolders of each stage,
-with results by role in `results/{tables,figures/diagnostics}/specification_sensitivity/`.
+with results by role in `results/{tables,figures}/specification_sensitivity/`.
 Its file map is `scripts/process_data/specification_sensitivity/README.md`. Repo-wide
 adoption is a separate plan; other files keep the flat layout until then.
 

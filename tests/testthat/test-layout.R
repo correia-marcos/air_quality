@@ -9,7 +9,9 @@ test_that("manifest producers and result topics obey the shared contract", {
   # The image deliberately has no prebuilt results; existing local outputs must follow layout.
   if (dir.exists(here::here("results"))) {
     expect_setequal(list.files(here::here("results"), all.files = FALSE), c("figures", "tables"))
-    expect_true(all(list.files(here::here("results/figures")) %in% topics))
+    # The specification-sensitivity pilot is the one folder beside the seven topics.
+    expect_true(all(list.files(here::here("results/figures")) %in%
+                      c(topics, "specification_sensitivity")))
   }
 })
 
@@ -17,10 +19,11 @@ test_that("only the specification-sensitivity pilot adds result subfolders", {
   # Pilot of the subfolder layout; any other subfolder is unreviewed drift.
   pilot <- "specification_sensitivity"
   roles <- c("design_a", "robustness_designs", "review", "panel", "reference_bogota")
-  for (root in here::here("results", c("tables", "figures/diagnostics"))) {
-    if (!dir.exists(root)) next
-    subdirs <- list.dirs(root, full.names = FALSE, recursive = FALSE)
-    expect_true(all(subdirs %in% pilot), info = root)
+  tables <- here::here("results", "tables")
+  if (dir.exists(tables)) {
+    expect_true(all(list.dirs(tables, full.names = FALSE, recursive = FALSE) %in% pilot))
+  }
+  for (root in here::here("results", c("tables", "figures"))) {
     if (dir.exists(file.path(root, pilot))) {
       expect_true(all(list.dirs(file.path(root, pilot), full.names = FALSE,
                                 recursive = FALSE) %in% roles), info = root)

@@ -409,12 +409,12 @@ with the original; it can be reconstructed from the frozen inputs.
 | `data/processed/resolution_sensitivity/<city>/B/<level>/` | Rebuilt distances, exposure, frozen groups, eligible edges, station manifests, unit matrix diagnostics |
 | `data/processed/resolution_sensitivity/<city>/` | Profiles, contrasts, paired differences/replicates, variance, sample decomposition, classification transitions, audits and verification |
 | `results/tables/specification_sensitivity/robustness_designs/resolution_multicity_*.csv` | Compact three-city robustness tables |
-| `results/figures/diagnostics/specification_sensitivity/robustness_designs/resolution_multicity*.pdf` | Separate design figures and one multipage review packet |
+| `results/figures/specification_sensitivity/robustness_designs/resolution_multicity*.pdf` | Separate design figures and one multipage review packet |
 | `data/processed/resolution_sensitivity/idw_grid/power_<p>/<city>/` | Fine IDW exposure per buffer and exponent; `grid_manifest`, `manuscript_anchors` |
 | `data/processed/resolution_sensitivity/design_a_grid/`, `results/tables/specification_sensitivity/design_a/` | Design A grid: samples, support sizes, station weights, contrasts, profiles, decomposition, threshold ties, single-station checks, checks |
 | `data/processed/resolution_sensitivity/specification_panel/`, `results/tables/specification_sensitivity/panel/` | Specification panel, profiles, parity and regression anchors, checks, variance decomposition |
-| `results/figures/diagnostics/specification_sensitivity/design_a/` | Design A grid figures and variance shares |
-| `results/tables/specification_sensitivity/review/`, `results/figures/diagnostics/specification_sensitivity/review/` | Coauthor review tables and figures, including the 3 km versus 20 km Design A comparison |
+| `results/figures/specification_sensitivity/design_a/` | Design A grid figures and variance shares |
+| `results/tables/specification_sensitivity/review/`, `results/figures/specification_sensitivity/review/` | Coauthor review tables and figures, including the 3 km versus 20 km Design A comparison |
 | `data/processed/resolution_sensitivity/reference_rebuild/` | Isolated historical Bogotá rerun |
 | `data/processed/resolution_sensitivity/<folder>/[buffer_20km/]<city>/` | Same products for an alternative grouping (`quintile_split`, `education_group3`, `education_level`); its group cells; copied B exposures with `exposure_source.csv` |
 | `.../robustness_designs/resolution_multicity_<folder>_[20km_]*.csv` and figures, `.../review/resolution_review_<folder>_buffer_*`, `resolution_review_definitions_*` | Alternative-grouping tables, figure packets, 3 km versus 20 km figures and the four-definition comparison |
