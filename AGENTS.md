@@ -107,8 +107,8 @@ with explicit file lists.
 | A repeated task | The matching file in [workflows](doc/ai/workflows/) |
 | An independent review | The matching file in [roles](doc/ai/roles/) |
 | Scientific decisions | [Evidence](doc/ai/evidence.md), [methods and tests](doc/ai/methods-tests.md) |
-| Collaboration and handoff | [Collaboration](doc/ai/collaboration.md), [handoff](doc/ai/handoff.md) |
+| Collaboration and handoff | [Collaboration and handoff template](doc/ai/collaboration.md) |
 | Structure and migration status | [Architecture](doc/ai/architecture.md) |
-| Harness setup and enforcement | [Harnesses](doc/ai/harnesses.md), [host](doc/ai/host-enforcement.md) |
-| Implementation history | [Implementation record](doc/ai/implementation.md) |
+| Harness setup and enforcement | [Harnesses](doc/ai/harnesses.md) |
+| Implementation history | [Implementation record](doc/planning/implementation-record.md) |
 | Functions with no caller | [Deletion candidates](doc/planning/deletion-candidates.md) |

@@ -14,3 +14,18 @@ These practices adapt the [AI Fluency Framework](https://aifluencyframework.org/
 Before an analytical change, distinguish a human-approved specification from an assistant's proposal. Ask only when an unresolved choice changes methods, source data or task scope. Preserve city-source confirmation and processing-script integration boundaries in the workflows. An audit is report-only until implementation is requested. Historical implementation authorization is not standing authorization for future tasks. Never infer that a past audit finding is fixed merely because today's code looks different.
 
 A handoff is concise, factual and free of credentials/restricted records. All harnesses update these same documents. AGENTS.md is the shared core; native wrappers import or link the shared files and are not separate copies of the project policy. Record accepted methodological choices in evidence.md; leave unresolved model suggestions open. Recommend only reviewed, sanitized audit excerpts for a human-created commit. Follow [Git safety](rules/git-safety.md); implementation approval does not authorize staging, committing, or pushing. Local exploratory reports stay under ignored doc/audits/.
+
+## Handoff template
+
+- Task, authorized scope and human scientific owner:
+- Current revision and working-tree changes:
+- Git boundary: index/history unchanged; no staging, commits, or pushes:
+- Specification and canonical workflow:
+- Inputs, provenance and restrictions (no secrets or record-level data):
+- Changes completed; methods intentionally preserved:
+- Commands actually run, result counts and local evidence paths:
+- Unresolved findings, skipped checks and decision needed:
+- Next concrete action:
+- Recommended human-created commits: subject and explicit file grouping only:
+
+Keep one current task handoff locally or in the task discussion. Promote durable decisions to evidence.md rather than appending repetitive session transcripts.

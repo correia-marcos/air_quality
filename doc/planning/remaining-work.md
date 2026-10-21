@@ -47,21 +47,21 @@ execution of the preserved implementation, revised recipes and target commands a
 on 24 LaTeX tables and 54 exposure figures; each recipe also runs in a fresh R session.
 Their inventory rows record this rendering evidence as maintained. Upstream estimation,
 GUI readability review and full reproduction remain separate checks. See the
-[rendering evidence](../ai/implementation.md#tables-and-exposure-figures--30-september-2026).
+[rendering evidence](implementation-record.md#tables-and-exposure-figures--30-september-2026).
 
 Marcos subsequently reviewed the rendering batch and added step comments. Those comments
 were polished without changing executable expressions. The next completed recipe is
 `compute_distance_band_descriptives.R`: four city summaries and their combined table are
 now visible before saving. Isolated runs on the existing geography, distances and census
 files match the preserved implementation's 342 rows and both downstream LaTeX panels.
-The [distance-band evidence](../ai/implementation.md#distance-band-summaries--30-september-2026)
+The [distance-band evidence](implementation-record.md#distance-band-summaries--30-september-2026)
 records the comparison and its limits. Marcos accepted this recipe's comment style.
 
 `compute_descriptive_tables.R` now exposes all six summary families and saves them in
 Section III. A fresh-session recipe and isolated targets execution match the preserved
 implementation's intermediate tables, 41 saved files and 18 affected LaTeX tables on
 existing inputs. All 200 input hashes are unchanged. See the
-[descriptive evidence](../ai/implementation.md#descriptive-summaries--30-september-2026).
+[descriptive evidence](implementation-record.md#descriptive-summaries--30-september-2026).
 GUI review and scientific acceptance remain separate from these executed comparisons.
 
 **30 September 2026 — author report:** Marcos reports rerunning every recipe revised so far
@@ -74,7 +74,7 @@ workflow blockers.
 The station-summary recipe and seven remaining manuscript figure recipes now use direct
 scientific calls and separate saving. Isolated manual and targets runs match the preserved
 implementation's four station tables and 105 figures on existing prepared inputs. See the
-[station and figure evidence](../ai/implementation.md#station-summaries-and-manuscript-figures--30-september-2026).
+[station and figure evidence](implementation-record.md#station-summaries-and-manuscript-figures--30-september-2026).
 Temporal preparation, optional/validation cleanup and operational cutover remain pending.
 
 **29 September 2026:** Marcos approved starting imputation at the first finite cleaned

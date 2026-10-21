@@ -23,7 +23,7 @@ client invoked it.
 | Inputs of record, credentials | [Data and paths](rules/data-and-paths.md), [reproducibility](rules/reproducibility.md) | Hook denies edits; managed policy denies credential reads | `Read`/`Edit` deny rules, also applied to sandboxed writes; sandbox `credentials` | Probe table |
 | Sandbox and network | — | Managed profile `research_no_publish`: workspace writes, read-only `.git`, `.codex`, `.agents`, no network | Seatbelt sandbox, `.git` write-denied, no allowed domains, no unsandboxed retry | `touch -c .git/description` fails |
 | Approval behaviour | Refuse and explain | `approval_policy = "never"` (managed) | `defaultMode: "dontAsk"` for CLI sessions; VS Code panel in Auto | Probe table |
-| Machine policy | `tools/harness/managed-requirements.toml` | Installed at `/etc/codex/requirements.toml` (22 Sep 2026) | None (deferred) | [Host enforcement](host-enforcement.md) |
+| Machine policy | `tools/harness/managed-requirements.toml` | Installed at `/etc/codex/requirements.toml` (22 Sep 2026) | None (deferred) | [Codex machine policy](#codex-machine-policy) |
 | MCP servers | — | `.codex/config.toml`; disabled by the managed policy | `.mcp.json`; tools allowed as `mcp__context7__*`, `mcp__deepwiki__*` | `/mcp` |
 | Memory | `doc/ai/evidence.md` for durable decisions | `~/.codex/memories` (user level) | `~/.claude/projects/<repo>/memory` (user level) | Not shared between harnesses |
 
@@ -38,6 +38,49 @@ Machine requirements outrank the project's `.codex/config.toml` (`on-request`,
 less and refuses more. Anything beyond the boundary fails inside the sandbox or is refused
 by a rule or hook. The project hook runs alongside a root-owned managed Git hook. Versions
 on 21 October 2026: Codex CLI 0.155.1.
+
+### Codex machine policy
+
+`tools/harness/managed-requirements.toml` is the source of the root-owned policy installed
+at `/etc/codex/requirements.toml` on 22 September 2026, for every Codex project on this Mac.
+
+- **Profile.** It permits one permission profile, `research_no_publish`: workspace
+  editing; read-only Git metadata, `.codex` and `.agents`; no sandbox escalation; no
+  command network access; credential paths denied; approval policy `never`.
+- **Git guard.** A host-owned Git hook (`tools/harness/managed_git_guard.py`) reuses the
+  repository's command policy, and native rules forbid staging, commit, push and history
+  mutations.
+- **Integrations.** MCP servers, apps, plugins, and browser or computer use are disabled,
+  because they can publish without Git; web search stays available. Package downloads,
+  online acquisition, Docker and external integrations therefore run outside Codex.
+- **Reads.** The profile keeps broad read access for research tools and external legacy
+  inputs, so it is not a complete secret-discovery policy.
+
+The installer registers this checkout's actual and common Git directories as exact read
+paths, because the client rejects read-path globs. Before using a parent directory, linked
+worktree, submodule or bare repository as a workspace, register its Git and common
+directories in the administrator-owned profile and repeat the check.
+
+To install on another Mac:
+
+1. Review the bundle, then run `sudo sh tools/harness/install_managed_policy.sh` in your
+   own Terminal. It refuses to overwrite an existing policy. Never give the administrator
+   password to an agent.
+2. Restart the Codex clients. Inspect `configRequirements/read`, `config/read` and
+   `hooks/list` through the app-server API. Confirm the managed profile, the approval
+   policy, the feature pins, the empty MCP list, root-owned hook files and the Git
+   directory restrictions. Higher-precedence cloud or MDM policy may alter the result.
+3. In a normal Terminal (Python 3.11+), run
+   `python3 -B tools/harness/verify_host_profile.py`. It exercises the profile against
+   disposable fixture paths and invokes no model, Git mutation or remote service.
+
+Re-check after every Codex upgrade. To roll back, an administrator reviews the installed
+files' ownership and contents, removes only those files, and restarts the client. Agents
+never remove or weaken the policy. Sources:
+[permission profiles](https://learn.chatgpt.com/docs/permissions),
+[managed configuration](https://learn.chatgpt.com/docs/enterprise/managed-configuration).
+The September deployment record is in the
+[implementation record](../planning/implementation-record.md#machine-enforcement-record).
 
 ## Claude Code
 
@@ -114,7 +157,7 @@ executes a forbidden Git command against real history.
    network request and `rm` of a scratch file run, are refused, or prompt.
 
 Record actual outcomes, dates and versions. Earlier client reviews (21 September and
-5 October 2026) are in the [implementation record](implementation.md).
+5 October 2026) are in the [implementation record](../planning/implementation-record.md).
 
 Sources: [Codex skills](https://developers.openai.com/codex/skills/),
 [configuration](https://developers.openai.com/codex/config-reference/),

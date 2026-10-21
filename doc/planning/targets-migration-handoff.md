@@ -68,7 +68,7 @@ documentation read alone. Marcos owns scientific decisions and readability revie
   and the applicable workflow from the shared guidance index before changing code.
 - [Approved migration](targets-migration.md), especially its active architecture
   and remaining implementation. Its historical sections preserve superseded designs.
-- [Workflow inventory](remaining-work.md) and [implementation evidence](../ai/implementation.md).
+- [Workflow inventory](remaining-work.md) and [implementation evidence](implementation-record.md).
 
 Some status prose is behind the code: architecture still lists `src/pipeline/`,
 and the migration/evidence records still describe two remaining temporal adapters.

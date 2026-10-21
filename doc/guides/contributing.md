@@ -40,7 +40,7 @@ requires fresh analytical execution. Report failures and skipped checks separate
 
 ## Hand off
 
-Use the [handoff template](../ai/handoff.md). Explain what changed, why, what ran, and what
+Use the [handoff template](../ai/collaboration.md#handoff-template). Explain what changed, why, what ran, and what
 remains uncertain. Provide commit subjects and explicit file groupings only. Do not stage,
 commit, push, or request an exception through tool escalation. Reviewed scientific decisions
 belong in the [existing evidence index](../ai/evidence.md), not a competing ledger.

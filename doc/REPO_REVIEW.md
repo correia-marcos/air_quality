@@ -31,7 +31,7 @@ encode denials. Tests or approval of file groupings do not authorize Git mutatio
 
 **Live activation is no longer pending for the tested Codex client.** Its project hook was
 enabled/trusted and blocked a harmless invalid Git option before execution. No activation
-change was needed. [Host enforcement](ai/host-enforcement.md) records the version, scope,
+change was needed. [Host enforcement](planning/implementation-record.md#machine-enforcement-record) records the version, scope,
 fixture results, and remaining deployment work. Claude live behavior is unverified because
 the client was not found on PATH.
 
@@ -121,7 +121,7 @@ the distributed file inventory separately from ignored local evidence. Compare m
 and scientific-file hashes, check whitespace, and confirm unchanged HEAD/index. Release
 verification, external acquisition, manuscript rendering, and scientific reproduction are
 separate tasks. Actual outcomes and exact recommended file groups are in the
-[implementation record](ai/implementation.md#documentation-and-host-policy-continuation--21-september-2026).
+[implementation record](planning/implementation-record.md#documentation-and-host-policy-continuation--21-september-2026).
 
 ## Sources and recommendation basis
 

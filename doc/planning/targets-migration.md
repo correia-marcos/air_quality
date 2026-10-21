@@ -113,7 +113,7 @@ pollutants. `plot_imputation_series()` no longer takes saving arguments.
 summary function and save returned plots with `ggsave()`. Repository callers are updated.
 The graph keeps the public imputation stage names and caches plots separately from PDFs.
 
-The [evidence record](../ai/implementation.md#imputation-recipes-and-author-review--24-september-2026)
+The [evidence record](implementation-record.md#imputation-recipes-and-author-review--24-september-2026)
 distinguishes fixture comparisons, reported local runs and pending scientific acceptance.
 The completed descriptive, station-summary and figure batches are covered below.
 
@@ -131,7 +131,7 @@ manuscript files were reported by the current targets; existing stale files cann
 gaps in that selection.
 
 Isolated comparison used existing saved summaries, with no upstream estimation rerun.
-The [evidence record](../ai/implementation.md#tables-and-exposure-figures--30-september-2026)
+The [evidence record](implementation-record.md#tables-and-exposure-figures--30-september-2026)
 documents the table, plot, cache and standalone-script checks. Marcos subsequently reviewed
 the rendering batch; his added step comments are the reference for concise explanations
 beside each operation. Full scientific acceptance remains pending.
@@ -151,7 +151,7 @@ rendering selects the Parquet explicitly. Its transitional stage adapter is remo
 The preserved implementation, direct recipe and target commands agree on all 342 rows,
 both output formats and both LaTeX panels using identical existing prepared inputs. This
 checks the refactor, not source preparation or the scientific validity of the summaries.
-See the [comparison evidence](../ai/implementation.md#distance-band-summaries--30-september-2026).
+See the [comparison evidence](implementation-record.md#distance-band-summaries--30-september-2026).
 
 ## Descriptive summaries — implemented 30 September 2026
 
@@ -169,7 +169,7 @@ combined computation/saving, while this recipe and targets use the separate writ
 The preserved implementation, fresh-session recipe and isolated targets execution agree
 on all intermediate tables and saved contents. All 18 affected LaTeX tables match, and
 200 input-file hashes are unchanged. See the
-[comparison evidence](../ai/implementation.md#descriptive-summaries--30-september-2026).
+[comparison evidence](implementation-record.md#descriptive-summaries--30-september-2026).
 Scientific acceptance and the default scheduler cutover remain separate.
 
 ## City preparation — implemented
@@ -218,7 +218,7 @@ scientific validity or provenance.
 
 Five available real geographic products agree across the preserved functions, revised
 recipe calls and target commands. Ten fixture comparisons also agree; the synthetic suite
-passes 402 checks. See [the separation evidence](../ai/implementation.md#city-geography-separation-and-recipe-style--24-september-2026)
+passes 402 checks. See [the separation evidence](implementation-record.md#city-geography-separation-and-recipe-style--24-september-2026)
 for exact coverage and remaining limits.
 
 Targets calls the scientific functions directly and caches spatial objects separately
@@ -228,7 +228,7 @@ geography, station, pollution and census stage names and output filenames are un
 All five real station selections agree with the preserved implementation and the target
 commands. Synthetic checks cover offline geographic fixtures, file-backed census returns,
 spatial caching and writer behavior. Full source-to-output city parity remains unverified;
-see [the city-preparation evidence](../ai/implementation.md#city-preparation--23-september-2026).
+see [the city-preparation evidence](implementation-record.md#city-preparation--23-september-2026).
 
 ## Outliers, IDW and observed exposure — 24 September 2026
 
@@ -247,7 +247,7 @@ helpers and observed-exposure stage adapter were removed from `src/pipeline/`.
 The isolated comparison checked 124 Parquet pairs across preserved adapters, revised
 recipes and target commands. The fixtures include both sides of a year boundary, all
 five city/vintage contexts, income groupings and missing education. These are refactor
-checks, not full scientific reproduction. See [implementation evidence](../ai/implementation.md).
+checks, not full scientific reproduction. See [implementation evidence](implementation-record.md).
 
 Recommended review groups for a human-created commit:
 
@@ -290,7 +290,7 @@ API changes for external callers:
 - The hourly bar and ridge functions return plots without printing or changing the global
   theme. The recipes set the paper theme and save explicitly.
 
-The [evidence record](../ai/implementation.md#station-summaries-and-manuscript-figures--30-september-2026)
+The [evidence record](implementation-record.md#station-summaries-and-manuscript-figures--30-september-2026)
 covers numerical and rendered comparisons using existing checkpoints. Source reproduction,
 methodological review, GUI readability acceptance and default cutover remain separate.
 
@@ -345,7 +345,7 @@ unaffected-city caching and writer failure. Scientific tests retain the hand-wor
 fixture and the fixed-CRS resolution checks.
 
 Final test results and environment limitations are recorded in
-[implementation evidence](../ai/implementation.md#distance-pilot--23-september-2026).
+[implementation evidence](implementation-record.md#distance-pilot--23-september-2026).
 The automated pilot ran in clean R processes, not the RStudio UI. Marcos subsequently
 verified the pilot, accepted its readability and refined its comments and layout.
 That review clears the readability gate for extending the pattern; it does not establish
@@ -365,7 +365,7 @@ lockfile were changed. Optional resolution definitions and frozen checksums rema
 ## Pilot review groups
 
 The city-preparation batch has its own review groups in
-[the implementation record](../ai/implementation.md#city-preparation-review-groups).
+[the implementation record](implementation-record.md#city-preparation-review-groups).
 
 The subsequent readability/style follow-up belongs in these same review groups.
 If reviewed separately, the suggested subject is `docs: adopt the author's R script style`:
@@ -478,7 +478,7 @@ existing Makefile and sequential runner remain explicitly transitional. Their sh
 functions prevent treating them as an independent baseline.
 
 Current checks, failures and unperformed acceptance checks are recorded in
-[implementation evidence](../ai/implementation.md#reader-first-targets-revision--2026-09-23).
+[implementation evidence](implementation-record.md#reader-first-targets-revision--2026-09-23).
 This structural implementation does not establish numerical or rendered-output parity.
 
 ## Scope and interface

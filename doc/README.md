@@ -11,7 +11,7 @@ agreement, scientific validity, and independent reproduction are separate claims
 | Procedure audit | [Human guide](guides/procedure-audit.md) → [canonical workflow](ai/workflows/audit-procedure.md) → [report template](reviews/procedure-template.md) |
 | Supporting research | [Specification sensitivity](RESOLUTION_SENSITIVITY.md) (geographic support, IDW buffer and exponent, education groups) → [file map](../scripts/process_data/specification_sensitivity/README.md); optional, separate from manuscript production |
 | Particulate quality | [Screening and provenance](reference/particulate_quality.md) → [remaining acceptance work](planning/remaining-work.md) |
-| Agent setup | [Git boundary](ai/rules/git-safety.md) → [harness setup](ai/harnesses.md) → [host enforcement](ai/host-enforcement.md) |
+| Agent setup | [Git boundary](ai/rules/git-safety.md) → [harness controls](ai/harnesses.md) → [Codex machine policy](ai/harnesses.md#codex-machine-policy) |
 | Repository assessment | [Current review](REPO_REVIEW.md) → [review catalog](reviews/README.md) |
 
 ## Where documents belong

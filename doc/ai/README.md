@@ -9,9 +9,8 @@ Code reads it through `CLAUDE.md`. This folder holds the detail that file routes
 | [workflows/](workflows/) | Repeated tasks; each harness wraps them as commands or skills |
 | [roles/](roles/) | Independent read-only reviewers |
 | [architecture.md](architecture.md) | Repository structure, migration status, validation steps |
-| [harnesses.md](harnesses.md), [host-enforcement.md](host-enforcement.md) | Harness setup and enforcement |
+| [harnesses.md](harnesses.md) | Harness controls, setup and verification |
 | [evidence.md](evidence.md), [methods-tests.md](methods-tests.md) | Scientific decisions and their tests |
-| [collaboration.md](collaboration.md), [handoff.md](handoff.md) | Working agreement and handoff template |
-| [implementation.md](implementation.md) | Implementation history |
+| [collaboration.md](collaboration.md) | Working agreement and handoff template |
 
 Edit each rule once, here. Harness wrappers import or link it; they never copy it.
