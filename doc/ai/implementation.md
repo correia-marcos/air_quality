@@ -6,6 +6,52 @@ retains that implementation's checks and limits.
 The dated records below retain earlier implementation and validation evidence; they are
 not the current execution specification.
 
+## Harness client reviews — 21 September to 21 October 2026
+
+Moved from `harnesses.md` on 21 October 2026 when that page was rewritten around a
+control matrix; the text is unchanged.
+
+Shell parsing does not prove that arbitrary shell/Python/R commands cannot write a protected
+input. Read-only mounts and filesystem permissions are the stronger boundary. Adapter tests
+do not demonstrate client trust. On 21 September 2026, installed Codex CLI 0.154.0-alpha.6.2
+reported this project hook enabled/trusted, and the live shell tool denied a harmless invalid
+Git option before execution. No trust setting was changed. See [measured scope and remaining
+deployment checks](host-enforcement.md). Claude live operation remains unverified.
+
+### Client review — 5 October 2026 (updated 20 October)
+
+Updated 20 October 2026: the VS Code extension and the terminal CLI both run Claude Code
+2.1.304; Codex CLI is 0.155.1. (The 2.1.267 recorded on 5 October was the terminal CLI;
+the extension bundles its own binary.) Direct `AGENTS.md` loading needs 2.1.277+, an enabled
+built-in plugin and a user-level setting, and stops when a `CLAUDE.local.md` exists
+([official memory documentation](https://code.claude.com/docs/en/memory)). `CLAUDE.md`
+therefore contains only `@AGENTS.md`, which loads it in every version without duplication.
+`AGENTS.md` itself uses no `@` imports, because Codex would read them as plain text.
+Loading was verified on 20 October with an `InstructionsLoaded` hook passed through
+`--settings` to a headless session: each rule's import appears with load reason `include`.
+The imports expand at session start, so the four shared rules (about 6,800 tokens together
+with `AGENTS.md`) are in context from the first turn; `paths:` now scopes only the wrapper.
+A one-turn probe without tools confirmed that a command's `@` reference attaches the
+workflow file. Claude Code applies a project's `permissions.allow` rules only after
+the workspace trust dialog is accepted; this repository had not been trusted, so those
+rules were ignored.
+
+Written project rules are instructions, not enforced controls. Claude's native `Edit` deny
+rules now include downloads as well as raw, legacy and lockfile paths. `Read` and `Edit`
+path rules cover built-in file reading/editing; native `Write(path)` rules are unsupported.
+[Official permission documentation](https://code.claude.com/docs/en/permissions) explains
+these distinctions. Bash and external tools require separate controls. Shared hook tests
+exercise policy parsing, not live Claude dispatch. Rules under `.claude/rules/` retain
+supported native discovery metadata and links to canonical shared requirements.
+
+Codex discovers hierarchical AGENTS instructions under its [official loading rules](https://developers.openai.com/codex/guides/agents-md).
+Its [configuration precedence](https://developers.openai.com/codex/config-basic) means the
+project's `on-request` setting does not override a managed `never` policy. This implementation
+session uses managed no-escalation permissions and read-only Git metadata; project settings
+remain a fallback declaration. Native command-rule evaluation and shared guard tests are
+bounded evidence. No other harness-specific wrapper was found in the repository inventory;
+adding a new harness still requires native loading and enforcement verification.
+
 ## Station summaries and manuscript figures — 30 September 2026
 
 `compute_station_scatter_inputs.R` exposes four pollution summaries, four socioeconomic
@@ -853,7 +899,7 @@ Still pending: installed-client hook activation/dispatch tests, host-enforced Gi
 protection, publishing-capability restrictions, and the documentation reorganization and
 repository-review refresh. Arbitrary scripts, dynamic shell expansion, Git libraries,
 remote tools, and inactive hooks remain outside this bounded command inspection. See
-[harness verification](harnesses.md#verification-before-enabling-an-implementation-session).
+[harness verification](harnesses.md#verification).
 
 Recommended human-created commit groups (recommendations only):
 
