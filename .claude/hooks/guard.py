@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Claude payload adapter for the shared project guard policy."""
+"""Claude adapter: deny and prompt decisions deny; context is a note, as for Codex."""
 import json
 from pathlib import Path
 import sys
@@ -22,11 +22,14 @@ def main():
             decision, reason = shell_decision(args.get("command", ""))
         else:
             decision, reason = None, None
-        if decision:
-            print(json.dumps({"hookSpecificOutput": {
-                "hookEventName": "PreToolUse",
-                "permissionDecision": "ask" if decision in ("prompt", "context") else decision,
-                "permissionDecisionReason": reason}}))
+        out = {"hookEventName": "PreToolUse"}
+        if decision in ("deny", "prompt"):
+            out.update(permissionDecision="deny", permissionDecisionReason=reason)
+        elif decision == "context":
+            out["additionalContext"] = reason
+        else:
+            return 0
+        print(json.dumps({"hookSpecificOutput": out}))
     except (ValueError, TypeError, AttributeError):
         print("Project guard could not inspect the payload.", file=sys.stderr)
         return 2

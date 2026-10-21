@@ -1,9 +1,12 @@
 prefix_rule(pattern=["git", ["add", "commit", "push", "merge", "rebase",
                             "cherry-pick", "am", "commit-tree", "update-ref",
-                            "send-pack", "fast-import"]], decision="forbidden",
+                            "send-pack", "fast-import", "rm", "mv", "reset", "restore",
+                            "checkout", "switch", "stash", "clean", "tag"]],
+            decision="forbidden",
             justification="Agents recommend commit names and file groupings only. Humans stage, commit, and push; do not request a bypass.",
             match=["git commit -m example", "git commit --amend", "git push",
-                   "git push origin main", "git add file", "git merge branch"],
+                   "git push origin main", "git add file", "git merge branch",
+                   "git rm file", "git stash", "git checkout -- file"],
             not_match=["git status", "git diff", "git log"])
 prefix_rule(pattern=["git", "reset", "--hard"], decision="forbidden",
             justification="Preserve work; use a scoped reversible change instead.")

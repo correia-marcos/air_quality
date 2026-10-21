@@ -120,7 +120,8 @@ def shell_decision(command):
     if git_reason:
         return "deny", git_reason
     if re.search(r"\brm\s+-[A-Za-z]*r[A-Za-z]*f|\brm\s+-[A-Za-z]*f[A-Za-z]*r", command):
-        return "prompt", "Destructive command: use explicit scoped approval or a reversible alternative."
+        return "prompt", ("Destructive command: do not run it or seek approval. Explain what it "
+                          "removes and why, and give Marcos the exact command to run.")
     if re.search(r"(?<![\w.])(?:\.env(?!\.example\b)(?:\.[\w.-]+)?|\.Renviron|\.netrc)(?![\w.])", command, re.IGNORECASE):
         return "deny", "Command names a credential file; avoid printing or rewriting credentials."
     if re.search(r"\bdata/(raw|downloads|_legacy)/|\brenv\.lock\b", command):

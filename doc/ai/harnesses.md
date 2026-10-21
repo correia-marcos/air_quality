@@ -9,8 +9,37 @@ The prepared [machine policy](host-enforcement.md) disables external integration
 
 The shared guard policy is optional development tooling at `tools/harness/guard_policy.py`; it protects source directories, the dependency lockfile and secrets, while `.env.example` remains editable. Client adapters parse their own payloads.
 
-Codex checks every add/update/delete/rename path in a multi-file apply_patch call and never emits the unsupported pre-tool ask decision. Dangerous shell calls are blocked in Codex; Claude
-retains its prompt decision for non-Git destructive commands. Git mutations are denied in both adapters. Structural setup exceptions produce context rather than blocking ordinary authorized setup.
+Codex checks every add/update/delete/rename path in a multi-file apply_patch call. Neither
+adapter asks for approval: Git mutations and dangerous shell calls are denied, and advisory
+context (configuration edits, functions in scripts, commands naming inputs of record) is
+passed to the model as a note. Denials follow the refuse-and-explain rule in AGENTS.md.
+
+## Refuse rather than ask (Claude, 21 October 2026)
+
+Claude is configured to match Codex's `research_no_publish` profile, which asks less and
+refuses more. Project `.claude/settings.json` sets:
+
+- a macOS Seatbelt Bash sandbox, with sandboxed commands auto-approved and no unsandboxed
+  retry (`allowUnsandboxedCommands: false`);
+- `.git` write-denied for sandboxed commands, and the `Edit(...)` deny rules (inputs of
+  record, credentials), which Claude Code also applies to sandboxed writes;
+- credential files hidden from sandboxed commands, and no network domains, so connections
+  are refused under `dontAsk`;
+- deny rules, never ask rules, for Git mutations, `rm`, `rmdir`, `mv`, `chmod`, `chown` and
+  `docker`;
+- `includeGitInstructions: false`, which removes Claude Code's built-in commit guidance;
+- `RENV_CONFIG_SANDBOX_ENABLED=FALSE` for agent commands. renv's own sandbox writes a
+  shielded copy of R's system library into the user cache, which the Bash sandbox blocks,
+  so project R startup stalled. On this machine the system library holds only the 29 base
+  and recommended packages, so turning the shield off changes no package visibility.
+  Where a system library has extra packages, the isolated Docker verification remains
+  authoritative.
+
+The user setting `permissions.defaultMode: "dontAsk"` refuses anything not pre-approved.
+Project allow rules apply only after the workspace trust dialog has been accepted once in an
+interactive session. On platforms without the sandbox (native Windows), commands run
+unsandboxed under the same permission rules. On 21 October a sandboxed `touch -c
+.git/description` failed with `Operation not permitted`, while `git status` still worked.
 
 Shell parsing does not prove that arbitrary shell/Python/R commands cannot write a protected
 input. Read-only mounts and filesystem permissions are the stronger boundary. Adapter tests

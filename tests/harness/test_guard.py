@@ -106,6 +106,8 @@ class AdapterTests(unittest.TestCase):
             (".claude/hooks/guard.py", "Write", {"file_path": ".git/index", "content": "x"}, "deny"),
             (".codex/hooks/guard.py", "apply_patch", {"command": "*** Begin Patch\n*** Delete File: .git/index\n*** End Patch"}, "deny"),
             (".claude/hooks/guard.py", "Write", {"file_path": ".env.example", "content": "KEY="}, None),
+            (".claude/hooks/guard.py", "Bash", {"command": "rm -rf scratch"}, "deny"),
+            (".codex/hooks/guard.py", "Bash", {"command": "rm -rf scratch"}, "deny"),
         ]
         for adapter in (".codex/hooks/guard.py", ".claude/hooks/guard.py"):
             cases.extend((adapter, "Bash", args, "deny")
@@ -122,8 +124,30 @@ class AdapterTests(unittest.TestCase):
                 answer = json.loads(proc.stdout) if proc.stdout.strip() else {}
                 decision = answer.get("hookSpecificOutput", {}).get("permissionDecision")
                 self.assertEqual(decision, expected)
-                if adapter.startswith(".codex"):
-                    self.assertNotEqual(decision, "ask")
+                self.assertNotEqual(decision, "ask")
+
+    def test_context_is_a_note_not_a_prompt(self):
+        import json
+        import subprocess
+        root = Path(__file__).resolve().parents[2]
+        cases = [
+            (".claude/hooks/guard.py", "Write",
+             {"file_path": "scripts/a.R", "content": "f <- function() {}"}),
+            (".claude/hooks/guard.py", "Bash", {"command": "ls data/raw/bogota"}),
+            (".codex/hooks/guard.py", "apply_patch",
+             {"command": "*** Begin Patch\n*** Add File: scripts/a.R\n+f <- function() {}\n"
+                         "*** End Patch"}),
+            (".codex/hooks/guard.py", "Bash", {"command": "ls data/raw/bogota"}),
+        ]
+        for adapter, tool, args in cases:
+            with self.subTest(adapter=adapter, tool=tool):
+                proc = subprocess.run([sys.executable, "-B", str(root / adapter)],
+                    check=False, input=json.dumps({"tool_name": tool, "tool_input": args}),
+                    text=True, capture_output=True)
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                output = json.loads(proc.stdout)["hookSpecificOutput"]
+                self.assertNotIn("permissionDecision", output)
+                self.assertTrue(output["additionalContext"])
 
     def test_malformed_payloads_block(self):
         import subprocess
