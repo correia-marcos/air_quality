@@ -20,6 +20,20 @@ class ManagedGuardTests(unittest.TestCase):
         patch = "*** Begin Patch\n*** Delete File: nested/.git/index\n*** End Patch"
         self.assertTrue(decision({"tool_name": "apply_patch", "tool_input": {"command": patch}}))
 
+    def test_claude_managed_template(self):
+        root = Path(__file__).resolve().parents[2]
+        managed = json.loads((root / "tools/harness/claude-managed-settings.json").read_text())
+        project = json.loads((root / ".claude/settings.json").read_text())
+        project_git = {r for r in project["permissions"]["deny"] if r.startswith("Bash(git ")}
+        self.assertEqual(project_git, set(managed["permissions"]["deny"]))
+        self.assertEqual(managed["permissions"]["disableBypassPermissionsMode"], "disable")
+        self.assertFalse(managed["sandbox"]["allowUnsandboxedCommands"])
+        self.assertTrue(managed["sandbox"]["network"]["strictAllowlist"])
+        hooks = managed["hooks"]["PreToolUse"]
+        # The managed hook denies any non-shell payload, so it must match Bash only.
+        self.assertEqual([h["matcher"] for h in hooks], ["Bash"])
+        self.assertIn("managed_git_guard.py", hooks[0]["hooks"][0]["command"])
+
     def test_entrypoint_malformed_payload_and_denial(self):
         script = Path(__file__).resolve().parents[2] / "tools/harness/managed_git_guard.py"
         for payload, code in (({}, 2), ({"tool_name": "Bash", "tool_input": {"command": "git push"}}, 0)):

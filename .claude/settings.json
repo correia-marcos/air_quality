@@ -71,7 +71,10 @@
       "Edit(.netrc)",
       "Edit(**/.env)",
       "Edit(**/.Renviron)",
-      "Edit(**/.netrc)"
+      "Edit(**/.netrc)",
+      "Edit(/.claude/settings.json)",
+      "Edit(/.claude/settings.local.json)",
+      "Edit(/.claude/hooks/**)"
     ]
   },
   "sandbox": {

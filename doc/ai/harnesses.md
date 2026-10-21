@@ -23,7 +23,7 @@ client invoked it.
 | Inputs of record, credentials | [Data and paths](rules/data-and-paths.md), [reproducibility](rules/reproducibility.md) | Hook denies edits; managed policy denies credential reads | `Read`/`Edit` deny rules, also applied to sandboxed writes; sandbox `credentials` | Probe table |
 | Sandbox and network | — | Managed profile `research_no_publish`: workspace writes, read-only `.git`, `.codex`, `.agents`, no network | Seatbelt sandbox, `.git` write-denied, no allowed domains, no unsandboxed retry | `touch -c .git/description` fails |
 | Approval behaviour | Refuse and explain | `approval_policy = "never"` (managed) | `defaultMode: "dontAsk"` for CLI sessions; VS Code panel in Auto | Probe table |
-| Machine policy | `tools/harness/managed-requirements.toml` | Installed at `/etc/codex/requirements.toml` (22 Sep 2026) | None (deferred) | [Codex machine policy](#codex-machine-policy) |
+| Machine policy | `tools/harness/managed-requirements.toml`, `tools/harness/claude-managed-settings.json` | Installed at `/etc/codex/requirements.toml` (22 Sep 2026) | Prepared for `/Library/Application Support/ClaudeCode/` | [Codex](#codex-machine-policy), [Claude](#claude-machine-policy) |
 | MCP servers | — | `.codex/config.toml`; disabled by the managed policy | `.mcp.json`; tools allowed as `mcp__context7__*`, `mcp__deepwiki__*` | `/mcp` |
 | Memory | `doc/ai/evidence.md` for durable decisions | `~/.codex/memories` (user level) | `~/.claude/projects/<repo>/memory` (user level) | Not shared between harnesses |
 
@@ -116,7 +116,56 @@ The extension bundles its own binary, so `/status` in the panel reports the vers
   (`claudeCode.useTerminal`) has not been tested.
 - **Measured on 21 October 2026.** A sandboxed `touch -c .git/description` failed with
   `Operation not permitted` while `git status` worked. The synthetic suite passed inside
-  the sandbox (1,042 tests, 65 s); arrow logs four harmless `sysctlbyname` warnings.
+  the sandbox (1,042 tests, 65 s) with the Framework R binary
+  (`/Library/Frameworks/R.framework/Versions/4.6/Resources/bin/Rscript`); arrow logs four
+  harmless `sysctlbyname` warnings. On this Mac a bare `Rscript` resolves to Homebrew R
+  (`/opt/homebrew/bin/Rscript`). That R does not see the renv library, tries to download
+  renv, is refused by the sandbox, and continues **without the project environment**
+  after only a warning. Until Framework R comes first on the PATH, call it explicitly.
+- **Auto gaps, closed 21 October 2026.** Probes in the VS Code panel showed that Auto's
+  classifier approved, without a prompt, an edit to `.claude/settings.json`, an edit to
+  the legacy `Replication_Package` and a web fetch from an unlisted domain. Project deny
+  rules now refuse edits to `.claude/settings.json`, `.claude/settings.local.json` and
+  `.claude/hooks/`, so Claude cannot change its own boundary. A local deny rule refuses
+  edits to the legacy package; its machine-specific path stays out of the shared file.
+  WebFetch runs outside the Bash sandbox, so its network access is governed only by
+  the permission mode. The probe record is in
+  `doc/audits/repository/2026-10-21-agent-harness-verification.md` (local).
+
+### Claude machine policy
+
+`tools/harness/claude-managed-settings.json` mirrors the Codex machine policy for every
+Claude Code project on this Mac. It is prepared but not yet installed. It sets:
+
+- Git mutation deny rules, identical to the project's and checked by a test;
+- `disableBypassPermissionsMode`;
+- `includeGitInstructions: false`;
+- the managed Git hook (`managed_git_guard.py`, matched to Bash only, because it denies
+  any other payload);
+- a sandbox that is required (`failIfUnavailable`), with no unsandboxed retry and
+  `strictAllowlist` network refusal in every mode;
+- `.git` and credential files write- or read-denied everywhere, plus the renv setting
+  above.
+
+Managed values outrank user, project and local settings, and the sandbox becomes
+admin-required, so repository files cannot loosen it. Shell commands in **every** project
+therefore lose network access and cannot write any `.git`, as under Codex.
+
+To install, review the template and run `sudo sh tools/harness/install_claude_managed_policy.sh`
+in your own Terminal. It refuses to overwrite existing managed settings and adds this
+checkout's actual and common Git directories to the write denials. Never give the
+administrator password to an agent.
+
+After installing:
+
+1. Reload every VS Code window and restart terminal sessions. `/status` should list
+   `Enterprise managed settings (file)`, and `/permissions` should show the Git denials
+   from managed settings.
+2. Repeat the sandbox and probe-table checks below, including in another repository.
+
+To roll back, an administrator reviews and removes only the installed
+`managed-settings.json` and `hooks/` in that folder, then restarts Claude Code. Agents
+never remove or weaken the policy.
 
 ## Git boundary
 

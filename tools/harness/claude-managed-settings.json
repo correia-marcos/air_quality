@@ -1,0 +1,72 @@
+{
+  "permissions": {
+    "disableBypassPermissionsMode": "disable",
+    "deny": [
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(git merge *)",
+      "Bash(git rebase *)",
+      "Bash(git cherry-pick *)",
+      "Bash(git am *)",
+      "Bash(git commit-tree *)",
+      "Bash(git update-ref *)",
+      "Bash(git send-pack *)",
+      "Bash(git fast-import *)",
+      "Bash(git rm *)",
+      "Bash(git mv *)",
+      "Bash(git reset *)",
+      "Bash(git restore *)",
+      "Bash(git checkout *)",
+      "Bash(git switch *)",
+      "Bash(git stash *)",
+      "Bash(git clean *)",
+      "Bash(git tag *)"
+    ]
+  },
+  "includeGitInstructions": false,
+  "env": {
+    "RENV_CONFIG_SANDBOX_ENABLED": "FALSE"
+  },
+  "sandbox": {
+    "enabled": true,
+    "autoAllowBashIfSandboxed": true,
+    "allowUnsandboxedCommands": false,
+    "failIfUnavailable": true,
+    "network": {
+      "strictAllowlist": true
+    },
+    "filesystem": {
+      "denyWrite": ["/**/.git"],
+      "denyRead": ["/**/.env", "/**/.Renviron", "/**/.netrc"]
+    },
+    "credentials": {
+      "files": [
+        { "path": "~/.ssh", "mode": "deny" },
+        { "path": "~/.netrc", "mode": "deny" },
+        { "path": "~/.git-credentials", "mode": "deny" },
+        { "path": "~/.config/gh", "mode": "deny" },
+        { "path": "~/.codex/auth.json", "mode": "deny" },
+        { "path": "~/.aws", "mode": "deny" },
+        { "path": "~/.azure", "mode": "deny" },
+        { "path": "~/.config/gcloud", "mode": "deny" },
+        { "path": "~/.docker", "mode": "deny" },
+        { "path": "~/Library/Keychains", "mode": "deny" }
+      ]
+    }
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 -B \"/Library/Application Support/ClaudeCode/hooks/managed_git_guard.py\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
