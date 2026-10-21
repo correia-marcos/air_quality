@@ -35,9 +35,14 @@ refuses more. Project `.claude/settings.json` sets:
   Where a system library has extra packages, the isolated Docker verification remains
   authoritative.
 
-The user setting `permissions.defaultMode: "dontAsk"` refuses anything not pre-approved.
-Project allow rules apply only after the workspace trust dialog has been accepted once in an
-interactive session. On platforms without the sandbox (native Windows), commands run
+The project also sets `permissions.defaultMode: "dontAsk"`, so CLI sessions here refuse
+anything not pre-approved instead of asking. The VS Code extension never reads project
+settings for its starting mode. It uses `claudeCode.initialPermissionMode`, then the
+Manual, Edit automatically or Auto mode last picked in its mode indicator, then
+`defaultMode` from `~/.claude/settings.json`. Each VS Code user therefore sets the mode at
+user level, with effect in every project, or picks it per conversation. Project allow rules
+apply only after the workspace trust dialog has been accepted once in an interactive
+session (verified 21 October 2026). On platforms without the sandbox (native Windows), commands run
 unsandboxed under the same permission rules. On 21 October a sandboxed `touch -c
 .git/description` failed with `Operation not permitted`, while `git status` still worked.
 
