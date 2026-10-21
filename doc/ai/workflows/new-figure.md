@@ -1,7 +1,7 @@
 # New figure / table script
 
 First acceptance criterion: follow the reader-first requirement in
-[architecture](../architecture.md#the-reader-is-a-human-not-just-a-machine) and
+[AGENTS.md](../../../AGENTS.md#the-reader-comes-first) and
 [R style](../rules/r-style.md). The reader can run a few lines in RStudio, inspect
 named intermediate objects, and locate the applied function without learning targets.
 Use three or four meaningful executable sections; do not hide the analysis in one call.

@@ -7,5 +7,4 @@ paths:
   - "**/*_report.qmd"
 ---
 
-Read `doc/ai/rules/validation.md` explicitly and follow it.
-This wrapper declares Claude scope; the shared file is the maintained policy.
+@../../doc/ai/rules/validation.md

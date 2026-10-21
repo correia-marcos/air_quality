@@ -1,7 +1,7 @@
 # Review R
 
 First acceptance criterion: follow the reader-first requirement in
-[architecture](../architecture.md#the-reader-is-a-human-not-just-a-machine) and
+[AGENTS.md](../../../AGENTS.md#the-reader-comes-first) and
 [R style](../rules/r-style.md). The reader can run a few lines in RStudio, inspect
 named intermediate objects, and locate the applied function without learning targets.
 Use three or four meaningful executable sections; do not hide the analysis in one call.
@@ -15,8 +15,9 @@ Check, and cite line numbers:
   [R style](../rules/r-style.md#spacing-calls-and-comments), rather than formatter defaults;
   enforce the 92-character maximum, including comments and banners; header block present
   and correctly formatted; numbered `# ===` sections.
-  **Comments** per `doc/ai/rules/r-style.md` — flag any in-body comment block over
-  2 lines, and any rationale duplicated between the body and `@Description` / `@details`.
+  **Comments** per `doc/ai/rules/r-style.md` — in scripts, flag operations without a short
+  step comment; in `src/`, flag in-body comment blocks over 2 lines and rationale
+  duplicated between the body and `@Description` / `@details`.
 - **Paths:** every path via `here::here()`; no absolute paths, no `setwd()`.
 - **Setup:** Section I sources the required scientific definitions and plain settings,
   shows input reads, and attaches only necessary installed packages. It does not load
@@ -28,9 +29,11 @@ Check, and cite line numbers:
 - **Reader-first:** could a referee follow the data through this? Flag deep pipe chains or hidden
   intermediate shapes, positional argument clusters, and pack/unpack adapters. Section II
   computes named objects; Section III saves them in the same order. Check the actual
-  defining function and use the distance recipe as the structural reference.
+  defining function and use the distance recipe as the structural reference. Apply the
+  [wrapper test](../rules/r-style.md#wrapper-functions) and flag `commandArgs()` in a
+  recipe ([command-line options](../rules/r-style.md#command-line-options)).
 - **Anti-bloat:** unrequested abstraction/flexibility, error handling for impossible cases,
-  200-lines-that-should-be-50. Call these out.
+  code that does nothing for the reader. Call these out.
 
 End with a short TL;DR table: issue | location | severity | suggested fix. For requested independent audits, use the shared R reviewer role.
 

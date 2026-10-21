@@ -4,6 +4,6 @@ description: "Three-way audit of one procedure \u2014 paper spec vs legacy code 
 ---
 
 Read [the shared workflow](../../../doc/ai/workflows/audit-procedure.md) and
-[project guidance](../../../doc/ai/README.md). Interpret the user's request as
+[project guidance](../../../AGENTS.md). Interpret the user's request as
 the named workflow inputs; do not assume positional macro substitution.
 Preserve report-only scope when requested and distinguish checks from assumptions.

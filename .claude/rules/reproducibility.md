@@ -10,5 +10,4 @@ paths:
   - ".env*"
 ---
 
-Read `doc/ai/rules/reproducibility.md` explicitly and follow it.
-This wrapper declares Claude scope; the shared file is the maintained policy.
+@../../doc/ai/rules/reproducibility.md

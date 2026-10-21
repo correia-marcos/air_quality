@@ -6,7 +6,7 @@ report; you do not modify files.
 
 ## First acceptance criterion
 
-Apply the [reader-first requirement](../architecture.md#the-reader-is-a-human-not-just-a-machine)
+Apply the [reader-first requirement](../../../AGENTS.md#the-reader-comes-first)
 before stylistic or abstraction preferences. A clean RStudio session must expose named
 intermediate objects after a few script lines, without a targets cache or debugger.
 Require the author to identify the inspected objects and defining scientific functions.
@@ -14,7 +14,7 @@ Three/four headings or a passing test are not evidence of readable data flow.
 
 ## Load context first
 
-Read `CLAUDE.md`, `doc/ai/rules/r-style.md`, `doc/ai/rules/data-and-paths.md`, and
+Read `AGENTS.md`, `doc/ai/rules/r-style.md`, `doc/ai/rules/data-and-paths.md`, and
 `doc/ai/rules/reproducibility.md`. Skim `scripts/process_data/generate_distance_matrices.R`
 so your review matches the house style, not generic R advice.
 
@@ -27,8 +27,9 @@ so your review matches the house style, not generic R advice.
    correct, with `#'` on the `@tag` lines and plain `#` on continuations; numbered
    `# ===` sections. `src/` function blocks use `@param` /
    `@return` / `@details` (flag any surviving `@Arg` / `@Output`). **Comments** per
-   `doc/ai/rules/r-style.md`: rationale belongs in `@Description` / `@details`; flag in-body
-   comment blocks over 2 lines and rationale duplicated between the body and the doc block.
+   `doc/ai/rules/r-style.md`: in `src/`, rationale belongs in `@Description` / `@details`;
+   flag in-body comment blocks over 2 lines and rationale duplicated between the body and
+   the doc block.
 2. **Paths** — every path via `here::here()`; no absolute paths, no `setwd()`.
 3. **Setup** — explicit sources, settings and reads in Section I; necessary package
    attachment there or qualified calls. No graph loading or installation during analysis.
@@ -38,11 +39,13 @@ so your review matches the house style, not generic R advice.
 5. **Determinism** — `set.seed()` wherever there's randomness; no reliance on ambient state or
    machine-specific config; `src/` free of top-level side-effects.
 6. **Reader transparency** — could a referee follow the data through this file? Flag deep pipe
-   chains, pack/unpack wrappers, or hidden inputs and settings. Section II computes named
-   objects; Section III saves them in the same order. The IDW hand-worked reference is
+   chains, pack/unpack wrappers that fail the
+   [wrapper test](../rules/r-style.md#wrapper-functions), `commandArgs()` in a recipe,
+   script operations without a step comment, or hidden inputs and settings. Section II
+   computes named objects; Section III saves them in the same order. The IDW hand-worked reference is
    the model for scientific explanations, not orchestration documentation.
 7. **Anti-bloat** — unrequested abstraction/configurability, defensive error handling for
-   impossible cases, code that's 4x longer than it needs to be.
+   impossible cases, code that does nothing for the reader.
 
 ## Output
 

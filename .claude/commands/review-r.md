@@ -3,5 +3,6 @@ description: Review R changes against this project's conventions and reproducibi
 argument-hint: '[path or "staged"]'
 ---
 
-Read `doc/ai/workflows/review-r.md` and the applicable shared rules.
-Interpret `$ARGUMENTS` as the named inputs described there. Preserve task scope.
+@doc/ai/workflows/review-r.md
+
+Apply the workflow above. Interpret `$ARGUMENTS` as its named inputs. Preserve task scope.

@@ -1,13 +1,7 @@
 # R style
 
-A reader must be able to open RStudio, execute a few lines of a script—including
-sourcing functions and reading files—inspect meaningful intermediate objects, identify
-the function applied, and understand the analysis without first learning the pipeline's
-internal machinery.
-
-This is the highest structural priority. It takes precedence over minimizing script
-length, eliminating every repeated function call, or abstracting orchestration.
-Scientific definitions and protected inputs remain unchanged.
+This file details the [reader-first requirement](../../../AGENTS.md#the-reader-comes-first),
+the highest structural priority. Scientific definitions and protected inputs remain unchanged.
 
 ## Executable recipes
 
@@ -42,11 +36,45 @@ identifiers, and writing or in-place effects. Arguments must determine actual in
 For every structural change, demonstrate the path from declared inputs to a named
 intermediate object and its defining function. Preserve the analytical specification.
 
+## Command-line options
+
+Recipes in `scripts/` produce the paper's results from one declared specification, so they
+read no command-line options. A recipe must give the same outputs however it is called, and
+a reader must see every choice in the file or in `config/analysis_settings.R`. Variants that
+are reported or reviewed (other buffers, groupings, grids) are declared there as named
+settings; the recipe loops over them, as `estimate_idw.R` loops over `idw_buffers_km`.
+Options belong to launchers, which select what to run without changing what a recipe means:
+`scripts/run_*.R`, `tools/reproduction/` and, for exploring undeclared values,
+`tools/explore/`, which writes only to an ignored exploration folder.
+`scripts/download_data/download_merra2_data.R` is the documented acquisition exception.
+
+## Wrapper functions
+
+A function may wrap other functions when it performs one scientific operation a student
+could name in a sentence. Its arguments are inputs the script declares, and it returns one
+documented object (or a small named list of paths) that the script keeps under one name.
+Its `@details` lists the inner steps and the functions that perform them, so a reader can
+descend one level from the console. `run_idw_city()` is the model: one call per city,
+results kept in `idw_bogota[["3"]]`, and `aggregate_idw_exposure()` callable on its own.
+
+Signs that a boundary is wrong: the script unpacks a returned list into many names; the
+next call takes back what the previous one returned; a function takes and returns the same
+accumulators; its name describes a script section rather than an operation; its
+documentation would fit any function. The test: with only the script open, a student can
+say for every named object which function produced it, what it contains and where it is
+saved. A boundary that would make a sensible target usually makes a sensible function.
+
 ## Spacing, calls and comments
 
-Follow the author-edited `scripts/download_data/download_bogota_data.R` and
-`scripts/process_data/process_bogota_data.R` for grouped paths, aligned arguments and
-step comments. The distance recipe remains an example of separate computation and saving.
+Exemplars, each for one purpose:
+
+| Exemplar | Shows |
+|---|---|
+| `scripts/download_data/download_bogota_data.R`, `scripts/process_data/process_bogota_data.R` | Layout: grouped paths, aligned arguments, step comments |
+| `scripts/process_data/generate_distance_matrices.R` | Computing in Section II, then saving in Section III |
+| `scripts/process_data/compute_distance_band_descriptives.R` | Brief comments beside each operation |
+| `doc/reference/idw_golden_test.md` | Explaining a method |
+
 Keep short calls on one line. For longer calls, put the first argument on the same
 line as the function when readable, align continuation arguments, and close the call
 after its last argument, or on its own line for a multiline call like the Bogotá writers.
@@ -55,10 +83,11 @@ related group when helpful, without padding unrelated statements. Leave blank li
 between operations so the reader can follow one step at a time.
 
 Group Section I into sources, settings, source folders, output folders, input files and
-reads, as appropriate. Keep paths visible without naming every single-use path fragment.
-Use short step comments to explain what happens to the data; distinguish objects in
-memory, connections to on-disk data and returned filenames. Keep early source checks when
-they prevent partial output or incomplete samples; they are not a targets requirement.
+reads, as appropriate, with a comment above each group. Keep paths visible without naming
+every single-use path fragment. In every section, put one short comment above each
+operation that says what happens to the data; distinguish objects in memory, connections
+to on-disk data and returned filenames. Keep early source checks when they prevent partial
+output or incomplete samples; they are not a targets requirement.
 
 Keep every R line within 92 characters, including comments and section dividers.
 If aligning arguments under the opening parenthesis exceeds that limit, use a shorter,
@@ -67,19 +96,20 @@ Preserve meaningful names; adjust alignment and wrapping rather than exceed the 
 Script comments use short, concrete descriptions: set the paths, read the stations,
 compute distances, save the tables. Explain geographic vintages or other choices where
 they help the reader. Polish the English without replacing this voice with boilerplate.
-Use `scripts/process_data/compute_distance_band_descriptives.R` as the comment reference;
-Marcos prefers its brief descriptions beside each operation.
+Brevity applies to each comment, not to their number: a script with few comments is not
+more concise, only harder to follow.
 
 ## Hard rules
 
 - **Maximum line length: 92 characters.** Call alignment must fit within this limit.
-- **Comments: one home for rationale.** *Why* a function does what it does belongs in its
-  `@Description` / `@details` block — written once, updated in place. Comments **inside** a
-  function body are at most **2 lines** and say only what happens *to the data* here, or point
-  back: `# see @Details: cluster identification`. Never restate in the body what the block
-  above already says. If a change needs more explanation, extend `@details` — do not grow a
-  paragraph mid-function. *Exempt:* the file header block and the `# ---` doc block above a
-  `src/` function; those are the designated home and are long by design.
+- **Comments in `src/` functions: one home for rationale.** *Why* a function does what it
+  does belongs in its `@Description` / `@details` block — written once, updated in place.
+  Comments **inside** a function body are at most **2 lines** and say only what happens *to
+  the data* here, or point back: `# see @Details: cluster identification`. Never restate in
+  the body what the block above already says. If a change needs more explanation, extend
+  `@details` — do not grow a paragraph mid-function. *Exempt:* the file header block and the
+  `# ---` doc block above a `src/` function; those are the designated home and are long by
+  design. Scripts follow the step-comment rule above instead.
 - **Paths are always `here::here(...)`.** No absolute paths, no `setwd()`, no `~`.
 - **Setup belongs in Section I.** Source the required subject modules and settings
   explicitly. Modules may declare and attach their required installed packages at the
@@ -118,9 +148,8 @@ The `#'` prefix is for RStudio only — it colours the tags and is what makes th
 scannable. roxygen2 never runs here (no `R/`, no `NAMESPACE`, `DESCRIPTION` is `Type: Project`,
 `Coding.Rproj` is `BuildType: Makefile`), so the custom `@Goal` / `@Summary` tags cost nothing.
 
-Use `scripts/process_data/generate_distance_matrices.R` as the processing example. Section
-dividers inside the script reuse the same `# ===` rule with a `# I:` / `# II:` label. Banner
-rules must also fit within 92 characters.
+Section dividers inside the script reuse the same `# ===` rule with a `# I:` / `# II:`
+label. Banner rules must also fit within 92 characters.
 
 ## Every `src/` function has a doc block
 
@@ -160,8 +189,9 @@ takes the name then the description, with no colon between them. `@Purpose`, `@W
 
 ## Don't
 
-- Don't add abstraction, configurability, or error handling that wasn't asked for. If 200 lines
-  could be 50, write 50. Single-use code stays flat.
+- Don't add abstraction, configurability, or error handling that wasn't asked for. Remove
+  code that does nothing for the reader, but never shorten a script by hiding its steps.
+  Single-use code stays flat.
 - Don't wrap uncertainty in defensive code — if you're unsure what an output looks like, ask
   Marcos to run and check it first.
 

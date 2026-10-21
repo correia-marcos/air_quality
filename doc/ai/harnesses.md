@@ -1,6 +1,6 @@
 # Native harness setup and boundaries
 
-Root AGENTS.md and CLAUDE.md route to the same doc/ai/ sources. Claude commands, rules and role files retain discovery metadata. Codex workflows are skills under .agents/skills/, not a proprietary .codex/skills directory. Codex configuration, two read-only reviewer agents, command rules and the hook adapter live under .codex/.
+Root AGENTS.md is the shared core every harness loads; CLAUDE.md imports it with `@AGENTS.md`. Claude rules and commands keep their discovery metadata and import the shared file (`@../../doc/ai/rules/<rule>.md`, `@doc/ai/workflows/<workflow>.md`) instead of asking the model to read it. Codex workflows are skills under .agents/skills/, not a proprietary .codex/skills directory. Codex configuration, two read-only reviewer agents, command rules and the hook adapter live under .codex/.
 
 Project config uses workspace-write and on-request approval. Context7 and DeepWiki retain
 their package pins. Discovery under CLI 0.153.0 and the missing-npx limitation are historical
@@ -63,16 +63,21 @@ Use reviewer roles for explicitly requested independent work. Do not automatical
 
 ## Current client review — 5 October 2026
 
-Installed versions are Claude Code 2.1.267 and Codex CLI 0.155.1. Keep `CLAUDE.md`: it and
-`AGENTS.md` currently carry the same shared-document entry instructions, but this Claude
-version predates direct AGENTS loading. The current [official Claude memory documentation](https://code.claude.com/docs/en/memory)
-requires 2.1.277 or later, an enabled built-in `agents-md` plugin and the applicable user or
-managed Project instructions setting. The default uses CLAUDE when present in a directory;
-AGENTS imports and settings choices have different loading behavior. Some older supported
-clients also need an upgrade to 2.1.281. User/plugin settings cannot be imposed through this
-repository's project settings. Neither wrapper currently has an automatic `@` import;
-both instruct the assistant to read `doc/ai/` explicitly. Removal is a later option only
-after checking equivalent loading, rules and `/memory` output in the actual client.
+Updated 20 October 2026: the VS Code extension and the terminal CLI both run Claude Code
+2.1.304; Codex CLI is 0.155.1. (The 2.1.267 recorded on 5 October was the terminal CLI;
+the extension bundles its own binary.) Direct `AGENTS.md` loading needs 2.1.277+, an enabled
+built-in plugin and a user-level setting, and stops when a `CLAUDE.local.md` exists
+([official memory documentation](https://code.claude.com/docs/en/memory)). `CLAUDE.md`
+therefore contains only `@AGENTS.md`, which loads it in every version without duplication.
+`AGENTS.md` itself uses no `@` imports, because Codex would read them as plain text.
+Loading was verified on 20 October with an `InstructionsLoaded` hook passed through
+`--settings` to a headless session: each rule's import appears with load reason `include`.
+The imports expand at session start, so the four shared rules (about 6,800 tokens together
+with `AGENTS.md`) are in context from the first turn; `paths:` now scopes only the wrapper.
+A one-turn probe without tools confirmed that a command's `@` reference attaches the
+workflow file. Claude Code applies a project's `permissions.allow` rules only after
+the workspace trust dialog is accepted; this repository had not been trusted, so those
+rules were ignored.
 
 Written project rules are instructions, not enforced controls. Claude's native `Edit` deny
 rules now include downloads as well as raw, legacy and lockfile paths. `Read` and `Edit`
