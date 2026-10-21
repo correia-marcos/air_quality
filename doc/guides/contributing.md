@@ -1,6 +1,6 @@
 # Contributing a bounded change
 
-Read the [architecture](../ai/architecture.md), [collaboration agreement](../ai/collaboration.md),
+Read the [agent instructions](../../AGENTS.md), [collaboration agreement](../ai/collaboration.md),
 and [Git boundary](../ai/rules/git-safety.md). Humans own scientific specifications and
 perform Git mutations; agents inspect, edit within scope, test, and recommend commit groups.
 
@@ -12,7 +12,7 @@ from unresolved scientific choices. Use researcher-approved specifications for c
 estimands, geography, census vintage, samples, weights, missingness, or numerical tolerances.
 Existing authorization remains valid; clarify only unresolved consequential choices.
 
-Use the [shared index](../ai/README.md) to load relevant rules. R changes require the
+Use the [routing table](../../AGENTS.md#where-to-read-more) to load relevant rules. R changes require the
 [R style](../ai/rules/r-style.md); data/pipeline work also requires
 [data and paths](../ai/rules/data-and-paths.md). Environment changes require
 [reproducibility guidance](../ai/rules/reproducibility.md).

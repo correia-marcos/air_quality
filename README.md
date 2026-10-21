@@ -133,7 +133,7 @@ with `tools/reproduction/export_paper.R`; see the operational guide for commands
 ## Contributing and citation
 
 Keep scientific specifications and inputs of record unchanged unless explicitly authorized.
-Use the shared guidance in [doc/ai](doc/ai/README.md) for assistant-supported work. The project
+Coding agents start at [AGENTS.md](AGENTS.md); its detail is in [doc/ai](doc/ai/README.md). The project
 is released under the [MIT License](LICENSE.md); cite the repository and related publication
 when reusing its methods or results.
 

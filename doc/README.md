@@ -7,7 +7,7 @@ agreement, scientific validity, and independent reproduction are separate claims
 |---|---|
 | Student / first encounter | [First run](guides/first-run.md) → [data dictionary](reference/data_dictionary.md) → [IDW worked example](reference/idw_golden_test.md) |
 | Reviewer / replicator | [Run and verify](HOW_TO_RUN.md) → [artifact manifest](../config/paper_artifacts.csv) → [evidence and decisions](ai/evidence.md) |
-| New contributor | [Contributing](guides/contributing.md) → [architecture](ai/architecture.md) → [shared workflows](ai/README.md) |
+| New contributor | [Contributing](guides/contributing.md) → [agent instructions](../AGENTS.md) → [architecture](ai/architecture.md) |
 | Procedure audit | [Human guide](guides/procedure-audit.md) → [canonical workflow](ai/workflows/audit-procedure.md) → [report template](reviews/procedure-template.md) |
 | Supporting research | [Specification sensitivity](RESOLUTION_SENSITIVITY.md) (geographic support, IDW buffer and exponent, education groups) → [file map](../scripts/process_data/specification_sensitivity/README.md); optional, separate from manuscript production |
 | Particulate quality | [Screening and provenance](reference/particulate_quality.md) → [remaining acceptance work](planning/remaining-work.md) |
