@@ -1,0 +1,5 @@
+city,stations,pm10,pm25,both,pm10_only,pm25_only,neither,both_pollutants_pm10,both_pollutants_pm25,three_months_pm10,three_months_pm25
+Bogotá,48,48,47,47,1,0,0,47,47,45,44
+Mexico City,61,32,27,20,12,7,22,,,,
+Santiago,10,10,10,10,0,0,0,10,10,10,10
+São Paulo,35,28,24,18,10,6,1,18,18,28,18

@@ -1,0 +1,7 @@
+check,cases,failed,max_error
+default_parity_with_grid,720,0,0
+set_sample_nested_in_default,72,0,
+set_sample_buffer_nesting,180,0,
+variance_identity,1440,,4.96584107168019e-10
+decomposition_vs_default_identity,1440,0,0
+decomposition_vs_3km_identity,1440,0,1.4210854715202e-14
