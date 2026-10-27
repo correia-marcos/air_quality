@@ -24,9 +24,10 @@ for (file in c("geo_ids.R", "distances.R", "idw_exposure.R",
   source(here::here("src", "general_utilities", "process", file))
 }
 # Specification-sensitivity modules: shared primitives, the A/B/C robustness workflow,
-# review summaries, then Design A, the IDW grid and the specification panel.
+# review summaries, then Design A, the IDW grid, the specification panel and the
+# station sets.
 for (file in c("resolution_sensitivity.R", "resolution_workflow.R", "resolution_review.R",
-               "design_a.R", "idw_grid.R", "specification_panel.R")) {
+               "design_a.R", "idw_grid.R", "specification_panel.R", "station_sets.R")) {
   source(here::here("src", "general_utilities", "process", "specification_sensitivity",
                     file))
 }
