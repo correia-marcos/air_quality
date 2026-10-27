@@ -29,7 +29,7 @@ for (file in c("distances.R", "pollution_quality.R", "outliers.R", "imputation.R
   source(here::here("src", "general_utilities", "process", file))
 }
 for (file in c("resolution_sensitivity.R", "resolution_workflow.R", "resolution_review.R",
-               "design_a.R", "idw_grid.R", "specification_panel.R")) {
+               "design_a.R", "idw_grid.R", "specification_panel.R", "station_sets.R")) {
   source(here::here("src", "general_utilities", "process", "specification_sensitivity",
                     file))
 }

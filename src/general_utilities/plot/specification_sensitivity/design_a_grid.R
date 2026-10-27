@@ -13,6 +13,7 @@
 #   3. plot_design_a_samples
 #   4. plot_design_a_decomposition
 #   5. plot_variance_shares
+#   6. plot_support_variance
 #' @Date: October 2026
 #' @Author: Marcos Paulo
 # ==========================================================================================
@@ -167,5 +168,38 @@ plot_variance_shares <- function(x, title) {
     ggplot2::theme(legend.position = "top", panel.grid.minor = ggplot2::element_blank(),
       panel.grid.major.x = ggplot2::element_blank(),
       axis.text.x = ggplot2::element_text(size = 7, angle = 25, hjust = 1),
+      plot.caption = ggplot2::element_text(hjust = 0, size = 7))
+}
+
+# ------------------------------------------------------------------------------------------
+# Function: plot_support_variance
+#
+#' @param x       data.table: city, metric, variance_lost (share of the fine-exposure
+#'   variance a coarser support averages away) and change_sd (gap at the support minus
+#'   the finest gap, in standard deviations of fine exposure), one row per coarser support
+#'   and specification.
+#' @param title   plot title.
+#' @param caption caption text.
+#
+#' @return  ggplot: change of the gap against the variance lost, one panel per metric,
+#   cities by colour and point shape.
+#
+#' @details
+#   Design A keeps people and groups fixed, so a support changes the gap only through the
+#   exposure variation it averages away within units. The plot shows how far the gap
+#   moves for each amount of variance lost; it draws no threshold.
+# ------------------------------------------------------------------------------------------
+plot_support_variance <- function(x, title, caption = NULL) {
+  ggplot2::ggplot(x, ggplot2::aes(variance_lost, change_sd, colour = city, shape = city)) +
+    ggplot2::geom_hline(yintercept = 0, colour = "grey70", linewidth = .3) +
+    ggplot2::geom_point(size = 1.3, alpha = .6, na.rm = TRUE) +
+    ggplot2::facet_wrap(ggplot2::vars(metric), ncol = 3) +
+    ggplot2::scale_colour_manual(values = design_a_colours, name = NULL) +
+    ggplot2::scale_shape_manual(values = c(16, 17, 15), name = NULL) +
+    ggplot2::scale_x_continuous(labels = function(v) paste0(100 * v, "%")) +
+    ggplot2::labs(title = title, x = "Share of fine-exposure variance lost at the support",
+                  y = "Gap at the support minus finest gap (SD)", caption = caption) +
+    ggplot2::theme(legend.position = "top", panel.grid.minor = ggplot2::element_blank(),
+      strip.text = ggplot2::element_text(size = 8),
       plot.caption = ggplot2::element_text(hjust = 0, size = 7))
 }

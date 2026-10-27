@@ -27,11 +27,16 @@ B (exposure rebuilt at each support) and C (area classification) are robustness 
 | 7 | `estimate_specification_variance_decomposition.R` | Which choices matter | `specification_variance_decomposition()` | Panel → variance shares per choice |
 | 8 | `../../tables_images/specification_sensitivity/figure_design_a_grid.R` | Primary figures | `plot_design_a_*()`, `plot_variance_shares()` | Grid tables and shares → `results/figures/specification_sensitivity/design_a/` |
 | — | `../../tables_images/specification_sensitivity/figure_resolution_sensitivity.R` | Robustness figures | `resolution_multicity_figure_*()` | Robustness tables → `robustness_designs/` figure packets |
+| 9 | `estimate_idw_station_sets.R` | Station-set inputs | `station_reporting()`, `station_set_members()`, `restrict_station_panel()`, `aggregate_idw_exposure()` | Frozen panels and fine matrices → station tables in `review/`, fine exposure per set in `resolution_station_sets` at exponent 1 in `data/processed/resolution_sensitivity/station_sets/` |
+| 10 | `estimate_design_a_station_sets.R` | Station-set estimates | `design_a_sample()`, `design_a_estimate()`, `design_a_decomposition()` | Set and default exposures → `results/tables/specification_sensitivity/station_sets/` |
+| 11 | `../../tables_images/specification_sensitivity/figure_station_sets.R` | Station-set figures | `plot_station_set_map()`, `plot_resolution_buffer_gaps()`, `plot_design_a_gap_by_buffer()` | Station-set tables → `station_sets/` maps, figures and comparison table |
+| — | `../../tables_images/specification_sensitivity/figure_support_variance.R` | Support size and variance | `plot_support_variance()` | Panel and paired differences → `review/support_variance_*` |
 
 Make targets: `resolution-multicity` (steps 1, 2 at 3 km and its figures),
-`resolution-multicity-grouping GROUPING= BUFFER=`, `specification-grid` (3, 4) and
-`specification-panel` (6, 7, 8). Step 5 and the 20 km robustness estimate are run
-directly; see `doc/HOW_TO_RUN.md`.
+`resolution-multicity-grouping GROUPING= BUFFER=`, `specification-grid` (3, 4),
+`specification-panel` (6, 7, 8) and `specification-station-sets` (9, 10, 11). Step 5, the
+20 km robustness estimate and the support-variance figure are run directly; see
+`doc/HOW_TO_RUN.md`.
 
 ## Functions
 
@@ -46,9 +51,10 @@ directly; see `doc/HOW_TO_RUN.md`.
 | `design_a.R` | Design A sample rule, Design A on a supplied sample, fixed-sample decomposition |
 | `idw_grid.R` | Station-weight descriptors and manuscript anchors of the IDW grid |
 | `specification_panel.R` | Panel assembly, baselines and the variance decomposition |
+| `station_sets.R` | Station reporting (hours, months), the station-set rule and the restricted panel |
 
 Plot functions are in `src/general_utilities/plot/specification_sensitivity/`
-(`resolution_workflow.R`, `resolution_review.R`, `design_a_grid.R`).
+(`resolution_workflow.R`, `resolution_review.R`, `design_a_grid.R`, `station_sets.R`).
 
 ## Outputs
 
@@ -56,10 +62,11 @@ Plot functions are in `src/general_utilities/plot/specification_sensitivity/`
 |---|---|
 | `results/tables/specification_sensitivity/design_a/` | `design_a_grid_*.csv`: samples, support sizes, station weights, contrasts, profiles, decomposition, threshold ties, single-station checks, checks |
 | `results/tables/specification_sensitivity/robustness_designs/` | `resolution_multicity_[<grouping>_][20km_]*.csv` (A/B/C at 3 and 20 km) |
-| `results/tables/specification_sensitivity/review/` | `resolution_review_*.csv` (coauthor review, including the Design A buffer samples and decomposition) |
+| `results/tables/specification_sensitivity/review/` | `resolution_review_*.csv` (coauthor review, including the Design A buffer samples and decomposition); `stations_by_pollutant_sets_2023.csv` and `station_reporting_2023.csv` (stations by pollutant, hours and months, four cities); `support_variance_*.csv` |
 | `results/tables/specification_sensitivity/panel/` | `specification_panel.csv`, profiles, parity and regression anchors, checks, variance decomposition |
+| `results/tables/specification_sensitivity/station_sets/` | `station_sets_*.csv`: samples, station weights, contrasts, profiles, decompositions against the default stations and against 3 km, checks, comparison |
 | `results/figures/specification_sensitivity/<role>/` | Figures of the same roles; `reference_bogota/` holds the historical Bogotá figures |
-| `data/processed/resolution_sensitivity/` | Parquet checkpoints: per-run city folders, `idw_grid/`, `design_a_grid/`, `specification_panel/`; `_frozen_*` archives |
+| `data/processed/resolution_sensitivity/` | Parquet checkpoints: per-run city folders, `idw_grid/`, `design_a_grid/`, `specification_panel/`, `station_sets/`; `_frozen_*` archives |
 
 This exercise is the pilot of a subfolder layout (`doc/ai/architecture.md`); the rest of
 the repository keeps the flat layout until a repo-wide plan.

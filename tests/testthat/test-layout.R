@@ -18,7 +18,8 @@ test_that("manifest producers and result topics obey the shared contract", {
 test_that("only the specification-sensitivity pilot adds result subfolders", {
   # Pilot of the subfolder layout; any other subfolder is unreviewed drift.
   pilot <- "specification_sensitivity"
-  roles <- c("design_a", "robustness_designs", "review", "panel", "reference_bogota")
+  roles <- c("design_a", "robustness_designs", "review", "panel", "reference_bogota",
+             "station_sets")
   tables <- here::here("results", "tables")
   if (dir.exists(tables)) {
     expect_true(all(list.dirs(tables, full.names = FALSE, recursive = FALSE) %in% pilot))

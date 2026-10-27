@@ -38,7 +38,7 @@ SRC := $(shell find src -name '*.R')
 .PHONY: all download process merra2 distances outliers exposure descriptives \
         scatter imputed temporal figures tables context-maps resolution \
         resolution-multicity resolution-multicity-grouping specification-grid \
-        specification-panel validate clean help
+        specification-panel specification-station-sets validate clean help
 
 all: figures tables
 
@@ -182,6 +182,13 @@ specification-panel:
 	$(RUN) $(SPEC_PROCESS)/estimate_specification_variance_decomposition.R
 	$(RUN) $(SPEC_FIGURES)/figure_design_a_grid.R
 
+# Station sets declared in config/analysis_settings.R: IDW with fewer stations, Design A
+# against the default stations, and their figures. Needs the frozen inputs and the grid.
+specification-station-sets:
+	$(RUN) $(SPEC_PROCESS)/estimate_idw_station_sets.R
+	$(RUN) $(SPEC_PROCESS)/estimate_design_a_station_sets.R
+	$(RUN) $(SPEC_FIGURES)/figure_station_sets.R
+
 # Context maps are not manuscript artifacts; the terrain version may contact Stadia.
 context-maps: process
 	$(RUN) scripts/tables_images/figure_study_area_maps.R
@@ -208,7 +215,8 @@ help:
 	@echo "         imputed temporal figures tables"
 	@echo "         merra2 context-maps resolution resolution-multicity"
 	@echo "         resolution-multicity-grouping [GROUPING=] [BUFFER=]"
-	@echo "         specification-grid specification-panel download validate clean"
+	@echo "         specification-grid specification-panel specification-station-sets"
+	@echo "         download validate clean"
 	@echo "Add DOCKER=1 to run each step inside the compose \"analysis\" service."
 
 

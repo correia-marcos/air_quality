@@ -232,6 +232,47 @@ own sample; the common-sample gaps are supplementary.
 | Native B across supports (robustness) | Changing | Rebuilt exposure and selection |
 | C across supports (robustness) | Fixed, area groups | Classification change |
 
+## Station sets
+
+The grid interpolates every station with a valid reading of the pollutant in 2023. A
+station set keeps fewer stations by a rule on their reporting, declared in
+`resolution_station_sets` (`config/analysis_settings.R`). A station enters the network of
+pollutant p when p and every pollutant in `require` have valid hours in at least
+`min_months` calendar months. Two sets run at exponent 1 on
+`resolution_station_set_buffers_km` (1, 2, 3, 5, 10, 20 km):
+
+| Set | Rule | What it removes |
+|---|---|---|
+| `both_pollutants` | `require` = PM10 and PM2.5, `min_months` = 1 | Stations that report only one pollutant |
+| `three_months` | `require` = none, `min_months` = 3 | A pollutant's records shorter than three months |
+
+*Where the rule sits.* Reporting is known only once the hourly panel exists, and the hours
+that enter interpolation only after outlier cleaning. The city recipes choose stations by
+location before any reading exists. Outlier cleaning compares each reading with
+neighbouring stations, so removing stations before it would change the cleaned values of
+the stations kept. The rule therefore sits after cleaning and before interpolation:
+`station_reporting()` counts hours and months in the frozen 2023 panel,
+`station_set_members()` applies the rule, and `restrict_station_panel()` blanks the
+readings outside the set. IDW drops a missing reading from the numerator and the
+denominator of each hourly mean, so a blanked reading is the same as removing that station
+for that pollutant; `aggregate_idw_exposure()` runs unchanged on the frozen fine matrix.
+The manuscript graph is unchanged.
+
+*What a set can change.* A station that never reports a pollutant never contributes to
+that pollutant's exposure, so `both_pollutants` changes PM2.5 only by removing PM2.5-only
+stations and PM10 only by removing PM10-only stations. Removing stations can only shrink a
+unit's eligible set, so each set's sample is nested in the default sample at the same
+buffer. `estimate_design_a_station_sets.R` splits the change from the default stations at
+the same buffer with the fixed-sample decomposition above (the people both cover, then
+the people the set loses), and the change from the set's own 3 km estimate the same way.
+
+*Checks.* Wherever a set keeps a pollutant's whole network, its exposure must equal the
+default grid file at the same buffer (`default_anchors`). The default Design A gaps are
+recomputed and must equal the saved grid; set samples must sit inside the default samples
+and nest in the buffer; both decompositions must add up. Two groupings: the frozen
+quintiles and quintiles with split ties. The variance decomposition is not rerun for the
+sets.
+
 ## Specification panel and variance decomposition
 
 `build_specification_panel.R` writes `specification_panel.csv`: one row per Design A
@@ -414,6 +455,10 @@ with the original; it can be reconstructed from the frozen inputs.
 | `data/processed/resolution_sensitivity/design_a_grid/`, `results/tables/specification_sensitivity/design_a/` | Design A grid: samples, support sizes, station weights, contrasts, profiles, decomposition, threshold ties, single-station checks, checks |
 | `data/processed/resolution_sensitivity/specification_panel/`, `results/tables/specification_sensitivity/panel/` | Specification panel, profiles, parity and regression anchors, checks, variance decomposition |
 | `results/figures/specification_sensitivity/design_a/` | Design A grid figures and variance shares |
+| `data/processed/resolution_sensitivity/station_sets/<set>/` | Restricted 2023 panels and fine IDW exposure per station set; `set_manifest`, `default_anchors`, `snapshot.csv` |
+| `data/processed/resolution_sensitivity/station_sets/design_a/`, `results/tables/specification_sensitivity/station_sets/`, `results/figures/specification_sensitivity/station_sets/` | Station-set samples, station weights, contrasts, profiles, decompositions, checks, comparison table, station maps and figures |
+| `results/tables/specification_sensitivity/review/stations_by_pollutant_sets_2023.csv`, `station_reporting_2023.csv` | Stations by pollutant (four cities), valid hours before and after cleaning, months, first and last hour |
+| `results/tables/specification_sensitivity/review/support_variance_*.csv`, `results/figures/specification_sensitivity/review/support_variance.pdf` | Support size, variance retained, gap relative to the finest support and intervals; change of the gap against the variance lost |
 | `results/tables/specification_sensitivity/review/`, `results/figures/specification_sensitivity/review/` | Coauthor review tables and figures, including the 3 km versus 20 km Design A comparison |
 | `data/processed/resolution_sensitivity/reference_rebuild/` | Isolated historical Bogotá rerun |
 | `data/processed/resolution_sensitivity/<folder>/[buffer_20km/]<city>/` | Same products for an alternative grouping (`quintile_split`, `education_group3`, `education_level`); its group cells; copied B exposures with `exposure_source.csv` |
@@ -704,6 +749,40 @@ this addition. Isolated release verification and researcher review were not done
   - The grid, review and variance figures were rendered and inspected. The exponent-change
     figure was corrected to connect only buffers run at both exponents.
   - Isolated release verification and researcher review were not done.
+
+### Station sets, 21–22 October 2026
+
+- **Run.** `make specification-station-sets` from the 14 October snapshot, at exponent 1
+  on 1–20 km. Santiago and São Paulo took about two minutes per set. Bogotá's
+  `both_pollutants` run overlapped a period when the machine slowed or slept (about six
+  hours of wall time). Its `three_months` run took 50 minutes (20 km: 38 minutes). A
+  rerun of Bogotá at 1 km took 28 s and reproduced the overnight file exactly.
+- **Resume fix.** The first resume stopped because the snapshot stored the rules as
+  deparsed R code, which `fread()` did not read back unchanged. The snapshot now has one
+  plain row per city and set. The old file was rewritten after its input checksums were
+  confirmed to match.
+- **Checks.**
+  - Set exposures equal the default grid wherever a set keeps a pollutant's whole
+    network: 144 of 144, max 8.5e-14. That covers Santiago in both sets, Bogotá PM2.5 in
+    `both_pollutants` and São Paulo PM10 in `three_months`.
+  - The recomputed default Design A equals the saved grid (360 rows, zero difference).
+  - Set samples nest in the default and in the buffer.
+  - Both decompositions add up within 1.4e-14.
+  - The São Paulo and Santiago tables equal an earlier scratch run exactly.
+  - The md5 of all 5,501 existing derived and result files are unchanged.
+  - The synthetic suite passed 1,062 checks, with zero failures or warnings.
+- **Networks.** Bogotá keeps 47/47 stations under `both_pollutants` and 45/44 under
+  `three_months`; Santiago keeps 10/10 under both. São Paulo keeps 18/18 under
+  `both_pollutants` and 28/18 under `three_months`, which drops the five December-only
+  PM2.5 records and Pinheiros (November–December).
+- **Results.** Bogotá and Santiago gaps keep their signs and barely move. In São Paulo:
+  - `both_pollutants` keeps 71% of the 3 km PM10 sample and raises its mean gap from 0.75
+    to 1.25;
+  - `three_months` removes 0.91 of 2.86 million adults from the 3 km PM2.5 sample and
+    doubles its IT2 gap (19.4 to 39.4 hours);
+  - the município PM2.5 gap stays above the finest gap at 3 and 20 km under both sets.
+
+  The interpretation is in the coauthor review note.
 
 ### Small implementation choices
 

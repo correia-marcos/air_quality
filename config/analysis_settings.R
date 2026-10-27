@@ -30,6 +30,14 @@ resolution_grid_distance_powers <- c(1, 2)
 # 14 October 2026 run; exponent 1 runs on every buffer.
 resolution_grid_power2_buffers_km <- c(1, 2, 3, 5, 10, 20)
 
+# Specification sensitivity sets. It selects stations with valid hours for each pollutant 
+# in analysis_year. A station enters database when that pollutant and all pollutants in 
+# `require` have valid hours in at least `min_months` months. Sets run with exponent 1.
+resolution_station_sets <- list(
+  both_pollutants = list(require = c("pm10", "pm25"), min_months = 1L),
+  three_months    = list(require = character(),       min_months = 3L))
+resolution_station_set_buffers_km <- c(1, 2, 3, 5, 10, 20)
+
 # Harmonized education levels: the six bands each census module derives from educ_years,
 # lowest to highest. Bogota's "Some tertiary" includes completed tecnica and normalista.
 education_level_bands <- c("no_education", "high_school_incomplete", "high_school_complete",
