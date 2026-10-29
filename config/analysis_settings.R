@@ -12,8 +12,8 @@ manuscript_seed <- 20230901L
 outlier_missing_temporal <- "continue"
 outlier_missing_neighbor <- "second"
 
-# Gross-value screening precedes statistical cleaning; equality passes, NULL disables bounds.
-pollution_upper_bounds <- c(pm25 = 2000, pm10 = 6000)
+# Gross-value screening precedes statistical cleaning; NULL disables bounds.
+pollution_upper_bounds <- c(pm25 = 2000, pm10 = 6000) # Equality passes
 
 # IDW uses 2023 at 3/5/20 km; regression results use only the 3 and 5 km estimates.
 analysis_year <- 2023L
@@ -22,8 +22,28 @@ idw_distance_power <- 1
 exposure_buffers_km <- c(3L, 5L)
 individual_exposure_buffer_km <- 3L
 
-# Specification sensitivity only (never the manuscript): the IDW buffer x exponent grid on
-# which Design A is estimated. Its reference specification is 3 km with exponent 1.
+# Specification sensitivity only: the robustness designs A/B/C run for three cities on 
+# these declared variants, an IDW buffer and an individual education
+# grouping each. Each id names its target and fixes its output folder and file prefix
+# (resolution_specification()). Other groupings reuse the quintile run's Design B
+# exposure at the same buffer, so the quintile runs come first.
+resolution_cities <- c("bogota_2018", "santiago_2017", "sao_paulo_2010")
+resolution_specifications <- list(
+  quintile_3km          = list(buffer_km = 3,  grouping = "edu_quintile"),
+  quintile_20km         = list(buffer_km = 20, grouping = "edu_quintile"),
+  quintile_split_3km    = list(buffer_km = 3,  grouping = "edu_quintile_split"),
+  quintile_split_20km   = list(buffer_km = 20, grouping = "edu_quintile_split"),
+  education_group3_3km  = list(buffer_km = 3,  grouping = "edu_group3"),
+  education_group3_20km = list(buffer_km = 20, grouping = "edu_group3"),
+  education_level_3km   = list(buffer_km = 3,  grouping = "edu_level"),
+  education_level_20km  = list(buffer_km = 20, grouping = "edu_level"))
+# Review figure packets exist for the 3 km variants.
+resolution_figure_specifications <- c("quintile_3km", "quintile_split_3km",
+                                      "education_group3_3km", "education_level_3km")
+# DuckDB memory limit (GB) of the Design B rebuild. Choose based on your machine's limits.
+resolution_duckdb_mem_gb <- 32
+
+# IDW buffer x exponent grid on which Design A is estimated.
 resolution_grid_buffers_km      <- c(1, 2, 3, 5, 8, 10, 12, 15, 17, 20)
 resolution_grid_distance_powers <- c(1, 2)
 # Exponent 2 runs on a subset of the buffers, a reduction for the runtime budget of the
@@ -40,8 +60,9 @@ resolution_station_set_buffers_km <- c(1, 2, 3, 5, 10, 20)
 
 # Harmonized education levels: the six bands each census module derives from educ_years,
 # lowest to highest. Bogota's "Some tertiary" includes completed tecnica and normalista.
-education_level_bands <- c("no_education", "high_school_incomplete", "high_school_complete",
-                           "college_incomplete", "college_complete", "graduate_educ")
+education_level_bands <- c("no_education", "high_school_incomplete",
+                           "high_school_complete", "college_incomplete",
+                           "college_complete", "graduate_educ")
 education_level_labels <- c("None", "Below secondary", "Secondary", "Some tertiary",
                             "Bachelor's", "Graduate")
 
@@ -49,6 +70,36 @@ education_level_labels <- c("None", "Below secondary", "Secondary", "Some tertia
 education_group3_of_level <- c(1L, 1L, 2L, 2L, 3L, 3L)
 education_group3_labels <- c("Below secondary", "Secondary to some tertiary",
                              "Bachelor's or more")
+
+# Robustness-design figures: group labels, headline contrast and captions per grouping.
+resolution_grouping_labels <- list(
+  edu_quintile = list(
+    group_labels = paste0("Q", 1:5),
+    group_name   = "quintiles",
+    gap_label    = "Q1 - Q5",
+    profile_note = paste("Group means use existing person weights;",
+                         "consult coverage tables for each population.")),
+  edu_quintile_split = list(
+    group_labels = paste0("Q", 1:5),
+    group_name   = "quintiles",
+    gap_label    = "Q1 - Q5 (split ties)",
+    profile_note = paste("Quintiles with tied schooling values split proportionally",
+                         "across adjacent quintiles; group means use person weights.")),
+  edu_group3 = list(
+    group_labels = education_group3_labels,
+    group_name   = "groups",
+    gap_label    = "Below secondary - Bachelor's+",
+    profile_note = paste("Three harmonized attainment groups; group means use person",
+                         "weights. Bogota codes the highest level attended, so its top",
+                         "group includes adults who did not complete a degree.")),
+  edu_level = list(
+    group_labels = education_level_labels,
+    group_name   = "levels",
+    gap_label    = "None - Graduate",
+    profile_note = paste("Harmonized education levels; group means use existing person",
+                         "weights. Sao Paulo's census cannot code 'Some tertiary'.",
+                         "Bogota's 'Some tertiary' includes completed tecnica and",
+                         "normalista.")))
 
 # The imputed robustness specification uses education quintiles at 3 km in 2023.
 imputation_year <- 2023L
@@ -143,9 +194,13 @@ station_scatter_labels <- c(
   hrs_d_pm25_it2 = "Hours above PM2.5 IT2 in 2023",
   avg_pm10 = "Mean annual PM10 concentration in 2023",
   avg_pm25 = "Mean annual PM2.5 concentration in 2023")
-station_scatter_tags <- c(hrs_d_pm10_it1 = "2023", hrs_d_pm25_it1 = "pm25_2023",
-  hrs_d_pm10_it2 = "IT2_2023", hrs_d_pm25_it2 = "IT2_pm25_2023",
-  avg_pm10 = "2023_pm10mean", avg_pm25 = "2023_pm25mean")
+station_scatter_tags <- c(
+  hrs_d_pm10_it1 = "2023",
+  hrs_d_pm25_it1 = "pm25_2023",
+  hrs_d_pm10_it2 = "IT2_2023",
+  hrs_d_pm25_it2 = "IT2_pm25_2023",
+  avg_pm10 = "2023_pm10mean",
+  avg_pm25 = "2023_pm25mean")
 
 # Density evaluation limits and styling; bandwidths retain all finite observations.
 kernel_reference_years <- c(2019L, 2022L)
