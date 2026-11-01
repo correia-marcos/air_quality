@@ -2,8 +2,9 @@
 
 Work the legacy-validation track for `city_id` (see `doc/ai/rules/validation.md`).
 
-If `scripts/validation_old_version/compare_city_id.R` **exists**: read it, confirm the `data/_legacy/`
-inputs are present, then run it and render `scripts/validation_old_version/city_id_report.qmd` to `data/validation/city_id/`.
+The legacy-validation recipes live in `scripts/process_data/not_in_paper/legacy_validation/`
+(`L` below). If `L/compare_city_id.R` **exists**: read it, confirm the `data/_legacy/` inputs
+are present, then run it and render `L/city_id_report.qmd` to `data/validation/city_id/`.
 Summarize what matched, what differed, and by how much — never just "matches/differs".
 
 If it **doesn't exist**: scaffold it, mirroring `compare_bogota.R`:

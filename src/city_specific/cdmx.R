@@ -1870,7 +1870,7 @@ cdmx_download_geography <- function(base_url = cdmx_cfg$base_url_shp,
 cdmx_prepare_metro_area <- function(source_zip, level = c("municipality", "ageb"),
     keep_municipality = cdmx_cfg$cities_in_metro, quiet = FALSE) {
   require_local_sources(source_zip,
-    "geographic acquisition in scripts/download_data/download_cdmx_data.R")
+    "geographic acquisition in scripts/download_data/inputs/download_cdmx_data.R")
   level <- match.arg(level)
   Sys.setlocale("LC_CTYPE", "en_US.UTF-8")
   keep_chr <- sprintf("%05d", keep_municipality)

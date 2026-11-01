@@ -31,7 +31,7 @@ explicit DPI, background and size-limit arguments. Existing dimensions and backg
 behavior are preserved. Twelve calls with inferred devices remain unchanged, including PNG
 outputs. Font/theme setup remains at plot-building and rendering worker boundaries.
 
-[prepare_station_hourly.R](../../scripts/process_data/prepare_station_hourly.R) exposes four
+[prepare_station_hourly.R](../../scripts/process_data/temporal/prepare_station_hourly.R) exposes four
 datasets, four named hourly summaries and four writers. Its reusable
 [station summary function](../../src/general_utilities/process/station_temporal.R) filters
 the existing analysis-year partition, rejects duplicate station/timestamp records and averages
@@ -39,7 +39,7 @@ finite observed readings with equal station weights. It retains reporting counts
 hours and the complete annual calendar. It keeps the stored UTC-labelled convention; it does
 not resolve source-timezone interpretation or introduce imputation.
 
-[figure_station_temporal.R](../../scripts/tables_images/figure_station_temporal.R) reads those
+[figure_station_temporal.R](../../scripts/tables_images/temporal/figure_station_temporal.R) reads those
 Parquets and produces the same five manuscript filenames. Episode calculations are visible
 in a named table and saved as `data/processed/station_hourly/episodes_it2_2023.csv`. They use
 PM2.5 >= 50, break at missing/nonconsecutive hours, and handle episodes ending at the final

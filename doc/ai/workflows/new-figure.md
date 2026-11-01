@@ -7,7 +7,9 @@ named intermediate objects, and locate the applied function without learning tar
 Use three or four meaningful executable sections; do not hide the analysis in one call.
 
 
-Create `scripts/tables_images/short_name.R` producing a publication artefact.
+Create `scripts/tables_images/<analysis>/short_name.R` producing a publication artefact,
+in the folder of the analysis it belongs to (`robustness/` or `not_in_paper/` when it is
+not a main result).
 
 Constraints for this stage (see `doc/ai/rules/data-and-paths.md`):
 - **Read only from `data/processed/`** (or `data/interim/`). No raw data, no cleaning here.

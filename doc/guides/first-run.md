@@ -61,7 +61,7 @@ saved_distances <- arrow::read_parquet(files[["stations"]])
 and the computation/saving contract. It is a small calculation, not a manuscript run.
 
 For real data, open
-[generate_distance_matrices.R](../../scripts/process_data/generate_distance_matrices.R).
+[generate_distance_matrices.R](../../scripts/process_data/inputs/generate_distance_matrices.R).
 Its first section reads the station and geographic files. Its second section calls the
 same function five times, including both Santiago geographic vintages. Its third section
 saves the results in matching order. The geographic matrix connects each geographic unit

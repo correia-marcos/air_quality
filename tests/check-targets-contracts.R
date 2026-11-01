@@ -230,7 +230,7 @@ check_targets_contracts <- function() {
   check(all(sub("[.]R$", "", basename(manifest$producer_script)) %in% names(plan)))
   check(identical(manifest$producer_script[
     manifest$artifact_id == "tables_table_avg_hours_above_thresholds"],
-    "scripts/tables_images/render_station_tables.R"))
+    "scripts/tables_images/descriptives/render_station_tables.R"))
   owners <- split(manifest$producer_script, manifest$source_path)
   check(all(vapply(owners, function(x) length(unique(x)) == 1L, logical(1))))
   count

@@ -149,7 +149,7 @@ bogota_prepare_metro_area <- function(source_zips,
   loc_path <- localities_file
   required <- c(source_zips, if (level == "mpio_localidad") loc_path)
   require_local_sources(required,
-    "geographic acquisition in scripts/download_data/download_bogota_data.R")
+    "geographic acquisition in scripts/download_data/inputs/download_bogota_data.R")
 
   exdir <- tempfile(paste0("col_shp_", level, "_", mgn_year, "_"))
   dir.create(exdir)
@@ -3633,7 +3633,7 @@ bogota_harmonize_census_2018_data <- function(
 #' @param quiet            logical; suppress step banners. Default FALSE.
 #
 #' @Purpose   : Run every download step for Bogotá in the correct order.
-#              Steps mirror scripts/download_data/download_bogota_data.R.
+#              Steps mirror scripts/download_data/inputs/download_bogota_data.R.
 #' @return     named list; one entry per step with the function return
 #              value, or a condition object if the step failed.
 #' @Written_on: 01/02/2026

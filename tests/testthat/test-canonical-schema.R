@@ -56,7 +56,7 @@ required_cols <- list(
 
 # Skips when the census has not been produced yet, and when what is on disk predates
 # the canonical schema. The second case is a stale-data skip, not a pass: re-run
-# scripts/process_data/process_<city>_data.R and the contract starts being enforced.
+# scripts/process_data/inputs/process_<city>_data.R and the contract starts being enforced.
 skip_without_census <- function() {
   if (identical(getOption("airmonitoring.test_mode"), "release")) {
     if (!requireNamespace("arrow", quietly = TRUE)) stop("Release requires arrow.")
@@ -69,7 +69,7 @@ skip_without_census <- function() {
   files <- Filter(function(f) file.exists(f$path), canonical_census_files())
   testthat::skip_if(
     length(files) == 0L,
-    "no processed census on disk - run scripts/process_data/process_<city>_data.R"
+    "no processed census on disk - run scripts/process_data/inputs/process_<city>_data.R"
   )
 
   pre_canonical <- vapply(files, function(f) {
@@ -82,7 +82,7 @@ skip_without_census <- function() {
   testthat::skip_if(
     any(pre_canonical),
     paste("census on disk predates the canonical schema -",
-          "re-run scripts/process_data/process_<city>_data.R")
+          "re-run scripts/process_data/inputs/process_<city>_data.R")
   )
 }
 

@@ -13,7 +13,7 @@ do not modify analysis code; surface findings and let Marcos decide.
    via `--add-dir` or `permissions.additionalDirectories` (see the workflow doc). If you cannot read
    the path, stop and tell me exactly which file you need.
 3. **New code** — the matching script/function here (for IDW:
-   `scripts/process_data/estimate_idw.R` plus any `src/` helpers it calls).
+   `scripts/process_data/exposure/estimate_idw.R` plus any `src/` helpers it calls).
 
 Read all three fully before writing. Use the legacy reviewer role for independent review when the user requests delegation.
 

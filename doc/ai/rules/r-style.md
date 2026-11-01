@@ -46,7 +46,8 @@ settings; the recipe loops over them, as `estimate_idw.R` loops over `idw_buffer
 Options belong to launchers, which select what to run without changing what a recipe means:
 `scripts/run_*.R`, `tools/reproduction/` and, for exploring undeclared values,
 `tools/explore/`, which writes only to an ignored exploration folder.
-`scripts/download_data/download_merra2_data.R` is the documented acquisition exception.
+`scripts/download_data/not_in_paper/satellite/download_merra2_data.R` is the documented
+acquisition exception.
 
 ## Wrapper functions
 
@@ -70,9 +71,9 @@ Exemplars, each for one purpose:
 
 | Exemplar | Shows |
 |---|---|
-| `scripts/download_data/download_bogota_data.R`, `scripts/process_data/process_bogota_data.R` | Layout: grouped paths, aligned arguments, step comments |
-| `scripts/process_data/generate_distance_matrices.R` | Computing in Section II, then saving in Section III |
-| `scripts/process_data/compute_distance_band_descriptives.R` | Brief comments beside each operation |
+| `scripts/download_data/inputs/download_bogota_data.R`, `scripts/process_data/inputs/process_bogota_data.R` | Layout: grouped paths, aligned arguments, step comments |
+| `scripts/process_data/inputs/generate_distance_matrices.R` | Computing in Section II, then saving in Section III |
+| `scripts/process_data/descriptives/compute_distance_band_descriptives.R` | Brief comments beside each operation |
 | `doc/reference/idw_golden_test.md` | Explaining a method |
 
 Keep short calls on one line. For longer calls, put the first argument on the same

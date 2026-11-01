@@ -345,7 +345,7 @@ santiago_prepare_metro_area_2024 <- function(source_zip,
     type = c("metro_santiago", "gran_santiago"), level = c("mpio", "manzana"),
     keep_municipality = santiago_cfg$cities_in_metro, dissolve_by = NULL, quiet = FALSE) {
   require_local_sources(source_zip,
-    "geographic acquisition in scripts/download_data/download_santiago_data.R")
+    "geographic acquisition in scripts/download_data/inputs/download_santiago_data.R")
   type <- match.arg(tolower(type), c("metro_santiago", "gran_santiago"))
   level <- match.arg(tolower(level), c("mpio", "manzana"))
   zip_target_path <- source_zip
@@ -1817,7 +1817,7 @@ santiago_download_geography_2017 <- function(base_url = santiago_cfg$base_url_dp
 santiago_prepare_metro_area_2017 <- function(metro_file, zones_file, count_file,
     quiet = FALSE) {
   require_local_sources(c(metro_file, zones_file, count_file),
-    "geographic acquisition in scripts/download_data/download_santiago_data.R")
+    "geographic acquisition in scripts/download_data/inputs/download_santiago_data.R")
   metro <- sf::st_read(metro_file, quiet = TRUE)
   zonas <- sf::st_read(zones_file, quiet = TRUE)
   n_expected <- as.integer(jsonlite::fromJSON(count_file)$count)

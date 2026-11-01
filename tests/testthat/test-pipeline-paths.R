@@ -18,12 +18,14 @@
 #' @Author: Marcos Paulo (initial draft by Claude Code)
 # ============================================================================================
 
-# Pull "scripts/<dir>/<file>.R" out of each here::here("scripts", <dir>, <file>) call.
-# Commented-out calls count too: a disabled source() still asserts that the path is real.
+# Pull "scripts/.../<file>.R" out of each here::here("scripts", ..., <file>) call, at any
+# folder depth and also when the call spans lines. Commented-out calls count too: a
+# disabled source() still asserts that the path is real.
 pipeline_script_paths <- function(path) {
-  lines <- readLines(path, warn = FALSE)
-  pattern <- 'here::here\\(\\s*"scripts"\\s*,\\s*"[^"]+"\\s*,\\s*"[^"]+\\.R"\\s*\\)'
-  calls   <- unlist(regmatches(lines, gregexpr(pattern, lines)))
+  text    <- paste(readLines(path, warn = FALSE), collapse = "\n")
+  pattern <- paste0('here::here\\([\\s#]*"scripts"(?:[\\s#]*,[\\s#]*"[^"]+")*',
+                    '[\\s#]*,[\\s#]*"[^"]+\\.R"[\\s#]*\\)')
+  calls   <- unlist(regmatches(text, gregexpr(pattern, text, perl = TRUE)))
   segments <- regmatches(calls, gregexpr('"[^"]+"', calls))
 
   vapply(segments,
@@ -68,8 +70,9 @@ test_that("default orchestrators execute the same manuscript stages", {
   make_stages <- sub("^Rscript ", "", dry_run[grepl("^Rscript ", dry_run)])
   expect_setequal(r_stages, make_stages)
   expect_false(anyDuplicated(make_stages) > 0L)
-  expect_true(match("scripts/process_data/prepare_station_hourly.R", make_stages) <
-                match("scripts/tables_images/figure_station_temporal.R", make_stages))
+  expect_true(
+    match("scripts/process_data/temporal/prepare_station_hourly.R", make_stages) <
+      match("scripts/tables_images/temporal/figure_station_temporal.R", make_stages))
   expect_false(any(grepl(paste0("generate_panel_air_quality|prepare_station_temporal|",
                                  "process_merra2_panels|figure_merra2_vs_stations|",
                                  "figure_aerosol_composition"), make_stages)))

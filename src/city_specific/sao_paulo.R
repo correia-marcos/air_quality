@@ -577,7 +577,7 @@ sao_paulo_prepare_metro_area <- function(source_zip,
     level = c("mpio", "setor_censitario"),
     keep_municipality = sao_paulo_cfg$cities_in_metro, quiet = FALSE) {
   require_local_sources(source_zip,
-    "geographic acquisition in scripts/download_data/download_sao_paulo_data.R")
+    "geographic acquisition in scripts/download_data/inputs/download_sao_paulo_data.R")
   level <- match.arg(level)
   zip_target_path <- source_zip
   # 3) Extraction --------------------------------------------------------------
@@ -668,7 +668,7 @@ sao_paulo_download_weighting_areas <- function(year = 2010,
 sao_paulo_prepare_weighting_areas <- function(source_file,
     keep_municipality = sao_paulo_cfg$cities_in_metro, quiet = FALSE) {
   require_local_sources(source_file,
-    "geographic acquisition in scripts/download_data/download_sao_paulo_data.R")
+    "geographic acquisition in scripts/download_data/inputs/download_sao_paulo_data.R")
   data_sf <- readRDS(source_file)
   # 4) Process and Filter
   if (!quiet) message("🗺️  Filtering Spatial Data...")

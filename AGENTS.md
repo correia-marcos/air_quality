@@ -65,10 +65,10 @@ Full rules: [R style](doc/ai/rules/r-style.md). The essentials:
 - Paths are always `here::here(...)`. Set a seed wherever there is randomness. Write
   intermediates as Parquet to `data/interim/` or `data/processed/`.
 
-Exemplars: the Bogotá recipes (`scripts/download_data/download_bogota_data.R`,
-`scripts/process_data/process_bogota_data.R`) for layout;
-`scripts/process_data/generate_distance_matrices.R` for computing, then saving;
-`scripts/process_data/compute_distance_band_descriptives.R` for comments;
+Exemplars: the Bogotá recipes (`scripts/download_data/inputs/download_bogota_data.R`,
+`scripts/process_data/inputs/process_bogota_data.R`) for layout;
+`scripts/process_data/inputs/generate_distance_matrices.R` for computing, then saving;
+`scripts/process_data/descriptives/compute_distance_band_descriptives.R` for comments;
 [the IDW worked example](doc/reference/idw_golden_test.md) for explaining a method.
 
 ## Boundaries

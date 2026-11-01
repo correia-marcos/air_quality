@@ -32,7 +32,8 @@ if (interactive()) {
   # running via Rscript / Docker entrypoint
   args <- commandArgs(trailingOnly = TRUE)
   if (length(args) < 4) {
-    stop("Usage: Rscript scripts/download_data/download_merra2_data.R",
+    stop("Usage: Rscript ",
+         "scripts/download_data/not_in_paper/satellite/download_merra2_data.R ",
          "<start_date> <end_date> <dataset_version> <dest_dir> [var_name]")
   }
   start_date      <- args[1]                # "YYYY-MM-DD"

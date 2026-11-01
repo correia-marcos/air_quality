@@ -7,8 +7,9 @@ matter more than speed.
 ## Load context first
 
 Read `doc/ai/rules/validation.md`, `AGENTS.md`, and `config_utils_validation_old_version.R`, then
-`scripts/validation_old_version/compare_bogota.R` as the reference pattern. Note what is git-tracked
-(logic + `.qmd` reports) versus git-ignored (all rendered artefacts).
+`scripts/process_data/not_in_paper/legacy_validation/compare_bogota.R` as the reference
+pattern. Note what is git-tracked (logic + `.qmd` reports) versus git-ignored (all rendered
+artefacts).
 
 ## Principles
 

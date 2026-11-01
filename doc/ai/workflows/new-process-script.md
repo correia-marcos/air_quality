@@ -7,9 +7,12 @@ named intermediate objects, and locate the applied function without learning tar
 Use three or four meaningful executable sections; do not hide the analysis in one call.
 
 
-Create `scripts/process_data/short_name.R` that follows this project's conventions exactly.
+Create `scripts/process_data/<analysis>/short_name.R` that follows this project's
+conventions exactly. Main analyses sit directly under `scripts/process_data/`, reported
+robustness checks under `robustness/`, and work outside the paper under `not_in_paper/`.
 
 Before writing, confirm with me (one line each) if unclear:
+- Which **analysis folder** does it belong to?
 - What are the **inputs** (which `data/raw` or `data/interim` files) and their format?
 - What is the **output** and where does it land (`data/interim/` or `data/processed/`)?
 - Is it **city-specific** (needs `registry.R` + a city module) or cross-city?
@@ -18,13 +21,13 @@ Then generate the file:
 
 1. Standard header block (`@Goal / @Description / @Summary / @Date / @Author`) with `#'` on the
    `@tag` lines and plain `#` on continuations — copy the exact style from an existing
-   `scripts/process_data/*.R`. `@Goal` = "output_description" if given.
+   `scripts/process_data/*/*.R`. `@Goal` = "output_description" if given.
 2. Use the author-edited Bogotá recipes for layout, as specified in [R style](../rules/r-style.md).
-   Follow `scripts/process_data/generate_distance_matrices.R` for separate saving: source subject
-   modules and `config/analysis_settings.R`, show paths and reads, then call scientific
-   functions with named arguments. Section II computes named results; Section III saves
-   them in the same order. No extra inspection block or pack/unpack wrapper. City scripts
-   expose the underlying operations; `city_process()` remains a convenience command.
+   Follow `scripts/process_data/inputs/generate_distance_matrices.R` for separate saving:
+   source subject modules and `config/analysis_settings.R`, show paths and reads, then call
+   scientific functions with named arguments. Section II computes named results; Section III
+   saves them in the same order. No extra inspection block or pack/unpack wrapper. City
+   scripts expose the underlying operations; `city_process()` remains a convenience command.
 3. Numbered sections (`# I:`, `# II:`, ...) with `# ===` dividers.
 4. All paths via `here::here(...)`. Write output as Parquet to the correct data layer.
 5. Follow the spacing, call layout and concrete step comments in

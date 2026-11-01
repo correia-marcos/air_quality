@@ -122,9 +122,10 @@ test_that("the grid is comparison-only: the manuscript keeps exponent 1", {
   sys.source(here::here("config", "analysis_settings.R"), settings)
   expect_equal(settings$idw_distance_power, 1)
   expect_true(3 %in% settings$resolution_grid_buffers_km)
-  files <- c(list.files(here::here("config", "targets"), full.names = TRUE),
+  files <- c(list.files(here::here("config", "targets"), full.names = TRUE,
+                        recursive = TRUE),
              here::here("_targets.R"),
-             here::here("scripts", "process_data", "estimate_idw.R"))
+             here::here("scripts", "process_data", "exposure", "estimate_idw.R"))
   used <- vapply(files, function(f) any(grepl("resolution_grid_", readLines(f))),
                  logical(1))
   expect_false(any(used))

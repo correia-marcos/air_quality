@@ -128,7 +128,7 @@ Use the isolated verifier to create fresh derived directories without deleting e
 
 ## Inspect the analysis in RStudio
 
-Open `Coding.Rproj`, then `scripts/process_data/generate_distance_matrices.R`.
+Open `Coding.Rproj`, then `scripts/process_data/inputs/generate_distance_matrices.R`.
 Section I shows the source functions, shared settings and nine geographic input files.
 Run those lines to create the station and geographic `sf` objects. Section II makes five
 calls to `compute_distance_matrices()`; each result has `station_matrix` and
@@ -160,7 +160,8 @@ it does not write the processing workflow's geographic products.
 The other cities follow the same acquisition/preparation split. Geographic preparation
 reads explicit local sources and returns spatial objects; saving is a separate call.
 For the optional administrative-commune Santiago boundary formerly built during download,
-run `Rscript scripts/process_data/prepare_santiago_alternative_geography.R`.
+run
+`Rscript scripts/process_data/not_in_paper/supporting/prepare_santiago_alternative_geography.R`.
 This does not rebuild manuscript inputs or start acquisition.
 
 Other inspection routes still awaiting simplification:

@@ -58,7 +58,7 @@ zonas_2017 <- santiago_prepare_metro_area_2017(
     count_file = geography_sources_2017[["count"]])
 
 # The optional alternative boundary has its own preparation recipe:
-# scripts/process_data/prepare_santiago_alternative_geography.R.
+# scripts/process_data/not_in_paper/supporting/prepare_santiago_alternative_geography.R.
 
 # Save a LaTeX table to review which regions should supply station data.
 table_states_to_download <- table_state_metro_distances(

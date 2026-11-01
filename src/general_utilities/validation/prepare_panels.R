@@ -104,8 +104,8 @@ build_compare_cfg <- function(city_id) {
                                            "bogota_metro_clean"),
       legacy_clean_path       = here::here("data", "_legacy", "outlier", "bogota",
                                            "pollution_data_balanced_2023.rds"),
-      qmd_path                = here::here("scripts", "validation_old_version",
-                                           "bogota_report.qmd"),
+      qmd_path                = here::here("scripts", "process_data", "not_in_paper",
+                                           "legacy_validation", "bogota_report.qmd"),
       html_dest               = file.path(base_compare$out_root, city_id, 
                                           "bogota_validation_report.html")
       ),

@@ -15,8 +15,9 @@ Three/four headings or a passing test are not evidence of readable data flow.
 ## Load context first
 
 Read `AGENTS.md`, `doc/ai/rules/r-style.md`, `doc/ai/rules/data-and-paths.md`, and
-`doc/ai/rules/reproducibility.md`. Skim `scripts/process_data/generate_distance_matrices.R`
-so your review matches the house style, not generic R advice.
+`doc/ai/rules/reproducibility.md`. Skim
+`scripts/process_data/inputs/generate_distance_matrices.R` so your review matches the house
+style, not generic R advice.
 
 ## What to check (cite file:line for every finding)
 

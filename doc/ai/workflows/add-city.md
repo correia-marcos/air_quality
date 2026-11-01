@@ -25,7 +25,7 @@ Then, and only after I confirm the data sources for city_id:
 3. Register it: `register_city("city_id", cfg = city_id_cfg, download = ..., process = ...)`.
    A processing function is mandatory; duplicate registrations fail. Missing acquisition
    capabilities report an actionable error. Keep a stable lowercase slug.
-4. Add `scripts/process_data/process_city_id_data.R` with explicit subject-module sources,
+4. Add `scripts/process_data/inputs/process_city_id_data.R` with explicit subject-module sources,
    settings and file reads. Call the scientific operations directly and retain manageable
    results. Save them in the same order in Section III. File-backed processing reports
    already-written outputs there, without writing twice.
