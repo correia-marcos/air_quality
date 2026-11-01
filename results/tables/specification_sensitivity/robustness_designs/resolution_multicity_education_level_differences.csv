@@ -10,7 +10,7 @@ B_common,fine,hrs_d_pm25_it1,0,,,0,0,37326,20260910,descriptive,bogota_2018
 A,fine,hrs_d_pm25_it2,0,,,0,0,37326,20260910,descriptive,bogota_2018
 B_common,fine,hrs_d_pm25_it2,0,,,0,0,37326,20260910,descriptive,bogota_2018
 A,fine,avg_pm25,0,,,0,0,37326,20260910,descriptive,bogota_2018
-B_common,fine,avg_pm25,-1.77635683940025e-15,,,0,0,37326,20260910,descriptive,bogota_2018
+B_common,fine,avg_pm25,0,,,0,0,37326,20260910,descriptive,bogota_2018
 A,seccion,hrs_d_pm10_it1,0.0077032001611812,-0.0311747687595611,0.0499086740349492,999,999,2840,20260910,conditional_geographic_cluster_bootstrap,bogota_2018
 B_common,seccion,hrs_d_pm10_it1,-0.102719235746573,-0.334134550282812,0.146905906723613,999,999,2719,20260910,conditional_geographic_cluster_bootstrap,bogota_2018
 A,seccion,hrs_d_pm10_it2,-0.102672405663327,-0.291802596113779,0.100837557769461,999,999,2840,20260910,conditional_geographic_cluster_bootstrap,bogota_2018

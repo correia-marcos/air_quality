@@ -1,7 +1,7 @@
 level,outcome,native_change,native_selection,procedure_common,baseline_selection,aggregation_common,additional_B_common,reconciliation_error,population_fine,population_native,population_common,city_id
 fine,hrs_d_pm10_it1,0,0,0,0,0,0,0,4255038,4255038,4255038,bogota_2018
 fine,hrs_d_pm10_it2,0,0,0,0,0,0,0,4255038,4255038,4255038,bogota_2018
-fine,avg_pm10,-7.105427357601e-15,0,-7.105427357601e-15,0,0,-7.105427357601e-15,0,4255038,4255038,4255038,bogota_2018
+fine,avg_pm10,0,0,0,0,0,0,0,4255038,4255038,4255038,bogota_2018
 fine,hrs_d_pm25_it1,0,0,0,0,0,0,0,4251366,4251366,4251366,bogota_2018
 fine,hrs_d_pm25_it2,0,0,0,0,0,0,0,4251366,4251366,4251366,bogota_2018
 fine,avg_pm25,0,0,0,0,0,0,0,4251366,4251366,4251366,bogota_2018

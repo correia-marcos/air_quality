@@ -3,7 +3,7 @@ group_cells_match_quintile_totals,fine,,0,TRUE,bogota_2018
 B_exposure_reused_current_inputs,fine,,0,TRUE,bogota_2018
 fresh_IDW_anchor,fine,hrs_d_pm10_it1,0,TRUE,bogota_2018
 fresh_IDW_anchor,fine,hrs_d_pm10_it2,0,TRUE,bogota_2018
-fresh_IDW_anchor,fine,avg_pm10,2.8421709430404e-14,TRUE,bogota_2018
+fresh_IDW_anchor,fine,avg_pm10,3.5527136788005e-14,TRUE,bogota_2018
 fresh_IDW_anchor,fine,hrs_d_pm25_it1,0,TRUE,bogota_2018
 fresh_IDW_anchor,fine,hrs_d_pm25_it2,0,TRUE,bogota_2018
 fresh_IDW_anchor,fine,avg_pm25,1.4210854715202e-14,TRUE,bogota_2018

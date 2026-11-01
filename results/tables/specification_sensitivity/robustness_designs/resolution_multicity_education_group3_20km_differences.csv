@@ -4,7 +4,7 @@ B_common,fine,hrs_d_pm10_it1,0,,,0,0,50189,20260910,descriptive,bogota_2018
 A,fine,hrs_d_pm10_it2,0,,,0,0,50189,20260910,descriptive,bogota_2018
 B_common,fine,hrs_d_pm10_it2,0,,,0,0,50189,20260910,descriptive,bogota_2018
 A,fine,avg_pm10,0,,,0,0,50189,20260910,descriptive,bogota_2018
-B_common,fine,avg_pm10,-3.5527136788005e-15,,,0,0,50189,20260910,descriptive,bogota_2018
+B_common,fine,avg_pm10,0,,,0,0,50189,20260910,descriptive,bogota_2018
 A,fine,hrs_d_pm25_it1,0,,,0,0,50189,20260910,descriptive,bogota_2018
 B_common,fine,hrs_d_pm25_it1,0,,,0,0,50189,20260910,descriptive,bogota_2018
 A,fine,hrs_d_pm25_it2,0,,,0,0,50189,20260910,descriptive,bogota_2018
