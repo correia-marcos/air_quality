@@ -6,7 +6,7 @@
 #   unit's exposure by its support's mean over covered fine units, weighted by all adults
 #   (resolution_aggregate()). Group means then use education-reporting weights
 #   (resolution_estimate()). These functions reproduce the A arm of
-#   resolution_multicity_contrasts() for any IDW specification and any sample, so the
+#   resolution_compare_designs() for any IDW specification and any sample, so the
 #   buffer x exponent grid and its fixed-sample decomposition share one rule.
 #' @Summary:
 #   1. design_a_sample
@@ -27,7 +27,7 @@
 #' @return  character vector of the fine geo_ids in the Design A sample, sorted.
 #
 #' @details
-#   The rule of resolution_multicity_contrasts(): fine units with a finite exposure and a
+#   The rule of resolution_compare_designs(): fine units with a finite exposure and a
 #   parent at every support, with the positive-population filter of
 #   resolution_aggregate(). Exposure is finite when at least one station within the
 #   buffer reported in the year, so the sample depends on the buffer and never on the IDW

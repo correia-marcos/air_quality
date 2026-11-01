@@ -156,27 +156,6 @@ test_that("fixed evaluation CRS and returned points preserve default distances",
   expect_equal(union$geo_id, "p")
 })
 
-test_that("extracted Bogota reference functions retain the historical joint design", {
-  cells <- data.table::CJ(geo_id = sprintf("g%03d", 1:60), edu_quintile = 1:5)
-  cells[, person_weight := 1 + seq_len(.N) %% 7]
-  fine <- data.table::data.table(geo_id = sprintf("g%03d", 1:60),
-                                 year = 2023L, avg_pm10 = 1:60)
-  pop <- cells[, .(pop = sum(person_weight)), by = geo_id]
-  keys <- fine[, .(geo_id, fine = geo_id)]
-  reference <- resolution_reference_run("avg_pm10", "fine", cells, "A", fine,
-    pop, keys, 2023L, "toy", 3L)
-  a <- resolution_aggregate(fine[, .(geo_id, y = avg_pm10, pop = pop$pop)],
-    keys[, .(geo_id, parent_id = fine)])
-  direct <- resolution_estimate(cells, a)$contrast
-  expect_equal(reference[group == 1, estimate], direct$normalized_pct / 100)
-  drawn <- merge(fine[, .(geo_id, y = avg_pm10)], pop, by = "geo_id")
-  drawn[, `:=`(.draw = seq_len(.N), fine = geo_id)]
-  dc <- merge(cells, drawn[, .(geo_id, .draw)], by = "geo_id")
-  shortcuts <- resolution_reference_gaps(drawn, dc,
-    data.table::data.table(level = "fine"))
-  expect_equal(shortcuts[group == 1, gap], direct$normalized_pct / 100)
-})
-
 test_that("a nested ladder can have non-monotonic gaps while variance declines", {
   fine <- data.table::data.table(geo_id = letters[1:4], y = c(0, 10, 8, 2), pop = 1)
   cells <- data.table::data.table(geo_id = letters[1:4], edu_quintile = c(1, 1, 5, 5),

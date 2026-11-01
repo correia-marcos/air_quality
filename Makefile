@@ -37,8 +37,8 @@ SRC := $(shell find src -name '*.R')
 # ---- Phony convenience targets -------------------------------------------------------------
 .PHONY: all download process merra2 distances outliers exposure descriptives \
         scatter imputed temporal figures tables context-maps resolution \
-        resolution-multicity resolution-multicity-grouping specification-grid \
-        specification-panel specification-station-sets validate clean help
+        specification-grid specification-panel specification-station-sets \
+        validate clean help
 
 all: figures tables
 
@@ -146,28 +146,14 @@ merra2: temporal
 SPEC_PROCESS := scripts/process_data/specification_sensitivity
 SPEC_FIGURES := scripts/tables_images/specification_sensitivity
 
-# Historical Bogota reference: re-keys the manzana exposure to the census geographies.
-resolution: exposure
-	$(RUN) $(SPEC_PROCESS)/build_bogota_localidad_crosswalk.R
+# Robustness designs A/B/C on the variants declared in config/analysis_settings.R. They
+# consume frozen derived inputs and never invoke `exposure`; the Bogota crosswalk
+# (build_bogota_localidad_crosswalk.R) is a one-time input. One variant runs alone with
+# `make targets STAGE=resolution_<id>`.
+resolution:
+	$(RUN) $(SPEC_PROCESS)/prepare_resolution_inputs.R
 	$(RUN) $(SPEC_PROCESS)/estimate_resolution_sensitivity.R
 	$(RUN) $(SPEC_FIGURES)/figure_resolution_sensitivity.R
-
-# Robustness designs A/B/C consume frozen derived inputs; they never invoke `exposure`.
-resolution-multicity:
-	$(RUN) $(SPEC_PROCESS)/prepare_resolution_inputs.R
-	$(RUN) $(SPEC_PROCESS)/estimate_resolution_sensitivity.R --scope=multicity
-	$(RUN) $(SPEC_FIGURES)/figure_resolution_sensitivity.R --scope=multicity
-
-# Another education grouping instead of the frozen quintiles: GROUPING=edu_group3
-# (default), edu_level or edu_quintile_split, at BUFFER km (default 3). Reuses the frozen
-# inputs and the quintile run's B exposures at that buffer, which must exist first.
-GROUPING ?= edu_group3
-BUFFER ?= 3
-resolution-multicity-grouping:
-	$(RUN) $(SPEC_PROCESS)/estimate_resolution_sensitivity.R --scope=multicity \
-		--grouping=$(GROUPING) --buffer-km=$(BUFFER)
-	$(RUN) $(SPEC_FIGURES)/figure_resolution_sensitivity.R --scope=multicity \
-		--grouping=$(GROUPING)
 
 # Primary Design A: fine IDW over the buffer x exponent grid, then Design A estimates with
 # the fixed-sample decomposition. Needs the frozen inputs (prepare step).
@@ -213,8 +199,7 @@ clean:
 help:
 	@echo "Targets: all process distances outliers exposure descriptives scatter"
 	@echo "         imputed temporal figures tables"
-	@echo "         merra2 context-maps resolution resolution-multicity"
-	@echo "         resolution-multicity-grouping [GROUPING=] [BUFFER=]"
+	@echo "         merra2 context-maps resolution"
 	@echo "         specification-grid specification-panel specification-station-sets"
 	@echo "         download validate clean"
 	@echo "Add DOCKER=1 to run each step inside the compose \"analysis\" service."
