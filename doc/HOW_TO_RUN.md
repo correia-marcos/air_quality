@@ -168,8 +168,8 @@ Other inspection routes still awaiting simplification:
 - Analysis: inspect missingness and station-count objects in `compute_descriptive_tables.R`,
   and `estimates_by_buffer` in `estimate_exposure.R`.
 - Figures: inspect input tables and the named plot collections in `figure_station_scatter.R`.
-- Optional specification sensitivity: select the reference or multicity scope in the
-  robustness recipe and inspect `results_by_city`; the Design A grid recipe exposes
+- Optional specification sensitivity: the robustness recipe keeps every declared variant's
+  city tables in `robustness[[id]][[city]]`; the Design A grid recipe exposes
   `sample_ids`, `contrasts`, `decomposition` and `checks`. Input checks never refresh
   manuscript inputs.
 - Validation: `compare_bogota.R` exposes comparison objects; `bogota_report.qmd` reads named
@@ -334,7 +334,9 @@ and rendering still require recorded review.
 An accepted scientific reproduction still needs a fresh isolated run, declared and unchanged
 inputs, revision-matched numerical baselines, review of plot data and rendering, and a recorded
 independent researcher run. Do not fill comparison or review evidence on another person's
-behalf, manufacture a baseline, widen tolerances, or substitute newer inputs silently.
+behalf, manufacture a baseline, raise a row's `rounding_steps` without recording the reason
+(see [Numerical comparison rule](#numerical-comparison-rule)), or substitute newer inputs
+silently.
 
 ## Dependency snapshots
 
@@ -399,15 +401,17 @@ The specification-sensitivity analysis for Bogotá, Santiago and São Paulo runs
 derived inputs and never invokes or exports the manuscript workflow:
 
 ```sh
-make resolution-multicity                         # freeze inputs; robustness designs A/B/C at 3 km
-make resolution-multicity-grouping GROUPING=edu_group3 BUFFER=20   # other groupings/buffers
-make specification-grid                           # primary Design A: IDW buffer x exponent grid
-make specification-panel                          # panel, variance decomposition, grid figures
+make resolution                       # freeze inputs; designs A/B/C for every declared variant
+make targets STAGE=resolution_quintile_20km   # one declared variant, with its prerequisites
+make specification-grid               # primary Design A: IDW buffer x exponent grid
+make specification-panel              # panel, variance decomposition, grid figures
 ```
 
-Run the 20 km robustness estimate with
-`Rscript scripts/process_data/specification_sensitivity/estimate_resolution_sensitivity.R
---scope=multicity --buffer-km=20` before the panel, whose parity check reads it. Scripts,
+The recipes read no options; the variants (IDW buffer × education grouping) are declared
+in `config/analysis_settings.R` as `resolution_specifications`. The panel's parity check
+reads the 3 and 20 km variants. Undeclared values run with
+`Rscript tools/explore/run_resolution_sensitivity.R --run-id=<id> --buffer-km=<km>
+--grouping=<g>`, which writes only to `data/exploration/<id>/`. Scripts,
 functions and outputs are mapped in
 [the folder README](../scripts/process_data/specification_sensitivity/README.md);
 definitions, outputs and limitations are in [RESOLUTION_SENSITIVITY.md](RESOLUTION_SENSITIVITY.md).
@@ -425,6 +429,67 @@ Baseline filenames are
 relative to `AIR_BASELINE_ROOT` (default `data/verification/baseline`), mounted read-only as
 `/baseline` in the verifier. The shared comparison function also handles keyed CSV tables,
 literal TeX and exact GeoPackage attributes/geometry/CRS.
+
+### Numerical comparison rule
+
+Reruns can differ in the last bits of a double. DuckDB adds numbers in a different order on
+each multithreaded run, and another machine may use wider accumulators or another math
+library. This issue is almost completely gone when running inside the Docker container - that's the benefit of our approach!
+A registered double column passes when
+
+```text
+|new - baseline| <= 2 * gamma_m * S,   gamma_m = m * u / (1 - m * u),   u = 2^-53
+```
+
+where `m` (`rounding_steps` in the registry) counts the rounding steps on the longest chain
+from the declared inputs to the column. A sum of k terms, added in any order, lies within
+`gamma_(k-1)` of its exact value relative to the sum of the magnitudes, and relative errors
+along a chain add (Higham 2002, *Accuracy and Stability of Numerical Algorithms*, sec. 3.1
+and ch. 4). Two runs therefore differ by at most twice that. The scale `S` is set by the
+registry's `bound_scale`:
+
+- `value`: `S` is the baseline value itself. For chains of nonnegative terms the sum of
+  the magnitudes equals the value, so the bound is proven. Pollutant values are
+  nonnegative because the quality screen excludes negative readings.
+- `column`: `S` is the column's largest baseline magnitude. Signed or model-based outputs
+  (regressions, imputation predictions) can come close to zero through cancellation, where
+  a bound relative to the value would fail on correct code.
+
+Integers, counts, dates, identifiers and missingness compare exactly; `rounding_steps = 0`
+requires equality.
+
+Counting: a sum of k terms counts k - 1, and each product, division, square root, decimal
+parse or unit conversion counts 1. Each projected distance counts 10; this allowance
+assumes the same projection library on both machines and should be checked the first
+time a baseline from another machine is compared. Each row's
+`rounding_steps_basis` gives its formula and counts:
+
+| Product | m | Scale | Status |
+|---|---|---|---|
+| Observed station values | 2: parse and one conversion | value | Proven |
+| City hourly PM2.5, mean over k stations | k + 2 | value | Proven |
+| Ratios and means of integer counts | 1 or 2 | value | Proven |
+| IDW exposure, k stations | 2k + 779: weights, 744 hours a month, 12 months | value | Proven |
+| Station context, N persons in one unit, G units | 4N + 2G + 6 | value | Proven |
+| Imputation predictions | 18514 + 4k: 8,760 fitted hours, 2k + 496 coefficients | column | Screen |
+| Exposure regressions | Outcome chain twice, person sums and cells | column | Screen |
+
+For regressions and imputation predictions the count covers only their sums, while an
+estimator can magnify input differences by its condition number (Higham 2002, ch. 20);
+there the bound is a strict screen.
+A failure calls for investigation. Two legitimate causes are such magnification and an
+hour count that flips because an hourly value sits exactly on a threshold. If the cause is
+legitimate, raise that row's `rounding_steps` and record the reason and the observed
+difference in `rounding_steps_basis`. The verifier writes each column's largest absolute
+difference, largest scaled difference and bound to `report.json`.
+
+The worst-case bound is used because it needs no assumption about the rounding errors.
+Higham and Mary (2019, *SIAM J. Sci. Comput.* 41(5), A2815–A2835) give a tighter
+probabilistic bound, proportional to the square root of n times u, but it assumes
+independent, mean-zero rounding errors, and they show it can fail for large nonnegative
+sums such as the IDW averages. Observed differences sit far below the worst case: refreshing
+the specification-sensitivity tables on 29 October 2026 moved Bogotá values by at most
+1.24e-14 of each column's scale, about 112u.
 
 After generating the registered products, prepare a new snapshot:
 

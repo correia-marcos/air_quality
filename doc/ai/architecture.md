@@ -53,7 +53,10 @@ data/                   - raw/ interim/ processed/ downloads/ _legacy/   (all gi
 results/                - figures/ (seven topics plus the pilot); tables/ (flat except the pilot).
 
 _targets.R              - Small candidate manuscript graph entry point
+_targets_specification.R - Separate specification-sensitivity graph (own store); reads
+                           frozen manuscript products, never rebuilds them
 tools/reproduction/     - Verification, stage reporting, manifest checks and export
+tools/explore/          - Launchers for undeclared values; write only to data/exploration/
 ```
 
 Layout pilot (October 2026): the optional specification-sensitivity exercise groups its

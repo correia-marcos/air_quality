@@ -18,25 +18,34 @@ B (exposure rebuilt at each support) and C (area classification) are robustness 
 | Step | Script | Role | Main functions | Inputs → outputs |
 |---|---|---|---|---|
 | 0 | `build_bogota_localidad_crosswalk.R` | Bogotá input | — | Manzanas and localidades → crosswalk |
-| 1 | `prepare_resolution_inputs.R` | Freeze inputs | `resolution_prepare_*()` | Manuscript derived files → frozen, hashed inputs in `data/interim/resolution_sensitivity/<city>/` and support distance matrices |
-| 2 | `estimate_resolution_sensitivity.R` | Robustness A/B/C | `resolution_multicity_*()` | Frozen inputs at `--buffer-km` (3, 20) and `--grouping` → `results/tables/specification_sensitivity/robustness_designs/` |
+| 1 | `prepare_resolution_inputs.R` | Freeze inputs | `resolution_freeze_inputs()`, `resolution_population_cells()`, `resolution_support_keys()`, `resolution_support_matrices()` | Manuscript derived files → frozen, hashed inputs in `data/interim/resolution_sensitivity/<city>/` and support distance matrices |
+| 2 | `estimate_resolution_sensitivity.R` | Robustness A/B/C | `resolution_specification()`, `run_resolution_city()` | Frozen inputs, for each declared variant (buffer × grouping in `resolution_specifications`) → `results/tables/specification_sensitivity/robustness_designs/` |
 | 3 | `estimate_idw_specification_grid.R` | Primary inputs | `aggregate_idw_exposure()`, `idw_grid_anchor()` | Frozen fine matrix and 2023 panel → fine exposure for 10 buffers at exponent 1 and 6 at exponent 2 in `data/processed/resolution_sensitivity/idw_grid/` |
 | 4 | `estimate_design_a_grid.R` | Primary estimates | `design_a_sample()`, `design_a_estimate()`, `design_a_decomposition()`, `idw_station_weights()` | Grid exposures → `results/tables/specification_sensitivity/design_a/` |
 | 5 | `../../tables_images/specification_sensitivity/figure_resolution_review.R` | Coauthor review | `resolution_buffer_plot_data()`, `plot_resolution_buffer_gaps()` | Robustness and grid tables → `review/` tables and figures (3 vs 20 km, Design A and native B) |
 | 6 | `build_specification_panel.R` | Analysis table | `specification_panel()`, `specification_add_baselines()` | Grid tables → `results/tables/specification_sensitivity/panel/specification_panel.csv` |
 | 7 | `estimate_specification_variance_decomposition.R` | Which choices matter | `specification_variance_decomposition()` | Panel → variance shares per choice |
 | 8 | `../../tables_images/specification_sensitivity/figure_design_a_grid.R` | Primary figures | `plot_design_a_*()`, `plot_variance_shares()` | Grid tables and shares → `results/figures/specification_sensitivity/design_a/` |
-| — | `../../tables_images/specification_sensitivity/figure_resolution_sensitivity.R` | Robustness figures | `resolution_multicity_figure_*()` | Robustness tables → `robustness_designs/` figure packets |
+| — | `../../tables_images/specification_sensitivity/figure_resolution_sensitivity.R` | Robustness figures | `resolution_figure_tables()`, `plot_resolution_designs()`, `plot_resolution_monitoring()` | Robustness tables of the 3 km variants → `robustness_designs/` figure packets |
 | 9 | `estimate_idw_station_sets.R` | Station-set inputs | `station_reporting()`, `station_set_members()`, `restrict_station_panel()`, `aggregate_idw_exposure()` | Frozen panels and fine matrices → station tables in `review/`, fine exposure per set in `resolution_station_sets` at exponent 1 in `data/processed/resolution_sensitivity/station_sets/` |
 | 10 | `estimate_design_a_station_sets.R` | Station-set estimates | `design_a_sample()`, `design_a_estimate()`, `design_a_decomposition()` | Set and default exposures → `results/tables/specification_sensitivity/station_sets/` |
 | 11 | `../../tables_images/specification_sensitivity/figure_station_sets.R` | Station-set figures | `plot_station_set_map()`, `plot_resolution_buffer_gaps()`, `plot_design_a_gap_by_buffer()` | Station-set tables → `station_sets/` maps, figures and comparison table |
 | — | `../../tables_images/specification_sensitivity/figure_support_variance.R` | Support size and variance | `plot_support_variance()` | Panel and paired differences → `review/support_variance_*` |
 
-Make targets: `resolution-multicity` (steps 1, 2 at 3 km and its figures),
-`resolution-multicity-grouping GROUPING= BUFFER=`, `specification-grid` (3, 4),
-`specification-panel` (6, 7, 8) and `specification-station-sets` (9, 10, 11). Step 5, the
-20 km robustness estimate and the support-variance figure are run directly; see
-`doc/HOW_TO_RUN.md`.
+No recipe reads command-line options. The robustness variants, their cities and the
+variants with figures are declared in `config/analysis_settings.R`
+(`resolution_specifications`, `resolution_cities`, `resolution_figure_specifications`).
+Make targets: `resolution` (steps 1, 2 for every declared variant, and its figures),
+`specification-grid` (3, 4), `specification-panel` (6, 7, 8) and
+`specification-station-sets` (9, 10, 11). One declared variant runs alone with
+`make targets STAGE=resolution_<id>`. Step 0, step 5 and the support-variance figure run
+directly; see `doc/HOW_TO_RUN.md`. Undeclared values run with
+`tools/explore/run_resolution_sensitivity.R`, which writes only to `data/exploration/`.
+
+When the paper adopts this analysis: prepare reads the live manuscript products instead of
+refusing input drift; `config/targets/specification_sensitivity.R` joins `_targets.R`
+(`_targets_specification.R` and the exclusion in `tests/check-targets-contracts.R` go);
+and `make all` includes it. The folders already sit at the main level.
 
 ## Functions
 
@@ -46,7 +55,8 @@ Make targets: `resolution-multicity` (steps 1, 2 at 3 km and its figures),
 | File | Contents |
 |---|---|
 | `resolution_sensitivity.R` | Shared primitives: support aggregation, group estimates, bootstrap, classification, matrix diagnostics |
-| `resolution_workflow.R` | A/B/C robustness workflow (inputs, B rebuild, contrasts, checks, tables) |
+| `resolution_specification.R` | The validator of a declared A/B/C variant: its folders and file prefix |
+| `resolution_workflow.R` | A/B/C robustness workflow (frozen inputs, B rebuild, contrasts, checks, combined tables) |
 | `resolution_review.R` | Review summaries, including the buffer comparison and its plot data |
 | `design_a.R` | Design A sample rule, Design A on a supplied sample, fixed-sample decomposition |
 | `idw_grid.R` | Station-weight descriptors and manuscript anchors of the IDW grid |
@@ -65,7 +75,7 @@ Plot functions are in `src/general_utilities/plot/specification_sensitivity/`
 | `results/tables/specification_sensitivity/review/` | `resolution_review_*.csv` (coauthor review, including the Design A buffer samples and decomposition); `stations_by_pollutant_sets_2023.csv` and `station_reporting_2023.csv` (stations by pollutant, hours and months, four cities); `support_variance_*.csv` |
 | `results/tables/specification_sensitivity/panel/` | `specification_panel.csv`, profiles, parity and regression anchors, checks, variance decomposition |
 | `results/tables/specification_sensitivity/station_sets/` | `station_sets_*.csv`: samples, station weights, contrasts, profiles, decompositions against the default stations and against 3 km, checks, comparison |
-| `results/figures/specification_sensitivity/<role>/` | Figures of the same roles; `reference_bogota/` holds the historical Bogotá figures |
+| `results/figures/specification_sensitivity/<role>/` | Figures of the same roles |
 | `data/processed/resolution_sensitivity/` | Parquet checkpoints: per-run city folders, `idw_grid/`, `design_a_grid/`, `specification_panel/`, `station_sets/`; `_frozen_*` archives |
 
 This exercise is the pilot of a subfolder layout (`doc/ai/architecture.md`); the rest of

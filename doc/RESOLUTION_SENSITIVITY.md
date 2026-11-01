@@ -27,43 +27,55 @@ Use the project's restored R environment with the existing derived census, geome
 station, distance, and exposure products present:
 
 ```sh
-make resolution-multicity
+make resolution
 ```
 
-This runs, in order:
+After the one-time Bogotá crosswalk (`build_bogota_localidad_crosswalk.R`, a frozen
+input), this runs, in order:
 
 ```sh
 Rscript scripts/process_data/specification_sensitivity/prepare_resolution_inputs.R
-Rscript scripts/process_data/specification_sensitivity/estimate_resolution_sensitivity.R \
-  --scope=multicity
-Rscript scripts/tables_images/specification_sensitivity/figure_resolution_sensitivity.R \
-  --scope=multicity
+Rscript scripts/process_data/specification_sensitivity/estimate_resolution_sensitivity.R
+Rscript scripts/tables_images/specification_sensitivity/figure_resolution_sensitivity.R
 ```
 
-The primary Design A grid then runs with `make specification-grid` and, after the 20 km
-robustness estimate, `make specification-panel`; the review script
-(`figure_resolution_review.R`) runs between them. See the folder README for the order.
+The recipes read no options. The variants they run are declared in
+`config/analysis_settings.R`: `resolution_cities`, `resolution_specifications` (one IDW
+buffer and one individual education grouping per id; quintile runs first) and
+`resolution_figure_specifications` (the variants with review figures).
+`resolution_specification()` validates each one and derives its folders and file prefix.
+One declared variant runs alone through the specification-sensitivity targets graph, for
+example `make targets STAGE=resolution_education_group3_20km`. Undeclared values (another
+buffer, grouping or city subset) run with
+`Rscript tools/explore/run_resolution_sensitivity.R --run-id=<id> --buffer-km=<km>
+--grouping=<g>`, which calls the same functions and writes only to the git-ignored
+`data/exploration/<id>/`.
+
+The primary Design A grid then runs with `make specification-grid`, and after it
+`make specification-panel`; the review script (`figure_resolution_review.R`) runs between
+them. See the folder README for the order.
 
 The preparation step records input MD5 hashes and refuses an unreviewed change to an
-existing input manifest. It does not download source replacements. A rerun may reuse B
-exposures with `--reuse-b`; reuse requires matching hashes for pollution, distances,
-IDW code, and frozen quintile cells. All other analyses and diagnostics are recomputed.
-A `STATUS.txt` file says `incomplete` until city verification finishes. Figures require
-three completed cities. Intermediate checkpoints from a failed run are not final results.
+existing input manifest. It does not download source replacements. The recipes rebuild
+every B exposure; only the exploration launcher can reuse one (`--reuse-b`), and only
+when the hashes of pollution, distances, IDW code and frozen quintile cells match. A
+`STATUS.txt` file says `incomplete` until city verification finishes. Combined tables and
+figures require every declared city to be complete.
 
-The historical Bogotá numerical mode remains the default. Its C figure label and
-caption now identify the joint specification and use its own population counts. To verify it without overwriting the
-original saved sensitivity products:
+The B rebuild runs in DuckDB with the memory limit `resolution_duckdb_mem_gb` (32 GB) in
+`config/analysis_settings.R`. Changing it changes run time and whether the run fits in
+memory, not the estimates. To run on a smaller machine, lower it to fit the machine, or
+the memory Docker Desktop allows in the container. The 3 km variants fit in 4 GB; Bogotá
+at 20 km ran out of memory at 4 GB and ran at 32 GB. The exploration launcher takes
+`--duckdb-mem-gb=<n>` for one run.
 
-```sh
-Rscript scripts/process_data/specification_sensitivity/estimate_resolution_sensitivity.R \
-  --scope=reference --output-dir=data/processed/resolution_sensitivity/reference_rebuild
-Rscript tests/testthat.R --mode=synthetic
-```
-
-The old 500-draw bootstrap uses fine-unit resampling and remains a reference check.
-It is not the new uncertainty procedure. Its C results are the historical combined
-exposure-aggregation and area-classification specification, not classification-only C.
+The historical Bogotá reference was retired in October 2026. It was the first,
+Bogotá-only version of this analysis: the manuscript's manzana exposure re-keyed to five
+supports, with Design A, a joint A/C specification and a 500-draw manzana bootstrap. Its
+five tables remain as an archived, read-only input in
+`data/processed/resolution_sensitivity/resolution_{ci,bootstrap,variance,decomposition,coverage}_bogota_3km_2023.*`.
+The 3 km quintile variant checks that its Bogotá Design A ladder reproduces all 150
+archived coefficients (`bogota_2018/all_levels_reference_anchor`).
 
 ## Fixed definitions and city supports
 
@@ -354,11 +366,11 @@ stations. Exact observed-population differences are the primary evidence.
 
 The frozen individual quintiles cut inside tied schooling values, and
 `assign_socio_group()` then splits the tied adults by geographic-code order (up to 30% of
-a city's adults sit in a split value). `--grouping=` reruns the multicity designs with
-another individual grouping. Every alternative uses the same people and weights as the
-quintile run (asserted unit by unit); only the labels change.
+a city's adults sit in a split value). Each declared variant names one individual
+grouping. Every alternative uses the same people and weights as the quintile run
+(asserted unit by unit); only the labels change.
 
-| `--grouping=` | Groups | Headline contrast | Output folder |
+| Grouping | Groups | Headline contrast | Output folder |
 |---|---|---|---|
 | `edu_quintile` (default) | Frozen quintiles; ties split by geo_id order | Q1 − Q5 | `resolution_sensitivity/` |
 | `edu_quintile_split` | Quintiles; each tied value split across adjacent quintiles in proportion | Q1 − Q5 | `quintile_split/` |
@@ -413,12 +425,13 @@ checking their pollution, distance-matrix and IDW-code hashes; interpolation nev
 socioeconomic groups. The matrix diagnostics are rerun as an independent reconciliation:
 
 ```sh
-make resolution-multicity-grouping GROUPING=edu_group3    # or edu_level, edu_quintile_split
-make resolution-multicity-grouping GROUPING=edu_group3 BUFFER=20
+make targets STAGE=resolution_education_group3_3km     # or any declared id
+make targets STAGE=resolution_education_group3_20km
 Rscript scripts/tables_images/specification_sensitivity/figure_resolution_review.R
 ```
 
-`resolution-multicity` (and its 20 km run) must have completed first. Tables are named
+The quintile variant at the same buffer runs first; the validator refuses any other
+declared order. Tables are named
 `results/tables/specification_sensitivity/robustness_designs/resolution_multicity_<folder>_[20km_]*`. The review script draws the
 3 km versus 20 km native-B comparison for every grouping and the Design A headline gaps of
 the four definitions side by side (`resolution_review_definitions_*`). Quintile products,
@@ -460,7 +473,7 @@ with the original; it can be reconstructed from the frozen inputs.
 | `results/tables/specification_sensitivity/review/stations_by_pollutant_sets_2023.csv`, `station_reporting_2023.csv` | Stations by pollutant (four cities), valid hours before and after cleaning, months, first and last hour |
 | `results/tables/specification_sensitivity/review/support_variance_*.csv`, `results/figures/specification_sensitivity/review/support_variance.pdf` | Support size, variance retained, gap relative to the finest support and intervals; change of the gap against the variance lost |
 | `results/tables/specification_sensitivity/review/`, `results/figures/specification_sensitivity/review/` | Coauthor review tables and figures, including the 3 km versus 20 km Design A comparison |
-| `data/processed/resolution_sensitivity/reference_rebuild/` | Isolated historical Bogotá rerun |
+| `data/processed/resolution_sensitivity/resolution_*_bogota_3km_2023.*` | Archived tables of the retired Bogotá reference; read-only input of the 3 km quintile anchor |
 | `data/processed/resolution_sensitivity/<folder>/[buffer_20km/]<city>/` | Same products for an alternative grouping (`quintile_split`, `education_group3`, `education_level`); its group cells; copied B exposures with `exposure_source.csv` |
 | `.../robustness_designs/resolution_multicity_<folder>_[20km_]*.csv` and figures, `.../review/resolution_review_<folder>_buffer_*`, `resolution_review_definitions_*` | Alternative-grouping tables, figure packets, 3 km versus 20 km figures and the four-definition comparison |
 

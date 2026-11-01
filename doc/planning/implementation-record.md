@@ -8,6 +8,55 @@ retains that implementation's checks and limits.
 The dated records below retain earlier implementation and validation evidence; they are
 not the current execution specification.
 
+## Options-free specification-sensitivity recipes — 28 October 2026
+
+The three specification-sensitivity recipes read no command-line options. The eight
+variants are named in `resolution_specifications` (`config/analysis_settings.R`) and
+validated by `resolution_specification()`; recipes loop over them, and each is a target of
+the separate graph `_targets_specification.R`. Undeclared values run through
+`tools/explore/run_resolution_sensitivity.R`, which writes only under `data/exploration/`.
+The Bogotá reference run was retired; its archived tables remain the 3 km anchor's input.
+`resolution_duckdb_mem_gb` is 32 because Bogotá at 20 km ran out of memory at 4 GB, as in
+the September run. After acceptance, `make resolution` (29 October) replaced the saved
+outputs; the seven retired reference figures were removed.
+
+| Check | Result |
+|---|---|
+| Full rebuild (`a-accept-20261028`, `--declared --prepare`) | 134 frozen inputs and 32 prepared matrices identical. Santiago and São Paulo identical. 16 Bogotá files differ by at most 1.78e-15 (relative 7e-16) in Design B exposure and what depends on it. Stopped out of memory at Bogotá 20 km (4 GB). |
+| B rebuild determinism (Bogotá municipio) | Two rebuilds here are identical to each other and both differ from the 14 October run by 1.78e-15. Time zone and memory limit have no effect; one DuckDB thread differs by 1.07e-14. The drift is DuckDB's parallel summation order, not the refactor. |
+| Seeded run (`a-seeded2-20261028`, `--declared --reuse-b --figures`, the 60 saved quintile B files copied in) | All 8 variants and 4 figure packets. 1,938 estimate files and 124 result tables byte-identical. 60 `exposure_source.csv`: MD5 column equal, path column names the run root. 16 code manifests and session files differ by construction. 68 PDFs identical in drawn content; only dates and offsets differ. |
+| Refresh (`make resolution`, 29 October) against the committed tables | 53 tables (code manifests aside) keep their rows, columns, text and missing values. Only Bogotá rows change, by at most 1.03e-13 (a percentage column); relative to each column's largest value, at most 1.24e-14. All 68 PDFs are identical in drawn content. |
+| Portable checks | Synthetic suite 1,076 passed; harness tests 15 passed; 383 links, 0 errors. |
+
+Comparison scripts and run outputs are ignored (`tests/_cache/a-resolution/`,
+`data/exploration/`). The drift is judged by the numerical comparison rule below.
+
+## Derived numerical comparison rule — 29 October 2026
+
+The registry's fixed tolerances (`atol` 1e-10, `rtol` 1e-8, a convention near R's
+`all.equal` default) were replaced by one derived rule: a double passes when its difference
+is at most `2 gamma_m S`, with `m` rounding steps declared per row and explained in
+`rounding_steps_basis` (Higham 2002, ch. 4). `S` is the baseline value for chains of
+nonnegative terms (proven) and the column's largest magnitude for the regression and
+imputation screens. The rule and its counting are in
+[HOW_TO_RUN](../HOW_TO_RUN.md#numerical-comparison-rule). The 54 exact rows stay exact.
+
+Against the old rule, on the current outputs as baseline: the 29 value-scaled rows with
+rounding steps are tighter for every value (their relative bounds run from 2.2e-16 to
+2e-11). The ten screens are tighter near each column's largest value (at most 0.44 of the
+old bound) but looser for 53–93% of their values, the small estimates and predictions,
+because cancellation is bounded on the column scale. The CDMX imputation file mixes PM10
+and PM2.5 in one column, so its column scale follows the larger pollutant.
+
+A forced summation order in DuckDB (`ORDER BY` inside `SUM`) was about 16 times slower in
+a synthetic benchmark of the IDW query; one thread was about 1.3 times slower there and
+repeated exactly. Neither was adopted.
+
+| Check | Result |
+|---|---|
+| `tests/testthat/test-artifact-comparisons.R` | 21 passed |
+| Portable checks | Synthetic suite 1,089 passed; harness tests 15 passed; 385 links, 0 errors. |
+
 ## Harness client reviews — 21 September to 21 October 2026
 
 Moved from `harnesses.md` on 21 October 2026 when that page was rewritten around a
