@@ -47,9 +47,12 @@ test_that("TeX scanning ignores comments and identifies incomplete coverage", {
 
 test_that("parity checks reject identifier, schema, missingness and numeric changes", {
   a <- data.frame(id = c("a", "b"), count = c(1L, 2L), value = c(1, NA))
-  expect_true(compare_numerical_tables(a, a[2:1, ], "id"))
-  b <- a; b$value[1] <- 1 + 1e-9
-  expect_true(compare_numerical_tables(a, b, "id"))
+  expect_equal(compare_numerical_tables(a, a[2:1, ], "id")$max_abs_diff, 0)
+  b <- a; b$value[1] <- 1 + 2^-52
+  expect_error(compare_numerical_tables(a, b, "id"), "differences")
+  expect_equal(compare_numerical_tables(a, b, "id", 1L)$max_abs_diff, 2^-52)
+  b$value[1] <- 1 + 1e-9
+  expect_error(compare_numerical_tables(a, b, "id", 1000L), "differences")
   b$value[1] <- 2
   expect_error(compare_numerical_tables(a, b, "id"), "differences")
   b <- a; b$count <- as.double(b$count)

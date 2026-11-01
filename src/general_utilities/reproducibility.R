@@ -184,9 +184,32 @@ manuscript_references <- function(path) {
   list(artifacts = unique(refs), files = visited, issues = unique(issues))
 }
 
-# Compare tables using declared unique identifiers and independently chosen tolerances.
-# Counts, schemas, missingness, integers and identifiers are exact; doubles use atol/rtol.
-compare_numerical_tables <- function(actual, expected, keys, atol = 1e-10, rtol = 1e-8) {
+# ----------------------------------------------------------------------------------------
+# Function: compare_numerical_tables
+#' @param actual,expected Data frames with the same columns; expected is the baseline.
+#' @param keys Unique row identifiers; compared exactly.
+#' @param rounding_steps Integer m: rounding steps on the longest chain from the declared
+#   inputs to any column, counted as in doc/HOW_TO_RUN.md. 0 requires equality.
+#' @param bound_scale "value" scales each difference by its baseline value; "column" by
+#   the column's largest baseline magnitude.
+#' @return Data frame, invisibly: one row per compared double column with its largest
+#   absolute difference, its largest scaled difference and the bound 2 gamma_m. Stops on
+#   any schema, class, key, missingness or non-double difference, or a bound exceeded.
+#' @details A double passes when |actual - expected| <= 2 gamma_m S, with
+# gamma_m = m u / (1 - m u) and u = 2^-53. A sum of k terms, added in any order, lies
+# within gamma_(k-1) of its exact value relative to the sum of the magnitudes, and relative
+# errors along a chain add (Higham 2002, Accuracy and Stability of Numerical Algorithms,
+# sec. 3.1 and ch. 4); two computations that differ only in rounding (summation order,
+# threads, accumulator width) therefore differ by at most twice that. For chains of
+# nonnegative terms the sum of magnitudes is the value itself, so S = |baseline value|
+# and the bound is proven. Signed or model-based outputs, where values near zero come from
+# cancellation, use S = the column's largest baseline magnitude; their count covers only
+# their sums, so the bound is a strict screen. Integers, dates, identifiers, counts and
+# missingness are exact.
+# ----------------------------------------------------------------------------------------
+compare_numerical_tables <- function(actual, expected, keys, rounding_steps = 0L,
+                                     bound_scale = c("value", "column")) {
+  bound_scale <- match.arg(bound_scale)
   if (!identical(names(actual), names(expected)) || nrow(actual) != nrow(expected))
     stop("Schema names or row count differ.")
   if (!length(keys) || !all(keys %in% names(actual))) stop("Declare valid comparison keys.")
@@ -195,32 +218,47 @@ compare_numerical_tables <- function(actual, expected, keys, atol = 1e-10, rtol 
   a <- actual[do.call(order, actual[keys]), , drop = FALSE]
   b <- expected[do.call(order, expected[keys]), , drop = FALSE]
   rownames(a) <- rownames(b) <- NULL
+  u <- 2^-53
+  bound <- 2 * rounding_steps * u / (1 - rounding_steps * u)
+  differences <- data.frame(column = character(), max_abs_diff = numeric(),
+                            max_scaled_diff = numeric(), bound = numeric())
   failures <- character()
   for (col in names(a)) {
     x <- a[[col]]; y <- b[[col]]
     if (!identical(is.na(x), is.na(y))) { failures <- c(failures, col); next }
     if (is.double(x) && !is.object(x) && !col %in% keys) {
-      ok <- (is.na(x) & is.na(y)) | (x == y) |
-        (is.finite(x) & is.finite(y) & abs(x - y) <= atol + rtol * abs(y))
-      if (!all(ok)) failures <- c(failures, col)
+      finite <- is.finite(x) & is.finite(y)
+      special <- (is.na(x) & is.na(y)) | (x == y)
+      gap <- abs(x[finite] - y[finite])
+      scale <- if (bound_scale == "value") abs(y[finite]) else max(abs(y[finite]), 0)
+      # A zero scale admits no difference.
+      scaled <- ifelse(gap == 0, 0, gap / scale)
+      worst <- max(scaled, 0)
+      differences[nrow(differences) + 1L, ] <- list(col, max(gap, 0), worst, bound)
+      if (worst > bound || !all(special[!finite])) {
+        failures <- c(failures,
+                      sprintf("%s (scaled difference %.3g, bound %.3g)", col, worst, bound))
+      }
     } else if (!identical(x, y)) failures <- c(failures, col)
   }
   if (length(failures)) stop("Numerical/structural differences: ", paste(failures, collapse = ", "))
-  invisible(TRUE)
+  invisible(differences)
 }
 
 # ----------------------------------------------------------------------------------------
 # Function: compare_registered_artifact
 #' @param actual_path,baseline_path Generated product and reviewed baseline filenames.
 #' @param keys Unique table identifiers. Empty for literal TeX comparisons.
-#' @param atol,rtol Declared numeric tolerances, as in compare_numerical_tables().
-#' @return TRUE invisibly, or a comparison error. Does not modify either file.
+#' @param rounding_steps,bound_scale Declared rounding steps and scale, as in
+#   compare_numerical_tables().
+#' @return The observed differences from compare_numerical_tables(), invisibly (no rows
+#   for TeX), or a comparison error. Does not modify either file.
 #' @details CSV and Parquet compare keyed tables; TeX compares literal lines. GeoPackages
 # compare attributes and exact geometry/CRS. PDF/PNG rendering needs separate human review,
 # paired with numerical plot-data comparisons; byte equality is not a rendering criterion.
 # ----------------------------------------------------------------------------------------
 compare_registered_artifact <- function(actual_path, baseline_path, keys,
-                                        atol = 1e-10, rtol = 1e-8) {
+                                        rounding_steps = 0L, bound_scale = "value") {
   extension <- tolower(tools::file_ext(actual_path))
   if (!identical(extension, tolower(tools::file_ext(baseline_path)))) {
     stop("Comparison file formats differ.")
@@ -228,7 +266,8 @@ compare_registered_artifact <- function(actual_path, baseline_path, keys,
   if (extension == "tex") {
     if (!identical(readLines(actual_path, warn = FALSE),
       readLines(baseline_path, warn = FALSE))) stop("TeX content differs.")
-    return(invisible(TRUE))
+    return(invisible(data.frame(column = character(), max_abs_diff = numeric(),
+                                max_scaled_diff = numeric(), bound = numeric())))
   }
   read_table <- function(path) {
     if (extension == "parquet") return(as.data.frame(arrow::read_parquet(path)))
@@ -246,7 +285,7 @@ compare_registered_artifact <- function(actual_path, baseline_path, keys,
   actual <- read_table(actual_path)
   baseline <- read_table(baseline_path)
   if (!identical(attr(actual, "crs"), attr(baseline, "crs"))) stop("CRS differs.")
-  compare_numerical_tables(actual, baseline, keys, atol, rtol)
+  compare_numerical_tables(actual, baseline, keys, rounding_steps, bound_scale)
 }
 
 # --------------------------------------------------------------------------------------------

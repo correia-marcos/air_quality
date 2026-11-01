@@ -46,7 +46,8 @@ report <- list(started_utc = format(Sys.time(), tz = "UTC", usetz = TRUE),
   platform = Sys.info(), image = Sys.getenv("AIR_IMAGE_ID", "unrecorded"),
   spatial = if (requireNamespace("sf", quietly = TRUE)) sf::sf_extSoftVersion() else NULL,
   seed = 20230901, threads = Sys.getenv(c("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS")),
-  tolerance = list(atol = 1e-10, rtol = 1e-8), stages = list(), findings = character(),
+  tolerance = list(rule = "|new - baseline| <= 2 * gamma(rounding_steps) * scale",
+    unit_roundoff = 2^-53), stages = list(), findings = character(),
   pipeline = engine,
   targets_version = if (requireNamespace("targets", quietly = TRUE))
     as.character(packageVersion("targets")) else NA_character_,
@@ -196,20 +197,21 @@ if (!nrow(comparisons) || !file.exists(review_path)) {
       if (!x$actual_path %in% generated) {
         stop("Actual path is not a generated analytical table, TeX or geography product.")
       }
-      if (!is.finite(x$atol) || !is.finite(x$rtol) || x$atol < 0 || x$rtol < 0) {
-        stop("Invalid tolerance")
+      if (!is.finite(x$rounding_steps) || x$rounding_steps < 0 ||
+        x$rounding_steps != round(x$rounding_steps)) stop("Invalid rounding steps")
+      if (x$rounding_steps > 0 && !nzchar(x$rounding_steps_basis)) {
+        stop("Rounding steps need their counting basis")
       }
-      if ((x$atol > 1e-10 || x$rtol > 1e-8) && !nzchar(x$justification)) {
-        stop("Tolerance exception needs justification")
-      }
+      if (!x$bound_scale %in% c("value", "column")) stop("Invalid bound scale")
       baseline_path <- file.path(baseline_root, x$baseline_path)
       expected_hash <- review$baseline_sha256[[x$baseline_path]]
       if (is.null(expected_hash) || !identical(verification_sha(baseline_path),
         expected_hash)) stop("Baseline checksum not reviewed or differs")
-      compare_registered_artifact(x$actual_path, baseline_path,
-        strsplit(x$keys, ";", fixed = TRUE)[[1]], x$atol, x$rtol)
-      list(exit_status = 0L, atol = x$atol, rtol = x$rtol,
-        justification = x$justification)
+      differences <- compare_registered_artifact(x$actual_path, baseline_path,
+        strsplit(x$keys, ";", fixed = TRUE)[[1]], x$rounding_steps, x$bound_scale)
+      list(exit_status = 0L, rounding_steps = x$rounding_steps,
+        bound_scale = x$bound_scale, rounding_steps_basis = x$rounding_steps_basis,
+        differences = differences, justification = x$justification)
     }, error = function(e) list(exit_status = 1L, error = conditionMessage(e)))
   }
   if (!isTRUE(review$rendering_reviewed) || !isTRUE(review$plot_data_reviewed))
