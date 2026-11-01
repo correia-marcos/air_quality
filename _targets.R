@@ -33,18 +33,17 @@ targets::tar_option_set(error = "stop", seed = manuscript_seed,
 
 # Each module returns ordinary declarations; no scientific recipe is executed here.
 c(
-  source(here::here("config", "targets", "bogota.R"), local = TRUE)$value,
-  source(here::here("config", "targets", "cdmx.R"), local = TRUE)$value,
-  source(here::here("config", "targets", "santiago.R"), local = TRUE)$value,
-  source(here::here("config", "targets", "sao_paulo.R"), local = TRUE)$value,
-  source(here::here("config", "targets", "distance_idw.R"), local = TRUE)$value,
-  source(here::here("config", "targets", "exposure.R"), local = TRUE)$value,
+  source(here::here("config", "targets", "inputs", "bogota.R"), local = TRUE)$value,
+  source(here::here("config", "targets", "inputs", "cdmx.R"), local = TRUE)$value,
+  source(here::here("config", "targets", "inputs", "santiago.R"), local = TRUE)$value,
+  source(here::here("config", "targets", "inputs", "sao_paulo.R"), local = TRUE)$value,
+  source(here::here("config", "targets", "inputs", "all_cities.R"), local = TRUE)$value,
+  source(here::here("config", "targets", "inputs", "distances.R"), local = TRUE)$value,
+  source(here::here("config", "targets", "inputs", "outliers.R"), local = TRUE)$value,
   source(here::here("config", "targets", "descriptives.R"), local = TRUE)$value,
-  source(here::here("config", "targets", "station_context.R"), local = TRUE)$value,
+  source(here::here("config", "targets", "monitoring.R"), local = TRUE)$value,
+  source(here::here("config", "targets", "exposure.R"), local = TRUE)$value,
   source(here::here("config", "targets", "imputation.R"), local = TRUE)$value,
-  source(here::here("config", "targets", "monitoring_figures.R"), local = TRUE)$value,
-  source(here::here("config", "targets", "spatial_figures.R"), local = TRUE)$value,
-  source(here::here("config", "targets", "distribution_figures.R"), local = TRUE)$value,
-  source(here::here("config", "targets", "station_temporal.R"), local = TRUE)$value,
-  source(here::here("config", "targets", "tables_export.R"), local = TRUE)$value
+  source(here::here("config", "targets", "temporal.R"), local = TRUE)$value,
+  source(here::here("config", "targets", "export.R"), local = TRUE)$value
 )

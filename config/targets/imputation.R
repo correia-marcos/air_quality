@@ -1,5 +1,73 @@
 # Imputation target declarations. Scientific functions live in src/.
 list(
+  targets::tar_target(bogota_imputation,
+    {
+      result <- impute_missing_hourly_ols(arrow_dir = bogota_outliers,
+        out_dir = here::here("data", "processed", "imputed_ols"),
+        out_name = "bogota_imputed", pollutants = imputation_pollutants,
+        id_col = "station", years = imputation_year, diag_year = imputation_year)
+      files <- c(result$out_path, result$diag_path, result$summary_path)
+      files[!is.na(files)]
+    }, format = "file"),
+
+  targets::tar_target(cdmx_imputation,
+    {
+      result <- impute_missing_hourly_ols(arrow_dir = cdmx_outliers,
+        out_dir = here::here("data", "processed", "imputed_ols"),
+        out_name = "cdmx_imputed", pollutants = imputation_pollutants,
+        id_col = "station_code", years = imputation_year, diag_year = imputation_year)
+      files <- c(result$out_path, result$diag_path, result$summary_path)
+      files[!is.na(files)]
+    }, format = "file"),
+
+  targets::tar_target(santiago_imputation,
+    {
+      result <- impute_missing_hourly_ols(arrow_dir = santiago_outliers,
+        out_dir = here::here("data", "processed", "imputed_ols"),
+        out_name = "santiago_imputed", pollutants = imputation_pollutants,
+        id_col = "station", years = imputation_year, diag_year = imputation_year)
+      files <- c(result$out_path, result$diag_path, result$summary_path)
+      files[!is.na(files)]
+    }, format = "file"),
+
+  targets::tar_target(sao_paulo_imputation,
+    {
+      result <- impute_missing_hourly_ols(arrow_dir = sao_paulo_outliers,
+        out_dir = here::here("data", "processed", "imputed_ols"),
+        out_name = "sao_paulo_imputed", pollutants = imputation_pollutants,
+        id_col = "station", years = imputation_year, diag_year = imputation_year)
+      files <- c(result$out_path, result$diag_path, result$summary_path)
+      files[!is.na(files)]
+    }, format = "file"),
+
+  targets::tar_target(imputation_counts,
+    {
+      data.table::rbindlist(list(
+        "Bogota" = arrow::read_parquet(bogota_imputation[
+          basename(bogota_imputation) == "bogota_imputed_counts.parquet"]),
+        "CDMX" = arrow::read_parquet(cdmx_imputation[
+          basename(cdmx_imputation) == "cdmx_imputed_counts.parquet"]),
+        "Santiago" = arrow::read_parquet(santiago_imputation[
+          basename(santiago_imputation) == "santiago_imputed_counts.parquet"]),
+        "Sao Paulo" = arrow::read_parquet(sao_paulo_imputation[
+          basename(sao_paulo_imputation) == "sao_paulo_imputed_counts.parquet"])),
+        idcol = "city")
+    }),
+
+  targets::tar_target(imputation_count_file,
+    {
+      file <- here::here("data", "processed", "imputed_ols",
+        paste0("imputation_summary_", imputation_year, ".parquet"))
+      arrow::write_parquet(imputation_counts, file)
+      file
+    }, format = "file"),
+
+  targets::tar_target(impute_missing_hourly,
+    {
+      c(bogota_imputation, cdmx_imputation, santiago_imputation, sao_paulo_imputation,
+        imputation_count_file)
+    }, format = "file"),
+
   targets::tar_target(bogota_2018_imputed_idw,
     {
       panel <- bogota_imputation[basename(bogota_imputation) == "bogota_imputed"]
@@ -447,5 +515,9 @@ list(
     {
       c(bogota_imputation_figures, cdmx_imputation_figures, santiago_imputation_figures,
         sao_paulo_imputation_figures)
-    }, format = "file")
+    }, format = "file"),
+
+  targets::tar_target(imputed,
+    c(impute_missing_hourly, estimate_exposure_imputed),
+    format = "file")
 )

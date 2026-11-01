@@ -40,12 +40,17 @@ scripts/                - Execution. Each script sources the src/ it needs, then
   download_data/             - Pull raw inputs (APIs, Selenium, Earthdata)
   process_data/              - raw -> interim -> processed
   tables_images/             - processed -> results (manuscript), results/figures, results/tables
-  validation_old_version/    - Legacy comparison + Quarto reports
+                               Each stage has one folder per analysis: inputs/, descriptives/,
+                               monitoring/, exposure/, imputation/, temporal/,
+                               specification_sensitivity/; not_in_paper/ holds satellite/,
+                               supporting/ and legacy_validation/ (legacy comparison + Quarto
+                               reports)
 
 config/                 - Information. Source of rules and definitions
   analysis_settings.R      - Plain named choices shared by scripts and targets
   paper_artifacts.csv      - Canonical source -> unchanged manuscript path + producer.
-  targets/                   - Ordinary target declarations grouped by scientific stage
+  targets/                   - Ordinary target declarations, one module per analysis;
+                               inputs/ holds the city modules, distances and outliers
 
 data/                   - raw/ interim/ processed/ downloads/ _legacy/   (all git-ignored)
   validation/              - Ignored legacy comparison artifacts and HTML.

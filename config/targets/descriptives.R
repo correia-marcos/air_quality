@@ -478,5 +478,125 @@ list(
   targets::tar_target(compute_distance_band_descriptives,
     save_table_parquet_csv(dt = distance_band_summary,
       out_dir = here::here("data", "processed", "distance_band_descriptives"),
-      name = "distance_band_descriptives"), format = "file")
+      name = "distance_band_descriptives"), format = "file"),
+
+  targets::tar_target(station_table_data,
+    {
+      list(
+        counts = arrow::read_parquet(station_counts_files[
+          basename(station_counts_files) ==
+            sprintf("stations_by_pollutant_%d.parquet", analysis_year)]),
+        who = arrow::read_parquet(who_exceedance_file),
+        thresholds = arrow::read_parquet(threshold_exceedance_files[
+          basename(threshold_exceedance_files) ==
+            sprintf("days_and_hours_%d.parquet", analysis_year)]))
+    }),
+
+  targets::tar_target(station_table_tex,
+    {
+      who_table <- table_who_exceedances(exceedances_dt = station_table_data$who)
+      list(counts = latex_station_counts(station_counts = station_table_data$counts),
+           days = latex_threshold_exceedance_table(
+             exceed_dt = station_table_data$thresholds, measure = "days"),
+           hours = latex_threshold_exceedance_table(
+             exceed_dt = station_table_data$thresholds, measure = "hours"),
+           who = latex_who_exceedances(wide = who_table,
+             caption = paste("Annual PM concentrations vs. WHO AQG 2021",
+                             "(interim and long-term targets)."),
+             label = "tab:who_exceedances"))
+    }),
+
+  targets::tar_target(render_station_tables,
+    {
+      c(
+        write_latex_table(station_table_tex$counts,
+          here::here("results", "tables",
+            sprintf("stations_by_pollutant_%d.tex", analysis_year)),
+          use_bytes = TRUE),
+        write_latex_table(station_table_tex$days,
+          here::here("results", "tables", "table_days_above_thresholds.tex"),
+          use_bytes = TRUE),
+        write_latex_table(station_table_tex$hours,
+          here::here("results", "tables", "table_avg_hours_above_thresholds.tex"),
+          use_bytes = TRUE),
+        write_latex_table(station_table_tex$who,
+          here::here("results", "tables", "who_exceedances_all_cities.tex")))
+    }, format = "file"),
+
+  targets::tar_target(missing_table_data,
+    {
+      city_files <- c("bogota", "cdmx", "santiago", "sao_paulo_metro")
+      stems <- unlist(lapply(missing_table_dimensions, function(dimension) {
+        sprintf("%s_%s_missing_by_%s", city_files, missing_table_panel, dimension)
+      }))
+      files <- missing_dimension_files[
+        match(paste0(stems, ".parquet"), basename(missing_dimension_files))]
+      quintile_file <- quintile_availability_files[
+        basename(quintile_availability_files) ==
+          sprintf("missing_by_education_quintile_%d.parquet", analysis_year)]
+      list(dimensions = setNames(lapply(files, arrow::read_parquet), stems),
+           quintiles = arrow::read_parquet(quintile_file))
+    }),
+
+  targets::tar_target(missing_table_tex,
+    {
+      tex <- list()
+      for (dimension in missing_table_dimensions) {
+        for (city in c("bogota", "cdmx", "santiago", "sao_paulo_metro")) {
+          name <- sprintf("%s_%s_missing_by_%s", city, missing_table_panel, dimension)
+          table <- table_missing_by_dimension(
+            missing_list = setNames(list(missing_table_data$dimensions[[name]]), dimension),
+            dim = dimension, city_label = city)
+          tex[[name]] <- latex_missing_dimension(dt = table, dim = dimension,
+            city_label = city)
+        }
+      }
+      list(dimensions = tex,
+        quintiles = latex_missing_by_quintile(missing_table_data$quintiles))
+    }),
+
+  targets::tar_target(render_missing_tables,
+    {
+      written <- character()
+      for (name in names(missing_table_tex$dimensions)) {
+        written <- c(written, write_latex_table(missing_table_tex$dimensions[[name]],
+          here::here("results", "tables", paste0(name, ".tex"))))
+      }
+      c(written, write_latex_table(missing_table_tex$quintiles,
+        here::here("results", "tables",
+          sprintf("missing_by_education_quintile_%d.tex", analysis_year))))
+    }, format = "file"),
+
+  targets::tar_target(census_table_data,
+    {
+      list(census = arrow::read_parquet(census_summary_files[
+             basename(census_summary_files) == "census_summary.parquet"]),
+           bands = arrow::read_parquet(compute_distance_band_descriptives[
+             basename(compute_distance_band_descriptives) ==
+               "distance_band_descriptives.parquet"]))
+    }),
+
+  targets::tar_target(census_table_tex,
+    {
+      list(census = latex_census_summary(census_table_data$census),
+           bands_a = latex_distance_band_table(bands_dt = census_table_data$bands,
+             panel_cities = c("Bogota", "Mexico City")),
+           bands_b = latex_distance_band_table(bands_dt = census_table_data$bands,
+             panel_cities = c("Santiago", "Sao Paulo")))
+    }),
+
+  targets::tar_target(render_census_tables,
+    {
+      c(
+        write_latex_table(census_table_tex$census,
+          here::here("results", "tables", "census_summary_table.tex")),
+        write_latex_table(census_table_tex$bands_a,
+          here::here("results", "tables", "table_descriptives_a.tex")),
+        write_latex_table(census_table_tex$bands_b,
+          here::here("results", "tables", "table_descriptives_b.tex")))
+    }, format = "file"),
+
+  targets::tar_target(descriptives,
+    c(compute_descriptive_tables, compute_distance_band_descriptives),
+    format = "file")
 )
