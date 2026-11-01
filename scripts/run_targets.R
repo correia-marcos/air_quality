@@ -3,7 +3,9 @@
 # ============================================================================================
 #' @Goal: Execute or inspect the candidate manuscript dependency graph.
 #' @Description: Uses an explicit cache and never installs packages or acquires inputs.
-# The script runner remains the default until migration acceptance is complete.
+# The script runner remains the default until migration acceptance is complete. A stage
+# that is not a manuscript target is looked up in the specification-sensitivity graph
+# (_targets_specification.R), which has its own cache.
 #' @Summary:
 #   I. Settings and arguments.
 #   II. Resolve target selection.
@@ -27,12 +29,18 @@ if (!requireNamespace("targets", quietly = TRUE)) {
 # ============================================================================================
 # II: Resolve target selection
 # ============================================================================================
-script <- here::here("_targets.R")
-manifest <- targets::tar_manifest(fields = "name", script = script)
 selection <- if (length(args)) args else "paper_export"
 if (selection == "all") selection <- "paper_export"
-if (!selection %in% manifest$name) stop("Unknown stage: ", selection)
+script <- here::here("_targets.R")
 store <- Sys.getenv("AIR_TARGETS_STORE", here::here("_targets"))
+manifest <- targets::tar_manifest(fields = "name", script = script)
+if (!selection %in% manifest$name) {
+  script <- here::here("_targets_specification.R")
+  store <- Sys.getenv("AIR_TARGETS_SPECIFICATION_STORE",
+                      here::here("_targets_specification"))
+  manifest <- targets::tar_manifest(fields = "name", script = script)
+}
+if (!selection %in% manifest$name) stop("Unknown stage: ", selection)
 # Embed the selection as a literal: the child R process cannot see this caller's variables.
 
 # ============================================================================================

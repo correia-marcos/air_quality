@@ -11,12 +11,15 @@ check_reader_workflows <- function() {
   begin <- match("<!-- workflow-inventory:start -->", text)
   end <- match("<!-- workflow-inventory:end -->", text)
   check(!is.na(begin) && !is.na(end) && begin < end, "Inventory markers missing")
-  rows <- grep("^\\| \\[(scripts|tools/reproduction)/", text[seq.int(begin, end)], value = TRUE)
+  rows <- grep("^\\| \\[(scripts|tools/reproduction|tools/explore)/",
+               text[seq.int(begin, end)], value = TRUE)
   paths <- sub("^\\| \\[([^]]+)\\].*$", "\\1", rows)
   files <- list.files(file.path(root, "scripts"), pattern = "[.](R|qmd)$",
                       recursive = TRUE)
   files <- c(paste0("scripts/", files), paste0("tools/reproduction/",
-    list.files(file.path(root, "tools/reproduction"), pattern = "[.]R$")))
+    list.files(file.path(root, "tools/reproduction"), pattern = "[.]R$")),
+    paste0("tools/explore/", list.files(file.path(root, "tools/explore"),
+                                        pattern = "[.]R$")))
   check(!anyDuplicated(paths), "An entry point has multiple inventory rows")
   check(setequal(paths, files), paste("Inventory mismatch:",
     paste(setdiff(files, paths), collapse = ", "),
@@ -26,6 +29,9 @@ check_reader_workflows <- function() {
   manifest <- targets::tar_manifest(fields = c("name", "command"),
     script = here::here("_targets.R"),
     callr_function = NULL, envir = new.env(parent = globalenv()))
+  # The specification graph attaches plotting packages, so read it in its own process.
+  target_names <- c(manifest$name, targets::tar_manifest(fields = "name",
+    script = here::here("_targets_specification.R"))$name)
   launcher <- readLines(file.path(root, "scripts/run_pipeline.R"))
   active <- launcher[!grepl("^\\s*#", launcher)]
   check(!any(grepl('source\\(.*"download_data"', active)),
@@ -46,7 +52,7 @@ check_reader_workflows <- function() {
     if (startsWith(fields[3], "Targets:")) {
       refs <- regmatches(fields[3], gregexpr("`[^`]+`", fields[3]))[[1]]
       refs <- gsub("`", "", refs, fixed = TRUE)
-      check(length(refs) > 0L && all(refs %in% manifest$name),
+      check(length(refs) > 0L && all(refs %in% target_names),
             paste("Unknown target mapping:", paths[i]))
     } else {
       check(grepl("Outside|Transitional", fields[3]),

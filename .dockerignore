@@ -9,6 +9,7 @@
 renv/library
 renv/staging
 _targets
+_targets_specification
 tests/_cache
 tests/_out
 data
