@@ -8,6 +8,27 @@ retains that implementation's checks and limits.
 The dated records below retain earlier implementation and validation evidence; they are
 not the current execution specification.
 
+## Recipes and targets modules grouped by analysis — 1 November 2026
+
+The 49 recipes moved into one folder per analysis in each stage (`inputs/`,
+`descriptives/`, `monitoring/`, `exposure/`, `imputation/`, `temporal/`), with satellite,
+supporting and legacy-validation work under `not_in_paper/`; the legacy-validation recipes
+left `scripts/validation_old_version/`. The targets modules follow the same analyses:
+`config/targets/inputs/` holds the four city modules, `all_cities.R`, `distances.R` and
+`outliers.R`; `descriptives.R`, `monitoring.R`, `exposure.R`, `imputation.R`,
+`temporal.R` and `export.R` hold the rest. Whole `tar_target()` blocks moved unchanged;
+target names did not change. Every move is listed in
+[the move manifest](layout-move-manifest-20261101.csv). Nothing was rerun and no result
+moved.
+
+| Check | Result |
+|---|---|
+| Manuscript graph | 352 targets: names, commands and 726 dependency edges identical before and after |
+| Specification graph | 18 targets and 34 edges identical |
+| `make -n -B all` | Same 27 recipe calls in the same order once new paths are mapped to old |
+| Manuscript sources | 128 `paper_path` → source SHA-256 pairs identical; 128 producer paths updated and present |
+| Portable checks | Synthetic suite 1,089 passed; harness tests 15 passed; 385 links, 0 errors; targets contracts 152 and reader workflows 685 assertions passed |
+
 ## Options-free specification-sensitivity recipes — 28 October 2026
 
 The three specification-sensitivity recipes read no command-line options. The eight
