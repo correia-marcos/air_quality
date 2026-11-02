@@ -79,7 +79,7 @@ metro_specs <- list(
     "cdmx_area_metro_2024.gpkg")),
        stem = "ciudad_mexico", label = "Ciudad de México"),
   list(sf = sf::st_read(file.path(dir_shapefiles, "santiago",
-    "gran_santiago_area_2024.gpkg")),
+    "gran_santiago_zonas_2017.gpkg")),
        stem = "santiago",      label = "Santiago"),
   list(sf = sf::st_read(file.path(dir_shapefiles, "sao_paulo",
     "sao_paulo_metro_2010.gpkg")),

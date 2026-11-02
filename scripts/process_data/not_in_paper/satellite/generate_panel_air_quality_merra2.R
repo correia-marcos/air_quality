@@ -38,7 +38,7 @@ geo_bogota <- sf::st_read(here::here(dir_geography, "bogota",
 geo_cdmx <- sf::st_read(here::here(dir_geography, "cdmx",
   "cdmx_area_metro_2024.gpkg"), quiet = TRUE)
 geo_santiago <- sf::st_read(here::here(dir_geography, "santiago",
-  "gran_santiago_area_2024.gpkg"), quiet = TRUE)
+  "gran_santiago_zonas_2017.gpkg"), quiet = TRUE)
 geo_sp <- sf::st_read(here::here(dir_geography, "sao_paulo",
   "sao_paulo_metro_2010.gpkg"), quiet = TRUE)
 
