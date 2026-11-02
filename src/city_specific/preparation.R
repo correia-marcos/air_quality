@@ -3,16 +3,15 @@
 #' @param cfg City configuration.
 #' @param inputs Named preserved geographic sources.
 #' @param quiet Suppress progress messages.
-#' @return Five named geographic files, including both census vintages.
+#' @return The two named 2018 geographic files: metropolitan area and census tracts.
 bogota_prepare_geography <- function(cfg, inputs, quiet = FALSE) {
   expected <- basename(city_processing_inputs("bogota", cfg)$geography)
   processing_files(inputs, "Bogotá geography sources")
   if (!all(expected %in% basename(inputs))) stop("Missing Bogotá geographic source files")
   files <- city_geographic_outputs("bogota", cfg)
-  levels <- c("mpio_localidad", "mpio", "manzana", "mpio_localidad", "manzana")
-  years <- c(2005, 2005, 2005, 2018, 2018)
-  archives <- list("SHP_MGN2005_COLOMBIA.zip", "SHP_MGN2005_COLOMBIA.zip",
-    "SHP_MGN2005_COLOMBIA.zip", "SHP_MGN2018_INTGRD_MPIO.zip",
+  levels <- c("mpio_localidad", "manzana")
+  years <- c(2018, 2018)
+  archives <- list("SHP_MGN2018_INTGRD_MPIO.zip",
     c("SHP_MGN2018_INTGRD_MANZ.zip", "SHP_MGN2018_INTGRD_SECCR.zip"))
   for (i in seq_along(files)) {
     geography <- bogota_prepare_metro_area(
@@ -63,17 +62,14 @@ santiago_prepare_geography <- function(cfg, inputs, quiet = FALSE) {
 #' @param cfg City configuration.
 #' @param inputs Named preserved geographic sources.
 #' @param quiet Suppress progress messages.
-#' @return Municipalities, census tracts and weighting areas for 2010.
+#' @return Municipalities and weighting areas for 2010.
 sao_paulo_prepare_geography <- function(cfg, inputs, quiet = FALSE) {
   processing_files(inputs, "São Paulo geographic sources")
   files <- city_geographic_outputs("sao_paulo", cfg)
-  for (i in 1:2) {
-    geography <- sao_paulo_prepare_metro_area(
-        source_zip = unname(inputs[c("municipalities", "tracts")][i]),
-        level = c("mpio", "setor_censitario")[i], keep_municipality = cfg$cities_in_metro,
-        quiet = quiet)
-    write_geopackage(x = geography, path = files[i])
-  }
+  municipalities <- sao_paulo_prepare_metro_area(
+      source_zip = unname(inputs["municipalities"]), level = "mpio",
+      keep_municipality = cfg$cities_in_metro, quiet = quiet)
+  write_geopackage(x = municipalities, path = files["municipalities"])
   weights <- sao_paulo_prepare_weighting_areas(source_file = unname(inputs["weights"]),
       keep_municipality = cfg$cities_in_metro, quiet = quiet)
   write_geopackage(x = weights, path = files["weights"])
@@ -84,20 +80,17 @@ sao_paulo_prepare_geography <- function(cfg, inputs, quiet = FALSE) {
 #' @param inputs Station locations and metadata sources.
 #' @param geography Upstream geographic files.
 #' @param quiet Suppress progress messages.
-#' @return Both 2018 and 2005 filtered-station products.
+#' @return The 2018 filtered-station product.
 bogota_prepare_stations <- function(cfg, inputs, geography, quiet = FALSE) {
   processing_files(inputs, "station sources")
   processing_files(geography, "geography")
   locations <- read.csv(inputs["locations"])
   files <- city_station_outputs("bogota", cfg)
-  stations <- list()
-  for (year in c(2018, 2005)) {
-    metro <- sf::st_read(geography[paste0("metro_", year)], quiet = quiet)
-    stations[[as.character(year)]] <- bogota_filter_stations_in_metro(
-      rmcab_df = locations, metadata_dir = inputs["metadata"],
-      radius_km = cfg$station_buffer_km,
-      metro_area = metro, out_file = files[paste0("stations_", year)])
-  }
+  metro <- sf::st_read(geography["metro_2018"], quiet = quiet)
+  stations <- bogota_filter_stations_in_metro(
+    rmcab_df = locations, metadata_dir = inputs["metadata"],
+    radius_km = cfg$station_buffer_km,
+    metro_area = metro, out_file = files["stations_2018"])
   processing_files(files)
 }
 
@@ -221,45 +214,22 @@ sao_paulo_prepare_pollution <- function(cfg, inputs, stations, quiet = FALSE) {
 }
 
 #' @param cfg City configuration.
-#' @param inputs Named census archives/directories; aliases may select a vintage.
+#' @param inputs Preserved 2018 census directory.
 #' @param geography Unused: Bogota census preparation selects municipality codes.
 #' @param quiet Suppress progress messages.
-#' @return All extracted checkpoints and individual/collapsed census files.
+#' @return The extracted 2018 checkpoint and the individual and collapsed census files.
 bogota_prepare_census <- function(cfg, inputs, geography = NULL, quiet = FALSE) {
   preflight_census_inputs("bogota", inputs)
-  files <- character()
-  for (variant in intersect(c("extended", "basic"), names(inputs))) {
-    extracted_dir <- here::here(cfg$out_dir, "census_extracted", "bogota",
-      paste0("CG2005_", toupper(variant)))
-    extracted <- bogota_filter_census_2005(census_zip = inputs[variant],
-      out_dir = extracted_dir, overwrite = TRUE, quiet = quiet)
-    out_dir <- here::here(cfg$out_dir, "census", paste0("bogota_", variant, "_2005"))
-    census <- bogota_harmonize_census_2005_data(extract_list = extracted,
-      is_extended = variant == "extended", metro_codes = cfg$city_code_metro,
-      out_dir = out_dir, quiet = quiet,
-      return_data = FALSE)
-    outputs <- c(extracted = extracted_dir,
-      individual = here::here(out_dir, paste0("census_metro_individual_", variant,
-                                            ".parquet")),
-      collapsed = here::here(out_dir, paste0("collapse_metro_area_", variant,
-                                           ".parquet")))
-    names(outputs) <- paste0(variant, "_2005_", names(outputs))
-    files <- c(files, outputs)
-  }
-  if ("census_2018" %in% names(inputs)) {
-    extracted_dir <- here::here(cfg$out_dir, "census_extracted", "bogota", "CNPV_2018")
-    extracted <- bogota_filter_census_2018(census_folder = inputs["census_2018"],
-      out_dir = extracted_dir, overwrite = TRUE, quiet = quiet)
-    out_dir <- here::here(cfg$out_dir, "census", "bogota_2018")
-    census <- bogota_harmonize_census_2018_data(extract_paths = extracted,
-      metro_codes = cfg$city_code_metro, out_dir = out_dir, quiet = quiet,
-      return_data = FALSE)
-    files <- c(files, census_2018_extracted = extracted_dir,
-      census_2018_individual = here::here(out_dir,
-        "census_2018_metro_individual.parquet"),
-      census_2018_collapsed = here::here(out_dir, "census_2018_metro_collapsed.parquet"))
-  }
-  processing_files(files)
+  extracted_dir <- here::here(cfg$out_dir, "census_extracted", "bogota", "CNPV_2018")
+  extracted <- bogota_filter_census_2018(census_folder = inputs["census_2018"],
+    out_dir = extracted_dir, overwrite = TRUE, quiet = quiet)
+  out_dir <- here::here(cfg$out_dir, "census", "bogota_2018")
+  census <- bogota_harmonize_census_2018_data(extract_paths = extracted,
+    metro_codes = cfg$city_code_metro, out_dir = out_dir, quiet = quiet,
+    return_data = FALSE)
+  processing_files(c(census_2018_extracted = extracted_dir,
+    census_2018_individual = here::here(out_dir, "census_2018_metro_individual.parquet"),
+    census_2018_collapsed = here::here(out_dir, "census_2018_metro_collapsed.parquet")))
 }
 
 #' @param cfg City configuration.

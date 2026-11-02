@@ -44,8 +44,7 @@ city_processing_inputs <- function(id, cfg) {
   primary <- here::here(root, "ground_stations")
   switch(id,
     bogota = list(
-      geography = c(zip_2005 = here::here(metro, "SHP_MGN2005_COLOMBIA.zip"),
-        zip_mpio = here::here(metro, "SHP_MGN2018_INTGRD_MPIO.zip"),
+      geography = c(zip_mpio = here::here(metro, "SHP_MGN2018_INTGRD_MPIO.zip"),
         zip_manz = here::here(metro, "SHP_MGN2018_INTGRD_MANZ.zip"),
         zip_seccr = here::here(metro, "SHP_MGN2018_INTGRD_SECCR.zip"),
         localities = here::here(metro, "bogota_loca.gpkg")),
@@ -53,8 +52,7 @@ city_processing_inputs <- function(id, cfg) {
         "bogota_stations_location.csv"), metadata = metadata),
       pollution_parquet = c(primary = primary,
         secondary = here::here(root, "metro_ground_stations_hourly")),
-      census = c(extended = here::here(census, "CG2005_AMPLIADO.zip"),
-        basic = here::here(census, "CG2005_BASICO.zip"), census_2018 = census)),
+      census = c(census_2018 = census)),
     cdmx = list(
       geography = c(zip = here::here(metro, "mg_2024_integrado.zip")),
       stations_filter = c(locations = here::here(locations,
@@ -74,7 +72,6 @@ city_processing_inputs <- function(id, cfg) {
         census_2024 = here::here(census, "2024"))),
     sao_paulo = list(
       geography = c(municipalities = here::here(metro, "sp_municipios.zip"),
-        tracts = here::here(metro, "sp_setores_censitarios.zip"),
         weights = here::here(metro, "sp_weighting_areas_2010.rds")),
       stations_filter = c(locations = here::here(metadata, "stations_metadata.csv")),
       pollution_parquet = c(primary = primary),
@@ -102,22 +99,18 @@ resolve_city_inputs <- function(id, cfg, inputs = NULL) {
 }
 
 #' @param id City slug.
-#' @param steps Common stage names or the historical Bogota census aliases.
-#' @return Ordered prerequisite closure and selected census variants.
+#' @param steps Common stage names.
+#' @return Ordered prerequisite closure of the selected stages.
 city_processing_steps <- function(id, steps) {
   order <- c("geography", "stations_filter", "pollution_parquet", "census")
-  aliases <- if (id == "bogota") c("census_2005", "census_2018") else character()
   if (!is.character(steps) || !length(steps) || anyNA(steps) ||
-      any(!steps %in% c(order, aliases))) stop("Unknown or empty processing steps")
-  variants <- if ("census" %in% steps) c("census_2005", "census_2018") else
-    intersect(steps, aliases)
-  if (length(intersect(steps, aliases))) steps <- c(steps, "census")
+      any(!steps %in% order)) stop("Unknown or empty processing steps")
   if ("pollution_parquet" %in% steps) steps <- c(steps, "stations_filter")
   if ("stations_filter" %in% steps ||
       ("census" %in% steps && id %in% c("santiago", "sao_paulo"))) {
     steps <- c(steps, "geography")
   }
-  list(stages = order[order %in% steps], variants = variants)
+  list(stages = order[order %in% steps])
 }
 
 #' @param id City slug.
@@ -156,17 +149,13 @@ preflight_census_inputs <- function(id, inputs) {
 #' @return Named geographic and station outputs, without creating files.
 city_geographic_outputs <- function(id, cfg) {
   names <- switch(id,
-    bogota = c(metro_2005 = "bogota_area_metro_2005.gpkg",
-      municipalities_2005 = "bogota_area_metro_municipalities_2005.gpkg",
-      tracts_2005 = "bogota_area_metro_census_tracts_2005.gpkg",
-      metro_2018 = "bogota_area_metro_2018.gpkg",
+    bogota = c(metro_2018 = "bogota_area_metro_2018.gpkg",
       tracts_2018 = "bogota_area_metro_census_tracts_2018.gpkg"),
     cdmx = c(municipalities = "cdmx_area_metro_municipalities_2024.gpkg",
       metro = "cdmx_area_metro_2024.gpkg"),
     santiago = c(zones_2017 = "gran_santiago_zonas_2017.gpkg",
       metro_2024 = "gran_santiago_area_2024.gpkg"),
     sao_paulo = c(municipalities = "sao_paulo_metro_2010.gpkg",
-      tracts = "sao_paulo_metro_2010_census_tracts.gpkg",
       weights = "sao_paulo_metro_2010_weighting_areas.gpkg"))
   setNames(here::here(cfg$out_dir, "geospatial_data", id, unname(names)), names(names))
 }
@@ -175,8 +164,7 @@ city_geographic_outputs <- function(id, cfg) {
 #' @return Named filtered-station paths, without creating files.
 city_station_outputs <- function(id, cfg) {
   files <- switch(id,
-    bogota = c(stations_2018 = "bogota_2018_stations_buffer_metro.gpkg",
-      stations_2005 = "bogota_2005_stations_buffer_metro.gpkg"),
+    bogota = c(stations_2018 = "bogota_2018_stations_buffer_metro.gpkg"),
     cdmx = c(stations = "cdmx_stations_buffer_metro.gpkg"),
     santiago = c(stations = "gran_santiago_stations_buffer_metro_2017.gpkg"),
     sao_paulo = c(stations = "sao_paulo_stations_buffer_metro_2010.gpkg"))
@@ -210,11 +198,6 @@ city_pollution_outputs <- function(id, cfg) {
 run_city_processing <- function(id, cfg, steps, inputs = NULL, quiet = FALSE) {
   selection <- city_processing_steps(id, steps)
   inputs <- resolve_city_inputs(id, cfg, inputs)
-  if (id == "bogota" && "census" %in% selection$stages) {
-    keys <- c(if ("census_2005" %in% selection$variants) c("extended", "basic"),
-              if ("census_2018" %in% selection$variants) "census_2018")
-    inputs$census <- inputs$census[keys]
-  }
   for (stage in selection$stages) {
     processing_files(inputs[[stage]], paste(id, stage, "inputs"))
     if (stage == "census") preflight_census_inputs(id, inputs$census)

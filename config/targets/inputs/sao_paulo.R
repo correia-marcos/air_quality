@@ -6,7 +6,6 @@ list(
   targets::tar_target(sao_paulo_geography_inputs,
     c(
       here::here(sao_paulo_config$dl_dir, "metro_area", "sp_municipios.zip"),
-      here::here(sao_paulo_config$dl_dir, "metro_area", "sp_setores_censitarios.zip"),
       here::here(sao_paulo_config$dl_dir, "metro_area", "sp_weighting_areas_2010.rds")),
     format = "file"),
 
@@ -17,15 +16,6 @@ list(
       sao_paulo_prepare_metro_area(
         source_zip = sources[basename(sources) == "sp_municipios.zip"],
         level = "mpio", keep_municipality = sao_paulo_config$cities_in_metro)
-    }),
-
-  targets::tar_target(sao_paulo_tracts_sf,
-    {
-      sf::sf_use_s2(TRUE)
-      sources <- sao_paulo_geography_inputs
-      sao_paulo_prepare_metro_area(
-        source_zip = sources[basename(sources) == "sp_setores_censitarios.zip"],
-        level = "setor_censitario", keep_municipality = sao_paulo_config$cities_in_metro)
     }),
 
   targets::tar_target(sao_paulo_weighting_areas_sf,
@@ -42,9 +32,6 @@ list(
       write_geopackage(sao_paulo_municipalities_sf,
         here::here(sao_paulo_config$out_dir, "geospatial_data", "sao_paulo",
         "sao_paulo_metro_2010.gpkg")),
-      write_geopackage(sao_paulo_tracts_sf,
-        here::here(sao_paulo_config$out_dir, "geospatial_data", "sao_paulo",
-        "sao_paulo_metro_2010_census_tracts.gpkg")),
       write_geopackage(sao_paulo_weighting_areas_sf,
         here::here(sao_paulo_config$out_dir, "geospatial_data", "sao_paulo",
         "sao_paulo_metro_2010_weighting_areas.gpkg"))),

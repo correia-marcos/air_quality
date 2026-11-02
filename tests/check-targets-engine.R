@@ -158,10 +158,10 @@ check_targets_engine <- function() {
   network <- targets::tar_network(script = here::here("_targets.R"),
     callr_function = NULL, envir = new.env(parent = globalenv()))
   parents <- function(target) network$edges$from[network$edges$to == target]
-  check(all(c("bogota_config", "bogota_metro_2005_sf", "write_geopackage")
+  check(all(c("bogota_config", "bogota_metro_2018_sf", "write_geopackage")
     %in% parents("bogota_geography")))
   check(all(c("bogota_geography_inputs", "bogota_prepare_metro_area")
-    %in% parents("bogota_metro_2005_sf")))
+    %in% parents("bogota_metro_2018_sf")))
   check(!"cdmx_config" %in% parents("bogota_geography"))
   check("bogota_2018_distances" %in% parents("bogota_outliers"))
   check("bogota_station_temporal_plots" %in% parents("figure_station_temporal"))

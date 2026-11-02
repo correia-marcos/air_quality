@@ -1,5 +1,17 @@
 # Deletion candidates
 
+## Callerless branches after Workstream C — November 2026
+
+Workstream C stopped building products that nothing reads. The functions below keep the
+branches that built them; the branches now have no caller in `scripts/` or the targets
+graph. Remove a branch only with the tests that exercise it.
+
+| Candidate | Current callers / consumers | Outputs and replacement | Consequence / disposition |
+|---|---|---|---|
+| `bogota_harmonize_census_2005_data(is_extended = FALSE)` in `src/city_specific/bogota.R` | None; the basic 2005 census is no longer processed | `census/bogota_basic_2005/`; nothing read it | Remove the basic branch if the basic 2005 census stays unused. |
+| `bogota_prepare_metro_area(mgn_year = 2005, level = "mpio" or "manzana")` | `test-bogota-geography.R` only | 2005 municipalities and 2005 tracts; nothing read them | Keep while the test documents the 2005 reader; remove with the test otherwise. |
+| `sao_paulo_prepare_metro_area(level = "setor_censitario")` and the tract download in `download_sao_paulo_data.R` | `test-geography-separation.R` only | `sao_paulo_metro_2010_census_tracts.gpkg`; nothing read it, the analysis uses weighting areas | Stop acquiring the tract archive and remove the branch if tracts stay unused. |
+
 ## Current disposition — 23 September 2026
 
 The complete entry-point inventory is [remaining-work.md](remaining-work.md). A script's

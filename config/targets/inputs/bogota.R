@@ -5,46 +5,11 @@ list(
 
   targets::tar_target(bogota_geography_inputs,
     c(
-      here::here(bogota_config$dl_dir, "metro_area", "SHP_MGN2005_COLOMBIA.zip"),
       here::here(bogota_config$dl_dir, "metro_area", "SHP_MGN2018_INTGRD_MPIO.zip"),
       here::here(bogota_config$dl_dir, "metro_area", "SHP_MGN2018_INTGRD_MANZ.zip"),
       here::here(bogota_config$dl_dir, "metro_area", "SHP_MGN2018_INTGRD_SECCR.zip"),
       here::here(bogota_config$dl_dir, "metro_area", "bogota_loca.gpkg")),
     format = "file"),
-
-  targets::tar_target(bogota_metro_2005_sf,
-    {
-      sf::sf_use_s2(TRUE)
-      sources <- bogota_geography_inputs
-      archives <- sources[basename(sources) == "SHP_MGN2005_COLOMBIA.zip"]
-      bogota_prepare_metro_area(source_zips = archives,
-        level = "mpio_localidad",
-        mgn_year = 2005,
-        municipality_codes = bogota_config$city_code_metro,
-        localities_file = sources[basename(sources) == "bogota_loca.gpkg"])
-    }),
-
-  targets::tar_target(bogota_municipalities_2005_sf,
-    {
-      sf::sf_use_s2(TRUE)
-      sources <- bogota_geography_inputs
-      archives <- sources[basename(sources) == "SHP_MGN2005_COLOMBIA.zip"]
-      bogota_prepare_metro_area(source_zips = archives,
-        level = "mpio",
-        mgn_year = 2005,
-        municipality_codes = bogota_config$city_code_metro)
-    }),
-
-  targets::tar_target(bogota_tracts_2005_sf,
-    {
-      sf::sf_use_s2(TRUE)
-      sources <- bogota_geography_inputs
-      archives <- sources[basename(sources) == "SHP_MGN2005_COLOMBIA.zip"]
-      bogota_prepare_metro_area(source_zips = archives,
-        level = "manzana",
-        mgn_year = 2005,
-        municipality_codes = bogota_config$city_code_metro)
-    }),
 
   targets::tar_target(bogota_metro_2018_sf,
     {
@@ -72,15 +37,6 @@ list(
 
   targets::tar_target(bogota_geography,
     c(
-      write_geopackage(bogota_metro_2005_sf,
-        here::here(bogota_config$out_dir, "geospatial_data", "bogota",
-        "bogota_area_metro_2005.gpkg")),
-      write_geopackage(bogota_municipalities_2005_sf,
-        here::here(bogota_config$out_dir, "geospatial_data", "bogota",
-        "bogota_area_metro_municipalities_2005.gpkg")),
-      write_geopackage(bogota_tracts_2005_sf,
-        here::here(bogota_config$out_dir, "geospatial_data", "bogota",
-        "bogota_area_metro_census_tracts_2005.gpkg")),
       write_geopackage(bogota_metro_2018_sf,
         here::here(bogota_config$out_dir, "geospatial_data", "bogota",
         "bogota_area_metro_2018.gpkg")),
@@ -115,27 +71,11 @@ list(
         out_file = NULL)
     }),
 
-  targets::tar_target(bogota_stations_2005_sf,
-    {
-      sf::sf_use_s2(TRUE)
-      files <- bogota_stations_filter_inputs
-      metadata <- files[basename(files) == "stations_metadata"]
-      bogota_filter_stations_in_metro(
-        rmcab_df = bogota_station_locations,
-        metadata_dir = metadata,
-        metro_area = bogota_metro_2005_sf,
-        radius_km = bogota_config$station_buffer_km,
-        out_file = NULL)
-    }),
-
   targets::tar_target(bogota_stations_filter,
     c(
       write_geopackage(bogota_stations_2018_sf,
         here::here(bogota_config$out_dir, "geospatial_data", "bogota",
-        "bogota_2018_stations_buffer_metro.gpkg")),
-      write_geopackage(bogota_stations_2005_sf,
-        here::here(bogota_config$out_dir, "geospatial_data", "bogota",
-        "bogota_2005_stations_buffer_metro.gpkg"))),
+        "bogota_2018_stations_buffer_metro.gpkg"))),
     format = "file"),
 
   targets::tar_target(bogota_pollution_parquet_inputs,
@@ -165,48 +105,13 @@ list(
     format = "file"),
 
   targets::tar_target(bogota_census_inputs,
-    c(
-      here::here(bogota_config$dl_dir, "census", "CG2005_AMPLIADO.zip"),
-      here::here(bogota_config$dl_dir, "census", "CG2005_BASICO.zip"),
-      here::here(bogota_config$dl_dir, "census")),
+    here::here(bogota_config$dl_dir, "census"),
     format = "file"),
 
   targets::tar_target(bogota_census,
     {
-      files <- bogota_census_inputs
-      file_census_extended <- files[basename(files) == "CG2005_AMPLIADO.zip"]
-      file_census_basic <- files[basename(files) == "CG2005_BASICO.zip"]
-      dir_census <- files[basename(files) == "census"]
-      preflight_census_inputs("bogota", c(extended = file_census_extended,
-        basic = file_census_basic, census_2018 = dir_census))
-      out_extract_extended <- here::here(bogota_config$out_dir, "census_extracted",
-        "bogota",
-                                        "CG2005_EXTENDED")
-      out_census_extended  <- here::here(bogota_config$out_dir, "census",
-        "bogota_extended_2005")
-      extracted_extended <- bogota_filter_census_2005(census_zip = file_census_extended,
-          out_dir = out_extract_extended,
-          overwrite = TRUE)
-      census_extended <-
-        bogota_harmonize_census_2005_data(extract_list = extracted_extended,
-          is_extended = TRUE,
-          metro_codes = bogota_config$city_code_metro,
-          out_dir = out_census_extended,
-          return_data = FALSE)
-
-      out_extract_basic <- here::here(bogota_config$out_dir, "census_extracted", "bogota",
-                                        "CG2005_BASIC")
-      out_census_basic  <- here::here(bogota_config$out_dir, "census",
-        "bogota_basic_2005")
-      extracted_basic <- bogota_filter_census_2005(census_zip = file_census_basic,
-          out_dir = out_extract_basic,
-          overwrite = TRUE)
-      census_basic <- bogota_harmonize_census_2005_data(extract_list = extracted_basic,
-          is_extended = FALSE,
-          metro_codes = bogota_config$city_code_metro,
-          out_dir = out_census_basic,
-          return_data = FALSE)
-
+      dir_census <- bogota_census_inputs
+      preflight_census_inputs("bogota", c(census_2018 = dir_census))
       out_extract_2018 <- here::here(bogota_config$out_dir, "census_extracted",
         "bogota", "CNPV_2018")
       out_census_2018  <- here::here(bogota_config$out_dir, "census", "bogota_2018")
@@ -217,11 +122,7 @@ list(
           metro_codes = bogota_config$city_code_metro,
           out_dir = out_census_2018,
           return_data = FALSE)
-      census_files <- c(out_extract_extended, out_extract_basic, out_extract_2018,
-        here::here(out_census_extended, c("census_metro_individual_extended.parquet",
-                                         "collapse_metro_area_extended.parquet")),
-        here::here(out_census_basic, c("census_metro_individual_basic.parquet",
-                                      "collapse_metro_area_basic.parquet")),
+      census_files <- c(out_extract_2018,
         here::here(out_census_2018, c("census_2018_metro_individual.parquet",
                                      "census_2018_metro_collapsed.parquet")))
       processing_files(census_files)

@@ -3,7 +3,7 @@
 # ========================================================================================
 #' @Goal: Prepare geography, stations, pollution and census data for São Paulo.
 #
-#' @Description: Use the 2010 municipalities, tracts and weighting areas.
+#' @Description: Use the 2010 municipalities and weighting areas.
 # Geography and station selection return spatial objects. Pollution and census functions
 # also write their large datasets while processing. All sources must be available locally.
 #
@@ -45,14 +45,13 @@ out_census    <- here::here(cfg$out_dir, "census", "sao_paulo_2010")
 
 # Name the preserved IBGE, geobr, census and station files.
 file_municipalities <- here::here(dir_geography, "sp_municipios.zip")
-file_tracts         <- here::here(dir_geography, "sp_setores_censitarios.zip")
 file_weights        <- here::here(dir_geography, "sp_weighting_areas_2010.rds")
 file_census         <- here::here(dir_census, "2010_population.parquet")
 file_stations       <- here::here(dir_sources, "stations_metadata", "stations_metadata.csv")
 
 # Check the sources before processing writes any output.
-processing_files(c(file_municipalities, file_tracts, file_weights, file_stations,
-                   dir_pollution), "São Paulo sources")
+processing_files(c(file_municipalities, file_weights, file_stations, dir_pollution),
+                 "São Paulo sources")
 preflight_census_inputs("sao_paulo", c(census_2010 = file_census))
 
 # Read station locations before selecting stations around the metropolitan area.
@@ -61,13 +60,9 @@ station_locations <- read.csv(file_stations)
 # ========================================================================================
 # II: Process data
 # ========================================================================================
-# Prepare the municipalities, census tracts and weighting areas from local sources.
+# Prepare the municipalities and weighting areas from local sources.
 municipalities  <- sao_paulo_prepare_metro_area(source_zip        = file_municipalities,
                                                 level             = "mpio",
-                                                keep_municipality = cfg$cities_in_metro)
-
-tracts          <- sao_paulo_prepare_metro_area(source_zip        = file_tracts,
-                                                level             = "setor_censitario",
                                                 keep_municipality = cfg$cities_in_metro)
 
 weighting_areas <- sao_paulo_prepare_weighting_areas(source_file       = file_weights,
@@ -98,9 +93,6 @@ census    <- sp_process_census_2010(sf_data     = weighting_areas,
 municipalities_file <- write_geopackage(
   x    = municipalities,
   path = here::here(out_geography, "sao_paulo_metro_2010.gpkg"))
-tracts_file <- write_geopackage(
-  x    = tracts,
-  path = here::here(out_geography, "sao_paulo_metro_2010_census_tracts.gpkg"))
 weighting_areas_file <- write_geopackage(
   x    = weighting_areas,
   path = here::here(out_geography, "sao_paulo_metro_2010_weighting_areas.gpkg"))

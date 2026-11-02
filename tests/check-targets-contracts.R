@@ -31,8 +31,7 @@ check_targets_contracts <- function() {
     check(identical(e$city_processing_steps(city, "pollution_parquet")$stages,
       c("geography", "stations_filter", "pollution_parquet")))
   }
-  check(identical(e$city_processing_steps("bogota", "census_2005")$variants,
-                  "census_2005"))
+  fails(e$city_processing_steps("bogota", "census_2005"), "Unknown")
   check(identical(e$city_processing_steps("santiago", "census")$stages,
                   c("geography", "census")))
   check(identical(e$city_processing_steps("cdmx", "census")$stages, "census"))
@@ -63,7 +62,7 @@ check_targets_contracts <- function() {
     "santiago_prepare_metro_area_2017", "santiago_prepare_metro_area_2024",
     "sao_paulo_prepare_metro_area", "sao_paulo_prepare_weighting_areas")
   for (name in builders) assign(name, fake_geography, envir = e)
-  expected_counts <- c(bogota = 5L, cdmx = 2L, santiago = 2L, sao_paulo = 3L)
+  expected_counts <- c(bogota = 2L, cdmx = 2L, santiago = 2L, sao_paulo = 2L)
   for (city in cities) {
     cfg <- e$city_cfg(city)
     cfg$dl_dir <- file.path(work, "sources", city)
@@ -87,9 +86,9 @@ check_targets_contracts <- function() {
     check(identical(tools::md5sum(inputs), before))
     if (city == "bogota") {
       check(identical(vapply(calls, function(x) x$mgn_year, numeric(1)),
-        c(2005, 2005, 2005, 2018, 2018)))
+        c(2018, 2018)))
       check(identical(vapply(calls, function(x) x$level, character(1)),
-        c("mpio_localidad", "mpio", "manzana", "mpio_localidad", "manzana")))
+        c("mpio_localidad", "manzana")))
     }
     missing <- inputs
     missing[1] <- paste0(inputs[1], ".absent")
@@ -129,7 +128,7 @@ check_targets_contracts <- function() {
     c("geography", "stations_filter", "pollution_parquet", "census")))
   sequence <- character()
   bad <- inputs
-  bad$census["basic"] <- file.path(work, "missing.zip")
+  bad$census["census_2018"] <- file.path(work, "missing-census")
   fails(e$bogota_process(cfg, inputs = bad), "Missing")
   check(length(sequence) == 0L)
   e$bogota_prepare_pollution <- function(...) stop("fixture failure")
@@ -141,11 +140,9 @@ check_targets_contracts <- function() {
     selected <<- names(inputs)
     c(individual = "individual.parquet", collapsed = "collapsed.parquet")
   }
-  fails(e$bogota_process(cfg, steps = "census_2005", inputs = bad), "Missing")
-  alias_inputs <- inputs
-  alias_inputs$census["census_2018"] <- file.path(work, "absent-2018")
-  outputs <- e$bogota_process(cfg, steps = "census_2005", inputs = alias_inputs)
-  check(identical(selected, c("extended", "basic")))
+  fails(e$bogota_process(cfg, steps = "census_2005", inputs = inputs), "Unknown")
+  outputs <- e$bogota_process(cfg, steps = "census", inputs = inputs)
+  check(identical(selected, "census_2018"))
   check(identical(names(outputs), "census"))
   fails(e$resolve_city_inputs("bogota", cfg, list(geography = "incomplete")),
         "every named source")

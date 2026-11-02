@@ -193,6 +193,7 @@ download:
 
 # Legacy validation track (internal audit; separate from the paper pipeline).
 validate:
+	$(RUN) scripts/process_data/not_in_paper/legacy_validation/prepare_bogota_2005_inputs.R
 	$(RUN) scripts/process_data/not_in_paper/legacy_validation/compare_bogota.R
 
 # Remove stage stamps only. Data and results are left untouched on purpose.

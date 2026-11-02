@@ -383,7 +383,9 @@ geography <- city_process("santiago", steps = "geography")
 Common stages are `geography`, `stations_filter`, `pollution_parquet`, and `census`; prerequisites
 run first. `inputs = NULL` resolves configured local sources. An explicit input list overrides
 whole named stages; inspect `city_processing_inputs("bogota", city_cfg("bogota"))` for the shape.
-Bogotá's `census_2005` and `census_2018` selectors remain available. Missing inputs fail preflight,
+Bogotá builds only its 2018 geography and census here; the 2005 inputs of the legacy validation
+come from `scripts/process_data/not_in_paper/legacy_validation/prepare_bogota_2005_inputs.R`.
+Missing inputs fail preflight,
 and required stage failures stop processing. Results contain named path vectors for every stage.
 Reusable transformation functions retain manageable data returns and named local inspection
 points. Writers return paths; large partitioned datasets are reopened by their consumers.
