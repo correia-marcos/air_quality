@@ -44,18 +44,14 @@ cdmx_prepare_geography <- function(cfg, inputs, quiet = FALSE) {
 #' @param cfg City configuration.
 #' @param inputs Named preserved geographic sources.
 #' @param quiet Suppress progress messages.
-#' @return Separate 2017 zones and 2024 municipal geography.
+#' @return The 2017 census zones.
 santiago_prepare_geography <- function(cfg, inputs, quiet = FALSE) {
   processing_files(inputs, "Santiago geographic sources")
   files <- city_geographic_outputs("santiago", cfg)
   zones <- santiago_prepare_metro_area_2017(metro_file = unname(inputs["metro_2017"]),
       zones_file = unname(inputs["zones_2017"]), count_file = unname(inputs["count_2017"]),
       quiet = quiet)
-  metro <- santiago_prepare_metro_area_2024(source_zip = unname(inputs["zip"]),
-      type = "gran_santiago", level = "mpio", keep_municipality = cfg$cities_in_metro,
-      dissolve_by = "CUT", quiet = quiet)
   write_geopackage(x = zones, path = files["zones_2017"])
-  write_geopackage(x = metro, path = files["metro_2024"])
   processing_files(files)
 }
 
@@ -257,35 +253,23 @@ cdmx_prepare_census <- function(cfg, inputs, geography = NULL, quiet = FALSE) {
 }
 
 #' @param cfg City configuration.
-#' @param inputs Preserved 2017 database and 2024 source directory.
-#' @param geography Upstream geography, with distinct keys for each vintage.
+#' @param inputs Preserved 2017 census database.
+#' @param geography Upstream 2017 census zones.
 #' @param quiet Suppress progress messages.
-#' @return Both census vintages and the reproducible database working copy.
+#' @return The 2017 census products and the reproducible database working copy.
 santiago_prepare_census <- function(cfg, inputs, geography, quiet = FALSE) {
   preflight_census_inputs("santiago", inputs)
   processing_files(geography, "geography")
   zones <- sf::st_read(geography["zones_2017"], quiet = quiet)
-  metro <- sf::st_read(geography["metro_2024"], quiet = quiet)
   out_2017 <- here::here(cfg$out_dir, "census", "santiago_2017")
-  out_2024 <- here::here(cfg$out_dir, "census", "santiago_2024")
   work_dir <- here::here(cfg$out_dir, "census_extracted", "santiago", "2017")
   census_2017 <- santiago_process_census_2017(sf_data = zones, match_col = "zona_id",
     out_dir = out_2017, source_db = inputs["census_2017"], work_dir = work_dir,
     quiet = quiet,
     return_data = FALSE)
-  census_2024 <- santiago_process_census_2024(census_dir = inputs["census_2024"],
-    sf_data = metro, match_col = "CUT", out_dir = out_2024,
-    overwrite = TRUE, quiet = quiet,
-    return_data = FALSE)
-  members <- utils::unzip(here::here(unname(inputs["census_2024"]),
-    "chile_census_2024_people.zip"), list = TRUE)$Name
-  csv <- grep("\\.csv$", members, value = TRUE, ignore.case = TRUE)[1]
   processing_files(c(working_copy = here::here(work_dir, "censo2017.duckdb"),
-    extracted_2024 = here::here(out_2024, basename(csv)),
     individual_2017 = here::here(out_2017, "census_individual_2017.parquet"),
-    collapsed_2017 = here::here(out_2017, "census_collapsed_2017.parquet"),
-    individual_2024 = here::here(out_2024, "census_santiago_individual_2024.parquet"),
-    collapsed_2024 = here::here(out_2024, "census_santiago_collapsed_2024.parquet")))
+    collapsed_2017 = here::here(out_2017, "census_collapsed_2017.parquet")))
 }
 
 #' @param cfg City configuration.

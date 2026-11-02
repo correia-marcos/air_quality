@@ -73,16 +73,6 @@ file_micro_sao_paulo <- here::here(dir_census, "sao_paulo_2010",
 file_geo_sao_paulo   <- here::here(dir_census, "sao_paulo_2010",
                                    "census_sp_collapsed_2010.parquet")
 
-# Set the Santiago 2024 robustness input paths
-panel_santiago_robustness      <- here::here(dir_cleaned, "santiago_metro_clean",
-                                             paste0("year=", analysis_year))
-distances_santiago_robustness  <- here::here(dir_distances, "santiago_2024",
-                                             "matrix_geo_station_distances.parquet")
-file_micro_santiago_robustness <- here::here(dir_census, "santiago_2024",
-                                             "census_santiago_individual_2024.parquet")
-file_geo_santiago_robustness   <- here::here(dir_census, "santiago_2024",
-                                             "census_santiago_collapsed_2024.parquet")
-
 # Read the required census data
 micro_bogota    <- arrow::read_parquet(file_micro_bogota)
 geo_bogota      <- arrow::read_parquet(file_geo_bogota)
@@ -96,8 +86,6 @@ geo_santiago    <- arrow::read_parquet(file_geo_santiago)
 micro_sao_paulo <- arrow::read_parquet(file_micro_sao_paulo)
 geo_sao_paulo   <- arrow::read_parquet(file_geo_sao_paulo)
 
-micro_santiago_robustness <- arrow::read_parquet(file_micro_santiago_robustness)
-geo_santiago_robustness   <- arrow::read_parquet(file_geo_santiago_robustness)
 # ==========================================================================================
 # II: Process and save data
 # ==========================================================================================
@@ -105,7 +93,6 @@ geo_santiago_robustness   <- arrow::read_parquet(file_geo_santiago_robustness)
 idw_bogota <- list()
 idw_cdmx <- list()
 idw_santiago <- list()
-idw_santiago_robustness <- list()
 idw_sao_paulo <- list()
 
 for (buffer_km in idw_buffers_km) {
@@ -168,22 +155,6 @@ for (buffer_km in idw_buffers_km) {
       geo_sta_pq           = distances_santiago,
       geo_census           = geo_santiago,
       micro_census         = micro_santiago,
-      socio_var            = "education",
-      n_groups             = 5L,
-      group_name           = "edu_quintile",
-      buffer_km            = buffer_km,
-      distance_power       = idw_distance_power,
-      outdir_exp           = dir_idw,
-      return_data          = FALSE)
-
-  # Santiago 2024: education quintiles for the deferred robustness specification.
-  idw_santiago_robustness[[as.character(buffer_km)]] <- run_idw_city(
-      city_label           = "Santiago (comuna 2024)",
-      city_id              = "santiago_2024",
-      arrow_dir            = panel_santiago_robustness,
-      geo_sta_pq           = distances_santiago_robustness,
-      geo_census           = geo_santiago_robustness,
-      micro_census         = micro_santiago_robustness,
       socio_var            = "education",
       n_groups             = 5L,
       group_name           = "edu_quintile",

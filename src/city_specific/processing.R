@@ -61,15 +61,14 @@ city_processing_inputs <- function(id, cfg) {
         secondary = here::here(root, "ground_stations_raw_missing_data")),
       census = c(census_2020 = census)),
     santiago = list(
-      geography = c(zip = here::here(metro, "Cartografia_censo2024_Pais.zip"),
-        metro_2017 = here::here(metro, "2017", "GRAN_SANTIAGO_13_metro.geojson"),
+      geography = c(metro_2017 = here::here(metro, "2017",
+          "GRAN_SANTIAGO_13_metro.geojson"),
         zones_2017 = here::here(metro, "2017", "GRAN_SANTIAGO_13_zonas.geojson"),
         count_2017 = here::here(metro, "2017", "GRAN_SANTIAGO_13_count.json")),
       stations_filter = c(locations = here::here(metadata,
         "SINCA_metadata_stations_20260113_1616.csv")),
       pollution_parquet = c(primary = primary),
-      census = c(census_2017 = here::here(census, "2017", "censo2017.duckdb"),
-        census_2024 = here::here(census, "2024"))),
+      census = c(census_2017 = here::here(census, "2017", "censo2017.duckdb"))),
     sao_paulo = list(
       geography = c(municipalities = here::here(metro, "sp_municipios.zip"),
         weights = here::here(metro, "sp_weighting_areas_2010.rds")),
@@ -136,7 +135,7 @@ preflight_census_inputs <- function(id, inputs) {
       }
     }
   }
-  if (id == "santiago") {
+  if (id == "santiago" && "census_2024" %in% names(inputs)) {
     archive <- here::here(unname(inputs["census_2024"]), "chile_census_2024_people.zip")
     processing_files(archive, "2024 census archive")
     if (!any(grepl("\\.csv$", utils::unzip(archive, list = TRUE)$Name,
@@ -153,8 +152,7 @@ city_geographic_outputs <- function(id, cfg) {
       tracts_2018 = "bogota_area_metro_census_tracts_2018.gpkg"),
     cdmx = c(municipalities = "cdmx_area_metro_municipalities_2024.gpkg",
       metro = "cdmx_area_metro_2024.gpkg"),
-    santiago = c(zones_2017 = "gran_santiago_zonas_2017.gpkg",
-      metro_2024 = "gran_santiago_area_2024.gpkg"),
+    santiago = c(zones_2017 = "gran_santiago_zonas_2017.gpkg"),
     sao_paulo = c(municipalities = "sao_paulo_metro_2010.gpkg",
       weights = "sao_paulo_metro_2010_weighting_areas.gpkg"))
   setNames(here::here(cfg$out_dir, "geospatial_data", id, unname(names)), names(names))

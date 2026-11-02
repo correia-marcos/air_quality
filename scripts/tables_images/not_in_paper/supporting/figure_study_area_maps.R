@@ -36,13 +36,13 @@ fig_width  <- 16
 fig_height <- 9
 fig_dpi    <- 300
 
-# City metro boundaries for the continental map
+# City metro boundaries for the continental map; Santiago uses its 2017 census zones
 bogota        <- sf::st_read(file.path(dir_shapefiles, "bogota",
     "bogota_area_metro_2018.gpkg"))
 ciudad_mexico <- sf::st_read(file.path(dir_shapefiles, "cdmx",
     "cdmx_area_metro_2024.gpkg"))
 santiago      <- sf::st_read(file.path(dir_shapefiles, "santiago",
-    "gran_santiago_area_2024.gpkg"))
+    "gran_santiago_zonas_2017.gpkg"))
 sao_paulo     <- sf::st_read(file.path(dir_shapefiles, "sao_paulo",
     "sao_paulo_metro_2010.gpkg"))
 

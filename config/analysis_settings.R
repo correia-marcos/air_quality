@@ -22,6 +22,10 @@ idw_distance_power <- 1
 exposure_buffers_km <- c(3L, 5L)
 individual_exposure_buffer_km <- 3L
 
+# Santiago 2024 (not in the paper) groups residents by 2024 commune. IDW and exposure use
+# the buffers its figures show.
+santiago_2024_buffers_km <- c(3L, 5L)
+
 # Specification sensitivity only: the robustness designs A/B/C run for three cities on 
 # these declared variants, an IDW buffer and an individual education
 # grouping each. Each id names its target and fixes its output folder and file prefix
@@ -106,7 +110,8 @@ imputation_year <- 2023L
 imputed_exposure_buffer_km <- 3
 imputation_pollutants <- c("pm10", "pm25")
 
-# Exposure rendering keeps the manuscript's city labels, panel order and filenames.
+# Exposure rendering keeps the manuscript's city labels, panel order and filenames. The
+# Santiago (comuna, 2024) entries serve figure_santiago_2024_exposure.R.
 exposure_city_labels <- c(Bogota = "Bogotá", CDMX = "Mexico City",
   Santiago = "Santiago", `Sao Paulo` = "São Paulo",
   `Santiago (comuna, 2024)` = "Santiago (commune, 2024 census)")

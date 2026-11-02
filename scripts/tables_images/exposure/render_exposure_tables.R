@@ -5,7 +5,7 @@
 #
 #' @Description: Format four tables from saved 3 km exposure summaries and regressions.
 # Education uses quintiles; the income table accommodates CDMX quintiles and
-# São Paulo deciles. Santiago 2024 remains outside these manuscript tables.
+# São Paulo deciles.
 #
 #' @Summary:
 #   I.   Import data: source functions, set paths and read saved summaries.

@@ -5,7 +5,7 @@
 #
 #' @Description: Read the saved observed and imputed exposure results.
 # Build named plot lists for education, income and imputed education. Saving preserves
-# the existing manuscript names and the additional buffer and census-vintage figures.
+# the existing manuscript names and the additional buffer figures.
 #
 #' @Summary:
 #   I.   Import data: source functions, set paths and read saved summaries.

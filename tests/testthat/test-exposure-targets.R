@@ -78,7 +78,7 @@ test_that("exposure checkpoints regenerate files without recomputing tables", {
 
   # Microdata remain file-backed; estimates depend on their own city's files.
   population <- manifest[grepl("_(education|income)_population$", manifest$name), ]
-  expect_equal(nrow(population), 7L)
+  expect_equal(nrow(population), 6L)
   expect_true(all(population$format == "file"))
   deps <- targets::tar_deps_raw(str2lang(manifest$command[
     manifest$name == "bogota_2018_education_estimates"]))

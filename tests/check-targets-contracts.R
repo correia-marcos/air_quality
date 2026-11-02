@@ -62,7 +62,7 @@ check_targets_contracts <- function() {
     "santiago_prepare_metro_area_2017", "santiago_prepare_metro_area_2024",
     "sao_paulo_prepare_metro_area", "sao_paulo_prepare_weighting_areas")
   for (name in builders) assign(name, fake_geography, envir = e)
-  expected_counts <- c(bogota = 2L, cdmx = 2L, santiago = 2L, sao_paulo = 2L)
+  expected_counts <- c(bogota = 2L, cdmx = 2L, santiago = 1L, sao_paulo = 2L)
   for (city in cities) {
     cfg <- e$city_cfg(city)
     cfg$dl_dir <- file.path(work, "sources", city)
@@ -212,7 +212,7 @@ check_targets_contracts <- function() {
     if (identical(expr[[1]], as.name("run_idw_city"))) return(list(expr))
     unlist(lapply(as.list(expr)[-1], idw_calls), recursive = FALSE)
   }
-  for (id in c(unname(main_ids), "santiago_2024")) {
+  for (id in unname(main_ids)) {
     calls <- idw_calls(plan[[paste0(id, "_idw")]]$command)
     income <- if (id == "cdmx_2020") 5L else if (id == "sao_paulo_2010") 10L else 0L
     check(length(calls) == if (income > 0L) 2L else 1L)

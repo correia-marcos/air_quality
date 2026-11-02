@@ -109,37 +109,6 @@ list(
     },
     format = "file"),
 
-  targets::tar_target(santiago_2024_idw,
-    {
-      micro <- arrow::read_parquet(santiago_census[
-        basename(santiago_census) == "census_santiago_individual_2024.parquet"])
-      geo <- arrow::read_parquet(santiago_census[
-        basename(santiago_census) == "census_santiago_collapsed_2024.parquet"])
-      matrix <- santiago_2024_distances[basename(santiago_2024_distances) ==
-        "matrix_geo_station_distances.parquet"]
-      panel <- here::here(santiago_outliers, paste0("year=", analysis_year))
-      dir_idw <- here::here("data", "processed", "idw_estimates")
-      files <- character()
-      for (buffer_km in idw_buffers_km) {
-        education <- run_idw_city(city_label = "Santiago (comuna 2024)",
-            city_id = "santiago_2024",
-            arrow_dir = panel,
-            geo_sta_pq = matrix,
-            geo_census = geo,
-            micro_census = micro,
-            socio_var = "education",
-            n_groups = 5L,
-            group_name = "edu_quintile",
-            buffer_km = buffer_km,
-            distance_power = idw_distance_power,
-            outdir_exp = dir_idw,
-            return_data = FALSE)
-        files <- c(files, unlist(education, use.names = FALSE))
-      }
-      unique(files)
-    },
-    format = "file"),
-
   targets::tar_target(sao_paulo_2010_idw,
     {
       micro <- arrow::read_parquet(sao_paulo_census[
@@ -188,8 +157,7 @@ list(
     format = "file"),
 
   targets::tar_target(idw,
-    c(bogota_2018_idw, cdmx_2020_idw, santiago_2017_idw, santiago_2024_idw,
-      sao_paulo_2010_idw),
+    c(bogota_2018_idw, cdmx_2020_idw, santiago_2017_idw, sao_paulo_2010_idw),
     format = "file"),
 
   targets::tar_target(bogota_2018_exposure_inputs,
@@ -306,36 +274,6 @@ list(
       })
     }),
 
-  targets::tar_target(santiago_2024_exposure_inputs,
-    lapply(setNames(exposure_buffers_km, exposure_buffers_km), function(buffer_km) {
-      arrow::read_parquet(santiago_2024_idw[basename(santiago_2024_idw) ==
-        paste0("santiago_2024_", buffer_km, "km_idw_exposure.parquet")])
-    })),
-
-  targets::tar_target(santiago_2024_education_population,
-    santiago_2024_idw[
-      basename(santiago_2024_idw) == "santiago_2024_indiv_groups.parquet"],
-    format = "file"),
-
-  targets::tar_target(santiago_2024_education_estimates,
-    {
-      population <- data.table::as.data.table(
-        arrow::read_parquet(santiago_2024_education_population))
-      lapply(setNames(exposure_buffers_km, exposure_buffers_km), function(buffer_km) {
-        run_city_exposure(city = "Santiago (comuna, 2024)",
-            city_id = "santiago_2024",
-            exposure_dt = santiago_2024_exposure_inputs[[as.character(buffer_km)]],
-            individual_dt = population,
-            geo_station_pq = santiago_2024_distances[basename(santiago_2024_distances) ==
-              "matrix_geo_station_distances.parquet"],
-            socio_var = "education",
-            group_col = "edu_quintile",
-            n_groups = 5L,
-            year = analysis_year,
-            buffer_km = buffer_km)
-      })
-    }),
-
   targets::tar_target(sao_paulo_2010_exposure_inputs,
     lapply(setNames(exposure_buffers_km, exposure_buffers_km), function(buffer_km) {
       arrow::read_parquet(sao_paulo_2010_idw[basename(sao_paulo_2010_idw) ==
@@ -398,7 +336,6 @@ list(
           bogota_2018_education_estimates[[key]],
           cdmx_2020_education_estimates[[key]],
           santiago_2017_education_estimates[[key]],
-          santiago_2024_education_estimates[[key]],
           sao_paulo_2010_education_estimates[[key]]),
         inc_runs = list(
           cdmx_2020_income_estimates[[key]],
@@ -432,14 +369,6 @@ list(
           year_filter = analysis_year)
       result[, `:=`(city = "Santiago", city_id = "santiago_2017")]
       results[["santiago_2017"]] <- result
-      result <- compute_exposure_regressions_individual(
-          exposure_dt = santiago_2024_exposure_inputs[[
-            as.character(individual_exposure_buffer_km)]],
-          individual_dt = arrow::read_parquet(santiago_2024_education_population),
-          group_col = "edu_quintile",
-          year_filter = analysis_year)
-      result[, `:=`(city = "Santiago (comuna, 2024)", city_id = "santiago_2024")]
-      results[["santiago_2024"]] <- result
       result <- compute_exposure_regressions_individual(
           exposure_dt = sao_paulo_2010_exposure_inputs[[
             as.character(individual_exposure_buffer_km)]],

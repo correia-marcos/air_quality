@@ -90,30 +90,6 @@ list(
       out_dir = here::here("data", "processed", "distances_matrices", "santiago_2017")),
     format = "file"),
 
-  targets::tar_target(santiago_2024_distance_geography,
-    sf::st_read(
-      santiago_geography[basename(santiago_geography) ==
-        "gran_santiago_area_2024.gpkg"],
-      quiet = TRUE)),
-
-  targets::tar_target(santiago_2024_distance_matrices,
-    {
-      sf::sf_use_s2(TRUE)
-      compute_distance_matrices(
-        stations_sf = santiago_distance_stations,
-        station_id_col = "station_name",
-        geo_sf = santiago_2024_distance_geography,
-        geo_id_col = "CUT",
-        distance_metric = distance_metric,
-        representative_point = distance_representative_point)
-    }),
-
-  targets::tar_target(santiago_2024_distances,
-    write_distance_matrices(
-      result = santiago_2024_distance_matrices,
-      out_dir = here::here("data", "processed", "distances_matrices", "santiago_2024")),
-    format = "file"),
-
   targets::tar_target(sao_paulo_distance_stations,
     sf::st_read(
       sao_paulo_stations_filter[basename(sao_paulo_stations_filter) ==
@@ -146,7 +122,6 @@ list(
 
   targets::tar_target(distances,
     c(bogota_2018_distances, cdmx_2020_distances, santiago_2017_distances,
-      santiago_2024_distances,
-        sao_paulo_2010_distances),
+      sao_paulo_2010_distances),
     format = "file")
 )

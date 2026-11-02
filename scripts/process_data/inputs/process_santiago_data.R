@@ -3,14 +3,16 @@
 # ========================================================================================
 #' @Goal: Prepare geography, stations, pollution and census data for Santiago.
 #
-#' @Description: Prepare Gran Santiago using 2017 zones and 2024 urban commune parts.
+#' @Description: Prepare Gran Santiago with the 2017 census zones and the 2017 census.
 # Geography and station selection return spatial objects. Pollution and census functions
 # also write their large datasets while processing. All sources must be available locally.
+# The 2024 communes and census are prepared by
+# scripts/process_data/not_in_paper/santiago_2024/process_santiago_2024_data.R.
 #
 #' @Summary:
 #   I.   Import data: source functions, declare paths and read station locations.
-#   II.  Process data: prepare geography, select stations and process pollution/census.
-#   III. Save outputs: save geographic layers and selected stations.
+#   II.  Process data: prepare the zones, select stations and process pollution/census.
+#   III. Save outputs: save the zones and the selected stations.
 #
 #' @Date: January 2026
 #' @Author: Marcos
@@ -32,36 +34,31 @@ load_city_modules()
 sf::sf_use_s2(TRUE)
 cfg <- santiago_cfg
 
-# Set the source folders; the two census vintages use separate geographic inputs.
+# Set the source folders.
 dir_sources        <- cfg$dl_dir
-dir_geography      <- here::here(dir_sources, "metro_area")
-dir_geography_2017 <- here::here(dir_geography, "2017")
+dir_geography_2017 <- here::here(dir_sources, "metro_area", "2017")
 dir_census         <- here::here(dir_sources, "census")
-dir_census_2024    <- here::here(dir_census, "2024")
 dir_pollution      <- here::here(dir_sources, "ground_stations")
 
 # Set the output folders, including the working copy of the 2017 census database.
 out_geography   <- here::here(cfg$out_dir, "geospatial_data", "santiago")
 out_pollution   <- here::here(cfg$out_dir, "monitoring_stations")
 out_census_2017 <- here::here(cfg$out_dir, "census", "santiago_2017")
-out_census_2024 <- here::here(cfg$out_dir, "census", "santiago_2024")
 dir_work_2017   <- here::here(cfg$out_dir, "census_extracted", "santiago", "2017")
 
 # Name the preserved geography, census and station files.
-file_geography_2024 <- here::here(dir_geography, "Cartografia_censo2024_Pais.zip")
-file_metro_2017     <- here::here(dir_geography_2017, "GRAN_SANTIAGO_13_metro.geojson")
-file_zones_2017     <- here::here(dir_geography_2017, "GRAN_SANTIAGO_13_zonas.geojson")
-file_count_2017     <- here::here(dir_geography_2017, "GRAN_SANTIAGO_13_count.json")
-file_census_2017    <- here::here(dir_census, "2017", "censo2017.duckdb")
-file_stations       <- here::here(dir_sources, "stations_metadata",
-                                  "SINCA_metadata_stations_20260113_1616.csv")
+file_metro_2017  <- here::here(dir_geography_2017, "GRAN_SANTIAGO_13_metro.geojson")
+file_zones_2017  <- here::here(dir_geography_2017, "GRAN_SANTIAGO_13_zonas.geojson")
+file_count_2017  <- here::here(dir_geography_2017, "GRAN_SANTIAGO_13_count.json")
+file_census_2017 <- here::here(dir_census, "2017", "censo2017.duckdb")
+file_stations    <- here::here(dir_sources, "stations_metadata",
+                               "SINCA_metadata_stations_20260113_1616.csv")
 
-# Check both vintages before processing writes any output.
-required_sources <- c(file_geography_2024, file_metro_2017, file_zones_2017,
-                      file_count_2017, file_stations, dir_pollution, file_census_2017)
+# Check the sources before processing writes any output.
+required_sources <- c(file_metro_2017, file_zones_2017, file_count_2017,
+                      file_stations,   dir_pollution,   file_census_2017)
 processing_files(required_sources, "Santiago sources")
-preflight_census_inputs("santiago", c(census_2017 = file_census_2017,
-                                    census_2024 = dir_census_2024))
+preflight_census_inputs("santiago", c(census_2017 = file_census_2017))
 
 # Read the monitoring-station locations.
 station_locations <- read.csv(file_stations)
@@ -69,18 +66,12 @@ station_locations <- read.csv(file_stations)
 # ========================================================================================
 # II: Process data
 # ========================================================================================
-# Prepare both vintages; the 2017 zones determine which stations are selected.
+# Prepare the 2017 census zones; they determine which stations are selected.
 zones_2017 <- santiago_prepare_metro_area_2017(metro_file = file_metro_2017,
                                                zones_file = file_zones_2017,
                                                count_file = file_count_2017)
 
-# Gran Santiago follows INE urban limits; keep_municipality applies to Metro Santiago.
-metro_2024 <- santiago_prepare_metro_area_2024(source_zip        = file_geography_2024,
-                                               type              = "gran_santiago",
-                                               level             = "mpio",
-                                               keep_municipality = cfg$cities_in_metro,
-                                               dissolve_by       = "CUT")
-
+# Select the stations within the buffer of the 2017 zones.
 stations  <- santiago_filter_stations_in_metro(stations_df = station_locations,
                                                metro_area  = zones_2017,
                                                radius_km   = cfg$station_buffer_km,
@@ -94,7 +85,7 @@ pollution   <- santiago_process_stations_data_to_parquet(data_folder = dir_pollu
                                                          out_dir     = out_pollution,
                                                          out_name    = "santiago_metro")
 
-# Process each census vintage; both calls save individual records and summaries.
+# Process the 2017 census; the call saves individual records and zone summaries.
 census_2017 <- santiago_process_census_2017(sf_data     = zones_2017,
                                             match_col   = "zona_id",
                                             source_db   = file_census_2017,
@@ -102,23 +93,13 @@ census_2017 <- santiago_process_census_2017(sf_data     = zones_2017,
                                             out_dir     = out_census_2017,
                                             return_data = FALSE)
 
-census_2024 <- santiago_process_census_2024(census_dir  = dir_census_2024,
-                                            sf_data     = metro_2024,
-                                            match_col   = "CUT",
-                                            out_dir     = out_census_2024,
-                                            overwrite   = TRUE,
-                                            return_data = FALSE)
-
 # ========================================================================================
 # III: Save outputs
 # ========================================================================================
+# Save the 2017 zones and the selected stations.
 zones_2017_file <- write_geopackage(
   x    = zones_2017,
   path = here::here(out_geography, "gran_santiago_zonas_2017.gpkg"))
-
-metro_2024_file <- write_geopackage(
-  x    = metro_2024,
-  path = here::here(out_geography, "gran_santiago_area_2024.gpkg"))
 
 stations_file <- write_geopackage(
   x    = stations,

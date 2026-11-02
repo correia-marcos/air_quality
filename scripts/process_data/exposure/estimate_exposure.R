@@ -32,34 +32,30 @@ dir_dist <- here::here("data", "processed", "distances_matrices")
 dir_out  <- here::here("data", "processed", "idw_regressions")
 
 # Set the geographic-unit-to-station distances used to measure coverage
-dist_bogota       <- here::here(dir_dist, "bogota_2018",
-                                "matrix_geo_station_distances.parquet")
-dist_cdmx         <- here::here(dir_dist, "cdmx_2020",
-                                "matrix_geo_station_distances.parquet")
-dist_santiago     <- here::here(dir_dist, "santiago_2017",
-                                "matrix_geo_station_distances.parquet")
-dist_santiago_rob <- here::here(dir_dist, "santiago_2024",
-                                "matrix_geo_station_distances.parquet")
-dist_sp           <- here::here(dir_dist, "sao_paulo_2010",
-                                "matrix_geo_station_distances.parquet")
+dist_bogota   <- here::here(dir_dist, "bogota_2018",
+                            "matrix_geo_station_distances.parquet")
+dist_cdmx     <- here::here(dir_dist, "cdmx_2020",
+                            "matrix_geo_station_distances.parquet")
+dist_santiago <- here::here(dir_dist, "santiago_2017",
+                            "matrix_geo_station_distances.parquet")
+dist_sp       <- here::here(dir_dist, "sao_paulo_2010",
+                            "matrix_geo_station_distances.parquet")
 
 # Read individual group membership; income exists only for CDMX and São Paulo.
-individual_bogota       <- read_idw_artifact(dir_idw, "bogota_2018", "indiv_groups")
-individual_cdmx         <- read_idw_artifact(dir_idw, "cdmx_2020", "indiv_groups")
-individual_santiago     <- read_idw_artifact(dir_idw, "santiago_2017", "indiv_groups")
-individual_santiago_rob <- read_idw_artifact(dir_idw, "santiago_2024", "indiv_groups")
-individual_sp           <- read_idw_artifact(dir_idw, "sao_paulo_2010", "indiv_groups")
-individual_cdmx_inc     <- read_idw_artifact(dir_idw, "cdmx_2020", "indiv_groups",
+individual_bogota   <- read_idw_artifact(dir_idw, "bogota_2018", "indiv_groups")
+individual_cdmx     <- read_idw_artifact(dir_idw, "cdmx_2020", "indiv_groups")
+individual_santiago <- read_idw_artifact(dir_idw, "santiago_2017", "indiv_groups")
+individual_sp       <- read_idw_artifact(dir_idw, "sao_paulo_2010", "indiv_groups")
+individual_cdmx_inc <- read_idw_artifact(dir_idw, "cdmx_2020", "indiv_groups",
                                          suffix = "_income")
-individual_sp_inc       <- read_idw_artifact(dir_idw, "sao_paulo_2010", "indiv_groups",
+individual_sp_inc   <- read_idw_artifact(dir_idw, "sao_paulo_2010", "indiv_groups",
                                          suffix = "_income")
 
 # Read exposure for each buffer; the income models use these same estimates.
-exposure_bogota_by_buffer       <- list()
-exposure_cdmx_by_buffer         <- list()
-exposure_santiago_by_buffer     <- list()
-exposure_santiago_rob_by_buffer <- list()
-exposure_sp_by_buffer           <- list()
+exposure_bogota_by_buffer   <- list()
+exposure_cdmx_by_buffer     <- list()
+exposure_santiago_by_buffer <- list()
+exposure_sp_by_buffer       <- list()
 for (buffer_km in exposure_buffers_km) {
   exposure_bogota_by_buffer[[as.character(buffer_km)]] <- read_idw_artifact(
       dir_idw, "bogota_2018", "idw_exposure", buffer_km)
@@ -67,8 +63,6 @@ for (buffer_km in exposure_buffers_km) {
       dir_idw, "cdmx_2020", "idw_exposure", buffer_km)
   exposure_santiago_by_buffer[[as.character(buffer_km)]] <- read_idw_artifact(
       dir_idw, "santiago_2017", "idw_exposure", buffer_km)
-  exposure_santiago_rob_by_buffer[[as.character(buffer_km)]] <- read_idw_artifact(
-      dir_idw, "santiago_2024", "idw_exposure", buffer_km)
   exposure_sp_by_buffer[[as.character(buffer_km)]] <- read_idw_artifact(
       dir_idw, "sao_paulo_2010", "idw_exposure", buffer_km)
 }
@@ -84,11 +78,10 @@ city_runs_by_buffer <- list()
 buffer_km <- exposure_buffers_km[1]
 
 for (buffer_km in exposure_buffers_km) {
-  exposure_bogota       <- exposure_bogota_by_buffer[[as.character(buffer_km)]]
-  exposure_cdmx         <- exposure_cdmx_by_buffer[[as.character(buffer_km)]]
-  exposure_santiago     <- exposure_santiago_by_buffer[[as.character(buffer_km)]]
-  exposure_santiago_rob <- exposure_santiago_rob_by_buffer[[as.character(buffer_km)]]
-  exposure_sp           <- exposure_sp_by_buffer[[as.character(buffer_km)]]
+  exposure_bogota   <- exposure_bogota_by_buffer[[as.character(buffer_km)]]
+  exposure_cdmx     <- exposure_cdmx_by_buffer[[as.character(buffer_km)]]
+  exposure_santiago <- exposure_santiago_by_buffer[[as.character(buffer_km)]]
+  exposure_sp       <- exposure_sp_by_buffer[[as.character(buffer_km)]]
 
   # Bogotá: education quintiles
   bogota <- run_city_exposure(city           = "Bogota",
@@ -114,7 +107,7 @@ for (buffer_km in exposure_buffers_km) {
                             year           = analysis_year,
                             buffer_km      = buffer_km)
 
-  # Santiago: education quintiles, zonas censales 2017 (main specification)
+  # Santiago: education quintiles, zonas censales 2017
   santiago <- run_city_exposure(city           = "Santiago",
                                 city_id        = "santiago_2017",
                                 exposure_dt    = exposure_santiago,
@@ -125,18 +118,6 @@ for (buffer_km in exposure_buffers_km) {
                                 n_groups       = 5L,
                                 year           = analysis_year,
                                 buffer_km      = buffer_km)
-
-  # Santiago 2024: retain the deferred robustness specification
-  santiago_rob <- run_city_exposure(city           = "Santiago (comuna, 2024)",
-                                    city_id        = "santiago_2024",
-                                    exposure_dt    = exposure_santiago_rob,
-                                    individual_dt  = individual_santiago_rob,
-                                    geo_station_pq = dist_santiago_rob,
-                                    socio_var      = "education",
-                                    group_col      = "edu_quintile",
-                                    n_groups       = 5L,
-                                    year           = analysis_year,
-                                    buffer_km      = buffer_km)
 
   # São Paulo: education quintiles
   sao_paulo <- run_city_exposure(city           = "Sao Paulo",
@@ -176,12 +157,12 @@ for (buffer_km in exposure_buffers_km) {
 
   # Combine estimates and coverage across cities.
   tables <- stack_exposure_runs(
-    edu_runs = list(bogota, cdmx, santiago, santiago_rob, sao_paulo),
+    edu_runs = list(bogota, cdmx, santiago, sao_paulo),
     inc_runs = list(cdmx_inc, sao_paulo_inc))
 
   city_runs_by_buffer[[as.character(buffer_km)]] <- list(
-      bogota = bogota, cdmx = cdmx, santiago = santiago, santiago_rob = santiago_rob,
-      sao_paulo = sao_paulo, cdmx_income = cdmx_inc, sao_paulo_income = sao_paulo_inc)
+      bogota = bogota, cdmx = cdmx, santiago = santiago, sao_paulo = sao_paulo,
+      cdmx_income = cdmx_inc, sao_paulo_income = sao_paulo_inc)
   estimates_by_buffer[[as.character(buffer_km)]] <- tables
 }
 
@@ -190,52 +171,44 @@ for (buffer_km in exposure_buffers_km) {
 # ---
 
 # Estimate the individual-level robustness check at 3 km.
-exposure_bogota_3km       <- exposure_bogota_by_buffer[[
+exposure_bogota_3km   <- exposure_bogota_by_buffer[[
   as.character(individual_exposure_buffer_km)]]
-exposure_cdmx_3km         <- exposure_cdmx_by_buffer[[
+exposure_cdmx_3km     <- exposure_cdmx_by_buffer[[
   as.character(individual_exposure_buffer_km)]]
-exposure_santiago_3km     <- exposure_santiago_by_buffer[[
+exposure_santiago_3km <- exposure_santiago_by_buffer[[
   as.character(individual_exposure_buffer_km)]]
-exposure_santiago_rob_3km <- exposure_santiago_rob_by_buffer[[
-  as.character(individual_exposure_buffer_km)]]
-exposure_sp_3km           <- exposure_sp_by_buffer[[
+exposure_sp_3km       <- exposure_sp_by_buffer[[
   as.character(individual_exposure_buffer_km)]]
 
-ci_ind_bogota       <- compute_exposure_regressions_individual(
+ci_ind_bogota   <- compute_exposure_regressions_individual(
   exposure_dt   = exposure_bogota_3km, 
   individual_dt = individual_bogota,
   group_col     = "edu_quintile", 
   year_filter   = analysis_year)
-ci_ind_cdmx         <- compute_exposure_regressions_individual(
+ci_ind_cdmx     <- compute_exposure_regressions_individual(
   exposure_dt   = exposure_cdmx_3km, 
   individual_dt = individual_cdmx,
   group_col     = "edu_quintile", 
   year_filter   = analysis_year)
-ci_ind_santiago     <- compute_exposure_regressions_individual(
+ci_ind_santiago <- compute_exposure_regressions_individual(
   exposure_dt   = exposure_santiago_3km,
   individual_dt = individual_santiago,
   group_col     = "edu_quintile",
   year_filter   = analysis_year)
-ci_ind_santiago_rob <- compute_exposure_regressions_individual(
-  exposure_dt   = exposure_santiago_rob_3km,
-  individual_dt = individual_santiago_rob,
-  group_col     = "edu_quintile",
-  year_filter   = analysis_year)
-ci_ind_sp           <- compute_exposure_regressions_individual(
+ci_ind_sp       <- compute_exposure_regressions_individual(
   exposure_dt   = exposure_sp_3km,
   individual_dt = individual_sp,
   group_col     = "edu_quintile",
   year_filter   = analysis_year)
 
 # Label each run and combine the individual-regression estimates.
-ci_ind_bogota[,       `:=`(city = "Bogota", city_id = "bogota_2018")]
-ci_ind_cdmx[,         `:=`(city = "CDMX", city_id = "cdmx_2020")]
-ci_ind_santiago[,     `:=`(city = "Santiago", city_id = "santiago_2017")]
-ci_ind_santiago_rob[, `:=`(city = "Santiago (comuna, 2024)", city_id = "santiago_2024")]
-ci_ind_sp[,           `:=`(city = "Sao Paulo", city_id = "sao_paulo_2010")]
+ci_ind_bogota[,   `:=`(city = "Bogota", city_id = "bogota_2018")]
+ci_ind_cdmx[,     `:=`(city = "CDMX", city_id = "cdmx_2020")]
+ci_ind_santiago[, `:=`(city = "Santiago", city_id = "santiago_2017")]
+ci_ind_sp[,       `:=`(city = "Sao Paulo", city_id = "sao_paulo_2010")]
 
 ci_individual <- data.table::rbindlist(
-  list(ci_ind_bogota, ci_ind_cdmx, ci_ind_santiago, ci_ind_santiago_rob, ci_ind_sp),
+  list(ci_ind_bogota, ci_ind_cdmx, ci_ind_santiago, ci_ind_sp),
   fill = TRUE)
 
 ci_individual[, `:=`(year = analysis_year, buffer_km = individual_exposure_buffer_km,

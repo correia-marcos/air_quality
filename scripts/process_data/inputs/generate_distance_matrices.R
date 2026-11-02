@@ -6,13 +6,13 @@
 #' @Description: This script calculates distances for outlier detection and spatial
 # interpolation (IDW). For each city, it computes two types of matrices: the
 # distance between individual monitoring stations, and the distance from census geographic
-# units to all stations. Results are saved as Parquet files. Santiago uses 2017 zones
-# for the main specification and 2024 urban commune parts for a robustness check.
+# units to all stations. Results are saved as Parquet files. Santiago uses its 2017
+# census zones.
 #
 #' @Summary:
 #   I.   Import data: station locations, geographic units, and distance settings.
 #   II.  Process data: compute two distance tables for each city/geographic vintage.
-#   III. Save outputs: write the five matrix pairs in the same order.
+#   III. Save outputs: write the four matrix pairs in the same order.
 #
 #' @Date: January 2026
 #' @Author: Marcos
@@ -48,8 +48,6 @@ gpkg_cdmx_metro_area          <- here::here(dir_geospatial, "cdmx",
                                             "cdmx_area_metro_municipalities_2024.gpkg")
 gpkg_santiago_2017_zonas      <- here::here(dir_geospatial, "santiago",
                                             "gran_santiago_zonas_2017.gpkg")
-gpkg_santiago_2024_metro_area <- here::here(dir_geospatial, "santiago",
-                                            "gran_santiago_area_2024.gpkg")
 gpkg_sp_2010_metro_area       <- here::here(dir_geospatial, "sao_paulo",
                                             "sao_paulo_metro_2010_weighting_areas.gpkg")
 
@@ -63,7 +61,6 @@ sp_stations_2010_sf       <- sf::st_read(gpkg_stations_sp_2010)
 bogota_metro_2018_sf   <- sf::st_read(gpkg_bogota_2018_metro_area)
 cdmx_metro_sf          <- sf::st_read(gpkg_cdmx_metro_area)
 santiago_zonas_2017_sf <- sf::st_read(gpkg_santiago_2017_zonas)
-santiago_metro_2024_sf <- sf::st_read(gpkg_santiago_2024_metro_area)
 sp_metro_2010_sf       <- sf::st_read(gpkg_sp_2010_metro_area)
 
 # ========================================================================================
@@ -85,20 +82,12 @@ cdmx_distances <- compute_distance_matrices(stations_sf = cdmx_stations_sf,
     distance_metric      = distance_metric,
     representative_point = distance_representative_point)
 
-# Compute distances for Santiago's main specification (2017 census zones)
+# Compute distances for Santiago (2017 census zones)
 santiago_zona_distances <- compute_distance_matrices(
     stations_sf          = santiago_stations_2017_sf,
     station_id_col       = "station_name",
     geo_sf               = santiago_zonas_2017_sf,
     geo_id_col           = "zona_id",
-    distance_metric      = distance_metric,
-    representative_point = distance_representative_point)
-
-# Compute distances for Santiago's robustness check (2024 urban commune parts)
-santiago_distances <- compute_distance_matrices(stations_sf = santiago_stations_2017_sf,
-    station_id_col       = "station_name",
-    geo_sf               = santiago_metro_2024_sf,
-    geo_id_col           = "CUT",
     distance_metric      = distance_metric,
     representative_point = distance_representative_point)
 
@@ -125,10 +114,6 @@ cdmx_files   <- write_distance_matrices(
 santiago_zona_files <- write_distance_matrices(
   result  = santiago_zona_distances,
   out_dir = here::here(outdir_data, "santiago_2017")
-  )
-santiago_files <- write_distance_matrices(
-  result  = santiago_distances,
-  out_dir = here::here(outdir_data, "santiago_2024")
   )
 sao_paulo_files <- write_distance_matrices(
   result  = sao_paulo_distances,

@@ -14,6 +14,7 @@
 #   make DOCKER=1        # run every recipe inside the compose "analysis" service
 #   make download        # large, credential-gated raw pulls (never part of `make all`)
 #   make merra2          # satellite track: panels, station comparison, aerosol figures
+#   make santiago-2024   # Santiago with the 2024 census communes (not in the paper)
 #   make validate        # legacy comparison track
 #   make clean           # remove stage stamps (does NOT delete data or results)
 #   make help
@@ -35,7 +36,7 @@ STAMP := data/.make
 SRC := $(shell find src -name '*.R')
 
 # ---- Phony convenience targets -------------------------------------------------------------
-.PHONY: all download process merra2 distances outliers exposure descriptives \
+.PHONY: all download process merra2 santiago-2024 distances outliers exposure descriptives \
         scatter imputed temporal figures tables context-maps resolution \
         specification-grid specification-panel specification-station-sets \
         validate clean help
@@ -143,6 +144,13 @@ merra2: temporal
 	$(RUN) scripts/tables_images/not_in_paper/satellite/figure_merra2_vs_stations.R
 	$(RUN) scripts/tables_images/not_in_paper/satellite/figure_aerosol_composition.R
 
+# Santiago with the 2024 census communes is not in the paper. It reuses the 2017 station
+# selection and the cleaned panel, then writes its own distances, IDW and tables.
+santiago-2024: outliers
+	$(RUN) scripts/process_data/not_in_paper/santiago_2024/process_santiago_2024_data.R
+	$(RUN) scripts/process_data/not_in_paper/santiago_2024/estimate_santiago_2024_exposure.R
+	$(RUN) scripts/tables_images/not_in_paper/santiago_2024/figure_santiago_2024_exposure.R
+
 # Specification sensitivity (geographic support, IDW buffer and exponent, education
 # groupings). Optional and deliberately NOT a prerequisite of `all`. File map:
 # scripts/process_data/specification_sensitivity/README.md
@@ -203,7 +211,7 @@ clean:
 help:
 	@echo "Targets: all process distances outliers exposure descriptives scatter"
 	@echo "         imputed temporal figures tables"
-	@echo "         merra2 context-maps resolution"
+	@echo "         merra2 santiago-2024 context-maps resolution"
 	@echo "         specification-grid specification-panel specification-station-sets"
 	@echo "         download validate clean"
 	@echo "Add DOCKER=1 to run each step inside the compose \"analysis\" service."

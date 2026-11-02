@@ -256,6 +256,11 @@ additional context figures. Its Stadia basemap may require online access and cre
 these unselected figures are outside offline manuscript verification. Legacy comparison uses
 `make validate` and its separate authorized legacy inputs.
 
+Santiago with the 2024 census communes is not in the paper: `make santiago-2024` builds the
+2024 communes and census, their distances, IDW and exposure tables
+(`data/processed/idw_regressions/santiago_2024/`) and six figures. It needs the preserved
+2024 census cartography and census archive, and the main Santiago products.
+
 ## Checks
 
 ```sh
