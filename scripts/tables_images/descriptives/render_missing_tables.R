@@ -3,9 +3,10 @@
 # ========================================================================================
 #' @Goal: Render missingness by station, month, hour and education.
 #
-#' @Description: Use the original reported-hour panel for station, month and hour tables.
-# These missing shares exclude removals by the outlier procedure. The education
-# table reports available readings among stored station-hour rows in each quintile.
+#' @Description: Use the cleaned panels, which hold every calendar hour, for the station,
+# month and hour tables; their missing shares include readings removed by cleaning. The
+# education table reports available readings in each quintile, grouped as set by
+# missing_quintile_method in config/analysis_settings.R.
 #
 #' @Summary:
 #   I.   Import data: source functions, set paths and read saved summaries.
@@ -29,7 +30,7 @@ city_files  <- c("bogota", "cdmx", "santiago", "sao_paulo_metro")
 
 # Keep each city and dimension in a named list.
 stems <- unlist(lapply(missing_table_dimensions, function(dimension) {
-  sprintf("%s_%s_missing_by_%s", city_files, missing_table_panel, dimension)
+  sprintf("%s_clean_missing_by_%s", city_files, dimension)
 }))
 files_missing <- here::here(dir_missing, paste0(stems, ".parquet"))
 out_missing   <- here::here(dir_tables, paste0(stems, ".tex"))
@@ -48,7 +49,7 @@ dimension_tables <- list()
 tex_missing      <- list()
 for (dimension in missing_table_dimensions) {
   for (city in city_files) {
-    name <- sprintf("%s_%s_missing_by_%s", city, missing_table_panel, dimension)
+    name <- sprintf("%s_clean_missing_by_%s", city, dimension)
     dimension_tables[[name]] <- table_missing_by_dimension(
       missing_list = setNames(list(missing_tables[[name]]), dimension),
       dim = dimension, city_label = city)

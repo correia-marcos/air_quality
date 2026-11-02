@@ -22,6 +22,32 @@
 # ============================================================================================
 
 # --------------------------------------------------------------------------------------------
+# Function: panel_parquet_files
+#
+#' @param dir string; root folder of a station-hour panel.
+#
+#' @return  character scalar; a DuckDB list literal of the panel's Parquet files, for
+#           read_parquet(). Lists files without reading them.
+#
+#' @details
+#   Skips files and folders whose names start with "_" or ".", as arrow::open_dataset()
+#   does by default. The cleaned panels keep diagnostics in _audit/; those files are not
+#   readings and do not share the panels' year partitions, so a recursive glob over the
+#   panel root fails in DuckDB.
+#
+#' @Written_by : Marcos Paulo
+#' @Updated_on : November 2026
+# --------------------------------------------------------------------------------------------
+panel_parquet_files <- function(dir) {
+  files <- list.files(dir, pattern = "\\.parquet$", recursive = TRUE)
+  files <- files[!grepl("(^|/)[._]", files)]
+  if (!length(files)) stop("No Parquet files in ", dir)
+  paths <- gsub("\\\\", "/", file.path(dir, files))
+  paste0("[", paste0("'", paths, "'", collapse = ", "), "]")
+}
+
+
+# --------------------------------------------------------------------------------------------
 # Function: summarize_stations_by_pollutant
 #
 #' @param arrow_dir    string; path to the Arrow pollution dataset.
@@ -74,7 +100,7 @@ summarize_stations_by_pollutant <- function(
   DBI::dbExecute(con, sprintf("PRAGMA memory_limit='%dGB';", as.integer(mem_gb)))
   
   # Create a virtual view over the partitioned Parquet files
-  glob_q <- paste0("'", gsub("\\\\", "/", arrow_dir), "/**/*.parquet'")
+  glob_q <- panel_parquet_files(arrow_dir)
   DBI::dbExecute(con, paste0(
     "CREATE VIEW pollution AS SELECT * FROM read_parquet(", 
     glob_q, ", hive_partitioning = true);"
@@ -221,7 +247,7 @@ compute_who_exceedances <- function(
   
   # 3. Mount Parquet Dataset
   # ----------------------------------------------------------------------------------
-  glob_q <- paste0("'", gsub("\\\\", "/", arrow_dir), "/**/*.parquet'")
+  glob_q <- panel_parquet_files(arrow_dir)
   DBI::dbExecute(con, paste0(
     "CREATE VIEW pollution AS SELECT * FROM read_parquet(",
     glob_q, ", hive_partitioning = true);"
@@ -398,7 +424,7 @@ compute_missing_proportions <- function(
   DBI::dbExecute(con, "LOAD icu;")
   
   # Mount the Parquet dataset as a virtual table
-  glob_q <- paste0("'", gsub("\\\\", "/", arrow_dir), "/**/*.parquet'")
+  glob_q <- panel_parquet_files(arrow_dir)
   DBI::dbExecute(con, paste0(
     "CREATE VIEW pollution AS SELECT * FROM read_parquet(",
     glob_q, ", hive_partitioning = true);"
@@ -604,7 +630,7 @@ count_stations_reporting <- function(arrow_dir,
   DBI::dbExecute(con, "INSTALL icu;")
   DBI::dbExecute(con, "LOAD icu;")
   
-  glob_q <- paste0("'", gsub("\\\\", "/", arrow_dir), "/**/*.parquet'")
+  glob_q <- panel_parquet_files(arrow_dir)
   
   DBI::dbExecute(con, paste0(
     "CREATE VIEW pollution AS SELECT * FROM read_parquet(",
@@ -794,148 +820,282 @@ station_education_quintile <- function(dist_pq, census_file, geo_id_col) {
 
 
 # --------------------------------------------------------------------------------------------
-# Function: compute_missing_by_quintile
+# Function: station_reading_counts
 #
-#' @param city         string; display name for the output row.
-#' @param city_order   integer; row order in the final table.
 #' @param pollution_dir string; hive-partitioned Arrow dataset of cleaned hourly readings.
-#' @param dist_pq      string; geo-to-station distance matrix.
-#' @param census_file  string; individual census file for the city.
-#' @param geo_id_col   string; geographic identifier column in the census.
-#' @param pollutants   character; pollutants to report.
-#' @param year         integer; year to restrict to.
-#' @param report       string; "available" or "missing" shares.
-#' @param mem_gb       numeric; DuckDB memory ceiling in GB. Default 8.
+#' @param pollutants    character; pollutants to count.
+#' @param year          integer; calendar year of the readings, taken from datetime.
+#' @param mem_gb        numeric; DuckDB memory ceiling in GB. Default 8.
 #
-#' @return Long data.table with city, city_order, year, statistic, pollutant, quintile,
-#          value and total_obs. Reads files without writing or modifying them.
+#' @return Long data.table, one row per station and pollutant: n_rows (stored
+#          station-hours), n_available (non-missing cleaned readings), n_reported (finite
+#          readings before cleaning; NA when the panel has no <pollutant>_original column)
+#          and n_removed (reported readings that cleaning set to missing). Reads files
+#          without writing or modifying them.
 #
 #' @details
-#   Groups stations by their nearest census unit's education quintile, then computes
-#   reading availability among matched, stored station-hour rows. Absent rows are not
-#   added to the denominator. This describes coverage, not exposure-estimate uncertainty.
+#   The cleaned panels hold one row per station and calendar hour, so n_rows covers the
+#   whole year. screen_pollution_quality() keeps each reading as reported in
+#   <pollutant>_original; a reported reading that is missing after cleaning was removed by
+#   the gross-value screen or by the statistical outlier procedure.
 #
 #' @Written_by : Marcos Paulo
-#' @Updated_on : August 2026
+#' @Updated_on : November 2026
 # --------------------------------------------------------------------------------------------
-compute_missing_by_quintile <- function(city, city_order, pollution_dir, dist_pq,
-                                        census_file, geo_id_col, pollutants, year,
-                                        report, mem_gb = 8) {
-  if (!dir.exists(pollution_dir)) {
-    stop("Pollution directory not found for ", city, ": ",
-         pollution_dir)
-  }
-  
-  station_q <- station_education_quintile(
-    dist_pq = dist_pq,
-    census_file = census_file,
-    geo_id_col = geo_id_col
-  )
-  
-  if (nrow(station_q) == 0L) {
-    stop("No station-quintile matches for ", city, ".")
-  }
-  
+station_reading_counts <- function(pollution_dir, pollutants, year, mem_gb = 8) {
+  if (!dir.exists(pollution_dir)) stop("Pollution directory not found: ", pollution_dir)
+
   con <- DBI::dbConnect(duckdb::duckdb())
   on.exit(try(DBI::dbDisconnect(con, shutdown = TRUE), silent = TRUE), add = TRUE)
-  
   DBI::dbExecute(con, sprintf("PRAGMA memory_limit='%dGB';", as.integer(mem_gb)))
-  DBI::dbWriteTable(con, "station_q", station_q, overwrite = TRUE)
-  
-  glob <- paste0("'", gsub("\\\\", "/", pollution_dir), "/**/*.parquet'")
-  
+
+  glob <- panel_parquet_files(pollution_dir)
   DBI::dbExecute(con, paste0(
     "CREATE VIEW pollution_raw AS SELECT * FROM read_parquet(",
     glob, ", hive_partitioning = true);"
   ))
-  
+
   cols <- DBI::dbGetQuery(con, "PRAGMA table_info('pollution_raw');")$name
   cols_lower <- tolower(cols)
-  
-  station_col <- cols[match(
-    TRUE,
-    cols_lower %in% c(
-      "station",
-      "station_id",
-      "id_station",
-      "station_code",
-      "codigo_estacion"
-    )
-  )]
-  
-  if (is.na(station_col)) {
-    stop("No station column found for ", city, ".")
-  }
-  
+  station_col <- cols[match(TRUE, cols_lower %in% c(
+    "station", "station_id", "id_station", "station_code", "codigo_estacion"))]
   datetime_col <- cols[match(TRUE, cols_lower == "datetime")]
-  if (is.na(datetime_col)) {
-    stop("No datetime column found for ", city, ".")
+  if (is.na(station_col) || is.na(datetime_col)) {
+    stop("No station or datetime column in ", pollution_dir)
   }
-  
-  present_pollutants <- pollutants[pollutants %in% cols_lower]
-  if (length(present_pollutants) == 0L) {
-    stop("No PM columns found for ", city, ".")
-  }
-  
-  pollutant_select <- paste(
-    vapply(present_pollutants, function(p) {
-      original <- cols[match(p, cols_lower)]
-      paste0('"', original, '" AS ', p)
-    }, character(1)),
-    collapse = ", "
-  )
-  
-  DBI::dbExecute(con, paste0(
-    "CREATE VIEW pollution AS SELECT ",
-    "CAST(\"", station_col, "\" AS VARCHAR) AS station, ",
-    "\"", datetime_col, "\" AS datetime, ",
-    pollutant_select, " ",
-    "FROM pollution_raw;"
-  ))
-  
-  sql_cols <- paste(
-    vapply(present_pollutants, function(p) {
-      paste0(
-        "SUM(CASE WHEN p.", p, " IS NULL THEN 1 ELSE 0 END) AS ", p, "_miss, ",
-        "SUM(CASE WHEN p.", p, " IS NOT NULL THEN 1 ELSE 0 END) AS ", p, "_obs"
-      )
-    }, character(1)),
-    collapse = ", "
-  )
-  
-  q <- sprintf(
-    paste0(
-      "SELECT sq.quintile, COUNT(*) AS total_obs, ", sql_cols, " ",
-      "FROM pollution p ",
-      "INNER JOIN station_q sq ON p.station = sq.station ",
-      "WHERE EXTRACT(year FROM p.datetime) = %d ",
-      "GROUP BY sq.quintile ",
-      "ORDER BY sq.quintile;"
-    ),
-    as.integer(year)
-  )
-  
-  wide <- data.table::as.data.table(DBI::dbGetQuery(con, q))
-  
-  out <- data.table::rbindlist(lapply(present_pollutants, function(p) {
-    num <- if (report == "missing") paste0(p, "_miss") else paste0(p, "_obs")
-    
-    wide[, .(
-      pollutant = p,
-      quintile = quintile,
-      value = get(num) / total_obs,
-      total_obs = total_obs
-    )]
+
+  present <- pollutants[pollutants %in% cols_lower]
+  if (!length(present)) stop("No pollutant columns found in ", pollution_dir)
+
+  # One available, reported and removed count per pollutant; NULL is a missing reading.
+  sql_cols <- vapply(present, function(p) {
+    value <- paste0('"', cols[match(p, cols_lower)], '"')
+    original <- cols[match(paste0(p, "_original"), cols_lower)]
+    reported <- if (is.na(original)) "NULL" else
+      sprintf('SUM(CASE WHEN isfinite("%s") THEN 1 ELSE 0 END)', original)
+    removed <- if (is.na(original)) "NULL" else
+      sprintf('SUM(CASE WHEN isfinite("%s") AND %s IS NULL THEN 1 ELSE 0 END)',
+              original, value)
+    sprintf("COUNT(%s) AS %s_available, %s AS %s_reported, %s AS %s_removed",
+            value, p, reported, p, removed, p)
+  }, character(1))
+
+  wide <- data.table::as.data.table(DBI::dbGetQuery(con, sprintf(paste0(
+    'SELECT CAST("%s" AS VARCHAR) AS station, COUNT(*) AS n_rows, %s ',
+    'FROM pollution_raw WHERE EXTRACT(year FROM "%s") = %d GROUP BY 1;'),
+    station_col, paste(sql_cols, collapse = ", "), datetime_col, as.integer(year))))
+
+  data.table::rbindlist(lapply(present, function(p) {
+    wide[, .(station, pollutant = p, n_rows,
+             n_available = as.numeric(get(paste0(p, "_available"))),
+             n_reported  = as.numeric(get(paste0(p, "_reported"))),
+             n_removed   = as.numeric(get(paste0(p, "_removed"))))]
   }))
-  
-  out[, `:=`(
-    city = city,
-    city_order = city_order,
-    year = year,
-    statistic = report
-  )]
-  
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: education_quintile_shares
+#
+#' @param station_shares data.table; one row per station and pollutant with numerator,
+#                        denominator and reporting (logical: the station measures it).
+#' @param method         "nearest_unit" (default) or "idw"; see @details.
+#' @param dist_pq        string; geo-to-station distance matrix.
+#' @param census_file    string; individual census file for the city.
+#' @param geo_id_col     string; geographic identifier column in the census.
+#' @param buffer_km      numeric; idw only: radius around each unit's representative point.
+#' @param distance_power numeric; idw only: weights are 1 / distance ^ distance_power.
+#
+#' @return data.table with pollutant, quintile, value and total_obs, ordered by pollutant
+#          (as first listed) and quintile. Reads files without writing them.
+#
+#' @details
+#   Both methods use only the stations reporting the pollutant in the year (reporting),
+#   the stations counted in the manuscript's station table (count_stations_reporting()).
+#   Stations in the panel that never measure the pollutant would otherwise count as
+#   missing every hour.
+#
+#   "nearest_unit": each station takes the education quintile of its nearest census unit
+#   (station_education_quintile(): units in five equal-count bins by mean schooling).
+#   A quintile's value pools its stations, sum(numerator) / sum(denominator), and
+#   total_obs is sum(denominator). Quintiles with no reporting station are dropped.
+#
+#   "idw", as described in the paper draft: each station reporting the pollutant has its
+#   own share, numerator / denominator. Each census unit averages the shares of the
+#   reporting stations within buffer_km, weighted by 1 / distance ^ distance_power; zero
+#   distances are excluded, as in aggregate_idw_exposure(). Every person takes the share
+#   of the unit of residence. Persons are cut into city-wide education quintiles with
+#   assign_socio_group() (equal population, person weights), the grouping of the exposure
+#   analysis. value is the person-weighted mean share of the persons whose unit has a
+#   share, and total_obs is the number of those person records. Units with no reporting
+#   station within the buffer have no share.
+#
+#' @Written_by : Marcos Paulo
+#' @Updated_on : November 2026
+# --------------------------------------------------------------------------------------------
+education_quintile_shares <- function(station_shares, method = c("nearest_unit", "idw"),
+                                      dist_pq, census_file, geo_id_col,
+                                      buffer_km = 3, distance_power = 1) {
+  method <- match.arg(method)
+  pollutant_order <- unique(station_shares$pollutant)
+
+  # Keep the stations reporting each pollutant in the year.
+  station_shares <- station_shares[reporting & denominator > 0]
+
+  if (method == "nearest_unit") {
+    station_q <- station_education_quintile(dist_pq = dist_pq, census_file = census_file,
+                                            geo_id_col = geo_id_col)
+    if (nrow(station_q) == 0L) stop("No station-quintile matches for ", census_file)
+    joined <- merge(station_shares, station_q, by = "station", allow.cartesian = TRUE)
+    out <- joined[, .(value = sum(numerator) / sum(denominator),
+                      total_obs = sum(denominator)), by = .(pollutant, quintile)]
+  } else {
+    dist <- data.table::as.data.table(arrow::read_parquet(dist_pq))
+    census <- data.table::as.data.table(arrow::read_parquet(census_file))
+    data.table::setnames(dist, c(
+      find_col(dist, c("station", "station_id", "id_station", "station_code",
+                       "codigo_estacion"), dist_pq),
+      find_col(dist, c("geo_id", geo_id_col, "GEO_ID", "CVE_MUN", "CUT",
+                       "code_weighting"), dist_pq),
+      find_col(dist, c("distance_km", "dist_km", "distance", "dist"), dist_pq)),
+      c("station", "geo_id", "distance"))
+    data.table::setnames(census, c(
+      find_col(census, c(geo_id_col, "geo_id", "GEO_ID", "CVE_MUN", "CUT",
+                         "code_weighting"), census_file),
+      find_col(census, c("education_mean", "escolaridad", "educ_years",
+                         "years_schooling"), census_file),
+      find_col(census, c("person_weight", "weight", "weights", "fe", "factor_expansion",
+                         "n", "FACTOR"), census_file)),
+      c("geo_id", "education", "weight"))
+    census <- census[, .(geo_id = as.character(geo_id), education, weight)]
+    census <- census[!is.na(geo_id) & !is.na(education) & !is.na(weight) & weight > 0]
+
+    # Inverse-distance weights for positive distances within the buffer.
+    pairs <- dist[!is.na(distance) & distance > 0 & distance <= buffer_km,
+                  .(station = as.character(station), geo_id = as.character(geo_id),
+                    w = 1 / distance ^ distance_power)]
+    pairs[, geo_id := reconcile_geo_ids(geo_id, census$geo_id,
+                                        label = basename(census_file))]
+
+    # Each unit averages the shares of its reporting stations.
+    shares <- station_shares[, .(station, pollutant, share = numerator / denominator)]
+    unit <- merge(pairs, shares, by = "station", allow.cartesian = TRUE)[
+      , .(share = sum(w * share) / sum(w)), by = .(geo_id, pollutant)]
+
+    # Persons take their unit's share and their city-wide education quintile.
+    assign_socio_group(census, var = "education", wcol = "weight", n = 5L,
+                       out_col = "quintile")
+    persons <- merge(census[!is.na(quintile), .(geo_id, quintile, weight)], unit,
+                     by = "geo_id", allow.cartesian = TRUE)
+    out <- persons[, .(value = sum(weight * share) / sum(weight),
+                       total_obs = as.numeric(.N)), by = .(pollutant, quintile)]
+    out[, quintile := as.numeric(quintile)]
+  }
+
+  out[, pollutant := factor(pollutant, levels = pollutant_order)]
+  data.table::setorder(out, pollutant, quintile)
+  out[, pollutant := as.character(pollutant)]
+  out[]
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: compute_missing_by_quintile
+#
+#' @param city           string; display name for the output row.
+#' @param city_order     integer; row order in the final table.
+#' @param pollution_dir  string; hive-partitioned Arrow dataset of cleaned hourly readings.
+#' @param dist_pq        string; geo-to-station distance matrix.
+#' @param census_file    string; individual census file for the city.
+#' @param geo_id_col     string; geographic identifier column in the census.
+#' @param pollutants     character; pollutants to report.
+#' @param year           integer; year to restrict to.
+#' @param report         string; "available" or "missing" shares.
+#' @param method         "nearest_unit" (default) or "idw"; see education_quintile_shares().
+#' @param buffer_km      numeric; idw only: radius around each unit's representative point.
+#' @param distance_power numeric; idw only: inverse-distance exponent.
+#' @param mem_gb         numeric; DuckDB memory ceiling in GB. Default 8.
+#
+#' @return Long data.table with pollutant, quintile, value, total_obs, city, city_order,
+#          year and statistic. Reads files without writing or modifying them.
+#
+#' @details
+#   Counts each station's stored and non-missing readings with station_reading_counts(),
+#   then groups them by education quintile with education_quintile_shares(). The default
+#   "nearest_unit" pools the reporting stations nearest to each quintile's units; "idw"
+#   averages station shares into census units and then individuals, as the paper draft
+#   describes.
+#   This describes coverage, not exposure-estimate uncertainty.
+#
+#' @Written_by : Marcos Paulo
+#' @Updated_on : November 2026
+# --------------------------------------------------------------------------------------------
+compute_missing_by_quintile <- function(city, city_order, pollution_dir, dist_pq,
+                                        census_file, geo_id_col, pollutants, year,
+                                        report, method = "nearest_unit", buffer_km = 3,
+                                        distance_power = 1, mem_gb = 8) {
+  counts <- station_reading_counts(pollution_dir = pollution_dir, pollutants = pollutants,
+                                   year = year, mem_gb = mem_gb)
+
+  # Available or missing readings over every stored station-hour.
+  counts[, `:=`(numerator = if (report == "missing") n_rows - n_available else n_available,
+                denominator = n_rows, reporting = n_available > 0)]
+
+  out <- education_quintile_shares(station_shares = counts, method = method,
+                                   dist_pq = dist_pq, census_file = census_file,
+                                   geo_id_col = geo_id_col, buffer_km = buffer_km,
+                                   distance_power = distance_power)
+  out[, `:=`(city = city, city_order = city_order, year = year, statistic = report)]
+
   message("[missing by quintile] ", city, " done.")
+  out[]
+}
+
+
+# --------------------------------------------------------------------------------------------
+# Function: compute_cleaning_removals_by_quintile
+#
+#' @param city,city_order,pollution_dir,dist_pq,census_file,geo_id_col,pollutants,year
+#                        As in compute_missing_by_quintile().
+#' @param method,buffer_km,distance_power As in compute_missing_by_quintile().
+#' @param mem_gb         numeric; DuckDB memory ceiling in GB. Default 8.
+#
+#' @return Long data.table with the columns of compute_missing_by_quintile(); value is
+#          the share of reported readings that cleaning removed and statistic is
+#          "removed_by_cleaning". Reads files without writing or modifying them.
+#
+#' @details
+#   Supplements the availability table: it asks whether cleaning, rather than reporting,
+#   removes more readings in some education quintiles. Removed readings are the finite
+#   reported values (<pollutant>_original) that are missing after the gross-value screen
+#   and the statistical outlier procedure (station_reading_counts()). Stations reporting a
+#   pollutant are those with at least one reported reading; the grouping is the same as
+#   in compute_missing_by_quintile().
+#
+#' @Written_by : Marcos Paulo
+#' @Updated_on : November 2026
+# --------------------------------------------------------------------------------------------
+compute_cleaning_removals_by_quintile <- function(city, city_order, pollution_dir, dist_pq,
+                                                  census_file, geo_id_col, pollutants,
+                                                  year, method = "nearest_unit",
+                                                  buffer_km = 3, distance_power = 1,
+                                                  mem_gb = 8) {
+  counts <- station_reading_counts(pollution_dir = pollution_dir, pollutants = pollutants,
+                                   year = year, mem_gb = mem_gb)
+  if (anyNA(counts$n_reported)) {
+    stop("The panel keeps no reported readings (<pollutant>_original): ", pollution_dir)
+  }
+
+  # Removed readings over reported readings.
+  counts[, `:=`(numerator = n_removed, denominator = n_reported,
+                reporting = n_reported > 0)]
+
+  out <- education_quintile_shares(station_shares = counts, method = method,
+                                   dist_pq = dist_pq, census_file = census_file,
+                                   geo_id_col = geo_id_col, buffer_km = buffer_km,
+                                   distance_power = distance_power)
+  out[, `:=`(city = city, city_order = city_order, year = year,
+             statistic = "removed_by_cleaning")]
   out[]
 }
 

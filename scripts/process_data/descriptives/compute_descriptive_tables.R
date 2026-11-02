@@ -28,6 +28,8 @@ source(here::here("src", "general_utilities", "process", "geo_ids.R"))
 source(here::here("src", "general_utilities", "process", "diagnostics.R"))
 source(here::here("src", "general_utilities", "process", "station_socio.R"))
 source(here::here("src", "general_utilities", "process", "exposure_regressions.R"))
+# assign_socio_group() cuts education quintiles for the "idw" grouping by quintile
+source(here::here("src", "general_utilities", "process", "idw_exposure.R"))
 
 # The shared settings define the year, pollutants and availability measure
 source(here::here("config", "analysis_settings.R"))
@@ -79,27 +81,7 @@ micro_sp       <- here::here(dir_census, "sao_paulo_2010",
 # ========================================================================================
 # II: Process data
 # ========================================================================================
-# Compute missing-reading percentages before and after outlier removal
-missing_bogota_raw <- compute_missing_proportions(arrow_dir   = raw_bogota,
-                                                  pollutants  = summary_pollutants,
-                                                  dims        = missing_dimensions,
-                                                  year_filter = analysis_year)
-
-missing_cdmx_raw <- compute_missing_proportions(arrow_dir   = raw_cdmx,
-                                                pollutants  = summary_pollutants,
-                                                dims        = missing_dimensions,
-                                                year_filter = analysis_year)
-
-missing_santiago_raw <- compute_missing_proportions(arrow_dir   = raw_santiago,
-                                                    pollutants  = summary_pollutants,
-                                                    dims        = missing_dimensions,
-                                                    year_filter = analysis_year)
-
-missing_sp_raw <- compute_missing_proportions(arrow_dir   = raw_sp,
-                                              pollutants  = summary_pollutants,
-                                              dims        = missing_dimensions,
-                                              year_filter = analysis_year)
-
+# Compute missing-reading percentages in the cleaned panels, over every calendar hour
 missing_bogota_clean <- compute_missing_proportions(arrow_dir   = clean_bogota,
                                                     pollutants  = summary_pollutants,
                                                     dims        = missing_dimensions,
@@ -203,45 +185,61 @@ threshold_exceedances <- data.table::rbindlist(list(exceed_bogota,
 
 # Assign stations the education quintile of their nearest census unit
 # Summarize available readings among stored rows for stations with a matched unit
-quintile_bogota <- compute_missing_by_quintile(city          = "Bogota",
-                                               city_order    = 1L,
-                                               pollution_dir = clean_bogota,
-                                               dist_pq       = dist_bogota,
-                                               census_file   = micro_bogota,
-                                               geo_id_col    = "geo_id",
-                                               pollutants    = summary_pollutants,
-                                               year          = analysis_year,
-                                               report        = availability_report)
+quintile_bogota <- compute_missing_by_quintile(
+  city           = "Bogota",
+  city_order     = 1L,
+  pollution_dir  = clean_bogota,
+  dist_pq        = dist_bogota,
+  census_file    = micro_bogota,
+  geo_id_col     = "geo_id",
+  pollutants     = summary_pollutants,
+  year           = analysis_year,
+  report         = availability_report,
+  method         = missing_quintile_method,
+  buffer_km      = missing_quintile_buffer_km,
+  distance_power = idw_distance_power)
 
-quintile_cdmx <- compute_missing_by_quintile(city          = "Mexico City",
-                                             city_order    = 2L,
-                                             pollution_dir = clean_cdmx,
-                                             dist_pq       = dist_cdmx,
-                                             census_file   = micro_cdmx,
-                                             geo_id_col    = "geo_id",
-                                             pollutants    = summary_pollutants,
-                                             year          = analysis_year,
-                                             report        = availability_report)
+quintile_cdmx <- compute_missing_by_quintile(
+  city           = "Mexico City",
+  city_order     = 2L,
+  pollution_dir  = clean_cdmx,
+  dist_pq        = dist_cdmx,
+  census_file    = micro_cdmx,
+  geo_id_col     = "geo_id",
+  pollutants     = summary_pollutants,
+  year           = analysis_year,
+  report         = availability_report,
+  method         = missing_quintile_method,
+  buffer_km      = missing_quintile_buffer_km,
+  distance_power = idw_distance_power)
 
-quintile_santiago <- compute_missing_by_quintile(city          = "Santiago",
-                                                 city_order    = 3L,
-                                                 pollution_dir = clean_santiago,
-                                                 dist_pq       = dist_santiago,
-                                                 census_file   = micro_santiago,
-                                                 geo_id_col    = "geo_id",
-                                                 pollutants    = summary_pollutants,
-                                                 year          = analysis_year,
-                                                 report        = availability_report)
+quintile_santiago <- compute_missing_by_quintile(
+  city           = "Santiago",
+  city_order     = 3L,
+  pollution_dir  = clean_santiago,
+  dist_pq        = dist_santiago,
+  census_file    = micro_santiago,
+  geo_id_col     = "geo_id",
+  pollutants     = summary_pollutants,
+  year           = analysis_year,
+  report         = availability_report,
+  method         = missing_quintile_method,
+  buffer_km      = missing_quintile_buffer_km,
+  distance_power = idw_distance_power)
 
-quintile_sp <- compute_missing_by_quintile(city          = "Sao Paulo",
-                                           city_order    = 4L,
-                                           pollution_dir = clean_sp,
-                                           dist_pq       = dist_sp,
-                                           census_file   = micro_sp,
-                                           geo_id_col    = "geo_id",
-                                           pollutants    = summary_pollutants,
-                                           year          = analysis_year,
-                                           report        = availability_report)
+quintile_sp <- compute_missing_by_quintile(
+  city           = "Sao Paulo",
+  city_order     = 4L,
+  pollution_dir  = clean_sp,
+  dist_pq        = dist_sp,
+  census_file    = micro_sp,
+  geo_id_col     = "geo_id",
+  pollutants     = summary_pollutants,
+  year           = analysis_year,
+  report         = availability_report,
+  method         = missing_quintile_method,
+  buffer_km      = missing_quintile_buffer_km,
+  distance_power = idw_distance_power)
 
 missing_by_quintile <- data.table::rbindlist(list(quintile_bogota, quintile_cdmx,
                                                   quintile_santiago, quintile_sp))
@@ -285,23 +283,7 @@ census_summary <- data.table::rbindlist(list(summary_bogota, summary_cdmx,
 # ========================================================================================
 # III: Save outputs
 # ========================================================================================
-# Save the four missingness tables for each city and panel
-write_missing_proportions(tables   = missing_bogota_raw,
-                          out_dir  = outdir_missing,
-                          out_name = "bogota_raw")
-
-write_missing_proportions(tables   = missing_cdmx_raw,
-                          out_dir  = outdir_missing,
-                          out_name = "cdmx_raw")
-
-write_missing_proportions(tables   = missing_santiago_raw,
-                          out_dir  = outdir_missing,
-                          out_name = "santiago_raw")
-
-write_missing_proportions(tables   = missing_sp_raw,
-                          out_dir  = outdir_missing,
-                          out_name = "sao_paulo_metro_raw")
-
+# Save the four missingness tables for each city
 write_missing_proportions(tables   = missing_bogota_clean,
                           out_dir  = outdir_missing,
                           out_name = "bogota_clean")

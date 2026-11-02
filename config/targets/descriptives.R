@@ -1,37 +1,5 @@
 # Descriptives target declarations. Scientific functions live in src/.
 list(
-  targets::tar_target(bogota_missing_raw,
-    compute_missing_proportions(
-      arrow_dir = bogota_pollution_parquet[
-        basename(bogota_pollution_parquet) == "bogota_metro_dataset"],
-      pollutants = summary_pollutants,
-      dims = missing_dimensions,
-      year_filter = analysis_year)),
-
-  targets::tar_target(cdmx_missing_raw,
-    compute_missing_proportions(
-      arrow_dir = cdmx_pollution_parquet[
-        basename(cdmx_pollution_parquet) == "cdmx_metro_dataset"],
-      pollutants = summary_pollutants,
-      dims = missing_dimensions,
-      year_filter = analysis_year)),
-
-  targets::tar_target(santiago_missing_raw,
-    compute_missing_proportions(
-      arrow_dir = santiago_pollution_parquet[
-        basename(santiago_pollution_parquet) == "santiago_metro_dataset"],
-      pollutants = summary_pollutants,
-      dims = missing_dimensions,
-      year_filter = analysis_year)),
-
-  targets::tar_target(sao_paulo_missing_raw,
-    compute_missing_proportions(
-      arrow_dir = sao_paulo_pollution_parquet[
-        basename(sao_paulo_pollution_parquet) == "sao_paulo_metro_dataset"],
-      pollutants = summary_pollutants,
-      dims = missing_dimensions,
-      year_filter = analysis_year)),
-
   targets::tar_target(bogota_missing_clean,
     compute_missing_proportions(
       arrow_dir = bogota_outliers,
@@ -160,7 +128,10 @@ list(
       geo_id_col = "geo_id",
       pollutants = summary_pollutants,
       year = analysis_year,
-      report = availability_report)),
+      report = availability_report,
+      method = missing_quintile_method,
+      buffer_km = missing_quintile_buffer_km,
+      distance_power = idw_distance_power)),
 
   targets::tar_target(cdmx_quintile_availability,
     compute_missing_by_quintile(
@@ -174,7 +145,10 @@ list(
       geo_id_col = "geo_id",
       pollutants = summary_pollutants,
       year = analysis_year,
-      report = availability_report)),
+      report = availability_report,
+      method = missing_quintile_method,
+      buffer_km = missing_quintile_buffer_km,
+      distance_power = idw_distance_power)),
 
   targets::tar_target(santiago_quintile_availability,
     compute_missing_by_quintile(
@@ -188,7 +162,10 @@ list(
       geo_id_col = "geo_id",
       pollutants = summary_pollutants,
       year = analysis_year,
-      report = availability_report)),
+      report = availability_report,
+      method = missing_quintile_method,
+      buffer_km = missing_quintile_buffer_km,
+      distance_power = idw_distance_power)),
 
   targets::tar_target(sao_paulo_quintile_availability,
     compute_missing_by_quintile(
@@ -202,7 +179,10 @@ list(
       geo_id_col = "geo_id",
       pollutants = summary_pollutants,
       year = analysis_year,
-      report = availability_report)),
+      report = availability_report,
+      method = missing_quintile_method,
+      buffer_km = missing_quintile_buffer_km,
+      distance_power = idw_distance_power)),
 
   targets::tar_target(bogota_census_summary,
     compute_city_census_summary(
@@ -293,34 +273,6 @@ list(
       santiago_census_summary,
       sao_paulo_census_summary))),
 
-  targets::tar_target(bogota_missing_raw_files,
-    write_missing_proportions(
-      tables = bogota_missing_raw,
-      out_dir = here::here("data", "processed", "missing_proportions"),
-      out_name = "bogota_raw"),
-    format = "file"),
-
-  targets::tar_target(cdmx_missing_raw_files,
-    write_missing_proportions(
-      tables = cdmx_missing_raw,
-      out_dir = here::here("data", "processed", "missing_proportions"),
-      out_name = "cdmx_raw"),
-    format = "file"),
-
-  targets::tar_target(santiago_missing_raw_files,
-    write_missing_proportions(
-      tables = santiago_missing_raw,
-      out_dir = here::here("data", "processed", "missing_proportions"),
-      out_name = "santiago_raw"),
-    format = "file"),
-
-  targets::tar_target(sao_paulo_missing_raw_files,
-    write_missing_proportions(
-      tables = sao_paulo_missing_raw,
-      out_dir = here::here("data", "processed", "missing_proportions"),
-      out_name = "sao_paulo_metro_raw"),
-    format = "file"),
-
   targets::tar_target(bogota_missing_clean_files,
     write_missing_proportions(
       tables = bogota_missing_clean,
@@ -389,10 +341,6 @@ list(
 
   targets::tar_target(missing_dimension_files,
     c(
-      bogota_missing_raw_files,
-      cdmx_missing_raw_files,
-      santiago_missing_raw_files,
-      sao_paulo_missing_raw_files,
       bogota_missing_clean_files,
       cdmx_missing_clean_files,
       santiago_missing_clean_files,
@@ -527,7 +475,7 @@ list(
     {
       city_files <- c("bogota", "cdmx", "santiago", "sao_paulo_metro")
       stems <- unlist(lapply(missing_table_dimensions, function(dimension) {
-        sprintf("%s_%s_missing_by_%s", city_files, missing_table_panel, dimension)
+        sprintf("%s_clean_missing_by_%s", city_files, dimension)
       }))
       files <- missing_dimension_files[
         match(paste0(stems, ".parquet"), basename(missing_dimension_files))]
@@ -543,7 +491,7 @@ list(
       tex <- list()
       for (dimension in missing_table_dimensions) {
         for (city in c("bogota", "cdmx", "santiago", "sao_paulo_metro")) {
-          name <- sprintf("%s_%s_missing_by_%s", city, missing_table_panel, dimension)
+          name <- sprintf("%s_clean_missing_by_%s", city, dimension)
           table <- table_missing_by_dimension(
             missing_list = setNames(list(missing_table_data$dimensions[[name]]), dimension),
             dim = dimension, city_label = city)

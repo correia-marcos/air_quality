@@ -122,14 +122,23 @@ exposure_table_labels_edu <- c(Bogota = "Bogota", CDMX = "Mexico City",
 exposure_table_labels_inc <- c(CDMX = "Mexico City (income quintiles)",
                               `Sao Paulo` = "Sao Paulo (income deciles)")
 
-# Missingness tables retain the original reported-hour panel and its three dimensions.
-missing_table_panel <- "raw"
+# All missingness tables use the cleaned panels, which hold every calendar hour; the
+# station, month and hour tables stay outside the manuscript.
 missing_table_dimensions <- c("station", "month", "hour")
 
 # Descriptive summaries use stored rows before and after outlier removal.
 summary_pollutants <- c("pm10", "pm25")
 missing_dimensions <- c("station", "month", "hour", "day_of_week")
 availability_report <- "available"
+
+# Readings by education quintile. "nearest_unit" gives each station the quintile of its
+# nearest census unit and pools those stations' hours. "idw" follows the paper draft:
+# each station's share is averaged into the census units within the buffer with
+# inverse-distance weights (idw_distance_power), then into individuals and their
+# education quintiles. Both use only the stations reporting each pollutant in
+# analysis_year, as in the station table.
+missing_quintile_method    <- "nearest_unit"
+missing_quintile_buffer_km <- 3
 
 # Distance-band descriptions use cumulative radii and each census's own indicators.
 distance_band_radii_km <- c(1, 3, 5, 10, 20)

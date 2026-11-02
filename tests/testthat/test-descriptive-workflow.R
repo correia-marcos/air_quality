@@ -132,7 +132,7 @@ test_that("descriptive targets track city inputs and regenerate individual check
   write_pipeline()
   make()
   files <- read("compute_descriptive_tables")
-  expect_length(files, 41L)
+  expect_length(files, 25L)
   expect_false(anyDuplicated(files) > 0L)
   expect_true(all(file.exists(files)))
   expect_equal(read("station_counts_summary")$pm10, rep(2L, 4))
@@ -145,7 +145,7 @@ test_that("descriptive targets track city inputs and regenerate individual check
   expect_identical(metadata(), before)
 
   # Each writer restores either a missing dimension or the CSV copy without recomputing.
-  for (name in c("bogota_raw_missing_by_hour.parquet", "census_summary.csv")) {
+  for (name in c("bogota_clean_missing_by_hour.parquet", "census_summary.csv")) {
     unlink(files[basename(files) == name])
     make()
     expect_true(all(file.exists(files)))
