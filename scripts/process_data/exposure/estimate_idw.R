@@ -5,9 +5,11 @@
 #
 #' @Description: Use cleaned 2023 station data, distances and census records.
 # Compute education quintiles for all cities, income quintiles for CDMX and income
-# deciles for São Paulo. Buffers are 3/5/20 km; 20 km is used only for density figures.
-# run_idw_city() writes the large outputs and returns their paths. Income reuses the
-# same interpolation. Each city retains its results for every buffer in a named list.
+# deciles for São Paulo at idw_buffers_km: 3 km for the exposure analysis, 20 km for the
+# density figures and the specification sensitivity. The 5 km robustness buffer runs in
+# scripts/process_data/robustness/buffer_5km/estimate_idw_5km.R. run_idw_city() writes
+# the large outputs and returns their paths. Income reuses the same interpolation. Each
+# city retains its results for every buffer in a named list.
 #
 #' @Summary:
 #   I.  Import data: source functions, declare paths and read census data.

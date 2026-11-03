@@ -20,9 +20,14 @@ test_that("exposure checkpoints regenerate files without recomputing tables", {
   declarations <- c(
     paste0("targets::tar_target(input, ", quote_text(input), ", format = 'file')"),
     paste0("targets::tar_target(exposure_group_tables, list('3' = list(ci = ",
-           "readRDS(input)), '5' = list(ci = readRDS(input))))"),
+           "readRDS(input))))"),
+    "targets::tar_target(exposure_5km_group_tables, list(ci = readRDS(input)))",
     "targets::tar_target(exposure_individual_table, readRDS(input))")
-  writers <- c("exposure_group_files", "exposure_individual_files", "estimate_exposure")
+  # The main writers, then the robustness writers of the 5 km and individual tables.
+  writers <- c("exposure_group_files", "estimate_exposure", "estimate_exposure_5km",
+               "estimate_exposure_individual")
+  computations <- c("exposure_group_tables", "exposure_5km_group_tables",
+                    "exposure_individual_table")
   redirect <- function(command) {
     if (!is.call(command)) return(command)
     if (identical(command[[1]], quote(here::here))) return(output)
@@ -49,13 +54,18 @@ test_that("exposure checkpoints regenerate files without recomputing tables", {
     callr_function = NULL, reporter = "silent", envir = new.env(parent = globalenv()))
   metadata <- function() {
     x <- targets::tar_meta(fields = c("name", "time"), store = store)
-    x[x$name %in% c("exposure_group_tables", "exposure_individual_table"), ]
+    x[x$name %in% computations, ]
   }
   make()
   expect_length(outdated(), 0L)
   files <- targets::tar_read_raw("estimate_exposure", store = store)
-  expect_length(files, 6L)
+  expect_length(files, 2L)
   expect_true(all(file.exists(files)))
+  for (name in c("estimate_exposure_5km", "estimate_exposure_individual")) {
+    robustness_files <- targets::tar_read_raw(name, store = store)
+    expect_length(robustness_files, 2L)
+    expect_true(all(file.exists(robustness_files)))
+  }
   before <- metadata()
   make()
   expect_identical(metadata(), before)
@@ -71,7 +81,7 @@ test_that("exposure checkpoints regenerate files without recomputing tables", {
   }
   estimates[, estimate := 2]
   saveRDS(estimates, input)
-  expect_true(all(c("exposure_group_tables", "exposure_individual_table") %in% outdated()))
+  expect_true(all(computations %in% outdated()))
   make()
   values <- arrow::read_parquet(files[endsWith(files, ".parquet")][1])
   expect_equal(values$estimate, 2)

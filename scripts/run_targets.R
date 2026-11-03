@@ -29,18 +29,19 @@ if (!requireNamespace("targets", quietly = TRUE)) {
 # ============================================================================================
 # II: Resolve target selection
 # ============================================================================================
+# "all" adds the reported robustness checks to the manuscript export.
 selection <- if (length(args)) args else "paper_export"
-if (selection == "all") selection <- "paper_export"
+if (identical(selection, "all")) selection <- c("paper_export", "robustness")
 script <- here::here("_targets.R")
 store <- Sys.getenv("AIR_TARGETS_STORE", here::here("_targets"))
 manifest <- targets::tar_manifest(fields = "name", script = script)
-if (!selection %in% manifest$name) {
+if (!all(selection %in% manifest$name)) {
   script <- here::here("_targets_specification.R")
   store <- Sys.getenv("AIR_TARGETS_SPECIFICATION_STORE",
                       here::here("_targets_specification"))
   manifest <- targets::tar_manifest(fields = "name", script = script)
 }
-if (!selection %in% manifest$name) stop("Unknown stage: ", selection)
+if (!all(selection %in% manifest$name)) stop("Unknown stage: ", selection)
 # Embed the selection as a literal: the child R process cannot see this caller's variables.
 
 # ============================================================================================

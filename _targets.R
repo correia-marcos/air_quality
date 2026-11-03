@@ -45,5 +45,6 @@ c(
   source(here::here("config", "targets", "exposure.R"), local = TRUE)$value,
   source(here::here("config", "targets", "imputation.R"), local = TRUE)$value,
   source(here::here("config", "targets", "temporal.R"), local = TRUE)$value,
+  source(here::here("config", "targets", "robustness.R"), local = TRUE)$value,
   source(here::here("config", "targets", "export.R"), local = TRUE)$value
 )

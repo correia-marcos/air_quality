@@ -5,13 +5,14 @@
 #
 #' @Description: Read geographic IDW estimates and individual socioeconomic groups.
 # run_city_exposure() returns weighted summaries, regression estimates and coverage.
-# Run the same city/group models at 3 and 5 km, then the individual-regression check
-# at 3 km. Keep the city results in named lists and save combined tables in Section III.
+# Run the city/group models at exposure_buffers_km, keep the city results in named lists
+# and save combined tables in Section III. The 5 km buffer and the individual-level
+# regression are robustness checks in scripts/process_data/robustness/.
 #
 #' @Summary:
 #   I.   Import data: source functions, set paths and read estimates and populations.
-#   II.  Process data: estimate group differences and the individual robustness check.
-#   III. Save outputs: write the group tables, then the individual results.
+#   II.  Process data: estimate group differences for each city and grouping.
+#   III. Save outputs: write the group tables for each buffer.
 #
 #' @Date: September 2026
 #' @Author: Marcos
@@ -70,7 +71,7 @@ for (buffer_km in exposure_buffers_km) {
 # ==========================================================================================
 # II: Process data
 # ==========================================================================================
-# Keep results from both buffers; the individual city calls remain visible
+# Keep the results for each buffer; the individual city calls remain visible
 estimates_by_buffer <- list()
 city_runs_by_buffer <- list()
 
@@ -166,64 +167,13 @@ for (buffer_km in exposure_buffers_km) {
   estimates_by_buffer[[as.character(buffer_km)]] <- tables
 }
 
-# ---
-# Robustness check and easy evaluation in Rstudio
-# ---
-
-# Estimate the individual-level robustness check at 3 km.
-exposure_bogota_3km   <- exposure_bogota_by_buffer[[
-  as.character(individual_exposure_buffer_km)]]
-exposure_cdmx_3km     <- exposure_cdmx_by_buffer[[
-  as.character(individual_exposure_buffer_km)]]
-exposure_santiago_3km <- exposure_santiago_by_buffer[[
-  as.character(individual_exposure_buffer_km)]]
-exposure_sp_3km       <- exposure_sp_by_buffer[[
-  as.character(individual_exposure_buffer_km)]]
-
-ci_ind_bogota   <- compute_exposure_regressions_individual(
-  exposure_dt   = exposure_bogota_3km, 
-  individual_dt = individual_bogota,
-  group_col     = "edu_quintile", 
-  year_filter   = analysis_year)
-ci_ind_cdmx     <- compute_exposure_regressions_individual(
-  exposure_dt   = exposure_cdmx_3km, 
-  individual_dt = individual_cdmx,
-  group_col     = "edu_quintile", 
-  year_filter   = analysis_year)
-ci_ind_santiago <- compute_exposure_regressions_individual(
-  exposure_dt   = exposure_santiago_3km,
-  individual_dt = individual_santiago,
-  group_col     = "edu_quintile",
-  year_filter   = analysis_year)
-ci_ind_sp       <- compute_exposure_regressions_individual(
-  exposure_dt   = exposure_sp_3km,
-  individual_dt = individual_sp,
-  group_col     = "edu_quintile",
-  year_filter   = analysis_year)
-
-# Label each run and combine the individual-regression estimates.
-ci_ind_bogota[,   `:=`(city = "Bogota", city_id = "bogota_2018")]
-ci_ind_cdmx[,     `:=`(city = "CDMX", city_id = "cdmx_2020")]
-ci_ind_santiago[, `:=`(city = "Santiago", city_id = "santiago_2017")]
-ci_ind_sp[,       `:=`(city = "Sao Paulo", city_id = "sao_paulo_2010")]
-
-ci_individual <- data.table::rbindlist(
-  list(ci_ind_bogota, ci_ind_cdmx, ci_ind_santiago, ci_ind_sp),
-  fill = TRUE)
-
-ci_individual[, `:=`(year = analysis_year, buffer_km = individual_exposure_buffer_km,
-                     socioeconomic_var = "education", group_type = "quintile")]
-
 # ==========================================================================================
 # III: Save outputs
 # ==========================================================================================
+# Save the five combined tables for each buffer
 group_files <- list()
 for (buffer_km in exposure_buffers_km) {
   group_files[[as.character(buffer_km)]] <- save_exposure_tables(
       tables = estimates_by_buffer[[as.character(buffer_km)]],
       out_dir = dir_out, buffer_km = buffer_km, year = analysis_year)
 }
-
-individual_files <- save_exposure_tables(
-    tables = list(ci_estimates_education_individual = ci_individual),
-    out_dir = dir_out, buffer_km = individual_exposure_buffer_km, year = analysis_year)

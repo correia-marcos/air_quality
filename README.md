@@ -93,8 +93,8 @@ make all
 source(here::here("scripts", "run_pipeline.R"))
 ```
 
-Both routes run city processing, the core analysis, station-only hourly preparation, and
-manuscript figures and tables. The appendix uses city-hour means of available observed metropolitan stations from the
+Both routes run city processing, the core analysis, station-only hourly preparation,
+manuscript figures and tables, and the reported robustness checks. The appendix uses city-hour means of available observed metropolitan stations from the
 current cleaned partitions. Missing hours break pollution episodes. MERRA-2 is optional.
 
 `make merra2` runs optional satellite extraction and comparisons after current station

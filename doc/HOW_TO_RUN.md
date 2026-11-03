@@ -211,10 +211,13 @@ source(here::here("scripts", "run_pipeline.R"))
 ```
 
 Both routes execute city processing, the core station/census analysis, station-only hourly
-preparation, and manuscript figures and tables. `make` uses stage stamps; after changing or
-reacquiring source data, force a rebuild with `make -B all`.
+preparation, manuscript figures and tables, and the reported robustness checks (the 5 km
+buffer and the individual-level regression, in `scripts/*/robustness/`). `make` uses stage
+stamps; after changing or reacquiring source data, force a rebuild with `make -B all`.
+`make robustness` runs the robustness checks alone, after the exposure stage.
 
-The candidate's direct command is `Rscript scripts/run_targets.R all`. Inspect the ordinary
+The candidate's direct command is `Rscript scripts/run_targets.R all`, which builds the
+manuscript export and the `robustness` target. Inspect the ordinary
 declarations under `config/targets/`, loaded by `_targets.R`; cached station counts, missingness, census summaries,
 exposure tables and figure inputs have named data targets. After scientific acceptance,
 targets becomes the sole manuscript scheduler: remove Makefile and RStudio's Make build
@@ -222,7 +225,7 @@ setting, and reduce `run_pipeline.R` to a compatibility launcher. This cutover i
 
 Distance targets now separate input reading, calculation and file writing. For example,
 `bogota_2018_distance_matrices` stores the computed tables and `bogota_2018_distances`
-owns the two Parquet files. The `distances` selection still requests all five contexts.
+owns the two Parquet files. The `distances` selection still requests all four contexts.
 The candidate graph retains upstream city preparation: an existing derived file alone
 does not bypass missing preserved sources in a fresh targets run.
 

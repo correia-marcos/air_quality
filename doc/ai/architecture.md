@@ -133,7 +133,7 @@ must not install packages, acquire data or run an analysis.
   declared source inputs read-only and derived/output roots writable.
 - **Manuscript pipeline:** `make all` or
   `source(here::here("scripts", "run_pipeline.R"))` runs the maintained manuscript stages,
-  including station-only hourly preparation. `make merra2` is optional supporting analysis.
+  including station-only hourly preparation and the robustness checks. `make merra2` is optional supporting analysis.
 - **Isolated verification:** `Rscript tools/reproduction/verify.R --full` rebuilds derived
   outputs with source mounts read-only and runtime networking disabled.
 - **Migration candidate:** `make targets STAGE=bogota_geography` runs the preparation pilot;

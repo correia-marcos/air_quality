@@ -4,8 +4,9 @@
 #' @Goal: Plot exposure levels and gaps between socioeconomic groups.
 #
 #' @Description: Read the saved observed and imputed exposure results.
-# Build named plot lists for education, income and imputed education. Saving preserves
-# the existing manuscript names and the additional buffer figures.
+# Build named plot lists for education, income and imputed education. Saving keeps the
+# manuscript names. The 5 km figures are drawn by
+# scripts/tables_images/robustness/buffer_5km/figure_exposure_5km.R.
 #
 #' @Summary:
 #   I.   Import data: source functions, set paths and read saved summaries.
@@ -50,7 +51,7 @@ file_summary_imputed <-
   here::here(dir_imputed, sprintf("exposure_group_summaries_education_%dkm_%d.parquet",
                                   imputed_exposure_buffer_km, imputation_year))
 
-# Read both observed-data buffers for education.
+# Read the observed-data estimates for education.
 ci_edu      <- data.table::rbindlist(lapply(files_ci_edu, arrow::read_parquet))
 summary_edu <- data.table::rbindlist(lapply(files_summary_edu, arrow::read_parquet))
 

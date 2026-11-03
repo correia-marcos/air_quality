@@ -342,47 +342,6 @@ list(
           sao_paulo_2010_income_estimates[[key]]))
     })),
 
-  targets::tar_target(exposure_individual_table,
-    {
-      results <- list()
-      result <- compute_exposure_regressions_individual(
-          exposure_dt = bogota_2018_exposure_inputs[[
-            as.character(individual_exposure_buffer_km)]],
-          individual_dt = arrow::read_parquet(bogota_2018_education_population),
-          group_col = "edu_quintile",
-          year_filter = analysis_year)
-      result[, `:=`(city = "Bogota", city_id = "bogota_2018")]
-      results[["bogota_2018"]] <- result
-      result <- compute_exposure_regressions_individual(
-          exposure_dt = cdmx_2020_exposure_inputs[[
-            as.character(individual_exposure_buffer_km)]],
-          individual_dt = arrow::read_parquet(cdmx_2020_education_population),
-          group_col = "edu_quintile",
-          year_filter = analysis_year)
-      result[, `:=`(city = "CDMX", city_id = "cdmx_2020")]
-      results[["cdmx_2020"]] <- result
-      result <- compute_exposure_regressions_individual(
-          exposure_dt = santiago_2017_exposure_inputs[[
-            as.character(individual_exposure_buffer_km)]],
-          individual_dt = arrow::read_parquet(santiago_2017_education_population),
-          group_col = "edu_quintile",
-          year_filter = analysis_year)
-      result[, `:=`(city = "Santiago", city_id = "santiago_2017")]
-      results[["santiago_2017"]] <- result
-      result <- compute_exposure_regressions_individual(
-          exposure_dt = sao_paulo_2010_exposure_inputs[[
-            as.character(individual_exposure_buffer_km)]],
-          individual_dt = arrow::read_parquet(sao_paulo_2010_education_population),
-          group_col = "edu_quintile",
-          year_filter = analysis_year)
-      result[, `:=`(city = "Sao Paulo", city_id = "sao_paulo_2010")]
-      results[["sao_paulo_2010"]] <- result
-      combined <- data.table::rbindlist(results, fill = TRUE)
-      combined[, `:=`(year = analysis_year, buffer_km = individual_exposure_buffer_km,
-                      socioeconomic_var = "education", group_type = "quintile")]
-      combined
-    }),
-
   targets::tar_target(exposure_group_files,
     {
       files <- character()
@@ -397,16 +356,8 @@ list(
     },
     format = "file"),
 
-  targets::tar_target(exposure_individual_files,
-    save_exposure_tables(
-        tables = list(ci_estimates_education_individual = exposure_individual_table),
-        out_dir = here::here("data", "processed", "idw_regressions"),
-        buffer_km = individual_exposure_buffer_km,
-        year = analysis_year),
-    format = "file"),
-
   targets::tar_target(estimate_exposure,
-    c(exposure_group_files, exposure_individual_files),
+    exposure_group_files,
     format = "file"),
 
   targets::tar_target(exposure_plot_data,
@@ -512,19 +463,19 @@ list(
     {
       file_summary_edu <- estimate_exposure[basename(estimate_exposure) ==
         sprintf("exposure_group_summaries_education_%dkm_%d.parquet",
-          individual_exposure_buffer_km, analysis_year)]
+          exposure_buffers_km, analysis_year)]
       summary_edu <- data.table::as.data.table(arrow::read_parquet(file_summary_edu))
       file_summary_inc <- estimate_exposure[basename(estimate_exposure) ==
         sprintf("exposure_group_summaries_income_%dkm_%d.parquet",
-          individual_exposure_buffer_km, analysis_year)]
+          exposure_buffers_km, analysis_year)]
       summary_inc <- data.table::as.data.table(arrow::read_parquet(file_summary_inc))
       file_ci_edu <- estimate_exposure[basename(estimate_exposure) ==
         sprintf("exposure_ci_estimates_education_%dkm_%d.parquet",
-          individual_exposure_buffer_km, analysis_year)]
+          exposure_buffers_km, analysis_year)]
       ci_edu <- data.table::as.data.table(arrow::read_parquet(file_ci_edu))
       file_ci_inc <- estimate_exposure[basename(estimate_exposure) ==
         sprintf("exposure_ci_estimates_income_%dkm_%d.parquet",
-          individual_exposure_buffer_km, analysis_year)]
+          exposure_buffers_km, analysis_year)]
       ci_inc <- data.table::as.data.table(arrow::read_parquet(file_ci_inc))
       list(summary_edu = summary_edu, summary_inc = summary_inc,
            ci_edu = ci_edu, ci_inc = ci_inc)

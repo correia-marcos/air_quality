@@ -80,6 +80,19 @@ source(here::here("scripts", "process_data", "exposure", "estimate_idw.R"))
 source(here::here("scripts", "process_data", "exposure", "estimate_exposure.R"))
 
 # ============================================================================================
+# Robustness Checks
+# ============================================================================================
+# The 5 km buffer repeats IDW and the group regressions; the individual-level regression
+# re-estimates the education gaps person by person at 3 km.
+
+source(here::here("scripts", "process_data", "robustness", "buffer_5km",
+                  "estimate_idw_5km.R"))
+source(here::here("scripts", "process_data", "robustness", "buffer_5km",
+                  "estimate_exposure_5km.R"))
+source(here::here("scripts", "process_data", "robustness", "individual_regression",
+                  "estimate_exposure_individual.R"))
+
+# ============================================================================================
 # Descriptive Tables
 # ============================================================================================
 # Station counts, missing-data shares, WHO exceedances and the census summary. Needs the
@@ -114,6 +127,8 @@ source(here::here("scripts", "tables_images", "descriptives", "render_missing_ta
 source(here::here("scripts", "tables_images", "descriptives", "render_census_tables.R"))
 source(here::here("scripts", "tables_images", "exposure", "render_exposure_tables.R"))
 source(here::here("scripts", "tables_images", "exposure", "generate_exposure_plots.R"))
+source(here::here("scripts", "tables_images", "robustness", "buffer_5km",
+                  "figure_exposure_5km.R"))
 source(here::here("scripts", "tables_images", "monitoring",
                   "plot_station_monitoring_figures.R"))
 source(here::here("scripts", "tables_images", "monitoring", "figure_station_scatter.R"))

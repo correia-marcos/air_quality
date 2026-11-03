@@ -120,12 +120,11 @@ station_scatter_tags <- c(
 # ========================================================================================
 # Exposure
 # ========================================================================================
-# IDW runs every buffer. Regressions use exposure_buffers_km: 3 km is the main
-# specification and 5 km a robustness check. 20 km feeds the density figures and the
-# specification sensitivity.
-idw_buffers_km <- c(3, 5, 20)
+# IDW runs 3 km for the exposure analysis and 20 km for the density figures and the
+# specification sensitivity; the regressions use exposure_buffers_km.
+idw_buffers_km <- c(3, 20)
 idw_distance_power <- 1
-exposure_buffers_km <- c(3L, 5L)
+exposure_buffers_km <- 3L
 exposure_density_radii_km <- c(3, 20)
 
 # City labels, panel order and file names of the exposure figures and tables. The
@@ -169,7 +168,9 @@ kernel_city_linetypes <- c("Bogotá" = "solid", "Mexico City" = "dashed",
 # ========================================================================================
 # Robustness
 # ========================================================================================
-# Individual-level regressions use the exposure at this buffer.
+# The 5 km buffer repeats IDW and the group regressions. Individual-level regressions use
+# the exposure at individual_exposure_buffer_km.
+robustness_buffer_km <- 5L
 individual_exposure_buffer_km <- 3L
 
 # ========================================================================================

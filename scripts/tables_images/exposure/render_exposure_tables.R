@@ -23,8 +23,9 @@ source(here::here("src", "general_utilities", "base_utils.R"))
 source(here::here("src", "general_utilities", "plot", "latex_tables.R"))
 source(here::here("config", "analysis_settings.R"))
 
-buffer_km <- individual_exposure_buffer_km
-dir_reg    <- here::here("data", "processed", "idw_regressions")
+# The appendix tables report the exposure analysis's buffer
+buffer_km <- exposure_buffers_km
+dir_reg   <- here::here("data", "processed", "idw_regressions")
 dir_tables <- here::here("results", "tables")
 
 file_summary_edu <- here::here(dir_reg,

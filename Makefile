@@ -10,6 +10,7 @@
 # Usage:
 #   make                 # build the analysis: process -> distances -> outliers -> exposure
 #                        #                      -> descriptives + scatter -> figures + tables
+#                        #                      -> robustness
 #   make process         # run a single stage (and anything it depends on)
 #   make DOCKER=1        # run every recipe inside the compose "analysis" service
 #   make download        # large, credential-gated raw pulls (never part of `make all`)
@@ -37,11 +38,11 @@ SRC := $(shell find src -name '*.R')
 
 # ---- Phony convenience targets -------------------------------------------------------------
 .PHONY: all download process merra2 santiago-2024 distances outliers exposure descriptives \
-        scatter imputed temporal figures tables context-maps resolution \
+        scatter imputed temporal figures tables robustness context-maps resolution \
         specification-grid specification-panel specification-station-sets \
         validate clean help
 
-all: figures tables
+all: figures tables robustness
 
 $(STAMP):
 	mkdir -p $(STAMP)
@@ -129,6 +130,19 @@ tables: exposure descriptives
 	$(RUN) scripts/tables_images/descriptives/render_census_tables.R
 	$(RUN) scripts/tables_images/exposure/render_exposure_tables.R
 
+# 7. Reported robustness checks: the 5 km buffer and the individual-level regression.
+#    They reuse the exposure stage's individual groups and 3 km exposure.
+robustness: $(STAMP)/robustness.stamp
+	$(RUN) scripts/tables_images/robustness/buffer_5km/figure_exposure_5km.R
+$(STAMP)/robustness.stamp: scripts/process_data/robustness/buffer_5km/estimate_idw_5km.R \
+    scripts/process_data/robustness/buffer_5km/estimate_exposure_5km.R \
+    scripts/process_data/robustness/individual_regression/estimate_exposure_individual.R \
+    $(STAMP)/exposure.stamp
+	$(RUN) scripts/process_data/robustness/buffer_5km/estimate_idw_5km.R
+	$(RUN) scripts/process_data/robustness/buffer_5km/estimate_exposure_5km.R
+	$(RUN) scripts/process_data/robustness/individual_regression/estimate_exposure_individual.R
+	touch $@
+
 # Observed station-only summaries supply the manuscript appendix.
 temporal: $(STAMP)/temporal.stamp
 $(STAMP)/temporal.stamp: scripts/process_data/temporal/prepare_station_hourly.R $(SRC) \
@@ -210,7 +224,7 @@ clean:
 
 help:
 	@echo "Targets: all process distances outliers exposure descriptives scatter"
-	@echo "         imputed temporal figures tables"
+	@echo "         imputed temporal figures tables robustness"
 	@echo "         merra2 santiago-2024 context-maps resolution"
 	@echo "         specification-grid specification-panel specification-station-sets"
 	@echo "         download validate clean"
