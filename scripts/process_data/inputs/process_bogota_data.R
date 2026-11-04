@@ -61,12 +61,12 @@ required_sources <- c(file_municipalities, file_urban_tracts, file_rural_tracts,
                       file_localities,     file_stations,     dir_metadata,
                       dir_pollution,       dir_sisaire)
 processing_files(required_sources, "Bogotá sources")
+
 # The 2018 census needs both Bogotá and Cundinamarca archives.
 preflight_census_inputs("bogota", c(census_2018 = dir_census))
 
 # Read the monitoring-station locations.
 station_locations <- read.csv(file_stations)
-
 # ========================================================================================
 # II: Process data
 # ========================================================================================
