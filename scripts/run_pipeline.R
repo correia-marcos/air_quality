@@ -136,6 +136,7 @@ source(here::here("scripts", "tables_images", "monitoring",
                   "figure_population_density_maps.R"))
 source(here::here("scripts", "tables_images", "monitoring",
                   "figure_pollution_quintile_maps.R"))
+source(here::here("scripts", "tables_images", "imputation", "figure_exposure_imputed.R"))
 source(here::here("scripts", "tables_images", "imputation",
                   "figure_imputation_diagnostics.R"))
 source(here::here("scripts", "tables_images", "temporal", "figure_station_temporal.R"))

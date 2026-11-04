@@ -172,7 +172,8 @@ check_targets_engine <- function() {
   check("station_table_data" %in% parents("station_table_tex"))
   check("bogota_2018_idw" %in% parents("bogota_density_exposure"))
   check("bogota_exposure_density_files" %in% parents("figure_quintile_kernel_distributions"))
-  check("estimate_exposure_imputed" %in% parents("exposure_plot_data"))
+  check("estimate_exposure_imputed" %in% parents("exposure_imputed_plot_data"))
+  check("exposure_imputed_plots" %in% parents("figure_exposure_imputed"))
   count
 }
 

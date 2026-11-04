@@ -3,15 +3,15 @@
 # ========================================================================================
 #' @Goal: Plot exposure levels and gaps between socioeconomic groups.
 #
-#' @Description: Read the saved observed and imputed exposure results.
-# Build named plot lists for education, income and imputed education. Saving keeps the
-# manuscript names. The 5 km figures are drawn by
-# scripts/tables_images/robustness/buffer_5km/figure_exposure_5km.R.
+#' @Description: Read the saved observed exposure results and build named plot lists for
+# education and income. Saving keeps the manuscript names. The imputed-reading figures are
+# drawn by scripts/tables_images/imputation/figure_exposure_imputed.R and the 5 km figures
+# by scripts/tables_images/robustness/buffer_5km/figure_exposure_5km.R.
 #
 #' @Summary:
 #   I.   Import data: source functions, set paths and read saved summaries.
-#   II.  Process data: plot group differences and levels for each specification.
-#   III. Save outputs: write observed education, income and imputed education figures.
+#   II.  Process data: plot group differences and levels for education and income.
+#   III. Save outputs: write the education figures, then the income figures.
 #
 #' @Date: September 2026
 #' @Author: Marcos
@@ -26,30 +26,23 @@ source(here::here("src", "general_utilities", "theme_paper.R"))
 source(here::here("config", "analysis_settings.R"))
 set_paper_theme()
 
-# Set input folders and the output folder
+# Set the input folder and the output folder
 dir_reg     <- here::here("data", "processed", "idw_regressions")
-dir_imputed <- here::here("data", "processed", "idw_regressions_imputed")
 dir_figures <- here::here("results", "figures")
 
 # Set the files containing group means and regression estimates with confidence intervals
-files_ci_edu         <-
+files_ci_edu      <-
   here::here(dir_reg, sprintf("exposure_ci_estimates_education_%dkm_%d.parquet",
                               exposure_buffers_km, analysis_year))
-files_summary_edu    <-
+files_summary_edu <-
   here::here(dir_reg, sprintf("exposure_group_summaries_education_%dkm_%d.parquet",
                               exposure_buffers_km, analysis_year))
-files_ci_inc         <-
+files_ci_inc      <-
   here::here(dir_reg, sprintf("exposure_ci_estimates_income_%dkm_%d.parquet",
                               exposure_buffers_km, analysis_year))
-files_summary_inc    <-
+files_summary_inc <-
   here::here(dir_reg, sprintf("exposure_group_summaries_income_%dkm_%d.parquet",
                               exposure_buffers_km, analysis_year))
-file_ci_imputed      <-
-  here::here(dir_imputed, sprintf("exposure_ci_estimates_education_%dkm_%d.parquet",
-                                  imputed_exposure_buffer_km, imputation_year))
-file_summary_imputed <-
-  here::here(dir_imputed, sprintf("exposure_group_summaries_education_%dkm_%d.parquet",
-                                  imputed_exposure_buffer_km, imputation_year))
 
 # Read the observed-data estimates for education.
 ci_edu      <- data.table::rbindlist(lapply(files_ci_edu, arrow::read_parquet))
@@ -62,10 +55,6 @@ if (has_income) {
   ci_inc      <- data.table::rbindlist(lapply(files_ci_inc, arrow::read_parquet))
   summary_inc <- data.table::rbindlist(lapply(files_summary_inc, arrow::read_parquet))
 }
-
-# Read the education estimates from panels combining observed and imputed readings
-ci_imputed      <- data.table::as.data.table(arrow::read_parquet(file_ci_imputed))
-summary_imputed <- data.table::as.data.table(arrow::read_parquet(file_summary_imputed))
 
 # ========================================================================================
 # II: Process data
@@ -88,17 +77,10 @@ if (has_income) {
     tag = "income", city_labels = exposure_city_labels, city_files = exposure_city_files)
 }
 
-# Plot education-group gaps and means for the imputed robustness analysis
-plots_ci_imputed <- build_exposure_ci_figures(ci_dt = ci_imputed[outcome != "avg"],
-  tag = "education", city_labels = exposure_city_labels, city_files = exposure_city_files)
-
-plots_levels_imputed <- build_exposure_level_figures(sum_dt = summary_imputed,
-  tag = "education", city_labels = exposure_city_labels, city_files = exposure_city_files)
-
 # ========================================================================================
 # III: Save outputs
 # ========================================================================================
-# Save observed education figures, then income figures and imputed education figures
+# Save the education figures, then the income figures
 save_exposure_plot_family(plots_ci_edu, out_dir = dir_figures,
   paper_files = exposure_paper_files, year = analysis_year)
 save_exposure_plot_family(plots_levels_edu, out_dir = dir_figures,
@@ -108,8 +90,3 @@ save_exposure_plot_family(plots_ci_inc, out_dir = dir_figures,
   paper_files = exposure_paper_files, year = analysis_year)
 save_exposure_plot_family(plots_levels_inc, out_dir = dir_figures,
   paper_files = exposure_paper_files, year = analysis_year)
-
-save_exposure_plot_family(plots_ci_imputed, out_dir = dir_figures,
-  paper_files = exposure_paper_files, year = imputation_year, imputed = TRUE)
-save_exposure_plot_family(plots_levels_imputed, out_dir = dir_figures,
-  paper_files = exposure_paper_files, year = imputation_year, imputed = TRUE)

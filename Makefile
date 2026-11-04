@@ -115,6 +115,7 @@ $(STAMP)/imputed.stamp: scripts/process_data/imputation/impute_missing_hourly.R 
 # 6. Publication artefacts. Read only from data/processed; regenerate on demand (phony).
 figures: exposure scatter imputed descriptives temporal
 	$(RUN) scripts/tables_images/exposure/generate_exposure_plots.R
+	$(RUN) scripts/tables_images/imputation/figure_exposure_imputed.R
 	$(RUN) scripts/tables_images/imputation/figure_imputation_diagnostics.R
 	$(RUN) scripts/tables_images/monitoring/plot_station_monitoring_figures.R
 	$(RUN) scripts/tables_images/monitoring/figure_station_scatter.R

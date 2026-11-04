@@ -17,7 +17,7 @@ list(
   targets::tar_target(figures,
     {
         suppressMessages(sf::sf_use_s2(TRUE))
-        c(generate_exposure_plots, figure_imputation_diagnostics,
+        c(generate_exposure_plots, figure_exposure_imputed, figure_imputation_diagnostics,
           plot_station_monitoring_figures,
             figure_station_scatter, figure_population_density_maps,
               figure_pollution_quintile_maps,

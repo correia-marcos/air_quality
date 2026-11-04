@@ -363,7 +363,6 @@ list(
   targets::tar_target(exposure_plot_data,
     {
       observed <- estimate_exposure
-      imputed <- estimate_exposure_imputed
       names_ci_edu <- sprintf("exposure_ci_estimates_education_%dkm_%d.parquet",
         exposure_buffers_km, analysis_year)
       files_ci_edu <- observed[match(names_ci_edu, basename(observed))]
@@ -383,18 +382,8 @@ list(
         ci_inc <- data.table::rbindlist(lapply(files_ci_inc, arrow::read_parquet))
         summary_inc <- data.table::rbindlist(lapply(files_summary_inc, arrow::read_parquet))
       }
-      file_ci_imputed <- imputed[basename(imputed) ==
-        sprintf("exposure_ci_estimates_education_%dkm_%d.parquet",
-          imputed_exposure_buffer_km, imputation_year)]
-      ci_imputed <- data.table::as.data.table(arrow::read_parquet(file_ci_imputed))
-      file_summary_imputed <- imputed[basename(imputed) ==
-        sprintf("exposure_group_summaries_education_%dkm_%d.parquet",
-          imputed_exposure_buffer_km, imputation_year)]
-      summary_imputed <- data.table::as.data.table(
-        arrow::read_parquet(file_summary_imputed))
       list(ci_edu = ci_edu, summary_edu = summary_edu,
-           ci_inc = ci_inc, summary_inc = summary_inc,
-           ci_imputed = ci_imputed, summary_imputed = summary_imputed)
+           ci_inc = ci_inc, summary_inc = summary_inc)
     }),
 
   targets::tar_target(exposure_plots,
@@ -418,16 +407,8 @@ list(
           sum_dt = exposure_plot_data$summary_inc, tag = "income",
           city_labels = exposure_city_labels, city_files = exposure_city_files)
       }
-      ci_imputed <- exposure_plot_data$ci_imputed
-      plots_ci_imputed <- build_exposure_ci_figures(ci_dt = ci_imputed[outcome != "avg"],
-        tag = "education", city_labels = exposure_city_labels,
-        city_files = exposure_city_files)
-      plots_levels_imputed <- build_exposure_level_figures(
-        sum_dt = exposure_plot_data$summary_imputed, tag = "education",
-        city_labels = exposure_city_labels, city_files = exposure_city_files)
       list(ci_edu = plots_ci_edu, levels_edu = plots_levels_edu,
-           ci_inc = plots_ci_inc, levels_inc = plots_levels_inc,
-           ci_imputed = plots_ci_imputed, levels_imputed = plots_levels_imputed)
+           ci_inc = plots_ci_inc, levels_inc = plots_levels_inc)
     }),
 
   targets::tar_target(generate_exposure_plots,
@@ -446,13 +427,7 @@ list(
           year = analysis_year),
         save_exposure_plot_family(exposure_plots$levels_inc,
           out_dir = here::here("results", "figures"), paper_files = exposure_paper_files,
-          year = analysis_year),
-        save_exposure_plot_family(exposure_plots$ci_imputed,
-          out_dir = here::here("results", "figures"), paper_files = exposure_paper_files,
-          year = imputation_year, imputed = TRUE),
-        save_exposure_plot_family(exposure_plots$levels_imputed,
-          out_dir = here::here("results", "figures"), paper_files = exposure_paper_files,
-          year = imputation_year, imputed = TRUE))
+          year = analysis_year))
     }, format = "file"),
 
   targets::tar_target(exposure,

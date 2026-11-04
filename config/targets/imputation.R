@@ -517,6 +517,39 @@ list(
         sao_paulo_imputation_figures)
     }, format = "file"),
 
+  targets::tar_target(exposure_imputed_plot_data,
+    {
+      files <- estimate_exposure_imputed
+      read <- function(table) data.table::as.data.table(arrow::read_parquet(
+        files[basename(files) == sprintf("exposure_%s_%dkm_%d.parquet", table,
+          imputed_exposure_buffer_km, imputation_year)]))
+      list(ci = read("ci_estimates_education"),
+           summary = read("group_summaries_education"))
+    }),
+
+  targets::tar_target(exposure_imputed_plots,
+    {
+      paper_font
+      set_paper_theme()
+      ci <- exposure_imputed_plot_data$ci
+      list(
+        ci = build_exposure_ci_figures(ci_dt = ci[outcome != "avg"],
+          tag = "education", city_labels = exposure_city_labels,
+          city_files = exposure_city_files),
+        levels = build_exposure_level_figures(
+          sum_dt = exposure_imputed_plot_data$summary, tag = "education",
+          city_labels = exposure_city_labels, city_files = exposure_city_files))
+    }),
+
+  targets::tar_target(figure_exposure_imputed,
+    {
+      paper_font
+      set_paper_theme()
+      unlist(lapply(exposure_imputed_plots, save_exposure_plot_family,
+        out_dir = here::here("results", "figures"), paper_files = exposure_paper_files,
+        year = imputation_year, imputed = TRUE), use.names = FALSE)
+    }, format = "file"),
+
   targets::tar_target(imputed,
     c(impute_missing_hourly, estimate_exposure_imputed),
     format = "file")
