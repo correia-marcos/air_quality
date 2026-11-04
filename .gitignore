@@ -43,8 +43,8 @@ results/validation_old_version/**/*.html
 # Quarto intermediate files generated during rendering
 results/validation_old_version/**/*.knit.md
 results/validation_old_version/**/*_files/
-scripts/validation_old_version/**/*_files/
-scripts/validation_old_version/**/*.knit.md
+scripts/process_data/not_in_paper/legacy_validation/**/*_files/
+scripts/process_data/not_in_paper/legacy_validation/**/*.knit.md
  
 # Comparison artefacts (Parquet files written by compare_ground_stations etc.)
 results/validation_old_version/**/ground_station_comparison/
@@ -100,7 +100,7 @@ doc/notes/*
 # Personal export destination wrapper
 /scripts/export/paper.local.sh
 # Generated report renders and verification workspaces
-/scripts/validation_old_version/*.html
-/scripts/validation_old_version/*.pdf
+/scripts/process_data/not_in_paper/legacy_validation/*.html
+/scripts/process_data/not_in_paper/legacy_validation/*.pdf
 
 **/__pycache__/
