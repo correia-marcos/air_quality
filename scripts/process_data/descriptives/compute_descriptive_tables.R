@@ -78,11 +78,14 @@ micro_santiago <- here::here(dir_census, "santiago_2017",
 micro_sp       <- here::here(dir_census, "sao_paulo_2010",
                              "census_sp_individual_2010.parquet")
 
-# Optional: Check datasets used (change city if you want)
-distance_data          <- arrow::read_parquet(dist_bogota) |> dplyr::collect()
-micro_data             <- arrow::read_parquet(micro_bogota) |> dplyr::collect()
-pollutation_clean_data <- arrow::open_dataset(paste0(clean_bogota, "/year=2023")) |>
+# Optional: read Bogotá's inputs to inspect them (change the city if you want).
+distance_bogota_data <- arrow::read_parquet(dist_bogota)
+micro_bogota_data    <- arrow::open_dataset(micro_bogota) |> head(1000) |> dplyr::collect()
+clean_bogota_data    <- arrow::open_dataset(clean_bogota) |>
+  dplyr::filter(year == analysis_year) |>
+  dplyr::select(station, datetime, pm10, pm25) |>
   dplyr::collect()
+
 # ========================================================================================
 # II: Process data
 # ========================================================================================
@@ -187,8 +190,8 @@ exceed_sp             <- compute_threshold_exceedance_days(arrow_dir   = clean_s
                                                            pollutants  = summary_pollutants)
 
 threshold_exceedances <- data.table::rbindlist(list(exceed_bogota,
-                                                    exceed_santiago, 
-                                                    exceed_cdmx, 
+                                                    exceed_santiago,
+                                                    exceed_cdmx,
                                                     exceed_sp))
 
 # Assign stations the education quintile of their nearest census unit

@@ -50,9 +50,12 @@ pollution_sao_paulo <- here::here(dir_pollution, "sao_paulo_metro_dataset")
 distances_sao_paulo <- here::here(dir_distances, "sao_paulo_2010",
                                   "matrix_station_distances.parquet")
 
-# Optional: Check the distances and pollution datasets (change city if you want)
-pollution_data <- arrow::open_dataset(pollution_bogota) |> dplyr::collect()
-distances_data <- arrow::read_parquet(distances_bogota) |> dplyr::collect()
+# Optional: read Bogotá's hours in the analysis year and its station distances to inspect
+# them (change the city if you want). Filtering by year keeps the read small.
+pollution_bogota_data <- arrow::open_dataset(pollution_bogota) |>
+  dplyr::filter(year == analysis_year) |>
+  dplyr::collect()
+distances_bogota_data <- arrow::read_parquet(distances_bogota)
 
 # ==========================================================================================
 # II: Process and save data
