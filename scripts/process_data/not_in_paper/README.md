@@ -13,6 +13,9 @@ identifies residence only by commune (39 communes against 1,654 zones in the pro
 census), so the 2024 run
 trades spatial resolution for recency. Run it with `make santiago-2024` after the main
 Santiago products exist. Its tables go to `data/processed/idw_regressions/santiago_2024/`.
+It uses only the 3 and 5 km buffers (`santiago_2024_buffers_km`). Unlike the main cities,
+it has no 20 km IDW and no individual-level regression: few of its results are reported,
+and nothing reads those two.
 
 **`satellite/`** extracts MERRA-2 aerosol estimates for the four study areas and compares
 them with the ground stations and with country references. It needs NASA inputs that the
