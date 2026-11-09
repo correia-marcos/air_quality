@@ -33,11 +33,9 @@ weighting areas.
 
 Removed and withheld readings become missing in the analysis, and the original value stays
 in the panel. Each reading carries a `screen_reason` and an `outlier_reason`; the recipe
-counts them by station and year in `<city>_quality_summary.csv`. The
-[worked example](../../../doc/reference/outlier_cleaning.md) explains the procedure and
-what each code means, with numbers you can check by hand. The
-[data dictionary](../../../doc/reference/data_dictionary.md#9-observed-particulate-quality-fields)
-defines every column of the cleaned panels.
+counts them by station and year in `<city>_quality_summary.csv`. The [worked example](../../../doc/reference/outlier_cleaning.md) 
+explains the procedure and what each code means, with numbers you can check by hand. 
+The [data dictionary](../../../doc/reference/data_dictionary.md#9-observed-particulate-quality-fields) defines every column of the cleaned panels.
 
 ## How the cities flow
 
