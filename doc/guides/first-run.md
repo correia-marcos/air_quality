@@ -63,7 +63,7 @@ and the computation/saving contract. It is a small calculation, not a manuscript
 For real data, open
 [generate_distance_matrices.R](../../scripts/process_data/inputs/generate_distance_matrices.R).
 Its first section reads the station and geographic files. Its second section calls the
-same function five times, including both Santiago geographic vintages. Its third section
+same function four times, once per city. Its third section
 saves the results in matching order. The geographic matrix connects each geographic unit
 to stations; the [IDW example worked by hand](../reference/idw_golden_test.md) shows how
 those distances become exposure estimates.

@@ -79,6 +79,21 @@ check_reader_workflows <- function() {
     }
   }
 
+  # The run-order guide numbers every manuscript recipe of the inventory once, in order.
+  guide <- readLines(file.path(root, "doc/guides/run-order.md"))
+  first <- match("<!-- run-order:start -->", guide)
+  last <- match("<!-- run-order:end -->", guide)
+  check(!is.na(first) && !is.na(last) && first < last, "Run-order markers missing")
+  steps <- grep("^\\| [0-9]+ \\| \\[", guide[seq.int(first, last)], value = TRUE)
+  numbers <- as.integer(sub("^\\| ([0-9]+) .*$", "\\1", steps))
+  listed <- sub("^.*\\]\\(\\.\\./\\.\\./([^)]+)\\).*$", "\\1", steps)
+  roles <- vapply(strsplit(rows, "|", fixed = TRUE), function(x) trimws(x[3]), "")
+  manuscript <- paths[startsWith(roles, "manuscript;")]
+  check(identical(numbers, seq_along(steps)), "Run-order steps must be numbered 1..n")
+  check(!anyDuplicated(listed) && setequal(listed, manuscript), paste(
+    "Run-order guide mismatch:", paste(setdiff(manuscript, listed), collapse = ", "),
+    paste(setdiff(listed, manuscript), collapse = ", ")))
+
   # Supplied files govern reading, including outside the canonical data tree.
   cache <- here::here("tests", "_cache")
   dir.create(cache, recursive = TRUE, showWarnings = FALSE)

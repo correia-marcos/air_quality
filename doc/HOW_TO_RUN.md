@@ -128,9 +128,11 @@ Use the isolated verifier to create fresh derived directories without deleting e
 
 ## Inspect the analysis in RStudio
 
-Open `Coding.Rproj`, then `scripts/process_data/inputs/generate_distance_matrices.R`.
-Section I shows the source functions, shared settings and nine geographic input files.
-Run those lines to create the station and geographic `sf` objects. Section II makes five
+The [run order](guides/run-order.md) lists every manuscript recipe in the order to run
+them one at a time. To start with one recipe, open `Coding.Rproj`, then
+`scripts/process_data/inputs/generate_distance_matrices.R`.
+Section I shows the source functions, shared settings and eight geographic input files.
+Run those lines to create the station and geographic `sf` objects. Section II makes four
 calls to `compute_distance_matrices()`; each result has `station_matrix` and
 `geo_station_matrix` tables. Section III saves those results in the same order.
 
@@ -154,7 +156,7 @@ All declared sources must be present; processing never downloads missing files.
 
 For Bogotá, `download_bogota_data.R` acquires the geographic source files.
 `process_bogota_data.R` lists their paths in Section I, calls
-`bogota_prepare_metro_area()` in Section II, and saves the five layers in Section III.
+`bogota_prepare_metro_area()` in Section II, and saves the three layers in Section III.
 The download recipe prepares one temporary footprint for its source-region diagnostic;
 it does not write the processing workflow's geographic products.
 The other cities follow the same acquisition/preparation split. Geographic preparation

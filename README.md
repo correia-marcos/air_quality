@@ -23,6 +23,7 @@ Choose a route:
 |---|---|
 | Find documentation by audience or topic | [Documentation index](doc/README.md) |
 | Learn the repository as a student | [First run](doc/guides/first-run.md) |
+| Run the analysis script by script in RStudio | [Run order](doc/guides/run-order.md), [scripts map](scripts/README.md) |
 | Contribute changes | [Contributor guide](doc/guides/contributing.md) |
 | Assess repository evidence and limitations | [Current review](doc/REPO_REVIEW.md), [review catalog](doc/reviews/README.md) |
 | Study specification sensitivity (geographic support, IDW buffer and exponent) | [Supporting analysis guide](doc/RESOLUTION_SENSITIVITY.md) |
@@ -35,7 +36,7 @@ Choose a route:
 
 ```text
 src/                 Reusable R functions
-scripts/             Executable acquisition, processing, figures, validation and verification
+scripts/             Recipes by stage and analysis (map in scripts/README.md)
 data/downloads/      Preserved acquired source files (ignored; inputs of record)
 data/raw/            Authorized original inputs (ignored; inputs of record)
 data/interim/        Regenerated intermediate data, including prepared geography
@@ -96,6 +97,8 @@ source(here::here("scripts", "run_pipeline.R"))
 Both routes run city processing, the core analysis, station-only hourly preparation,
 manuscript figures and tables, and the reported robustness checks. The appendix uses city-hour means of available observed metropolitan stations from the
 current cleaned partitions. Missing hours break pollution episodes. MERRA-2 is optional.
+To run the same recipes one at a time in RStudio, follow the
+[run order](doc/guides/run-order.md).
 
 `make merra2` runs optional satellite extraction and comparisons after current station
 and geography products and additional satellite/NASA inputs are available. It is separate
