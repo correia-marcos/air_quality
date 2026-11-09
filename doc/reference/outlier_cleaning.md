@@ -21,12 +21,14 @@ panel (one row per station-hour), using `detect_pollution_outliers()` in
 **Stage 1: the screen.** `screen_pollution_quality()` withholds every reading that cannot be
 a concentration under the project's bounds, whatever its neighbours say:
 
-| `screen_reason` | Reading |
-|---|---|
-| 0 | Between 0 and the bound (2,000 µg/m³ for PM2.5, 6,000 for PM10), equality included |
-| 1 | Above the bound |
-| 2 | Negative |
-| 3 | Missing, or not a finite number |
+| `screen_reason` | Reading | Is Kept? |
+|---|---|---|
+| 0 | Inside acceptable bounds[^1]    | ✓ |
+| 1 | Above bound                     | ✗ |
+| 2 | Negative value                  | ✗ |
+| 3 | Missing, or not a finite number | ✗ | 
+
+[^1]: Between 0 and the bound (2,000 µg/m³ for PM2.5, 6,000 for PM10), equality included.
 
 Readings with codes 1–3 become missing in the analytical column, and their original value is
 kept in `<pollutant>_original`. The bounds are `pollution_upper_bounds` in
@@ -59,19 +61,18 @@ and next hours, or its nearest neighbour, confirm them.
 
 | `outlier_reason` | Temporal check | Spatial check | Is kept? |
 |---|---|---| --- |
-| NA | not assessed[^1] |                     | ✗ | 
-| 0  | retained[^2]     |                     | ✓ |
-| 1  | no benchmark[^3] | Unable to check[^4] | ✗ |
-| 2  | failed[^5]       | Unable to check     | ✗ |
+| NA | not assessed[^2] |                     | ✗ | 
+| 0  | retained[^3]     |                     | ✓ |
+| 1  | no benchmark[^4] | Unable to check[^5] | ✗ |
+| 2  | failed[^6]       | Unable to check     | ✗ |
 | 3  | failed           | failed              | ✗ |
 | 4  | no benchmark     | failed              | ✗ |
 
-
-[^1]: Screened out in stage 1.
-[^2]: Not above $q_{0.99}$, or confirmed by one of the checks.
-[^3]: Continued to Spatial check.
-[^4]: Not possible with either neighbour.
-[^5]: Outside acceptable range.
+[^2]: Screened out in stage 1.
+[^3]: Not above $q_{0.99}$, or confirmed by one of the checks.
+[^4]: Continued to Spatial check.
+[^5]: Not possible with either neighbour.
+[^6]: Outside acceptable range.
 
 The panel is balanced first: every station has a row for every hour of the year, so a
 missing hour is a row with code 3. One hour from each adjacent year is read so the first
