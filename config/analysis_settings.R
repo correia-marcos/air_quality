@@ -21,9 +21,16 @@ distance_representative_point <- "point_on_surface"
 # Gross-value screening precedes statistical cleaning; NULL disables bounds.
 pollution_upper_bounds <- c(pm25 = 2000, pm10 = 6000) # Equality passes
 
-# Outliers use every available year, including temporal windows crossing year boundaries.
+# Outliers (doc/reference/outlier_cleaning.md): test the readings above the station-month
+# quantile; keep those within the SD band of their adjacent hours or nearest station.
+# A reading without adjacent hours still gets the spatial check ("continue"), the
+# second-nearest station replaces a nearest one without a reading ("second"), and a
+# neighbour must report the pollutant during the year ("with_data").
+outlier_quantile <- 0.99
+outlier_sd_band <- 2
 outlier_missing_temporal <- "continue"
 outlier_missing_neighbor <- "second"
+outlier_neighbor_eligibility <- "with_data"
 
 # ========================================================================================
 # Descriptives

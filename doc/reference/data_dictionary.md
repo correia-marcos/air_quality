@@ -318,6 +318,7 @@ categories, not confidence scores or confirmations of measurement error.
 | 3 | Above p99; failed temporal and spatial comparisons. |
 | 4 | Above p99; no temporal benchmark and failed spatial comparison. |
 
+The [worked outlier example](outlier_cleaning.md) shows how each code arises.
 Screening code 0 alone does not mean the reading survived statistical cleaning. In the
 **observed** dataset, a finite final concentration provides that conclusion, so no extra
 usability flag is stored. Source validation describes the archived acquisition route;
