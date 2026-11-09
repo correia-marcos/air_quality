@@ -209,7 +209,6 @@ plot_episode_spans_ridgeline <- function(final_episodes, target = "IT2") {
 #' @param        filter_type  one of "none", "gt_it1", or "gt_it2" for threshold filtering.
 #' @param        it1, it2     numeric thresholds (defaults reflect WHO annual PM2.5 IT1/IT2).
 #' @param        tz           timezone for parsing if needed (kept for signature parity).
-#' @param        station_lookup data.frame with columns Station (char) and StationName (char).
 #' @return       A data frame with columns Station, Hour, mean_value, n and an attribute
 #                "station_levels" giving a fixed station order across hours.
 #' @Purpose    : Build hourly means per station, optionally filtering by WHO interim targets,
@@ -224,8 +223,7 @@ summarize_hourly_by_station <- function(df,
                                         filter_type    = c("none", "gt_it1", "gt_it2"),
                                         it1            = 35,
                                         it2            = 25,
-                                        tz             = "UTC",
-                                        station_lookup = SANTIAGO_STATION_LOOKUP) {
+                                        tz             = "UTC") {
   filter_type <- match.arg(filter_type)
   
   # 1) Parse time + prepare core fields
@@ -246,17 +244,7 @@ summarize_hourly_by_station <- function(df,
     "gt_it2" = dplyr::filter(df2, .val > it2)
   )
   
-  # 3) Join station names; fall back to "Station <code>" when missing
-  df2 <- df2 %>%
-    dplyr::left_join(
-      station_lookup %>% dplyr::mutate(Station = as.character(Station)),
-      by = "Station"
-    ) %>%
-    dplyr::mutate(
-      Station = dplyr::coalesce(StationName, paste0("Station ", Station))
-    )
-  
-  # 4) Compute hourly means per (station, hour)
+  # 3) Compute hourly means per (station, hour)
   hourly <- df2 %>%
     dplyr::group_by(Station, Hour) %>%
     dplyr::summarise(
@@ -265,7 +253,7 @@ summarize_hourly_by_station <- function(df,
       .groups    = "drop"
     )
   
-  # 5) Fix a single station order across hours (descending overall mean)
+  # 4) Fix a single station order across hours (descending overall mean)
   station_levels <- hourly %>%
     dplyr::group_by(Station) %>%
     dplyr::summarise(overall_mean = mean(mean_value, na.rm = TRUE), .groups = "drop") %>%

@@ -21,7 +21,6 @@ pkgs <- c(
   "here",
   "lubridate",
   "purrr",
-  "quarto",
   "readr",
   "sf",
   "stringi",
