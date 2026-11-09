@@ -82,23 +82,23 @@ area_santiago <- compute_geo_area_km2(geo_sf = geo_santiago, geo_id_col = "zona_
 area_sp       <- compute_geo_area_km2(geo_sf = geo_sp, geo_id_col = "code_weighting")
 
 # Read the required census columns and summarize all residents in each distance group
-bands_bogota <- compute_distance_band_summary(dist_pq     = dist_bogota,
-                                              census_path = micro_bogota,
-                                              area_dt     = area_bogota,
-                                              city        = "Bogota",
-                                              unit_label  = "census tracts",
-                                              share_vars  = band_shares_bogota,
-                                              mean_vars   = band_means_bogota,
-                                              radii_km    = distance_band_radii_km)
+bands_bogota   <- compute_distance_band_summary(dist_pq     = dist_bogota,
+                                                census_path = micro_bogota,
+                                                area_dt     = area_bogota,
+                                                city        = "Bogota",
+                                                unit_label  = "census tracts",
+                                                share_vars  = band_shares_bogota,
+                                                mean_vars   = band_means_bogota,
+                                                radii_km    = distance_band_radii_km)
 
-bands_cdmx <- compute_distance_band_summary(dist_pq     = dist_cdmx,
-                                            census_path = micro_cdmx,
-                                            area_dt     = area_cdmx,
-                                            city        = "Mexico City",
-                                            unit_label  = "municipalities",
-                                            share_vars  = band_shares_cdmx,
-                                            mean_vars   = band_means_cdmx,
-                                            radii_km    = distance_band_radii_km)
+bands_cdmx     <- compute_distance_band_summary(dist_pq     = dist_cdmx,
+                                                census_path = micro_cdmx,
+                                                area_dt     = area_cdmx,
+                                                city        = "Mexico City",
+                                                unit_label  = "municipalities",
+                                                share_vars  = band_shares_cdmx,
+                                                mean_vars   = band_means_cdmx,
+                                                radii_km    = distance_band_radii_km)
 
 bands_santiago <- compute_distance_band_summary(dist_pq     = dist_santiago,
                                                 census_path = micro_santiago,
@@ -109,18 +109,21 @@ bands_santiago <- compute_distance_band_summary(dist_pq     = dist_santiago,
                                                 mean_vars   = band_means_santiago,
                                                 radii_km    = distance_band_radii_km)
 
-bands_sp <- compute_distance_band_summary(dist_pq     = dist_sp,
-                                          census_path = micro_sp,
-                                          area_dt     = area_sp,
-                                          city        = "Sao Paulo",
-                                          unit_label  = "weighting areas",
-                                          share_vars  = band_shares_sp,
-                                          mean_vars   = band_means_sp,
-                                          radii_km    = distance_band_radii_km)
+bands_sp       <- compute_distance_band_summary(dist_pq     = dist_sp,
+                                                census_path = micro_sp,
+                                                area_dt     = area_sp,
+                                                city        = "Sao Paulo",
+                                                unit_label  = "weighting areas",
+                                                share_vars  = band_shares_sp,
+                                                mean_vars   = band_means_sp,
+                                                radii_km    = distance_band_radii_km)
 
 # Combine the four city tables in manuscript order
-distance_bands <- data.table::rbindlist(list(bands_bogota, bands_cdmx,
-                                            bands_santiago, bands_sp), fill = TRUE)
+distance_bands <- data.table::rbindlist(list(bands_bogota, 
+                                             bands_cdmx,
+                                             bands_santiago,
+                                             bands_sp),
+                                        fill = TRUE)
 
 # ========================================================================================
 # III: Save outputs

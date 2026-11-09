@@ -183,4 +183,3 @@ ggplot2::ggsave(
   device    = grDevices::cairo_pdf,
   width     = 8.5, height = 5.8, dpi = 300,
   bg        = "white", limitsize = FALSE)
-

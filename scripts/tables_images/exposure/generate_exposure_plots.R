@@ -31,18 +31,21 @@ dir_reg     <- here::here("data", "processed", "idw_regressions")
 dir_figures <- here::here("results", "figures")
 
 # Set the files containing group means and regression estimates with confidence intervals
-files_ci_edu      <-
-  here::here(dir_reg, sprintf("exposure_ci_estimates_education_%dkm_%d.parquet",
-                              exposure_buffers_km, analysis_year))
-files_summary_edu <-
-  here::here(dir_reg, sprintf("exposure_group_summaries_education_%dkm_%d.parquet",
-                              exposure_buffers_km, analysis_year))
-files_ci_inc      <-
-  here::here(dir_reg, sprintf("exposure_ci_estimates_income_%dkm_%d.parquet",
-                              exposure_buffers_km, analysis_year))
-files_summary_inc <-
-  here::here(dir_reg, sprintf("exposure_group_summaries_income_%dkm_%d.parquet",
-                              exposure_buffers_km, analysis_year))
+files_ci_edu      <- here::here(dir_reg, 
+                                sprintf("exposure_ci_estimates_education_%dkm_%d.parquet",
+                                        exposure_buffers_km,
+                                        analysis_year))
+files_summary_edu <- here::here(dir_reg,
+                                sprintf("exposure_group_summaries_education_%dkm_%d.parquet",
+                                        exposure_buffers_km,
+                                        analysis_year))
+files_ci_inc      <- here::here(dir_reg,
+                                sprintf("exposure_ci_estimates_income_%dkm_%d.parquet",
+                                        exposure_buffers_km,
+                                        analysis_year))
+files_summary_inc <- here::here(dir_reg,
+                                sprintf("exposure_group_summaries_income_%dkm_%d.parquet",
+                                        exposure_buffers_km, analysis_year))
 
 # Read the observed-data estimates for education.
 ci_edu      <- data.table::rbindlist(lapply(files_ci_edu, arrow::read_parquet))

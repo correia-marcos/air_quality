@@ -78,6 +78,11 @@ micro_santiago <- here::here(dir_census, "santiago_2017",
 micro_sp       <- here::here(dir_census, "sao_paulo_2010",
                              "census_sp_individual_2010.parquet")
 
+# Optional: Check datasets used (change city if you want)
+distance_data          <- arrow::read_parquet(dist_bogota) |> dplyr::collect()
+micro_data             <- arrow::read_parquet(micro_bogota) |> dplyr::collect()
+pollutation_clean_data <- arrow::open_dataset(paste0(clean_bogota, "/year=2023")) |>
+  dplyr::collect()
 # ========================================================================================
 # II: Process data
 # ========================================================================================
@@ -130,58 +135,61 @@ counts_cdmx[,     city := "Mexico City"]
 counts_sp[,       city := "São Paulo"]
 
 station_counts <- data.table::rbindlist(list(counts_santiago, counts_bogota,
-                                            counts_cdmx, counts_sp))
+                                             counts_cdmx, counts_sp))
 station_counts <- station_counts[, .(city, pm10, pm25)]
 
 # Average station annual means and compare them with WHO annual guidelines
 # Keep every available year, including years before the main analysis
-who_bogota <- compute_who_exceedances(arrow_dir   = clean_bogota,
-                                      city_label  = "bogota",
-                                      pollutants  = summary_pollutants,
-                                      year_filter = NULL)
+who_bogota      <- compute_who_exceedances(arrow_dir   = clean_bogota,
+                                           city_label  = "bogota",
+                                           pollutants  = summary_pollutants,
+                                           year_filter = NULL)
 
-who_cdmx <- compute_who_exceedances(arrow_dir   = clean_cdmx,
-                                    city_label  = "cdmx",
-                                    pollutants  = summary_pollutants,
-                                    year_filter = NULL)
+who_cdmx        <- compute_who_exceedances(arrow_dir   = clean_cdmx,
+                                           city_label  = "cdmx",
+                                           pollutants  = summary_pollutants,
+                                           year_filter = NULL)
 
-who_santiago <- compute_who_exceedances(arrow_dir   = clean_santiago,
-                                        city_label  = "santiago",
-                                        pollutants  = summary_pollutants,
-                                        year_filter = NULL)
+who_santiago    <- compute_who_exceedances(arrow_dir   = clean_santiago,
+                                           city_label  = "santiago",
+                                           pollutants  = summary_pollutants,
+                                           year_filter = NULL)
 
-who_sp <- compute_who_exceedances(arrow_dir   = clean_sp,
-                                  city_label  = "sao_paulo_metro",
-                                  pollutants  = summary_pollutants,
-                                  year_filter = NULL)
+who_sp          <- compute_who_exceedances(arrow_dir   = clean_sp,
+                                           city_label  = "sao_paulo_metro",
+                                           pollutants  = summary_pollutants,
+                                           year_filter = NULL)
 
 who_exceedances <- data.table::rbindlist(list(who_bogota, who_cdmx,
-                                              who_santiago, who_sp), fill = TRUE)
+                                              who_santiago, who_sp),
+                                         fill = TRUE)
 
 # Count days and hours above each threshold for city-hour and station-hour series
 # This retains the existing hourly comparison with the 24-hour interim thresholds
-exceed_bogota <- compute_threshold_exceedance_days(arrow_dir   = clean_bogota,
-                                                   city_label  = "Bogota",
-                                                   year_filter = analysis_year,
-                                                   pollutants  = summary_pollutants)
+exceed_bogota         <- compute_threshold_exceedance_days(arrow_dir   = clean_bogota,
+                                                           city_label  = "Bogota",
+                                                           year_filter = analysis_year,
+                                                           pollutants  = summary_pollutants)
 
-exceed_santiago <- compute_threshold_exceedance_days(arrow_dir   = clean_santiago,
-                                                     city_label  = "Santiago",
-                                                     year_filter = analysis_year,
-                                                     pollutants  = summary_pollutants)
+exceed_santiago       <- compute_threshold_exceedance_days(arrow_dir   = clean_santiago,
+                                                           city_label  = "Santiago",
+                                                           year_filter = analysis_year,
+                                                           pollutants  = summary_pollutants)
 
-exceed_cdmx <- compute_threshold_exceedance_days(arrow_dir   = clean_cdmx,
-                                                 city_label  = "Mexico City",
-                                                 year_filter = analysis_year,
-                                                 pollutants  = summary_pollutants)
+exceed_cdmx           <- compute_threshold_exceedance_days(arrow_dir   = clean_cdmx,
+                                                           city_label  = "Mexico City",
+                                                           year_filter = analysis_year,
+                                                           pollutants  = summary_pollutants)
 
-exceed_sp <- compute_threshold_exceedance_days(arrow_dir   = clean_sp,
-                                               city_label  = "Sao Paulo",
-                                               year_filter = analysis_year,
-                                               pollutants  = summary_pollutants)
+exceed_sp             <- compute_threshold_exceedance_days(arrow_dir   = clean_sp,
+                                                           city_label  = "Sao Paulo",
+                                                           year_filter = analysis_year,
+                                                           pollutants  = summary_pollutants)
 
 threshold_exceedances <- data.table::rbindlist(list(exceed_bogota,
-                                            exceed_santiago, exceed_cdmx, exceed_sp))
+                                                    exceed_santiago, 
+                                                    exceed_cdmx, 
+                                                    exceed_sp))
 
 # Assign stations the education quintile of their nearest census unit
 # Summarize available readings among stored rows for stations with a matched unit

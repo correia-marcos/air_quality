@@ -52,7 +52,7 @@ distances_sao_paulo <- here::here(dir_distances, "sao_paulo_2010",
 
 # Optional: Check the distances and pollution datasets (change city if you want)
 pollution_data <- arrow::open_dataset(pollution_bogota) |> dplyr::collect()
-distances_data <- arrow::open_dataset(distances_bogota) |> dplyr::collect()
+distances_data <- arrow::read_parquet(distances_bogota) |> dplyr::collect()
 
 # ==========================================================================================
 # II: Process and save data

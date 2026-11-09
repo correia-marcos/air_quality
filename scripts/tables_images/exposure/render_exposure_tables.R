@@ -24,8 +24,8 @@ source(here::here("src", "general_utilities", "plot", "latex_tables.R"))
 source(here::here("config", "analysis_settings.R"))
 
 # The appendix tables report the exposure analysis's buffer
-buffer_km <- exposure_buffers_km
-dir_reg   <- here::here("data", "processed", "idw_regressions")
+buffer_km  <- exposure_buffers_km
+dir_reg    <- here::here("data", "processed", "idw_regressions")
 dir_tables <- here::here("results", "tables")
 
 file_summary_edu <- here::here(dir_reg,
@@ -36,6 +36,7 @@ file_ci_edu <- here::here(dir_reg,
   sprintf("exposure_ci_estimates_education_%dkm_%d.parquet", buffer_km, analysis_year))
 file_ci_inc <- here::here(dir_reg,
   sprintf("exposure_ci_estimates_income_%dkm_%d.parquet", buffer_km, analysis_year))
+
 out_means_edu <- here::here(dir_tables, "table_means_education_quintiles.tex")
 out_means_inc <- here::here(dir_tables, "table_means_income_groups.tex")
 out_hours_edu <- here::here(dir_tables, "table_hours_above_education_quintiles.tex")

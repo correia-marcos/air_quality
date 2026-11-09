@@ -90,7 +90,6 @@ geo_sp       <- data.table::as.data.table(arrow::read_parquet(geo_sp_pq))
 # II: Process data
 # ==========================================================================================
 # IDW writes geographic exposure and individual group membership, returning their paths.
-
 idw_bogota <- run_idw_city(city_label     = "Bogota",
                            city_id        = "bogota_2018",
                            arrow_dir      = arrow_bogota,
