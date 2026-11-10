@@ -38,22 +38,31 @@ validation_status_badge <- function(ok, label_ok = "Complete",
 #' @param qmd_path  The report's .qmd file.
 #' @param html_dest Where the rendered HTML is saved; its folder must exist.
 #' @param params    Named list of report parameters, passed as `-P name:value`.
-#' @return html_dest, invisibly. Writes the HTML there; the report's figures folder
-#   (`<report>_files/`, ignored by git) may remain beside the .qmd.
+#' @return html_dest, invisibly. Moves the self-contained HTML there; the report's
+#   figures folder (`<report>_files/`, ignored by git) remains beside the .qmd.
 #' @details Calls the Quarto program directly. The quarto R package is not a project
 #   dependency and only wraps the same program. RStudio ships Quarto and puts it on PATH;
 #   a terminal needs Quarto installed. QUARTO_R makes the report's R chunks run with this
 #   session's R, and so with the project library, not whichever Rscript is first on PATH.
+#   No --output or --output-dir: Quarto 1.10 places --output in the working directory
+#   while the support files stay beside the .qmd, so the resources are not embedded and
+#   the page loses its theme. Rendered beside the .qmd, the HTML embeds them; it is then
+#   copied to html_dest, checked, and removed from beside the .qmd.
 render_validation_report <- function(qmd_path, html_dest, params) {
   quarto <- Sys.which("quarto")
   if (!nzchar(quarto)) stop("Quarto not found: render from RStudio or install Quarto.")
   param_args <- shQuote(paste0(names(params), ":", unlist(params)))
-  args <- c("render", shQuote(qmd_path),
-            "--output-dir", shQuote(dirname(html_dest)),
-            "--output",     shQuote(basename(html_dest)),
-            as.vector(rbind("-P", param_args)))
-  r_binary <- shQuote(file.path(R.home("bin"), "Rscript"))
-  status   <- system2(quarto, args, env = paste0("QUARTO_R=", r_binary))
+  args       <- c("render", shQuote(qmd_path), as.vector(rbind("-P", param_args)))
+  r_binary   <- shQuote(file.path(R.home("bin"), "Rscript"))
+  status     <- system2(quarto, args, env = paste0("QUARTO_R=", r_binary))
   if (status != 0L) stop("quarto render stopped with status ", status, ".")
+
+  # Move the rendered HTML only after an identical copy exists at html_dest.
+  html_beside_qmd <- sub("[.]qmd$", ".html", qmd_path)
+  if (!file.copy(html_beside_qmd, html_dest, overwrite = TRUE) ||
+      tools::md5sum(html_beside_qmd) != tools::md5sum(html_dest)) {
+    stop("Validation report copy failed; the render stays at ", html_beside_qmd)
+  }
+  file.remove(html_beside_qmd)
   invisible(html_dest)
 }
