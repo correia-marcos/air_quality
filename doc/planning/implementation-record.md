@@ -8,6 +8,39 @@ retains that implementation's checks and limits.
 The dated records below retain earlier implementation and validation evidence; they are
 not the current execution specification.
 
+## Results grouped by analysis — 10 November 2026
+
+Workstream B2 moved 100 result files into the analysis folder of the recipe that writes
+them: `results/tables/` lost its flat layout (`inputs/`, `descriptives/`, `exposure/`,
+`not_in_paper/supporting/`), `results/figures/maps/` dissolved into `monitoring/` and
+`not_in_paper/`, the 5 km figures moved to `robustness/buffer_5km/`, and the satellite,
+diagnostic and Santiago 2024 figures moved under `not_in_paper/`. Every move is listed in
+[the move manifest](layout-move-manifest-20261110.csv). Manuscript destinations did not
+change; 19 rows of `config/paper_artifacts.csv` and 11 of
+`config/verification_comparisons.csv` now name the new sources.
+`save_exposure_plot_family()` writes into the folder its caller names instead of adding
+`exposure/` or `imputation/` itself. `test-layout.R` now checks that each result folder
+has a recipe folder of the same name and that each manuscript file sits in its producer's
+analysis. The 36 tracked leaflet support files were removed: both HTML maps are
+self-contained and never read them.
+
+| Check | Result |
+|---|---|
+| Moved files | 100 of 100 byte-identical to the snapshot `data/exploration/b2-20261110/` |
+| Manuscript sources | 128 `paper_path` → source SHA-256 pairs identical |
+| Table recipes rerun | 25 `.tex` files byte-identical at the new paths |
+| Exposure figure recipes | Saving stubbed: 18, 18, 6 and 12 paths, all existing files in the four folders |
+| Portable checks | Synthetic suite 1,159 passed; 480 links, 0 errors; targets contracts 150 and reader workflows 798 assertions passed |
+
+## Screening records without the row-level input identity — 10 November 2026
+
+The cleaned panels and `_audit/source_contributions/` no longer carry `input_id`, which
+changed between reruns because interim row order varies; each year's identity stays in
+`_audit/input_partitions.csv`. The screening records (`<city>_screening_records.csv`,
+formerly `*_review_records.csv`) name the CDMX source files through the source manifest
+instead of hash ids. Records built from the existing panels matched the saved ones on
+every shared column; the 44 CDMX records come from two raw 2023 `.xls` files.
+
 ## Each recipe builds only its own analysis — 1–9 November 2026
 
 Workstream C gave each recipe the products of one analysis. The Bogotá 2005 inputs moved to
