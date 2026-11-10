@@ -15,9 +15,11 @@
 #   5. build_time_parts
 #   6. harmonize_station_names
 #   7. .std_name
-#   8. prepare_legacy_single_csv
-#   9. prepare_legacy_cdmx
-#   10. prepare_new_panel_like_legacy
+#   8. legacy_station_key
+#   9. bogota_legacy_geo_id
+#   10. prepare_legacy_single_csv
+#   11. prepare_legacy_cdmx
+#   12. prepare_new_panel_like_legacy
 #
 #' @Date: August 2026
 #' @Author: Marcos Paulo
@@ -94,8 +96,10 @@ build_compare_cfg <- function(city_id) {
                                            "matrix_station_distances.parquet"),
       legacy_station_dist     = here::here("data", "_legacy", "distances", "bogota",
                                            "stations_distance_bogota_v2.csv"),
+      # Unit-to-station distances on the 2005 area, the geography the legacy file uses;
+      # written by prepare_bogota_2005_inputs.R.
       new_geo_dist            = here::here("data", "processed", "distances_matrices",
-                                           "bogota_2018",
+                                           "bogota_2005",
                                            "matrix_geo_station_distances.parquet"),
       legacy_geo_dist         = here::here("data", "_legacy", "distances", "bogota",
                                            "dt_distances.rds"),
@@ -335,6 +339,47 @@ harmonize_station_names <- function(df, rename_map = c(), drop_stations = charac
   x <- toupper(trimws(x))
   x <- stringi::stri_trans_general(x, "Latin-ASCII")
   gsub("[^A-Z0-9]", "", x)
+}
+
+
+# ---------------------------------------------------------------------------
+# legacy_station_key
+#' @param x            character vector of station names, legacy or new spelling.
+#' @param residual_map named character vector; standardized name -> legacy name
+#                      (cfg$compare$residual_map). Default: no renaming.
+#' @return character; the key compare_ground_stations() uses for station_audit:
+#          .std_name(), then residual_map. "PUENTE ARANDA" and "PuenteAranda" both
+#          give "PUENTEARANDA"; "CENTRO DE ALTO RENDIMIENTO" gives "CAR".
+#' @details Comparisons that join a legacy table to a new one by station must key both
+#          sides the same way, or multi-word names silently fail to match.
+#' @Written_on: November 2026
+#' @Written_by: Marcos Paulo
+# ---------------------------------------------------------------------------
+legacy_station_key <- function(x, residual_map = character(0)) {
+  x   <- .std_name(as.character(x))
+  hit <- x %in% names(residual_map)
+  x[hit] <- unname(residual_map[x[hit]])
+  x
+}
+
+
+# ---------------------------------------------------------------------------
+# bogota_legacy_geo_id
+#' @param x character or integer vector of legacy Bogotá unit codes: localities as
+#          LocCodigo (1-20 or "01"-"20"), municipalities as 5-digit DANE codes.
+#' @return character; the 2005 metro GEO_ID: "11001" plus the two-digit locality for
+#          Bogotá's localities, the DANE code unchanged for municipalities.
+#' @details The legacy census and distance files identify Bogotá's localities by
+#          LocCodigo alone; bogota_prepare_metro_area(level = "mpio_localidad") prefixes
+#          Bogotá's municipality code, so 1 becomes "1100101".
+#' @Written_on: November 2026
+#' @Written_by: Marcos Paulo
+# ---------------------------------------------------------------------------
+bogota_legacy_geo_id <- function(x) {
+  x <- trimws(as.character(x))
+  locality <- !is.na(x) & nchar(x) <= 2L
+  x[locality] <- paste0("11001", sprintf("%02d", as.integer(x[locality])))
+  x
 }
 
 

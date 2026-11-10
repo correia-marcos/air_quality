@@ -816,9 +816,10 @@ compare_metro_area <- function(
 #   Both pipelines collapse the Extended 2005 Census to LocCodigo level:
 #   - Bogotá D.C.: LocCodigo = localidad code (2 digits, "01"–"20")
 #   - Cundinamarca: LocCodigo = department + municipality code (5 digits, e.g. "25740")
-#   The new pipeline's GEO_ID for the extended version is constructed as
-#   paste0(dept_code, muni_code, localidad_code), which maps to LocCodigo
-#   for Cundinamarca (first 5 chars) and to the localidad for Bogotá.
+#   The new pipeline's GEO_ID is the 5-digit code for Cundinamarca and
+#   "11001" plus the localidad for Bogotá ("1100101"). The legacy CSV stores
+#   the localidad alone (read as 1-20), so bogota_legacy_geo_id() maps LocCodigo
+#   to that GEO_ID; without it no Bogotá localidad would be compared.
 #
 #   METRO AREA DIFFERENCES
 #   The legacy pipeline uses a different set of Cundinamarca municipalities
@@ -896,9 +897,9 @@ compare_census <- function(
   legacy_col <- readr::read_csv(leg_col_path, show_col_types = FALSE) |>
     dplyr::mutate(dplyr::across(dplyr::where(is.character), trimws))
   
-  # Legacy sets usually have LocCodigo. Standardise if it exists.
+  # Legacy sets usually have LocCodigo; map it to the 2005 GEO_ID (see @details).
   if ("LocCodigo" %in% names(legacy_col)) {
-    legacy_col <- legacy_col |> dplyr::mutate(GEO_ID = LocCodigo)
+    legacy_col <- legacy_col |> dplyr::mutate(GEO_ID = bogota_legacy_geo_id(LocCodigo))
   }
   
   if (!join_key %in% names(new_col) && "GEO_ID" %in% names(new_col)) {

@@ -91,8 +91,9 @@ build_bogota_progression_specs <- function(cfg, buffer_km = 5L) {
   legacy_geo_dist_rds <- cmp$legacy_geo_dist
   has_legacy_geo_dist <- !is.null(legacy_geo_dist_rds) && file.exists(legacy_geo_dist_rds)
   
-  # New 2005 metro geometry (40 GEO_IDs). Parquet: bogota_2005_geo_station_distances.parquet.
-  new_2005_geo_dist <- file.path(dist_root, "bogota_2005_geo_station_distances.parquet")
+  # New 2005 metro geometry (40 GEO_IDs), written by prepare_bogota_2005_inputs.R.
+  new_2005_geo_dist <- file.path(dist_root, "bogota_2005",
+                                 "matrix_geo_station_distances.parquet")
   has_new_2005_dist <- file.exists(new_2005_geo_dist)
   
   # Legacy stations × new 2018 manzana (44,979) — produced by
@@ -145,9 +146,7 @@ build_bogota_progression_specs <- function(cfg, buffer_km = 5L) {
   
   legacy_census_for_2005 <- if (!is.null(legacy_census_raw)) {
     tmp <- data.table::as.data.table(data.table::copy(legacy_census_raw))
-    tmp[, GEO_ID := ifelse(nchar(LocCodigo) <= 2L,
-                           paste0("11001", LocCodigo),
-                           LocCodigo)]
+    tmp[, GEO_ID := bogota_legacy_geo_id(LocCodigo)]
     dplyr::as_tibble(tmp)
   } else NULL
   
@@ -182,7 +181,8 @@ build_bogota_progression_specs <- function(cfg, buffer_km = 5L) {
       mode  = "compute",
       enabled = has_legacy_census && has_new_2005_dist && dir.exists(legacy_mock_clean),
       reason  = if (!has_legacy_census)              "missing legacy census CSV"
-      else if (!has_new_2005_dist)         "missing bogota_2005_geo_station_distances.parquet (run generate_distance_matrices.R)"
+      else if (!has_new_2005_dist)
+        "missing bogota_2005 geo-station distances (run prepare_bogota_2005_inputs.R)"
       else if (!dir.exists(legacy_mock_clean)) "run compare_outlier_procedure() first"
       else NULL,
       args    = list(

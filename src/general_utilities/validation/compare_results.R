@@ -239,10 +239,13 @@ aggregate_idw_exposure_legacy <- function(
 #       Step 0-4 ladder exists to measure, so geo_tol_km = 0.05 keeps it visible
 #       rather than absorbing it into a "match".
 #
-#   STATION MATCHING
-#   The new pipeline normalises station names (uppercase, no accents). The legacy
-#   uses manually recoded names (e.g. "Usaquén" → "Usaquen"). Matching is done
-#   after normalising both sides to uppercase ASCII.
+#   STATION AND UNIT KEYS
+#   The new pipeline spells stations "PUENTE ARANDA"; the legacy files "PuenteAranda".
+#   Both sides go through legacy_station_key() (uppercase ASCII, letters and digits
+#   only, then residual_map), the key station_audit already uses; otherwise every
+#   multi-word station drops out of the join. Legacy Bogotá units are LocCodigo
+#   ("01"-"20") or DANE codes; bogota_legacy_geo_id() maps them to the 2005 GEO_ID
+#   of the new matrix, which prepare_bogota_2005_inputs.R writes on the 2005 area.
 #
 #   GEO-UNIT DISTANCES
 #   The new pipeline measures from st_point_on_surface() representative points.
@@ -304,13 +307,8 @@ compare_idw <- function(
   
   if (!quiet) message("[", cfg$id, "] Comparing distance matrices ...")
   
-  # 2) Normalisation helper
-  .norm <- function(x) {
-    x <- toupper(trimws(as.character(x)))
-    if (requireNamespace("stringi", quietly = TRUE))
-      x <- stringi::stri_trans_general(x, "Latin-ASCII")
-    gsub('["\']', "", x)
-  }
+  # 2) Key stations as station_audit does. See @details: station and unit keys.
+  .key <- function(x) legacy_station_key(x, cmp$residual_map %||% character(0))
 
   # Strip any units label before converting, so a factor never yields level codes.
   # See @Details: legacy distance units.
@@ -324,8 +322,8 @@ compare_idw <- function(
   new_sta <- arrow::read_parquet(new_station_dist) |>
     dplyr::as_tibble() |>
     dplyr::mutate(
-      station_from = .norm(station_from),
-      station_to   = .norm(station_to)
+      station_from = .key(station_from),
+      station_to   = .key(station_to)
     )
   
   # 4) Load legacy station distances
@@ -348,15 +346,15 @@ compare_idw <- function(
     ) |>
     dplyr::rename(station_from = !!id_col) |>
     dplyr::mutate(
-      station_from       = .norm(station_from),
-      station_to         = .norm(station_to),
+      station_from       = .key(station_from),
+      station_to         = .key(station_to),
       distance_km_legacy = as.numeric(distance_m_legacy) / 1000
     ) |>
     dplyr::select(station_from, station_to, distance_km_legacy)
   
   # 5) Restrict new data to legacy station universe
   if (!is.null(station_audit)) {
-    legacy_names <- .norm(station_audit$station[station_audit$in_legacy])
+    legacy_names <- .key(station_audit$station[station_audit$in_legacy])
   } else {
     legacy_names <- unique(c(leg_long$station_from, leg_long$station_to))
   }
@@ -418,7 +416,7 @@ compare_idw <- function(
     
     new_geo <- arrow::read_parquet(new_geo_dist) |>
       dplyr::as_tibble() |>
-      dplyr::mutate(station_id = .norm(station_id)) |>
+      dplyr::mutate(station_id = .key(station_id)) |>
       dplyr::rename(distance_km_new = distance_km)
     
     leg_geo <- if (tools::file_ext(legacy_geo_dist) == "rds") {
@@ -433,8 +431,9 @@ compare_idw <- function(
     leg_geo_clean <- leg_geo |>
       dplyr::as_tibble() |>
       dplyr::transmute(
-        geo_id             = as.character(.data[[geo_id_col]]),
-        station_id         = .norm(.data[[sta_id_col]]),
+        geo_id             = if (geo_id_col == "geo_id") as.character(.data[[geo_id_col]])
+                             else bogota_legacy_geo_id(.data[[geo_id_col]]),
+        station_id         = .key(.data[[sta_id_col]]),
         distance_km_legacy = .parse_km(.data[[dist_col]])
       )
 
