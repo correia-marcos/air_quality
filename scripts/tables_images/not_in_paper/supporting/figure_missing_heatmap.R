@@ -6,7 +6,7 @@
 #' @Description: Month × hour missing-pattern diagnostic. For each city, DuckDB computes
 # the exact two-way share of missing hours (month × hour) in the cleaned station panel,
 # the panel the paper's missingness tables use, over all years; `plot_missing_heatmap()`
-# renders it. One PDF per city and pollutant in results/figures/diagnostics/.
+# renders it. One PDF per city and pollutant in results/figures/not_in_paper/supporting/.
 #
 #' @Summary:
 #   I.   Import data: source functions, set the theme and declare paths.
@@ -28,7 +28,7 @@ set_paper_theme()
 
 # Set the source folder and the output folder.
 dir_pollution <- here::here("data", "processed", "monitoring_stations_outliers")
-outdir_figs   <- here::here("results", "figures", "diagnostics")
+outdir_figs   <- here::here("results", "figures", "not_in_paper", "supporting")
 dir.create(outdir_figs, recursive = TRUE, showWarnings = FALSE)
 
 # Set each city's cleaned station panel, named by the city id used in file names.

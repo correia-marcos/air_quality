@@ -26,7 +26,7 @@ source(here::here("config", "analysis_settings.R"))
 # The appendix tables report the exposure analysis's buffer
 buffer_km  <- exposure_buffers_km
 dir_reg    <- here::here("data", "processed", "idw_regressions")
-dir_tables <- here::here("results", "tables")
+dir_tables <- here::here("results", "tables", "exposure")
 
 file_summary_edu <- here::here(dir_reg,
   sprintf("exposure_group_summaries_education_%dkm_%d.parquet", buffer_km, analysis_year))

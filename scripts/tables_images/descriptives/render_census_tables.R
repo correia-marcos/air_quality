@@ -26,7 +26,7 @@ source(here::here("src", "general_utilities", "plot", "latex_tables.R"))
 # Set input folders and the output folder
 dir_census <- here::here("data", "processed", "census_summary")
 dir_bands  <- here::here("data", "processed", "distance_band_descriptives")
-dir_tables <- here::here("results", "tables")
+dir_tables <- here::here("results", "tables", "descriptives")
 
 # Set the census and distance-band input files and the LaTeX output paths
 file_census <- here::here(dir_census, "census_summary.parquet")

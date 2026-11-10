@@ -27,7 +27,7 @@ source(here::here("config", "analysis_settings.R"))
 # Set the input table and the output file
 file_removals <- here::here("data", "processed", "missing_proportions",
   sprintf("cleaning_removals_by_education_quintile_%d.parquet", analysis_year))
-out_removals  <- here::here("results", "tables",
+out_removals  <- here::here("results", "tables", "not_in_paper", "supporting",
   sprintf("cleaning_removals_by_education_quintile_%d.tex", analysis_year))
 
 # Read the shares of reported readings removed by cleaning

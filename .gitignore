@@ -59,9 +59,10 @@ results/validation_old_version/**/*.pdf
 Results/validation_old_version/**/*.gpkg
  
 # ---------------------------------------------------------------------------
-# Results — untracked interactive map build artefacts
+# Results — interactive map build leftovers. saveWidget(selfcontained = TRUE)
+# inlines everything and deletes <page>_files/; one is left only if pandoc fails.
 # ---------------------------------------------------------------------------
-results/figures/maps/*_files/
+results/figures/not_in_paper/supporting/*_files/
  
  
 # ---------------------------------------------------------------------------

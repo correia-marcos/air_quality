@@ -55,7 +55,8 @@ config/                 - Information. Source of rules and definitions
 data/                   - raw/ interim/ processed/ downloads/ _legacy/   (all git-ignored)
   validation/              - Ignored legacy comparison artifacts and HTML.
 
-results/                - figures/ (seven topics plus the pilot); tables/ (flat except the pilot).
+results/                - figures/ and tables/, one folder per analysis that writes them,
+                          mirroring scripts/ (robustness/ and not_in_paper/ included).
 
 _targets.R              - Small candidate manuscript graph entry point
 _targets_specification.R - Separate specification-sensitivity graph (own store); reads
@@ -64,11 +65,13 @@ tools/reproduction/     - Verification, stage reporting, manifest checks and exp
 tools/explore/          - Launchers for undeclared values; write only to data/exploration/
 ```
 
-Layout pilot (October 2026): the optional specification-sensitivity exercise groups its
-scripts, functions and outputs in `specification_sensitivity/` subfolders of each stage,
-with results by role in `results/{tables,figures}/specification_sensitivity/`.
-Its file map is `scripts/process_data/specification_sensitivity/README.md`. Repo-wide
-adoption is a separate plan; other files keep the flat layout until then.
+Analysis folders (adopted November 2026): every stage of `scripts/` and both folders of
+`results/` are grouped by analysis, so `results/figures/exposure/` holds what
+`scripts/tables_images/exposure/` draws. `test-layout.R` checks that each result folder
+has a matching recipe folder and that each manuscript file sits in its producer's
+analysis. The specification-sensitivity exercise keeps its role subfolders in
+`results/{tables,figures}/specification_sensitivity/`; its file map is
+`scripts/process_data/specification_sensitivity/README.md`.
 
 Scripts are named for what they produce, never numbered. The complete entry-point inventory
 is `doc/planning/remaining-work.md`; tests require exactly one row per script/report.

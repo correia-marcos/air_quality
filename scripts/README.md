@@ -16,9 +16,9 @@ produces the paper's results, follow the
 ## The same analysis names in every stage
 
 Inside each stage, folders are named after the analysis they serve. The same names organise
-the targets modules in [`config/targets/`](../config/targets/) and most figure folders in
-`results/figures/`, so one name leads from the processing recipe to its figures and to its
-targets:
+the targets modules in [`config/targets/`](../config/targets/) and the folders of
+`results/figures/` and `results/tables/`, so one name leads from the processing recipe to
+its figures and tables and to its targets:
 
 | Analysis | Question |
 |---|---|

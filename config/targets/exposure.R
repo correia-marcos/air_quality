@@ -417,16 +417,20 @@ list(
       set_paper_theme()
       c(
         save_exposure_plot_family(exposure_plots$ci_edu,
-          out_dir = here::here("results", "figures"), paper_files = exposure_paper_files,
+          out_dir = here::here("results", "figures", "exposure"),
+          paper_files = exposure_paper_files,
           year = analysis_year),
         save_exposure_plot_family(exposure_plots$levels_edu,
-          out_dir = here::here("results", "figures"), paper_files = exposure_paper_files,
+          out_dir = here::here("results", "figures", "exposure"),
+          paper_files = exposure_paper_files,
           year = analysis_year),
         save_exposure_plot_family(exposure_plots$ci_inc,
-          out_dir = here::here("results", "figures"), paper_files = exposure_paper_files,
+          out_dir = here::here("results", "figures", "exposure"),
+          paper_files = exposure_paper_files,
           year = analysis_year),
         save_exposure_plot_family(exposure_plots$levels_inc,
-          out_dir = here::here("results", "figures"), paper_files = exposure_paper_files,
+          out_dir = here::here("results", "figures", "exposure"),
+          paper_files = exposure_paper_files,
           year = analysis_year))
     }, format = "file"),
 
@@ -483,16 +487,20 @@ list(
     {
       c(
         write_latex_table(exposure_table_tex$means_edu,
-          here::here("results", "tables", "table_means_education_quintiles.tex"),
+          here::here("results", "tables", "exposure",
+            "table_means_education_quintiles.tex"),
           use_bytes = TRUE),
         write_latex_table(exposure_table_tex$means_inc,
-          here::here("results", "tables", "table_means_income_groups.tex"),
+          here::here("results", "tables", "exposure",
+            "table_means_income_groups.tex"),
           use_bytes = TRUE),
         write_latex_table(exposure_table_tex$hours_edu,
-          here::here("results", "tables", "table_hours_above_education_quintiles.tex"),
+          here::here("results", "tables", "exposure",
+            "table_hours_above_education_quintiles.tex"),
           use_bytes = TRUE),
         write_latex_table(exposure_table_tex$hours_inc,
-          here::here("results", "tables", "table_hours_above_income_groups.tex"),
+          here::here("results", "tables", "exposure",
+            "table_hours_above_income_groups.tex"),
           use_bytes = TRUE))
     }, format = "file"),
 

@@ -29,7 +29,7 @@ set_paper_theme()
 
 # Set the input folder and the output folder
 dir_imputed <- here::here("data", "processed", "idw_regressions_imputed")
-dir_figures <- here::here("results", "figures")
+dir_figures <- here::here("results", "figures", "imputation")
 
 # Set the files containing group means and regression estimates with imputed readings
 file_ci_imputed      <- here::here(dir_imputed,

@@ -25,7 +25,7 @@ source(here::here("src", "general_utilities", "plot", "latex_tables.R"))
 source(here::here("config", "analysis_settings.R"))
 
 dir_missing <- here::here("data", "processed", "missing_proportions")
-dir_tables  <- here::here("results", "tables")
+dir_tables  <- here::here("results", "tables", "descriptives")
 city_files  <- c("bogota", "cdmx", "santiago", "sao_paulo_metro")
 
 # Keep each city and dimension in a named list.

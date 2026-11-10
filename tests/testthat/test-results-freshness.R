@@ -67,13 +67,13 @@ freshness_stages <- list(
        output = file.path("results", "figures", "temporal")),
   list(stage  = "render_missing_tables.R",
        inputs = file.path("data", "processed", "missing_proportions"),
-       output = file.path("results", "tables")),
+       output = file.path("results", "tables", "descriptives")),
   list(stage  = "render_census_tables.R",
        inputs = file.path("data", "processed", "census_summary"),
-       output = file.path("results", "tables")),
+       output = file.path("results", "tables", "descriptives")),
   list(stage  = "figure_population_density_maps.R",
        inputs = file.path("data", "interim", "census"),
-       output = file.path("results", "figures", "maps"))
+       output = file.path("results", "figures", "monitoring"))
 )
 
 test_that("manuscript outputs are current for the selected engine", {

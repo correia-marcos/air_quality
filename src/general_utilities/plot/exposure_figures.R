@@ -1194,8 +1194,8 @@ build_exposure_level_figures <- function(sum_dt, tag, city_labels, city_files) {
 #' @param year        integer; analysis year the manuscript writes into the name.
 #' @param imputed     logical; name the figure as the imputed robustness variant.
 #
-#' @return  the manuscript's path for that figure, relative to results/figures/, or
-#           NA_character_ when the manuscript does not print it.
+#' @return  the manuscript's file name for that figure, or NA_character_ when the
+#           manuscript does not print it.
 #
 #' @details
 #   The manuscript names these figures by what they show; this repo names them by the run
@@ -1205,9 +1205,9 @@ build_exposure_level_figures <- function(sum_dt, tag, city_labels, city_files) {
 #   commune robustness run. The income CI figures keep the manuscript's "decile" wording
 #   even where the pipeline now estimates quintiles -- see doc/planning/remaining-work.md.
 #
-#   The returned path is relative to results/figures/. Its folders are named for
-#   what the figures show, not for the manuscript's own Final/ and descriptives/, which
-#   said nothing about content.
+#   The function returns a file name only. The calling recipe chooses the folder, named
+#   for its analysis (exposure/, imputation/), not for the manuscript's own Final/ and
+#   descriptives/, which said nothing about content.
 #
 #' @Written_on : August 2026
 #' @Written_by : Marcos Paulo
@@ -1230,28 +1230,23 @@ paper_exposure_filename <- function(fname, paper_files, year = 2023L,
 
   paper_city <- paper_files[[city_stem]]
 
-  # The imputed specification is education only, and is kept in its own folder so the
+  # The imputed specification is education only, and carries an _imp suffix so the
   # robustness figures are never mistaken for the main ones.
   if (isTRUE(imputed)) {
     if (grouping != "education") return(NA_character_)
 
     if (!nzchar(outcome)) {
-      return(file.path("imputation",
-                       sprintf("plot_quintiles_%s_all_mean_%d_3km_imp.pdf",
-                               paper_city, year)))
+      return(sprintf("plot_quintiles_%s_all_mean_%d_3km_imp.pdf", paper_city, year))
     }
 
-    return(file.path("imputation",
-                     sprintf("plot_hours_above_%s_%s_%d_3km_imp.pdf",
-                             toupper(sub("hrs_d_", "", outcome)), paper_city, year)))
+    return(sprintf("plot_hours_above_%s_%s_%d_3km_imp.pdf",
+                   toupper(sub("hrs_d_", "", outcome)), paper_city, year))
   }
 
   # Levels: the mean-by-group panel the appendix prints.
   if (!nzchar(outcome)) {
     if (grouping != "education") return(NA_character_)
-    return(file.path("exposure",
-                     sprintf("plot_quintiles_%s_pm10_pm25_mean_%d_3km.pdf",
-                             paper_city, year)))
+    return(sprintf("plot_quintiles_%s_pm10_pm25_mean_%d_3km.pdf", paper_city, year))
   }
 
   it_tag <- toupper(sub("hrs_d_", "", outcome))
@@ -1259,25 +1254,22 @@ paper_exposure_filename <- function(fname, paper_files, year = 2023L,
   # Income runs appear only as the IT1 panel, under the manuscript's decile wording.
   if (grouping == "income") {
     if (it_tag != "IT1") return(NA_character_)
-    return(file.path("exposure",
-                     sprintf("plot_decile_hours_above_IT1_%s_%d_3km_reg1.pdf",
-                             paper_city, year)))
+    return(sprintf("plot_decile_hours_above_IT1_%s_%d_3km_reg1.pdf", paper_city, year))
   }
 
-  file.path("exposure",
-            sprintf("plot_hours_above_%s_%s_%d_3km_reg1.pdf",
-                    it_tag, paper_city, year))
+  sprintf("plot_hours_above_%s_%s_%d_3km_reg1.pdf", it_tag, paper_city, year)
 }
 
 
 # ------------------------------------------------------------------------------------------
 # Function: save_exposure_plot_family
 #' @param plots Named list returned by an exposure figure builder.
-#' @param out_dir Figure root containing exposure/ and imputation/.
+#' @param out_dir Folder that receives the PDFs, named for the calling analysis
+#   (e.g. results/figures/exposure or results/figures/robustness/buffer_5km).
 #' @param paper_files City filename mapping used by paper_exposure_filename().
 #' @param year Analysis year used in manuscript filenames.
 #' @param imputed Whether these plots describe the imputed robustness analysis.
-#' @return Every saved PDF path; writes each selected plot once.
+#' @return Every saved PDF path; writes each selected plot once into out_dir.
 #' @details Keeps manuscript names for selected plots and descriptive names for the other
 # observed-data plots. Imputed plots are saved only when selected by the manuscript mapping.
 # ------------------------------------------------------------------------------------------
@@ -1288,7 +1280,7 @@ save_exposure_plot_family <- function(plots, out_dir, paper_files, year,
     filename <- paper_exposure_filename(name, paper_files, year, imputed = imputed)
     if (is.na(filename)) {
       if (imputed) next
-      filename <- file.path("exposure", name)
+      filename <- name
     }
     out_file <- here::here(out_dir, filename)
     dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)

@@ -13,8 +13,9 @@ not a main result).
 
 Constraints for this stage (see `doc/ai/rules/data-and-paths.md`):
 - **Read only from `data/processed/`** (or `data/interim/`). No raw data, no cleaning here.
-- Figures → `results/figures/<subfolder>/`; tables → flat `results/tables/`
-  (LaTeX via `kableExtra`, or CSV). Match existing naming: `<city>_<year>_<what>`.
+- Figures → `results/figures/<analysis>/`; tables → `results/tables/<analysis>/`, where
+  `<analysis>` is the recipe's own folder (LaTeX via `kableExtra`, or CSV). Match existing
+  naming: `<city>_<year>_<what>`.
 - Fonts: the project ships Tex Gyre Pagella in `fonts/` and uses `showtext`. Reuse the existing
   plotting helpers in `src/general_utilities/config_utils_plot_tables.R` rather than restyling.
 - Follow the spacing, call layout and concrete step comments in
@@ -34,9 +35,9 @@ Steps:
 
 Show me the output path and a description of what it renders before finalizing.
 
-Current output contract supersedes old destinations: figures use the seven topic
-folders under results/figures/; tables are flat under results/tables/. Never write
-results/paper/. The tracked manifest exports only selected manuscript artifacts.
+Current output contract supersedes old destinations: figures and tables go to the
+analysis folder that matches the recipe's folder under scripts/tables_images/
+(`test-layout.R` checks this). Never write results/paper/. The tracked manifest exports only selected manuscript artifacts.
 
 
 Authorization already given in the conversation satisfies a workflow confirmation.

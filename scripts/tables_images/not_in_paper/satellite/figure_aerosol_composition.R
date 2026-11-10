@@ -29,8 +29,8 @@ source(here::here("src", "general_utilities", "config_utils_plot_tables.R"))
 set_paper_theme()
 
 dir_pm25       <- here::here("data", "processed", "merra2_pm25")
-outdir_joint   <- here::here("results", "figures", "satellite")
-outdir_bycity  <- here::here("results", "figures", "satellite")
+outdir_joint   <- here::here("results", "figures", "not_in_paper", "satellite")
+outdir_bycity  <- here::here("results", "figures", "not_in_paper", "satellite")
 
 fig_width  <- 16
 fig_height <- 9

@@ -66,7 +66,8 @@ table_states_to_download <- table_state_metro_distances(
   metro_area_sf = sao_paulo_metro_2010,
   save_latex_table = TRUE,
   caption = "Administrative states and distance to metropolitan area (in Km)",
-  out_file = here::here("results", "tables", "station_source_regions_sao_paulo.tex"),
+  out_file = here::here("results", "tables", "inputs",
+                        "station_source_regions_sao_paulo.tex"),
   overwrite_tex = TRUE)
 
 # Use Selenium to download hourly station data and save the acquisition log.

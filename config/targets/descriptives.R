@@ -458,17 +458,20 @@ list(
     {
       c(
         write_latex_table(station_table_tex$counts,
-          here::here("results", "tables",
+          here::here("results", "tables", "descriptives",
             sprintf("stations_by_pollutant_%d.tex", analysis_year)),
           use_bytes = TRUE),
         write_latex_table(station_table_tex$days,
-          here::here("results", "tables", "table_days_above_thresholds.tex"),
+          here::here("results", "tables", "descriptives",
+            "table_days_above_thresholds.tex"),
           use_bytes = TRUE),
         write_latex_table(station_table_tex$hours,
-          here::here("results", "tables", "table_avg_hours_above_thresholds.tex"),
+          here::here("results", "tables", "descriptives",
+            "table_avg_hours_above_thresholds.tex"),
           use_bytes = TRUE),
         write_latex_table(station_table_tex$who,
-          here::here("results", "tables", "who_exceedances_all_cities.tex")))
+          here::here("results", "tables", "descriptives",
+            "who_exceedances_all_cities.tex")))
     }, format = "file"),
 
   targets::tar_target(missing_table_data,
@@ -508,10 +511,10 @@ list(
       written <- character()
       for (name in names(missing_table_tex$dimensions)) {
         written <- c(written, write_latex_table(missing_table_tex$dimensions[[name]],
-          here::here("results", "tables", paste0(name, ".tex"))))
+          here::here("results", "tables", "descriptives", paste0(name, ".tex"))))
       }
       c(written, write_latex_table(missing_table_tex$quintiles,
-        here::here("results", "tables",
+        here::here("results", "tables", "descriptives",
           sprintf("missing_by_education_quintile_%d.tex", analysis_year))))
     }, format = "file"),
 
@@ -537,11 +540,11 @@ list(
     {
       c(
         write_latex_table(census_table_tex$census,
-          here::here("results", "tables", "census_summary_table.tex")),
+          here::here("results", "tables", "descriptives", "census_summary_table.tex")),
         write_latex_table(census_table_tex$bands_a,
-          here::here("results", "tables", "table_descriptives_a.tex")),
+          here::here("results", "tables", "descriptives", "table_descriptives_a.tex")),
         write_latex_table(census_table_tex$bands_b,
-          here::here("results", "tables", "table_descriptives_b.tex")))
+          here::here("results", "tables", "descriptives", "table_descriptives_b.tex")))
     }, format = "file"),
 
   targets::tar_target(descriptives,

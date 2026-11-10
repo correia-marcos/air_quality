@@ -60,7 +60,8 @@ table_states_to_download <- table_state_metro_distances(
   metro_area_sf      = metro_area_2018,
   save_latex_table   = TRUE,
   caption            = "Administrative states and distance to metropolitan area (in Km)",
-  out_file           = here::here("results", "tables", "station_source_regions_bogota.tex"),
+  out_file           = here::here("results", "tables", "inputs",
+                                  "station_source_regions_bogota.tex"),
   overwrite_tex      = TRUE
 ) # Review bogota_cfg$which_states against this diagnostic if needed.
 

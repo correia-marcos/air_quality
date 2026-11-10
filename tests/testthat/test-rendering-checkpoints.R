@@ -130,12 +130,13 @@ test_that("exposure saving preserves observed and imputed filename selection", {
   files <- e$save_exposure_plot_family(plots, root, c(bogota = "bogota"), 2023)
   expect_setequal(basename(files), c("plot_quintiles_bogota_pm10_pm25_mean_2023_3km.pdf",
     "bogota_education_5km_levels.pdf", "plot_hours_above_IT1_bogota_2023_3km_reg1.pdf"))
+  expect_true(all(dirname(files) == root))
   expect_length(calls, 3L)
   files <- e$save_exposure_plot_family(plots, root, c(bogota = "bogota"), 2023,
                                        imputed = TRUE)
   expect_setequal(basename(files), c("plot_quintiles_bogota_all_mean_2023_3km_imp.pdf",
                                     "plot_hours_above_IT1_bogota_2023_3km_imp.pdf"))
-  expect_true(all(basename(dirname(files)) == "imputation"))
+  expect_true(all(dirname(files) == root))
 })
 
 test_that("manuscript export rejects existing files absent from current target outputs", {

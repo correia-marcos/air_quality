@@ -6,7 +6,8 @@
 #' @Description: Read the education tables saved by estimate_santiago_2024_exposure.R and
 # draw the exposure analysis's figures for each buffer: gaps in exceedance hours with
 # confidence intervals, and mean concentrations by education quintile. The figures are
-# not in the paper; they keep their santiago_comuna_2024 names in results/figures/exposure.
+# not in the paper; they keep their santiago_comuna_2024 names in
+# results/figures/not_in_paper/santiago_2024/.
 #
 #' @Summary:
 #   I.   Import data: source functions and settings, set paths and read the tables.
@@ -28,7 +29,7 @@ set_paper_theme()
 
 # Set the input folder and the output folder
 dir_reg     <- here::here("data", "processed", "idw_regressions", "santiago_2024")
-dir_figures <- here::here("results", "figures")
+dir_figures <- here::here("results", "figures", "not_in_paper", "santiago_2024")
 
 # Set the files with regression estimates and group means for each buffer
 files_ci      <- here::here(dir_reg,

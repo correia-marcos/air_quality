@@ -1,32 +1,64 @@
-test_that("manifest producers and result topics obey the shared contract", {
+# The analysis a path belongs to: its first folder, or its first two when the first is
+# robustness/ or not_in_paper/. Applies to the part after results/<type>/ or
+# scripts/<stage>/.
+analysis_of <- function(path, skip) {
+  parts <- strsplit(path, "/", fixed = TRUE)[[1]][-seq_len(skip)]
+  parts <- parts[-length(parts)]
+  n <- if (parts[1] %in% c("robustness", "not_in_paper")) 2L else 1L
+  paste(parts[seq_len(n)], collapse = "/")
+}
+
+# Every analysis folder under one results/<type>/ root.
+result_analysis_dirs <- function(root) {
+  tops <- list.dirs(root, full.names = FALSE, recursive = FALSE)
+  unlist(lapply(tops, function(top) {
+    if (!top %in% c("robustness", "not_in_paper")) return(top)
+    file.path(top, list.dirs(file.path(root, top), full.names = FALSE, recursive = FALSE))
+  }))
+}
+
+test_that("each manuscript file sits in its producer's analysis folder", {
   manifest <- artifact_manifest(here::here("config/paper_artifacts.csv"))
   expect_true(all(file.exists(here::here(manifest$producer_script))))
-  topics <- c("maps", "monitoring", "exposure", "imputation", "temporal", "satellite", "diagnostics")
-  figures <- manifest$source_path[startsWith(manifest$source_path, "results/figures/")]
-  expect_true(all(vapply(strsplit(figures, "/", fixed = TRUE), `[`, "", 3L) %in% topics))
-  tables <- manifest$source_path[startsWith(manifest$source_path, "results/tables/")]
-  expect_true(all(lengths(strsplit(tables, "/", fixed = TRUE)) == 3L))
+  source_analysis   <- vapply(manifest$source_path, analysis_of, "", skip = 2L)
+  producer_analysis <- vapply(manifest$producer_script, analysis_of, "", skip = 2L)
+  expect_equal(unname(source_analysis), unname(producer_analysis))
+})
+
+test_that("result folders mirror the analysis folders of the recipes", {
   # The image deliberately has no prebuilt results; existing local outputs must follow layout.
-  if (dir.exists(here::here("results"))) {
-    expect_setequal(list.files(here::here("results"), all.files = FALSE), c("figures", "tables"))
-    # The specification-sensitivity pilot is the one folder beside the seven topics.
-    expect_true(all(list.files(here::here("results/figures")) %in%
-                      c(topics, "specification_sensitivity")))
+  skip_if_not(dir.exists(here::here("results")))
+  expect_setequal(list.files(here::here("results")), c("figures", "tables"))
+  stages <- list.dirs(here::here("scripts"), recursive = FALSE)
+  for (type in c("tables", "figures")) {
+    root <- here::here("results", type)
+    # Files live only inside analysis folders.
+    loose <- setdiff(list.files(root), list.dirs(root, full.names = FALSE, recursive = FALSE))
+    expect_length(loose, 0L)
+    for (group in c("robustness", "not_in_paper")) {
+      inside <- file.path(root, group)
+      if (dir.exists(inside)) {
+        expect_length(setdiff(list.files(inside),
+                              list.dirs(inside, full.names = FALSE, recursive = FALSE)), 0L)
+      }
+    }
+    for (analysis in result_analysis_dirs(root)) {
+      expect_true(any(dir.exists(file.path(stages, analysis))),
+                  info = file.path("results", type, analysis))
+    }
   }
 })
 
-test_that("only the specification-sensitivity pilot adds result subfolders", {
-  # Pilot of the subfolder layout; any other subfolder is unreviewed drift.
-  pilot <- "specification_sensitivity"
+test_that("only the specification-sensitivity pilot adds subfolders by role", {
   roles <- c("design_a", "robustness_designs", "review", "panel", "station_sets")
-  tables <- here::here("results", "tables")
-  if (dir.exists(tables)) {
-    expect_true(all(list.dirs(tables, full.names = FALSE, recursive = FALSE) %in% pilot))
-  }
-  for (root in here::here("results", c("tables", "figures"))) {
-    if (dir.exists(file.path(root, pilot))) {
-      expect_true(all(list.dirs(file.path(root, pilot), full.names = FALSE,
-                                recursive = FALSE) %in% roles), info = root)
+  for (type in c("tables", "figures")) {
+    root <- here::here("results", type)
+    if (!dir.exists(root)) next
+    for (analysis in result_analysis_dirs(root)) {
+      subfolders <- list.dirs(file.path(root, analysis), full.names = FALSE,
+                              recursive = FALSE)
+      allowed <- if (analysis == "specification_sensitivity") roles else character()
+      expect_true(all(subfolders %in% allowed), info = analysis)
     }
   }
 })

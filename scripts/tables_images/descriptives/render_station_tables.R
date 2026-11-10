@@ -26,7 +26,7 @@ source(here::here("config", "analysis_settings.R"))
 dir_counts <- here::here("data", "processed", "station_counts")
 dir_who    <- here::here("data", "processed", "who_exceedances")
 dir_exceed <- here::here("data", "processed", "threshold_exceedances")
-dir_tables <- here::here("results", "tables")
+dir_tables <- here::here("results", "tables", "descriptives")
 
 file_counts <- here::here(dir_counts,
                           sprintf("stations_by_pollutant_%d.parquet", analysis_year))

@@ -546,7 +546,8 @@ list(
       paper_font
       set_paper_theme()
       unlist(lapply(exposure_imputed_plots, save_exposure_plot_family,
-        out_dir = here::here("results", "figures"), paper_files = exposure_paper_files,
+        out_dir = here::here("results", "figures", "imputation"),
+        paper_files = exposure_paper_files,
         year = imputation_year, imputed = TRUE), use.names = FALSE)
     }, format = "file"),
 

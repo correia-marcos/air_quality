@@ -62,7 +62,7 @@ cdmx_has_pm_stations_entity_scheme <- plot_metro_area_interactive(
 # III: Save data
 # ============================================================================================
 # Ensure output folder exists
-outdir <- here::here("results", "figures", "maps")
+outdir <- here::here("results", "figures", "not_in_paper", "supporting")
 dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
 
 # Save plot

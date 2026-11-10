@@ -66,7 +66,8 @@ table_states_to_download <- table_state_metro_distances(
   metro_area_sf = zonas_2017,
   save_latex_table = TRUE,
   caption = "Administrative states and distance to metropolitan area (in Km)",
-  out_file = here::here("results", "tables", "station_source_regions_santiago.tex"),
+  out_file = here::here("results", "tables", "inputs",
+                        "station_source_regions_santiago.tex"),
   overwrite_tex = TRUE
 ) # Review santiago_cfg$which_states against this diagnostic.
 

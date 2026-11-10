@@ -97,7 +97,7 @@ p_it2
 # ============================================================================================
 
 # Ensure output folder exists
-outdir <- here::here("results", "figures", "temporal")
+outdir <- here::here("results", "figures", "not_in_paper", "supporting")
 dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
 
 # Save plot of time span distribution of high pollution episodes

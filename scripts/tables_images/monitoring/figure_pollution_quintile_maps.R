@@ -36,7 +36,7 @@ sf::sf_use_s2(TRUE)
 dir_geospatial <- here::here("data", "interim", "geospatial_data")
 dir_census     <- here::here("data", "interim", "census")
 dir_raw        <- here::here("data", "interim", "monitoring_stations")
-outdir_maps    <- here::here("results", "figures", "maps")
+outdir_maps    <- here::here("results", "figures", "monitoring")
 
 # Define geographic boundary files
 gpkg_bogota   <- here::here(dir_geospatial, "bogota",

@@ -34,8 +34,9 @@ possible. Don't shortcut them for convenience.
 Standardized station panels and generated geography belong under data/interim/.
 Census extraction work belongs under data/interim/census_extracted/. Raw geographic
 source files may be read by context maps; generated layers are read from interim.
-Canonical outputs: results/figures/{maps,monitoring,exposure,imputation,temporal,
-satellite,diagnostics}/ and flat results/tables/. Export uses config/paper_artifacts.csv.
-Layout pilot: the optional specification-sensitivity exercise writes to
-`results/tables/specification_sensitivity/<role>/` and
-`results/figures/specification_sensitivity/<role>/`; no other subfolders.
+Canonical outputs: `results/{tables,figures}/<analysis>/`, where `<analysis>` is the
+folder of the recipe that writes the file (`descriptives`, `exposure`,
+`robustness/buffer_5km`, `not_in_paper/satellite`, ...). Export uses
+config/paper_artifacts.csv. The specification-sensitivity exercise adds role subfolders
+(`results/{tables,figures}/specification_sensitivity/<role>/`); no other subfolders.
+Interactive maps are saved as single self-contained HTML files.

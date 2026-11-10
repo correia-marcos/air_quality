@@ -28,7 +28,7 @@ set_paper_theme()
 
 # Set the input folder and the output folder
 dir_reg     <- here::here("data", "processed", "idw_regressions")
-dir_figures <- here::here("results", "figures")
+dir_figures <- here::here("results", "figures", "exposure")
 
 # Set the files containing group means and regression estimates with confidence intervals
 files_ci_edu      <- here::here(dir_reg, 

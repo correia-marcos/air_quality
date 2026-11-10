@@ -1136,7 +1136,7 @@ list(
     {
       paper_font
       set_paper_theme()
-      out_dir <- here::here("results", "figures", "maps")
+      out_dir <- here::here("results", "figures", "monitoring")
       dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
       files <- character()
       file <- here::here(out_dir, "bogota_population_density_map.pdf")
@@ -1186,7 +1186,7 @@ list(
     {
       paper_font
       set_paper_theme()
-      out_dir <- here::here("results", "figures", "maps")
+      out_dir <- here::here("results", "figures", "monitoring")
       dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
       files <- character()
       file <- here::here(out_dir, "map_bogota_3km.pdf")

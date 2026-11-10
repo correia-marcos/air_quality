@@ -313,7 +313,8 @@ list(
       paper_font
       set_paper_theme()
       unlist(lapply(exposure_5km_plots, save_exposure_plot_family,
-        out_dir = here::here("results", "figures"), paper_files = exposure_paper_files,
+        out_dir = here::here("results", "figures", "robustness", "buffer_5km"),
+        paper_files = exposure_paper_files,
         year = analysis_year), use.names = FALSE)
     }, format = "file"),
 

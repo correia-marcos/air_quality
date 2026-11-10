@@ -33,9 +33,9 @@ set_paper_theme()
 dir_series     <- here::here("data", "processed", "merra2_stations_pm25")
 dir_shapefiles <- here::here("data", "interim", "geospatial_data")
 
-outdir_series  <- here::here("results", "figures", "satellite")
-outdir_ti      <- here::here("results", "figures", "satellite")
-outdir_maps    <- here::here("results", "figures", "maps")
+outdir_series  <- here::here("results", "figures", "not_in_paper", "satellite")
+outdir_ti      <- here::here("results", "figures", "not_in_paper", "satellite")
+outdir_maps    <- here::here("results", "figures", "not_in_paper", "satellite")
 
 
 # Figure geometry and series styling, shared by every figure here.

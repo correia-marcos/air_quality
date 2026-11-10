@@ -7,8 +7,8 @@
 # Bogotá, Ciudad de México, Santiago and São Paulo within Latin America; the national map
 # places the Mexico City metro area within Mexico and shades the eight states whose
 # station data was downloaded, which is what makes the CDMX metro boundary legible. All
-# outputs are static PDFs under results/figures/maps/; the interactive station map lives
-# in figure_stations_on_metro_area.R.
+# outputs are static PDFs under results/figures/not_in_paper/supporting/; the interactive
+# station map lives in figure_stations_on_metro_area.R.
 #
 #' @Summary:
 #   I. Import data.
@@ -29,7 +29,7 @@ source(here::here("src", "general_utilities", "config_utils_plot_tables.R"))
 set_paper_theme()
 
 dir_shapefiles <- here::here("data", "interim", "geospatial_data")
-outdir_maps    <- here::here("results", "figures", "maps")
+outdir_maps    <- here::here("results", "figures", "not_in_paper", "supporting")
 
 # Figure geometry, shared by every map here.
 fig_width  <- 16
