@@ -107,33 +107,11 @@ for (name in names(summaries)) {
 # =============================================================================================
 # III: Render city report
 # =============================================================================================
-# Quarto writes the HTML next to the .qmd; we move it to ignored data/validation/ afterward.
-tryCatch({
-  qmd_path = cfg$compare$qmd_path
-  html_dest = cfg$compare$html_dest
-  html_name = basename(cfg$compare$html_dest)
-
-  quarto::quarto_render(
-    input          = qmd_path,
-    output_file    = html_name,   # filename only — Quarto does not allow paths
-    execute_params = list(
-      city_id  = city_id,
-      out_root = cfg$compare$out_root
-    )
-  )
-  # Move rendered HTML only after confirming a successful, identical copy.
-  html_beside_qmd <- file.path(dirname(qmd_path), html_name)
-  if (normalizePath(html_beside_qmd) != normalizePath(html_dest)) {
-    if (!file.copy(html_beside_qmd, html_dest, overwrite = TRUE) ||
-        tools::md5sum(html_beside_qmd) != tools::md5sum(html_dest)) {
-      stop("Validation report copy failed; original render retained.")
-    }
-    file.remove(html_beside_qmd)
-  }
-  message("\nReport: ", html_dest)
-},
-error = function(e) stop(
-  "Report rendering failed:\n", conditionMessage(e)
-))
+# Render the report from the comparison files above and save the HTML in the ignored
+# data/validation/bogota/ folder. Quarto ships with RStudio.
+report_file <- render_validation_report(qmd_path  = cfg$compare$qmd_path,
+                                        html_dest = cfg$compare$html_dest,
+                                        params    = list(city_id  = city_id,
+                                                         out_root = cfg$compare$out_root))
 
 cat("Script from the IDB project executed successfully!\n")

@@ -42,6 +42,7 @@ source(here::here("src", "general_utilities", "validation", "prepare_panels.R"))
 source(here::here("src", "general_utilities", "validation", "compare_inputs.R"))
 source(here::here("src", "general_utilities", "validation", "compare_results.R"))
 source(here::here("src", "general_utilities", "validation", "progression.R"))
+source(here::here("src", "general_utilities", "validation", "report_helpers.R"))
 
 
 # Print a success message for when running inside Docker Container

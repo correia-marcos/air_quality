@@ -90,22 +90,14 @@ for (city_id in cities_to_run) {
   )
   print(res$diff_summary)
 
-  html_name        <- paste0("ground_stations_report_", city_id, ".html")
-  qmd_path         <- here::here(out_root, "bogota", "ground_stations_report.qmd")
-  html_next_to_qmd <- file.path(dirname(qmd_path), html_name)
-  report_dest      <- file.path(out_root, city_id, html_name)
+  html_name   <- paste0("ground_stations_report_", city_id, ".html")
+  qmd_path    <- here::here(out_root, "bogota", "ground_stations_report.qmd")
+  report_dest <- file.path(out_root, city_id, html_name)
 
   tryCatch({
-    quarto::quarto_render(
-      input          = qmd_path,
-      output_file    = html_name,
-      execute_params = list(
-        city_id  = city_id,
-        out_root = out_root
-      )
-    )
-    # No copy needed — .qmd is already in the results folder,
-    # so Quarto writes the HTML there directly.
+    render_validation_report(qmd_path  = qmd_path,
+                             html_dest = report_dest,
+                             params    = list(city_id = city_id, out_root = out_root))
     message("  Report: ", report_dest)
   },
   error = function(e) warning(

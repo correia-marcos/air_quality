@@ -33,3 +33,27 @@ validation_status_badge <- function(ok, label_ok = "Complete",
   sprintf(paste0('<span style="background:%s;color:white;padding:2px 8px;',
                  'border-radius:4px;font-size:.85em">%s</span>'), color, label)
 }
+
+# Render a validation report with the Quarto program.
+#' @param qmd_path  The report's .qmd file.
+#' @param html_dest Where the rendered HTML is saved; its folder must exist.
+#' @param params    Named list of report parameters, passed as `-P name:value`.
+#' @return html_dest, invisibly. Writes the HTML there; the report's figures folder
+#   (`<report>_files/`, ignored by git) may remain beside the .qmd.
+#' @details Calls the Quarto program directly. The quarto R package is not a project
+#   dependency and only wraps the same program. RStudio ships Quarto and puts it on PATH;
+#   a terminal needs Quarto installed. QUARTO_R makes the report's R chunks run with this
+#   session's R, and so with the project library, not whichever Rscript is first on PATH.
+render_validation_report <- function(qmd_path, html_dest, params) {
+  quarto <- Sys.which("quarto")
+  if (!nzchar(quarto)) stop("Quarto not found: render from RStudio or install Quarto.")
+  param_args <- shQuote(paste0(names(params), ":", unlist(params)))
+  args <- c("render", shQuote(qmd_path),
+            "--output-dir", shQuote(dirname(html_dest)),
+            "--output",     shQuote(basename(html_dest)),
+            as.vector(rbind("-P", param_args)))
+  r_binary <- shQuote(file.path(R.home("bin"), "Rscript"))
+  status   <- system2(quarto, args, env = paste0("QUARTO_R=", r_binary))
+  if (status != 0L) stop("quarto render stopped with status ", status, ".")
+  invisible(html_dest)
+}
