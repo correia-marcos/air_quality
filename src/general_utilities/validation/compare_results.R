@@ -534,6 +534,10 @@ compare_idw <- function(
 #
 #' @return  named list (invisible) with step_summary, comparison, out_dir.
 #           Parquet files written to {out_root}/{cfg$id}/outlier_comparison/.
+#
+#' @details With use_legacy_input, legacy raw rows with no year are dropped before the
+#   year-partitioned copy is written: they have no date, so no hour or month to screen.
+#   Bogotá's legacy CSV has 24 (Guaymaral, dates blank).
 # ----------------------------------------------------------------------------------
 compare_outlier_procedure <- function(
     cfg,
@@ -608,7 +612,14 @@ compare_outlier_procedure <- function(
     if (!"year" %in% names(leg_raw)) {
       leg_raw[, year := as.integer(format(datetime, "%Y"))]
     }
-    
+
+    # Undated legacy rows have no year partition and no hour to screen.
+    n_undated <- sum(is.na(leg_raw$year))
+    if (n_undated > 0L) {
+      if (!quiet) message("  Dropped ", n_undated, " undated legacy rows (no year).")
+      leg_raw <- leg_raw[!is.na(year)]
+    }
+
     mock_raw <- file.path(tempdir(), "legacy_arrow_raw")
     mock_out <- file.path(tempdir(), "legacy_arrow_test")
     if (dir.exists(mock_raw)) unlink(mock_raw, recursive = TRUE)
