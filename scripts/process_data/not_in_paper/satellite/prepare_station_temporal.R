@@ -15,7 +15,7 @@
 # ========================================================================================
 # I: Import data
 # ========================================================================================
-source(here::here("src", "general_utilities", "process", "merra2.R"))
+source(here::here("src", "general_utilities", "process", "satellite", "merra2.R"))
 source(here::here("config", "analysis_settings.R"))
 dir_panels <- here::here("data", "interim", "cities_m2_aerosols")
 dir_hourly <- here::here("data", "processed", "station_hourly")

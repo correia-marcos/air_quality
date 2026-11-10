@@ -151,7 +151,7 @@ no_dec <- differences_na_pm10 %>%
 # III: Save  data
 # ============================================================================================
 # Ensure output folder exists
-outdir <- here::here("results", "validation_rep_package", "Bogota")
+outdir <- here::here("data", "validation", "bogota", "raw_ground_station_comparison")
 dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
 
 # Save important file

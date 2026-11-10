@@ -201,7 +201,7 @@ aggregate_idw_exposure_legacy <- function(
 #                                new_station_dist, legacy_station_dist, and optionally
 #                                new_geo_dist, legacy_geo_dist, station_tol_km,
 #                                and geo_tol_km.
-#' @param out_root               root output folder; {out_root}/{cfg$id}/ is created.
+#' @param out_root               the city's comparison folder (cfg$compare$city_dir).
 #' @param station_audit          data.frame; output from compare_ground_stations().
 #                                Used to restrict the new pipeline's distance matrix to 
 #                                the legacy station universe for fair comparison.
@@ -215,7 +215,7 @@ aggregate_idw_exposure_legacy <- function(
 #   $geo_dist_diffs       — tibble or NULL; geo-station pairs differing > geo_tol_km
 #   $method_note          — character; explains the methodological differences
 #   $out_dir              — path to the output directory
-#   Parquet files written to {out_root}/{cfg$id}/distance_comparison/.
+#   Parquet files written to {out_root}/distance_comparison/.
 #
 #' @Purpose  : Compare distance matrices between the new pipeline and Dropbox legacy.
 #' @details
@@ -527,12 +527,12 @@ compare_idw <- function(
 # ----------------------------------------------------------------------------------
 # compare_outlier_procedure
 #' @param cfg          city cfg list (must contain $id and $compare sublist).
-#' @param out_root     root output folder; {out_root}/{cfg$id}/ is created.
+#' @param out_root     the city's comparison folder (cfg$compare$city_dir).
 #' @param station_audit data.frame; from compare_ground_stations().
 #' @param quiet        logical; suppress messages. Default FALSE.
 #
 #' @return  named list (invisible) with step_summary, comparison, out_dir.
-#           Parquet files written to {out_root}/{cfg$id}/outlier_comparison/.
+#           Parquet files written to {out_root}/outlier_comparison/.
 #
 #' @details With use_legacy_input, legacy raw rows with no year are dropped before the
 #   year-partitioned copy is written: they have no date, so no hour or month to screen.

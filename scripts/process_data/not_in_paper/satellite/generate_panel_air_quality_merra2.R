@@ -21,7 +21,7 @@
 # I: Import data
 # ========================================================================================
 # Source the extraction function and its shared settings
-source(here::here("src", "general_utilities", "process", "merra2.R"))
+source(here::here("src", "general_utilities", "process", "satellite", "merra2.R"))
 source(here::here("config", "merra2_settings.R"))
 sf::sf_use_s2(TRUE)
 

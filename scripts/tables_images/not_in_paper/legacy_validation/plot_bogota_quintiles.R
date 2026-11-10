@@ -29,7 +29,7 @@ set_paper_theme()
 dir_pollution   <- here::here("data", "interim", "monitoring_stations")
 dir_geospatial  <- here::here("data", "interim", "geospatial_data")
 dir_census      <- here::here("data", "interim", "census")
-outdir_figures  <- here::here("results", "validation_rep_package", "Bogota")
+outdir_figures  <- here::here("data", "validation", "bogota", "maps")
 legacy_stations <- here::here("data", "_legacy", "ground_stations", "bogota")
 
 # Define files' specifc location

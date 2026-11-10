@@ -5,7 +5,7 @@ test_that("temporal preparation preserves timestamp support and city station mea
   skip_if_not_installed("lubridate")
   env <- new.env(parent = asNamespace("dplyr"))
   env$hour <- lubridate::hour
-  source(here::here("src", "general_utilities", "process", "merra2.R"),
+  source(here::here("src", "general_utilities", "process", "satellite", "merra2.R"),
          local = env)
   panel <- data.frame(Date = rep("2023-01-01", 5), Hour = c(0, 0, 1, 2, 3))
   for (field in c("DUSMASS25", "OCSMASS", "BCSMASS", "SSSMASS25", "SO4SMASS")) {
@@ -47,7 +47,7 @@ test_that("city aerosol extraction returns the hand-computed four-cell means", {
   on.exit(unlink(root, recursive = TRUE), add = TRUE)
   fixture <- write_temporal_fixture(root, exact_values = TRUE)
   e <- new.env(parent = globalenv())
-  sys.source(here::here("src/general_utilities/process/merra2.R"), e)
+  sys.source(here::here("src/general_utilities/process/satellite/merra2.R"), e)
   before <- list.files(root, recursive = TRUE)
   hashes <- tools::md5sum(file.path(root, before))
   result <- e$process_merra2_region_hourly(shapefile = fixture$geography,
@@ -65,7 +65,7 @@ test_that("city aerosol extraction returns the hand-computed four-cell means", {
 
 test_that("optional satellite joins use current hourly station summaries", {
   e <- new.env(parent = globalenv())
-  sys.source(here::here("src/general_utilities/process/merra2.R"), e)
+  sys.source(here::here("src/general_utilities/process/satellite/merra2.R"), e)
   hourly <- data.frame(Date = as.Date("2023-01-01"), Hour = 0:3,
     pm25_stations = c(20, NA, 40, 80), n_reporting = c(2L, 0L, 1L, 1L))
   satellite <- data.frame(Date = rep("2023-01-01", 4), Hour = c(0, 0, 1, 4),
@@ -84,7 +84,7 @@ test_that("optional extraction precision is explicit for decimal raster values",
   on.exit(unlink(root, recursive = TRUE), add = TRUE)
   fixture <- write_temporal_fixture(root)
   e <- new.env(parent = globalenv())
-  sys.source(here::here("src/general_utilities/process/merra2.R"), e)
+  sys.source(here::here("src/general_utilities/process/satellite/merra2.R"), e)
   result <- e$process_merra2_region_hourly(fixture$geography, fixture$nc_file,
     region_name = "toy precision", extraction_fun = "mean", parallel = FALSE)
   # Installed extraction returns means on the float32 grid, despite the FLT8S fixture.

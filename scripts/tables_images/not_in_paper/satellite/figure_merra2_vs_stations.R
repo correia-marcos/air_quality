@@ -26,6 +26,7 @@
 # I: Import data
 # ============================================================================================
 source(here::here("src", "general_utilities", "config_utils_plot_tables.R"))
+source(here::here("src", "general_utilities", "plot", "satellite", "merra2_figures.R"))
 
 # Register Tex Gyre Pagella and set the paper ggplot theme for this script.
 set_paper_theme()

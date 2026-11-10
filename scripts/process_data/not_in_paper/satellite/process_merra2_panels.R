@@ -19,6 +19,7 @@
 # I: Import data
 # ============================================================================================
 source(here::here("src", "general_utilities", "config_utils_process_data.R"))
+source(here::here("src", "general_utilities", "process", "satellite", "merra2.R"))
 
 dir_series <- here::here("data", "processed", "merra2_stations_pm25")
 dir_country <- here::here("data", "raw", "merra2_country_pm")

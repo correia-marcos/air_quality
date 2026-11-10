@@ -47,7 +47,7 @@ build_compare_cfg <- function(city_id) {
   base_compare <- list(
     pipeline_tz      = "UTC",
     out_root         = here::here("data", "validation"),
-    city_dir         = file.path("data", "validation", city_id),
+    city_dir         = here::here("data", "validation", city_id),
     compare_years    = 2023L,
     focus_pollutants = c("pm10", "pm25"),
     value_cols       = c("pm10", "pm25", "ozone", "co", "no2"),

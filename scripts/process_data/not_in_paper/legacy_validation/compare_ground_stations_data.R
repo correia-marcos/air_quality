@@ -28,8 +28,8 @@ source(here::here("src", "general_utilities", "config_utils_validation_old_versi
 source(here::here("src", "city_specific", "registry.R"))
 load_city_modules()
 
-# Root folder where per-city comparison artefacts will be written
-out_root <- here::here("results", "validation_rep_package")
+# Root folder of the ignored comparison artefacts; each city writes to out_root/<city>/
+out_root <- here::here("data", "validation")
 
 # Cities to validate — comment out those whose cfg$compare is not yet set
 cities_to_run <- c(
@@ -57,7 +57,7 @@ for (city_id in cities_to_run) {
   results[[city_id]] <- tryCatch(
     compare_ground_stations(
       cfg      = cfg,
-      out_root = out_root,
+      out_root = file.path(out_root, city_id),
       tol      = tolerances,
       quiet    = FALSE
     ),
@@ -91,7 +91,8 @@ for (city_id in cities_to_run) {
   print(res$diff_summary)
 
   html_name   <- paste0("ground_stations_report_", city_id, ".html")
-  qmd_path    <- here::here(out_root, "bogota", "ground_stations_report.qmd")
+  qmd_path    <- here::here("scripts", "process_data", "not_in_paper", "legacy_validation",
+                            "ground_stations_report.qmd")
   report_dest <- file.path(out_root, city_id, html_name)
 
   tryCatch({

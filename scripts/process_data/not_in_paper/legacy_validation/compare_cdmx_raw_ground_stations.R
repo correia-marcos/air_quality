@@ -166,7 +166,7 @@ cdmx_has_pm25_2022_stations_legacy_scheme <- plot_metro_area_interactive(
 # IV: Save figures/data
 # ============================================================================================
 # Ensure output folder exists
-outdir <- here::here("results", "validation_rep_package", "CDMX")
+outdir <- here::here("data", "validation", "cdmx", "ground_station_comparison")
 dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
 
 # Save plot

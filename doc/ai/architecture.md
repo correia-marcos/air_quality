@@ -28,10 +28,12 @@ src/                    - Functions (logic). Sourced, never run directly.
     setup_packages.R         ensure_installed() / attach_packages()
     theme_paper.R            - set_paper_theme() — the only place graphics state is set
     config_utils_*.R         - One thin loader per stage: pkgs vector + source() of its parts
-    process/                   - merra2, distances, outliers, idw_exposure, geo_ids, 
-                               station_socio, imputation, diagnostics, exposure_regressions
+    process/                   - distances, outliers, idw_exposure, geo_ids,
+                               station_socio, imputation, diagnostics, exposure_regressions;
+                               satellite/ and specification_sensitivity/ serve one analysis
+                               each and are sourced only by its recipes
     plot/                      - maps, timeseries_hourly, exposure_figures, latex_tables,
-                               station_monitoring
+                               station_monitoring; satellite/ and specification_sensitivity/
     validation/                - prepare_panels, compare_inputs, compare_results, progression
   
 scripts/                - Execution. Each script sources the src/ it needs, then runs.

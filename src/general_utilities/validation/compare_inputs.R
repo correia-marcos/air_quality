@@ -238,7 +238,7 @@ compare_panels <- function(
 #                                legacy_single_csv, legacy_dir, legacy_pattern,
 #                                compare_years, value_cols, residual_map,
 #                                pipeline_tz, focus_pollutants (optional).
-#' @param out_root               root output folder; {out_root}/{cfg$id}/ is created.
+#' @param out_root               the city's comparison folder (cfg$compare$city_dir).
 #' @param focus_pollutants       character; restrict comparison to these pollutants.
 #                                Must be a subset of cfg$compare$value_cols. Default NULL falls 
 #                                back to cfg$compare$focus_pollutants, then 
@@ -256,7 +256,7 @@ compare_panels <- function(
 #' @return    named list (invisible) with:
 #   $diff_summary, $diffs_long, $only_legacy, $only_new,
 #   $station_audit, $out_dir
-#   Five Parquet files written to {out_root}/{cfg$id}/ground_station_comparison/.
+#   Five Parquet files written to {out_root}/ground_station_comparison/.
 #
 #' @Purpose  : Create report of new vs legacy data handling.
 #' @details
@@ -553,7 +553,7 @@ compare_ground_stations <- function(
 # --------------------------------------------------------------------------------------------
 # compare_metro_area
 #' @param cfg                    city cfg list (must contain $id, $tz).
-#' @param out_root               root output folder; {out_root}/{cfg$id}/ is created.
+#' @param out_root               the city's comparison folder (cfg$compare$city_dir).
 #' @param new_metro_gpkg         character; path to the new pipeline metro area GeoPackage.
 #' @param new_stations_gpkg       character; path to the new pipeline stations GeoPackage.
 #' @param legacy_shp_dir         character; path to the directory containing the legacy
@@ -574,7 +574,7 @@ compare_ground_stations <- function(
 #   $legacy_stations_sf — sf object of legacy-universe stations (WGS84)
 #   $out_dir        — path to the output directory
 #   Four Parquet/GeoPackage files written to
-#   {out_root}/{cfg$id}/metro_area_comparison/.
+#   {out_root}/metro_area_comparison/.
 #
 #' @Purpose  : Compare the geographic definitions of the metropolitan area and station
 #             coverage between the Dropbox legacy pipeline and the new automated pipeline.
@@ -791,7 +791,7 @@ compare_metro_area <- function(
 #' @param cfg         city cfg list. Must contain a $compare sublist with:
 #                     new_census_collapsed, legacy_census_collapsed, 
 #                     census_join_key, and optionally census_tol and individual paths.
-#' @param out_root    root output folder; {out_root}/{cfg$id}/ is created.
+#' @param out_root    the city's comparison folder (cfg$compare$city_dir).
 #' @param compare_vars character vector; variable names to compare. Default covers
 #                     core education/labor shares.
 #' @param quiet       logical; suppress messages. Default FALSE.
@@ -802,7 +802,7 @@ compare_metro_area <- function(
 #   $geo_coverage      — tibble; geographic units present in each pipeline
 #   $individual_summary — tibble or NULL; row counts and key stats from micro data
 #   $out_dir           — path to the output directory
-#   Parquet files written to {out_root}/{cfg$id}/census_comparison/.
+#   Parquet files written to {out_root}/census_comparison/.
 #
 #' @Purpose  : Compare census processing between the new pipeline and the Dropbox legacy.
 #' @details

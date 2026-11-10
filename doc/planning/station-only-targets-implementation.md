@@ -46,7 +46,7 @@ PM2.5 >= 50, break at missing/nonconsecutive hours, and handle episodes ending a
 row consistently. Legend units wrap onto a second line to avoid clipping in the PDF.
 
 Satellite comparison functions moved to
-[merra2_figures.R](../../src/general_utilities/plot/merra2_figures.R); their bar charts now
+[merra2_figures.R](../../src/general_utilities/plot/satellite/merra2_figures.R); their bar charts now
 belong to the optional satellite recipe. Optional extraction uses generated metropolitan
 geography and separate [satellite settings](../../config/merra2_settings.R). Its station join
 consumes current hourly checkpoints. Context maps and the Santiago 2013 station-hour
