@@ -4,9 +4,9 @@
 #' @Goal: Month × hour heatmaps of the share of missing PM readings per city.
 #
 #' @Description: Month × hour missing-pattern diagnostic. For each city, DuckDB computes
-# the exact two-way share of missing hours (month × hour) in the standardized station
-# panel, before cleaning and over all years, and `plot_missing_heatmap()` renders it.
-# One PDF per city and pollutant in results/figures/diagnostics/.
+# the exact two-way share of missing hours (month × hour) in the cleaned station panel,
+# the panel the paper's missingness tables use, over all years; `plot_missing_heatmap()`
+# renders it. One PDF per city and pollutant in results/figures/diagnostics/.
 #
 #' @Summary:
 #   I.   Import data: source functions, set the theme and declare paths.
@@ -27,16 +27,16 @@ source(here::here("src", "general_utilities", "config_utils_process_data.R"))
 set_paper_theme()
 
 # Set the source folder and the output folder.
-dir_pollution <- here::here("data", "interim", "monitoring_stations")
+dir_pollution <- here::here("data", "processed", "monitoring_stations_outliers")
 outdir_figs   <- here::here("results", "figures", "diagnostics")
 dir.create(outdir_figs, recursive = TRUE, showWarnings = FALSE)
 
-# Set each city's station dataset, named by the city id used in file names.
+# Set each city's cleaned station panel, named by the city id used in file names.
 arrow_dirs <- c(
-  bogota    = here::here(dir_pollution, "bogota_metro_dataset"),
-  cdmx      = here::here(dir_pollution, "cdmx_metro_dataset"),
-  santiago  = here::here(dir_pollution, "santiago_metro_dataset"),
-  sao_paulo = here::here(dir_pollution, "sao_paulo_metro_dataset"))
+  bogota    = here::here(dir_pollution, "bogota_metro_clean"),
+  cdmx      = here::here(dir_pollution, "cdmx_metro_clean"),
+  santiago  = here::here(dir_pollution, "santiago_metro_clean"),
+  sao_paulo = here::here(dir_pollution, "sao_paulo_metro_clean"))
 
 # Set the plot titles.
 city_labels <- c(bogota = "Bogotá", cdmx = "Mexico City", santiago = "Santiago",

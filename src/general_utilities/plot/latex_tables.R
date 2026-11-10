@@ -557,7 +557,8 @@ latex_exposure_hours_by_group <- function(summary_dt, panel_cities,
 #                      two-way aggregation directly (recommended: ignoring row_dim/col_dim
 #                      in missing_list). If NULL, the function falls back to a naive
 #                      outer-join reconstruction, which only works when the dims are
-#                      independent.
+#                      independent. Only the year files are read (panel_parquet_files()),
+#                      so a cleaned panel's _audit/ folder is skipped.
 #' @param mem_gb      numeric; DuckDB memory ceiling. Default 4.
 #
 #' @return  ggplot2 heatmap.
@@ -584,10 +585,10 @@ plot_missing_heatmap <- function(
     con <- DBI::dbConnect(duckdb::duckdb())
     on.exit(try(DBI::dbDisconnect(con, shutdown = TRUE), silent = TRUE), add = TRUE)
     DBI::dbExecute(con, sprintf("PRAGMA memory_limit='%dGB';", as.integer(mem_gb)))
-    glob_q <- paste0("'", gsub("\\\\", "/", arrow_dir), "/**/*.parquet'")
+    # Year files only: a cleaned panel's _audit/ tables are not station-hours.
     DBI::dbExecute(con, paste0(
       "CREATE VIEW pollution AS SELECT * FROM read_parquet(",
-      glob_q, ", hive_partitioning = true);"
+      panel_parquet_files(arrow_dir), ", hive_partitioning = true);"
     ))
     dim_expr <- list(
       month = "EXTRACT(month FROM datetime)",
