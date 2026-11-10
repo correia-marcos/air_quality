@@ -8,6 +8,36 @@ retains that implementation's checks and limits.
 The dated records below retain earlier implementation and validation evidence; they are
 not the current execution specification.
 
+## Each recipe builds only its own analysis — 1–9 November 2026
+
+Workstream C gave each recipe the products of one analysis. The Bogotá 2005 inputs moved to
+`not_in_paper/legacy_validation/prepare_bogota_2005_inputs.R`; unused layers, the basic 2005
+census and the raw missingness tables stopped (all missingness tables now use the cleaned
+panels); Santiago 2024 moved to `not_in_paper/santiago_2024/`, with its own tables in
+`data/processed/idw_regressions/santiago_2024/` and only the 3 and 5 km buffers; the 5 km
+buffer and the individual-level regression moved to `robustness/`; the imputed exposure
+figures got their own recipe in `tables_images/imputation/`. Marcos reran the pipeline in
+RStudio from 4 November and the outputs were compared with the snapshot
+`data/exploration/c-accept-20261104/manifest.csv` (682 files).
+
+| Check | Result |
+|---|---|
+| Byte-identical | 135 files |
+| Same content, different bytes | 12 GeoPackages (GDAL stamps), 12 Parquet; 79 tables with the same rows in another order |
+| Registered numerical bound | IDW, hourly station series, station context and income CIs; largest relative difference 7.5e-16 |
+| Declared split | Santiago 2024 rows of the old shared tables equal the new standalone tables; population columns integer instead of double, same values |
+| PDFs | 126 pixel-identical; 34 changed |
+| Expected changes | Outputs in the snapshot predated the 8 October particulate screen: CDMX PM2.5 (WHO and threshold tables, IT2 episodes 20 → 7, imputation, imputed exposure, clean missingness) and a few Bogotá 2010–2017 hours. `missing_by_education_quintile` follows `fbde0c4`; the Stadia map changed only through its tiles |
+| Missing | 89 files: not rerun (Bogotá 2005 inputs, Santiago 2024 geography, some optional figures), retired by C, or without a producer |
+| Portable checks | Synthetic suite 1,125 passed; 480 links, 0 errors |
+
+No difference traces to C. The specification-sensitivity frozen-input check fails on MD5
+for 4–5 inputs per city while their contents match (GDAL stamps, DuckDB summation drift,
+row order, the row-level `input_id`); the frozen vintage stays and the check becomes
+content-based in Workstream D. Two optional recipes that predated C were repaired during
+the rerun: the legacy-validation loader no longer attaches the uninstalled `quarto`
+package, and the Santiago hourly-station figure no longer joins a deleted station lookup.
+
 ## Recipes and targets modules grouped by analysis — 1 November 2026
 
 The 49 recipes moved into one folder per analysis in each stage (`inputs/`,
