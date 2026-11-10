@@ -164,8 +164,9 @@ final value. The recipe also writes to `data/processed/pollution_quality/`:
 
 - `<city>_quality_summary.csv`: hours by station, year, pollutant, source validation and the
   two reasons, from `summarize_pollution_quality()`;
-- `<city>_review_records.csv`: every reading withheld by the screen for being above the bound
-  or negative, from `collect_pollution_screening_records()`.
+- `<city>_screening_records.csv`: every reading withheld by the screen for being above the
+  bound or negative, with the source files behind it where known (CDMX), from
+  `collect_pollution_screening_records()`.
 
 The [data dictionary](data_dictionary.md#9-observed-particulate-quality-fields) defines
 every column, including source validation and the `_audit/` tables kept beside each cleaned

@@ -57,6 +57,8 @@
 #     `n_zero_temporal_sd`
 #     `n_missing_spatial_sd`
 #     `n_zero_spatial_sd`
+#   _audit/input_partitions.csv records one SHA-256 identity per input year; the hourly
+#   rows carry no copy of it.
 #
 #' @Written_on : 02/02/2026
 #' @Written_by : Marcos Paulo
@@ -157,9 +159,8 @@ detect_pollution_outliers <- function(
   if (dir.exists(out_path)) unlink(out_path, recursive = TRUE)
   dir.create(out_path)
 
-  .screen_input <- function(panel, yr) {
+  .screen_input <- function(panel) {
     if (!nrow(panel)) return(panel)
-    panel[, input_id := identities[year == yr, input_id]]
     panel <- screen_pollution_quality(panel, pollutants, upper_bounds)
     panel[, station_original := station]
     panel[, station := normalize_station(station)]
@@ -523,7 +524,7 @@ detect_pollution_outliers <- function(
     }
     
     # Normalize station identifiers before balancing and joining.
-    dt_yr <- .screen_input(dt_yr, yr)
+    dt_yr <- .screen_input(dt_yr)
     
     all_sta  <- unique(dt_yr$station)
     yr_start <- min(dt_yr$datetime)
@@ -550,7 +551,7 @@ detect_pollution_outliers <- function(
       data.table::as.data.table()
     
     if (nrow(bnd_prev) > 0L) {
-      bnd_prev <- .screen_input(bnd_prev, prev_yr)
+      bnd_prev <- .screen_input(bnd_prev)
       bnd_prev <- bnd_prev[station %in% all_sta]
     }
     
@@ -560,7 +561,7 @@ detect_pollution_outliers <- function(
       data.table::as.data.table()
     
     if (nrow(bnd_next) > 0L) {
-      bnd_next <- .screen_input(bnd_next, next_yr)
+      bnd_next <- .screen_input(bnd_next)
       bnd_next <- bnd_next[station %in% all_sta]
     }
     

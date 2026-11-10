@@ -58,7 +58,7 @@ test_that("held readings and boundary donors do not enter statistical benchmarks
     "2022-12-31 00:00:00", tz = "UTC") + 0:47 * 3600)
   panel[, pm25 := ifelse(station == "Calpúl", 79999, 20)]
   panel[, pm25_source_status := ifelse(station == "Calpúl", "raw_unvalidated", "mixed")]
-  panel[, pm25_source_ids := ifelse(station == "Calpúl", "raw-id", "raw-id;valid-id")]
+  panel[, pm25_source_ids := ifelse(station == "Calpúl", "raw-id", "raw-id|valid-id")]
   panel[, year := as.integer(format(datetime, "%Y", tz = "UTC"))]
   table <- arrow::Table$create(panel)$SetColumn(1L,
     arrow::field("datetime", arrow::timestamp("us")),
@@ -115,15 +115,28 @@ test_that("held readings and boundary donors do not enter statistical benchmarks
   expect_error(detect_pollution_outliers(input, dist, root, "protected",
     upper_bounds = c(pm25 = -1), overwrite = FALSE), "bounds")
   path <- run("audit", c(pm25 = 500))
-  records <- collect_pollution_screening_records(path, "pm25")
+  expect_false("input_id" %in% names(arrow::open_dataset(path)))
+  manifest <- file.path(root, "source_manifest.csv")
+  data.table::fwrite(data.table::data.table(source_id = c("raw-id", "valid-id"),
+    source_file = c("raw/calpulalpan.xlsx", "validated/pm25.csv")), manifest)
+  records <- collect_pollution_screening_records(path, "pm25", source_manifest = manifest)
   expect_equal(nrow(records), 48)
   expect_true(all(records$value == 79999))
   expect_true(all(records$station == "Calpúl"))
-  expect_true(all(records$source_ids == "raw-id"))
+  expect_true(all(records$source_files == "raw/calpulalpan.xlsx"))
+  expect_identical(names(records), c("station", "datetime", "year", "pollutant", "value",
+    "source_validation", "source_files", "screen_reason"))
+  unnamed <- collect_pollution_screening_records(path, "pm25")
+  expect_true(all(is.na(unnamed$source_files)))
+  data.table::fwrite(data.table::data.table(source_id = "valid-id",
+    source_file = "validated/pm25.csv"), manifest)
+  expect_error(collect_pollution_screening_records(path, "pm25",
+    source_manifest = manifest), "missing from")
   links <- dplyr::collect(arrow::open_dataset(
     file.path(path, "_audit", "source_contributions")))
   expect_equal(nrow(links), nrow(panel))
-  expect_true(all(links$source_ids[links$station == "PEER"] == "raw-id;valid-id"))
+  expect_false("input_id" %in% names(links))
+  expect_true(all(links$source_ids[links$station == "PEER"] == "raw-id|valid-id"))
   expect_true(all(links$source_validation[links$station == "PEER"] == "mixed"))
   expect_equal(nrow(dplyr::collect(arrow::open_dataset(path))), nrow(panel))
   counts <- arrow::read_parquet(file.path(path, "_audit",
@@ -149,8 +162,8 @@ test_that("timestamp serialization preserves integer-backed source clocks", {
   audit <- tempfile("source-audit-")
   on.exit(unlink(audit, recursive = TRUE), add = TRUE)
   panel <- data.table::data.table(station = "A", station_original = "A",
-    datetime = clock, year = 2023L, input_id = "fixture", pm25 = 10,
-    pm25_source_validation = "mixed", pm25_source_ids = "raw;validated")
+    datetime = clock, year = 2023L, pm25 = 10,
+    pm25_source_validation = "mixed", pm25_source_ids = "raw|validated")
   for (label in c("missing_temporal", "zero_temporal", "missing_spatial", "zero_spatial")) {
     panel[, (paste0("pm25_n_", label, "_sd")) := 0L]
   }
@@ -158,5 +171,5 @@ test_that("timestamp serialization preserves integer-backed source clocks", {
   links <- arrow::read_parquet(file.path(audit, "source_contributions", "year=2023",
                                         "data.parquet"))
   expect_equal(as.numeric(links$datetime), as.numeric(clock))
-  expect_identical(links$source_ids, rep("raw;validated", 2))
+  expect_identical(links$source_ids, rep("raw|validated", 2))
 })

@@ -63,8 +63,8 @@ Source status from the merger becomes `source_validation` in the cleaned panel.
 Actual CDMX source contributions are retained in the cleaned dataset's
 `_audit/source_contributions/` partitions, including links for readings that survive.
 The four temporal/spatial SD diagnostic counts are retained once per station-month in
-`_audit/station_month_diagnostics.parquet`. Input identities are recorded separately in
-`_audit/input_partitions.csv` and on original rows. These file-backed tables preserve
+`_audit/station_month_diagnostics.parquet`. Input identities are recorded once per year in
+`_audit/input_partitions.csv`. These file-backed tables preserve
 traceability without repeating the metadata throughout the hourly panel. Opening the
 cleaned Arrow dataset excludes `_audit/`; its contents remain independently readable and
 belong to the same targets file output.
@@ -87,9 +87,10 @@ require a separate approved method and a schema that records them explicitly.
 
 The direct outlier recipe exposes four named quality summaries and screened-record tables
 in RStudio. Targets cache those objects separately and declare CSV files under
-`data/processed/pollution_quality/`. Existing `*_quality_review_records` target names and
-`*_review_records.csv` filenames remain compatibility names: their contents are bound or
-negative screening exclusions, not a pending-review workflow or manual decisions.
+`data/processed/pollution_quality/`. The `*_screening_records` targets and
+`*_screening_records.csv` files list bound or negative screening exclusions, not a
+pending-review workflow or manual decisions; for CDMX, `source_files` names the downloaded
+files behind each reading, from the interim source manifest.
 Summaries count source validation, screening codes and statistical reasons separately.
 The station catalog and balanced station-year rows remain present. Usable reporting counts
 may change when screening settings change.

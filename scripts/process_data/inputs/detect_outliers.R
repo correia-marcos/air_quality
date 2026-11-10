@@ -50,6 +50,9 @@ pollution_sao_paulo <- here::here(dir_pollution, "sao_paulo_metro_dataset")
 distances_sao_paulo <- here::here(dir_distances, "sao_paulo_2010",
                                   "matrix_station_distances.parquet")
 
+# Set the CDMX source manifest, which names the file behind each source id.
+sources_cdmx       <- here::here(dir_pollution, "cdmx_metro_source_manifest.csv")
+
 # Optional: read Bogotá's hours in the analysis year and its station distances to inspect
 # them (change the city if you want). Filtering by year keeps the read small.
 pollution_bogota_data <- arrow::open_dataset(pollution_bogota) |>
@@ -121,8 +124,10 @@ quality_santiago  <- summarize_pollution_quality(cleaned_santiago)
 quality_sao_paulo <- summarize_pollution_quality(cleaned_sao_paulo)
 
 # List the readings the screen withheld as above the bound or negative (codes 1 and 2).
+# For CDMX, also name the source files behind each reading.
 screening_records_bogota    <- collect_pollution_screening_records(cleaned_bogota)
-screening_records_cdmx      <- collect_pollution_screening_records(cleaned_cdmx)
+screening_records_cdmx      <- collect_pollution_screening_records(cleaned_cdmx,
+                                 source_manifest = sources_cdmx)
 screening_records_santiago  <- collect_pollution_screening_records(cleaned_santiago)
 screening_records_sao_paulo <- collect_pollution_screening_records(cleaned_sao_paulo)
 
@@ -141,12 +146,12 @@ quality_sao_paulo_file <- write_pollution_quality_summary(quality_sao_paulo,
 
 # Save the screened records.
 screening_records_bogota_file <- write_pollution_quality_summary(screening_records_bogota,
-  here::here(dir_quality, "bogota_review_records.csv"))
+  here::here(dir_quality, "bogota_screening_records.csv"))
 screening_records_cdmx_file <- write_pollution_quality_summary(screening_records_cdmx,
-  here::here(dir_quality, "cdmx_review_records.csv"))
+  here::here(dir_quality, "cdmx_screening_records.csv"))
 screening_records_santiago_file <- write_pollution_quality_summary(
   screening_records_santiago,
-  here::here(dir_quality, "santiago_review_records.csv"))
+  here::here(dir_quality, "santiago_screening_records.csv"))
 screening_records_sao_paulo_file <- write_pollution_quality_summary(
   screening_records_sao_paulo,
-  here::here(dir_quality, "sao_paulo_review_records.csv"))
+  here::here(dir_quality, "sao_paulo_screening_records.csv"))

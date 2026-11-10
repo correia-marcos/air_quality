@@ -81,7 +81,7 @@ write_pollution_audit_partition <- function(data, audit_dir, pollutants) {
     function(pol) {
       source <- paste0(pol, "_source_ids")
       if (!source %in% names(data)) return(NULL)
-      fields <- c("station", "station_original", "datetime", "year", "input_id",
+      fields <- c("station", "station_original", "datetime", "year",
                   paste0(pol, "_source_validation"), source)
       links <- data[, ..fields]
       data.table::setnames(links, paste0(pol, c("_source_validation", "_source_ids")),
@@ -129,17 +129,26 @@ write_pollution_quality_summary <- function(summary, path) {
   path
 }
 
-#' @param arrow_dir Cleaned partitions, with original values and partition identities.
+#' @param arrow_dir Cleaned partitions, with original values.
 #' @param pollutants Pollutants whose bound/negative exclusions require a linked record.
-#' @return Above-bound and negative records, with actual contributing source IDs if known.
-collect_pollution_screening_records <- function(arrow_dir, pollutants = c("pm10", "pm25")) {
+#' @param source_manifest NULL, or the source manifest CSV (`source_id`, `source_file`)
+#   written with the station panel; currently CDMX only.
+#' @return One row per above-bound or negative reading: station, datetime, year,
+#   pollutant, value, source_validation, source_files and screen_reason. `source_files`
+#   lists the files that contributed the reading ("|"-separated), translated from the
+#   `_audit/source_contributions/` ids through the manifest; NA without a manifest.
+collect_pollution_screening_records <- function(arrow_dir, pollutants = c("pm10", "pm25"),
+                                                source_manifest = NULL) {
   dataset <- arrow::open_dataset(arrow_dir)
   source_path <- file.path(arrow_dir, "_audit", "source_contributions")
   sources <- if (dir.exists(source_path)) arrow::open_dataset(source_path) else NULL
+  manifest <- if (!is.null(source_manifest)) {
+    data.table::fread(source_manifest, select = c("source_id", "source_file"))
+  }
   data.table::rbindlist(lapply(pollutants, function(pol) {
     reason <- paste0(pol, "_screen_reason")
     if (!reason %in% dataset$schema$names) return(NULL)
-    fields <- c("station", "station_original", "datetime", "year", "input_id",
+    fields <- c("station", "station_original", "datetime", "year",
                 paste0(pol, c("_original", "_source_validation", "_screen_reason")))
     records <- dataset |>
       dplyr::filter(.data[[reason]] %in% c(1L, 2L)) |>
@@ -156,17 +165,25 @@ collect_pollution_screening_records <- function(arrow_dir, pollutants = c("pm10"
       years <- unique(records$year)
       links <- sources |>
         dplyr::filter(pollutant == pol, station %in% stations, year %in% years) |>
-        dplyr::select(station, datetime, year, input_id, source_ids) |>
+        dplyr::select(station, datetime, year, source_ids) |>
         dplyr::collect() |>
         data.table::as.data.table()
-      records <- merge(records, links, by = c("station", "datetime", "year", "input_id"),
-                       all.x = TRUE)
+      records <- merge(records, links, by = c("station", "datetime", "year"), all.x = TRUE)
     } else records[, source_ids := NA_character_]
+    # Translate each reading's source ids into the files they came from.
+    records[, source_files := NA_character_]
+    if (!is.null(manifest)) {
+      linked <- which(!is.na(records$source_ids))
+      files  <- lapply(strsplit(records$source_ids[linked], "|", fixed = TRUE),
+                       function(x) manifest$source_file[match(x, manifest$source_id)])
+      if (anyNA(unlist(files))) stop("Source ids missing from ", source_manifest)
+      records[linked, source_files := vapply(files, paste, character(1), collapse = "|")]
+    }
     records[, station := station_original]
-    records[, station_original := NULL]
+    records[, c("station_original", "source_ids") := NULL]
     records[, datetime := format(datetime, "%Y-%m-%d %H:%M:%S", tz = "UTC")]
     data.table::setcolorder(records, c("station", "datetime", "year", "pollutant",
-      "input_id", "value", "source_validation", "source_ids", "screen_reason"))
+      "value", "source_validation", "source_files", "screen_reason"))
     data.table::setorder(records, station, datetime)
     records
   }), fill = TRUE)

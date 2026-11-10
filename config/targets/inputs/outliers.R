@@ -20,14 +20,15 @@ list(
   targets::tar_target(bogota_quality_summary,
     summarize_pollution_quality(bogota_outliers)),
 
-  targets::tar_target(bogota_quality_review_records,
+  targets::tar_target(bogota_screening_records,
     collect_pollution_screening_records(bogota_outliers)),
 
   targets::tar_target(bogota_quality_report,
     c(write_pollution_quality_summary(bogota_quality_summary,
         here::here("data", "processed", "pollution_quality", "bogota_quality_summary.csv")),
-      write_pollution_quality_summary(bogota_quality_review_records,
-        here::here("data", "processed", "pollution_quality", "bogota_review_records.csv"))),
+      write_pollution_quality_summary(bogota_screening_records,
+        here::here("data", "processed", "pollution_quality",
+          "bogota_screening_records.csv"))),
     format = "file"),
 
   targets::tar_target(cdmx_outliers,
@@ -50,14 +51,17 @@ list(
   targets::tar_target(cdmx_quality_summary,
     summarize_pollution_quality(cdmx_outliers)),
 
-  targets::tar_target(cdmx_quality_review_records,
-    collect_pollution_screening_records(cdmx_outliers)),
+  targets::tar_target(cdmx_screening_records,
+    collect_pollution_screening_records(cdmx_outliers,
+        source_manifest = cdmx_pollution_parquet[basename(cdmx_pollution_parquet) ==
+            "cdmx_metro_source_manifest.csv"])),
 
   targets::tar_target(cdmx_quality_report,
     c(write_pollution_quality_summary(cdmx_quality_summary,
         here::here("data", "processed", "pollution_quality", "cdmx_quality_summary.csv")),
-      write_pollution_quality_summary(cdmx_quality_review_records,
-        here::here("data", "processed", "pollution_quality", "cdmx_review_records.csv"))),
+      write_pollution_quality_summary(cdmx_screening_records,
+        here::here("data", "processed", "pollution_quality",
+          "cdmx_screening_records.csv"))),
     format = "file"),
 
   targets::tar_target(santiago_outliers,
@@ -80,16 +84,16 @@ list(
   targets::tar_target(santiago_quality_summary,
     summarize_pollution_quality(santiago_outliers)),
 
-  targets::tar_target(santiago_quality_review_records,
+  targets::tar_target(santiago_screening_records,
     collect_pollution_screening_records(santiago_outliers)),
 
   targets::tar_target(santiago_quality_report,
     c(write_pollution_quality_summary(santiago_quality_summary,
         here::here("data", "processed", "pollution_quality",
           "santiago_quality_summary.csv")),
-      write_pollution_quality_summary(santiago_quality_review_records,
+      write_pollution_quality_summary(santiago_screening_records,
         here::here("data", "processed", "pollution_quality",
-          "santiago_review_records.csv"))),
+          "santiago_screening_records.csv"))),
     format = "file"),
 
   targets::tar_target(sao_paulo_outliers,
@@ -112,16 +116,16 @@ list(
   targets::tar_target(sao_paulo_quality_summary,
     summarize_pollution_quality(sao_paulo_outliers)),
 
-  targets::tar_target(sao_paulo_quality_review_records,
+  targets::tar_target(sao_paulo_screening_records,
     collect_pollution_screening_records(sao_paulo_outliers)),
 
   targets::tar_target(sao_paulo_quality_report,
     c(write_pollution_quality_summary(sao_paulo_quality_summary,
         here::here("data", "processed", "pollution_quality",
           "sao_paulo_quality_summary.csv")),
-      write_pollution_quality_summary(sao_paulo_quality_review_records,
+      write_pollution_quality_summary(sao_paulo_screening_records,
         here::here("data", "processed", "pollution_quality",
-          "sao_paulo_review_records.csv"))),
+          "sao_paulo_screening_records.csv"))),
     format = "file"),
 
   targets::tar_target(outliers,

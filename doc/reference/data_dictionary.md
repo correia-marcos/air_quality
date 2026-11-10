@@ -287,8 +287,9 @@ Santiago 2017 and São Paulo 2010 census vintages remain approved analytical inp
 
 The cleaner writes five columns per particulate pollutant. PM10 uses the same suffixes.
 The original is the **standardized station-hour concentration**, after source aggregation;
-it is not an unmodified individual source record. Shared `station_original` and `input_id`
-columns link the rows to their original station labels and SHA-256 partition identities.
+it is not an unmodified individual source record. A shared `station_original` column keeps
+each row's original station label; each input year's SHA-256 identity is recorded once in
+`_audit/input_partitions.csv`, not on the rows.
 
 | Column | Type | Meaning |
 |---|---|---|
@@ -339,11 +340,13 @@ explicitly to inspect them. The file target owns the entire directory, including
 
 | Audit table | Contents and join keys |
 |---|---|
-| `_audit/input_partitions.csv` | `year`, `input_id`; match to the shared year/input identity on original rows. Identities hash all input files in that year and are independent of absolute location. |
+| `_audit/input_partitions.csv` | `year`, `input_id`; one identity per input year, joined by `year`. Identities hash all input files in that year and are independent of absolute location. |
 | `_audit/station_month_diagnostics.parquet` | One row per `station`, `year`, `month`, `pollutant`, with counts of missing/zero temporal and spatial SD for above-p99 observations. |
-| `_audit/source_contributions/year=YYYY/data.parquet` | Where source IDs are supplied (currently CDMX), actual contributing `source_ids` and source validation for each station-hour/pollutant, including retained readings. Join by `station`, `datetime`, `year`, `pollutant`, `input_id`; original labels are also retained. |
+| `_audit/source_contributions/year=YYYY/data.parquet` | Where source IDs are supplied (currently CDMX), actual contributing `source_ids` and source validation for each station-hour/pollutant, including retained readings. Join by `station`, `datetime`, `year`, `pollutant`; original labels are also retained. |
 
-CDMX source IDs join to the interim source manifest and coverage reports. Empty links mean
+CDMX source IDs join to the interim source manifest and coverage reports; the screening
+records (`<city>_screening_records.csv`) translate them into `source_files`, the paths of
+the downloaded files behind each withheld reading. Empty links mean
 no identified contribution; they do not imply validation. Negative raw contributions
 already removed upstream appear as missing standardized inputs, so their losses must also
 be read from source diagnostics and preserved downloads. The old repeated diagnostic
