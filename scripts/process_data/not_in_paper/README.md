@@ -32,4 +32,5 @@ with `Rscript`.
 produced the published numbers, and attributes every change in a result to one updated input
 (the Step 0–4 framework in [validation rules](../../../doc/ai/rules/validation.md)). It reads
 the read-only originals in `data/_legacy/`. Run it with `make validate`;
-`prepare_bogota_2005_inputs.R` builds the 2005 Bogotá inputs it compares.
+`prepare_bogota_2005_inputs.R` builds the 2005 Bogotá inputs it compares. Its outputs
+(comparison tables, maps and the HTML report) go to the ignored `data/validation/<city>/`.

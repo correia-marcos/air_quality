@@ -1,8 +1,8 @@
 # Deletion candidates
 
-## Callerless branches after Workstream C — November 2026
+## Callerless branches after the recipe split — November 2026
 
-Workstream C stopped building products that nothing reads. The functions below keep the
+In November 2026 the recipes stopped building products that nothing reads. The functions below keep the
 branches that built them; the branches now have no caller in `scripts/` or the targets
 graph. Remove a branch only with the tests that exercise it.
 
