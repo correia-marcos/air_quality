@@ -93,9 +93,11 @@ outlier_results <- compare_outlier_procedure(
 )
 
 # 6. Map education quintiles and 2023 PM at the legacy stations, at 3 and 5 km
-# Keep rows 1-19 of the 2005 layer, as the earlier map recipe did. They include BOSA and
-# omit MOVIL 7MA, so they match neither legacy station list (see remaining-work.md).
-legacy_stations_2005 <- stations_2005[1:19, ]
+# Keep the 19 stations with legacy pollution data, matched by name to step 1's audit
+legacy_names         <- gs_results$station_audit$station[gs_results$station_audit$in_legacy]
+station_keys_2005    <- legacy_station_key(stations_2005$station_name,
+                                           cfg$compare$residual_map)
+legacy_stations_2005 <- stations_2005[station_keys_2005 %in% legacy_names, ]
 
 maps_2005 <- lapply(c("3" = 3, "5" = 5), function(buffer_km) {
   plot_inequality_pollution(metro_sf    = metro_2005,
