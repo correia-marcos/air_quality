@@ -2089,6 +2089,8 @@ dt <- tryCatch(
   # Path is injected via gsub to avoid %-codes sprintf misread.
   dataset_path <- file.path(out_dir, paste0(out_name, "_dataset"))
   if (dir.exists(dataset_path)) unlink(dataset_path, recursive = TRUE)
+  # DuckDB creates the dataset folder but not its parents.
+  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
   # Negative concentrations are physically impossible; report them, then drop them in the
   # pivot below. Pollutants only: temperature and wind direction may legitimately be < 0.
