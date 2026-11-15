@@ -101,7 +101,8 @@ idw_bogota <- run_idw_city(city_label     = "Bogota",
                            group_name     = "edu_quintile",
                            buffer_km      = buffer_km,
                            outdir_exp     = outdir_exp,
-                           distance_power = distance_power)
+                           distance_power = distance_power,
+                           mem_gb         = idw_duckdb_mem_gb)
 
 idw_cdmx <- run_idw_city(city_label     = "CDMX",
                          city_id        = "cdmx_2020",
@@ -114,7 +115,8 @@ idw_cdmx <- run_idw_city(city_label     = "CDMX",
                          group_name     = "edu_quintile",
                          buffer_km      = buffer_km,
                          outdir_exp     = outdir_exp,
-                         distance_power = distance_power)
+                         distance_power = distance_power,
+                         mem_gb         = idw_duckdb_mem_gb)
 
 idw_santiago <- run_idw_city(city_label     = "Santiago",
                              city_id        = "santiago_2017",
@@ -127,7 +129,8 @@ idw_santiago <- run_idw_city(city_label     = "Santiago",
                              group_name     = "edu_quintile",
                              buffer_km      = buffer_km,
                              outdir_exp     = outdir_exp,
-                             distance_power = distance_power)
+                             distance_power = distance_power,
+                             mem_gb         = idw_duckdb_mem_gb)
 
 idw_sp <- run_idw_city(city_label     = "Sao Paulo",
                        city_id        = "sao_paulo_2010",
@@ -140,7 +143,8 @@ idw_sp <- run_idw_city(city_label     = "Sao Paulo",
                        group_name     = "edu_quintile",
                        buffer_km      = buffer_km,
                        outdir_exp     = outdir_exp,
-                       distance_power = distance_power)
+                       distance_power = distance_power,
+                       mem_gb         = idw_duckdb_mem_gb)
 
 # Read the checkpoints just produced for the exposure regressions.
 exposure_bogota   <- arrow::read_parquet(idw_bogota$individual$exposure_path)

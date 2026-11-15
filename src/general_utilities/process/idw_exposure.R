@@ -10,9 +10,11 @@
 #
 #' @Summary:
 #   1. assign_socio_group
-#   2. aggregate_idw_exposure
-#   3. .idw_census_and_write
-#   4. run_idw_city
+#   2. machine_memory_gb
+#   3. duckdb_memory_limit_gb
+#   4. aggregate_idw_exposure
+#   5. .idw_census_and_write
+#   6. run_idw_city
 #
 #' @Date: August 2026
 #' @Author: Marcos Paulo
@@ -71,6 +73,70 @@ assign_socio_group <- function(dt, var, wcol, n, out_col) {
 }
 
 
+# ------------------------------------------------------------------------------------------
+# Function: machine_memory_gb
+#
+#' @return  numeric; memory available to this R session in GB, or NA when it cannot be
+#           read. Reads only system files or sysctl; changes nothing.
+#
+#' @details
+#   In a container the memory that counts is the container's: its cgroup limit
+#   (/sys/fs/cgroup/memory.max) when one is set, otherwise the Linux machine's total in
+#   /proc/meminfo, which under Docker Desktop is the memory given to Docker. On macOS
+#   it is the machine's total from `sysctl hw.memsize`. Other systems return NA.
+#
+#' @Written_on : November 2026
+#' @Written_by : Marcos Paulo
+# ------------------------------------------------------------------------------------------
+machine_memory_gb <- function() {
+  cgroup_limit <- "/sys/fs/cgroup/memory.max"
+  if (file.exists(cgroup_limit)) {
+    limit <- readLines(cgroup_limit, warn = FALSE)[1]
+    if (!identical(limit, "max")) return(as.numeric(limit) / 2^30)
+  }
+  if (file.exists("/proc/meminfo")) {
+    total_kb <- grep("^MemTotal:", readLines("/proc/meminfo", warn = FALSE), value = TRUE)
+    return(as.numeric(gsub("[^0-9]", "", total_kb)) / 2^20)
+  }
+  if (identical(Sys.info()[["sysname"]], "Darwin")) {
+    bytes <- suppressWarnings(as.numeric(tryCatch(system2("sysctl", c("-n", "hw.memsize"),
+      stdout = TRUE, stderr = FALSE), error = function(e) NA_character_)))
+    if (length(bytes) == 1L && !is.na(bytes)) return(bytes / 2^30)
+  }
+  NA_real_
+}
+
+
+# ------------------------------------------------------------------------------------------
+# Function: duckdb_memory_limit_gb
+#
+#' @param mem_gb     numeric GB, or "auto" (the setting idw_duckdb_mem_gb).
+#' @param reserve_gb numeric; GB left for R when mem_gb is "auto". Default 6.
+#
+#' @return  integer; the DuckDB memory limit in GB, at least 1.
+#
+#' @details
+#   A number is used as given. "auto" takes machine_memory_gb() minus reserve_gb, so the
+#   same setting fits a 64 GB Mac, a 48 GB Docker container or a smaller computer
+#   without editing; DuckDB spills to disk above the limit. The 6 GB reserve covers R's
+#   own tables during IDW: the October 2026 CDMX census preparation peaked at 3.2 GB and
+#   Bogotá's census holds 9 million person records. It is provisional until a complete
+#   verification run records the container's peak memory (verification_command()).
+#
+#' @Written_on : November 2026
+#' @Written_by : Marcos Paulo
+# ------------------------------------------------------------------------------------------
+duckdb_memory_limit_gb <- function(mem_gb, reserve_gb = 6) {
+  if (is.numeric(mem_gb)) return(max(1L, as.integer(mem_gb)))
+  if (!identical(mem_gb, "auto")) stop("mem_gb must be a number of GB or \"auto\".")
+  total_gb <- machine_memory_gb()
+  if (is.na(total_gb)) {
+    stop("Cannot read this machine's memory; set idw_duckdb_mem_gb to a number of GB.")
+  }
+  max(1L, as.integer(floor(total_gb - reserve_gb)))
+}
+
+
 # --------------------------------------------------------------------------------------------
 # Function: aggregate_idw_exposure
 #
@@ -94,7 +160,8 @@ assign_socio_group <- function(dt, var, wcol, n, out_col) {
 #' @param target_years       numeric vector or NULL; years to process.
 #' @param pollutants         character vector; pollutant columns to aggregate.
 #' @param who_it             named list; WHO interim target thresholds.
-#' @param mem_gb             numeric; DuckDB memory ceiling in GB. Default 40.
+#' @param mem_gb             numeric GB or "auto"; DuckDB memory limit, resolved by
+#                            duckdb_memory_limit_gb(). Default "auto".
 #' @param n_threads          integer; DuckDB worker threads. Default 2.
 #' @param duckdb_temp_dir    string or NULL; DuckDB spill directory.
 #' @param out_dir            string; output directory.
@@ -154,7 +221,7 @@ aggregate_idw_exposure <- function(
       pm10 = c(it1 = 150, it2 = 100, it3 = 75,  it4 = 50),
       pm25 = c(it1 = 75,  it2 = 50,  it3 = 37.5, it4 = 25)
     ),
-    mem_gb              = 40,
+    mem_gb              = "auto",
     n_threads           = 2L,
     duckdb_temp_dir     = NULL,
     out_dir             = "data/interim/exposure",
@@ -370,7 +437,8 @@ aggregate_idw_exposure <- function(
   
   # Configure DuckDB with conservative memory settings.
   n_threads <- as.integer(max(1L, n_threads))
-  mem_gb    <- as.integer(mem_gb)
+  mem_gb    <- duckdb_memory_limit_gb(mem_gb)
+  if (!quiet) message("[", out_name, "] DuckDB memory limit: ", mem_gb, " GB")
   
   DBI::dbExecute(con, sprintf("PRAGMA threads=%d;", n_threads))
   DBI::dbExecute(con, sprintf("PRAGMA memory_limit='%dGB';", mem_gb))
@@ -942,8 +1010,9 @@ aggregate_idw_exposure <- function(
 #' @param outdir_exp    string; root output directory for IDW estimates.
 #' @param out_suffix    string or NULL; extra tag in file names to separate
 #                       groupings (e.g. "income"). NULL keeps the plain name.
-#' @param mem_gb        numeric; DuckDB memory ceiling in GB. Default 40.
-#' @param n_threads     integer; DuckDB worker threads. Default 2.
+#' @param mem_gb        numeric GB or "auto"; DuckDB memory limit, passed to
+#                       aggregate_idw_exposure(). Default "auto".
+#' @param n_threads     integer; DuckDB worker threads. Default 8.
 #' @param overwrite     logical; overwrite existing outputs. Default TRUE.
 #' @param reuse_exposure logical; reuse an exposure file already on disk for this city
 #                       and buffer rather than interpolating again. Pass TRUE for the
@@ -1004,8 +1073,8 @@ run_idw_city <- function(
     buffer_km,
     outdir_exp,
     out_suffix     = NULL,
-    mem_gb      = 40,
-    n_threads   = 8L,
+    mem_gb         = "auto",
+    n_threads      = 8L,
     overwrite      = TRUE,
     reuse_exposure = FALSE,
     return_data = FALSE

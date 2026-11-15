@@ -91,6 +91,7 @@ for (buffer_km in santiago_2024_buffers_km) {
       group_name           = "edu_quintile",
       buffer_km            = buffer_km,
       distance_power       = idw_distance_power,
+      mem_gb               = idw_duckdb_mem_gb,
       outdir_exp           = dir_idw,
       return_data          = FALSE)
 }

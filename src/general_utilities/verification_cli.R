@@ -6,13 +6,20 @@ verification_sha <- function(p) digest::digest(file = p, algo = "sha256",
 # Execute an external verification command and record its exit status.
 #' @param cmd,args Command and argument vector.
 #' @param log Output log filename.
-#' @return Command, elapsed seconds, log basename, exit status and available memory events.
+#' @return Command, elapsed seconds, log basename, exit status, available memory events
+#   and the container's peak memory in GB.
 #' @details Linux cgroup counters describe the container, not an individual R process.
+#   memory.peak is the container's highest memory use since it started, so after the
+#   rebuild stage it records what the manuscript graph needed.
 verification_command <- function(cmd, args, log) {
   started <- Sys.time()
   memory_events <- function() {
     path <- "/sys/fs/cgroup/memory.events"
     if (file.exists(path)) readLines(path, warn = FALSE) else NULL
+  }
+  memory_peak_gb <- function() {
+    path <- "/sys/fs/cgroup/memory.peak"
+    if (file.exists(path)) round(as.numeric(readLines(path, warn = FALSE)[1]) / 2^30, 2)
   }
   memory_before <- memory_events()
   status <- tryCatch(system2(cmd, args, stdout = log, stderr = log), error = function(e) {
@@ -25,6 +32,7 @@ verification_command <- function(cmd, args, log) {
     result$memory_events_before <- memory_before
     result$memory_events_after <- memory_events()
   }
+  result$memory_peak_gb <- memory_peak_gb()
   result
 }
 # Capture a diagnostic command's output or error message.
@@ -120,6 +128,16 @@ verification_print_summary <- function(report, run, status) {
       cat("Failed stage:", paste(scope, name, sep = "/"),
           "(exit", stage$exit_status, ")\n")
       if (!is.null(stage$log)) cat("Log:", file.path(roots[[scope]], stage$log), "\n")
+      oom_kills <- function(events) {
+        count <- sub("^oom_kill ", "", grep("^oom_kill ", unlist(events), value = TRUE))
+        if (length(count)) as.numeric(count) else 0
+      }
+      if (oom_kills(stage$memory_events_after) > oom_kills(stage$memory_events_before)) {
+        cat("The container ran out of memory; see doc/HOW_TO_RUN.md, Machine memory.\n")
+      }
+    }
+    if (!is.null(current$stages$rebuild$memory_peak_gb)) {
+      cat("Container peak memory:", current$stages$rebuild$memory_peak_gb, "GB\n")
     }
     if (length(current$findings)) {
       cat(paste(current$findings, collapse = "\n"), "\n")

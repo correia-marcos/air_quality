@@ -79,6 +79,14 @@ Three Compose files serve distinct uses:
 | `docker compose -f docker-compose.release.yml up` | Interactive RStudio using code baked into the image, with source inputs read-only. |
 | `Rscript tools/reproduction/verify.R --full` | Batch-only isolated verification with fresh derived outputs and no runtime network. |
 
+**Memory.** The full manuscript run needs far more memory than Docker Desktop's default.
+Before `verify.R --full`, give Docker as much as the computer can spare, leaving about
+8 GB for the system (Docker Desktop → Settings → Resources → Memory; 48 GB on a 64 GB
+machine is recommended). The IDW steps size DuckDB to whatever memory the machine or
+container has (`idw_duckdb_mem_gb <- "auto"` in `config/analysis_settings.R`).
+The verifier prints Docker's memory before it starts and the run's peak memory at the end;
+see [machine memory](doc/HOW_TO_RUN.md#machine-memory).
+
 Copy `.env.example` to `.env` only for interactive RStudio settings. The verification
 container uses neither credentials nor Selenium. `renv.lock` controls R packages; image
 identity, code revision, lockfile hash, installed versions, and source inventories provide

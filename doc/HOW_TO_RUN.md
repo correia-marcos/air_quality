@@ -307,9 +307,38 @@ failure or limitation in the report.
 If a container R worker crashes, its stage record includes `memory_events_before` and
 `memory_events_after` when Linux cgroup counters are available. An increase in `oom_kill`
 supports a container memory-limit kill; the generic callr crash message alone does not.
-These counters describe the container rather than an individual R process. For the current
+These counters describe the container rather than an individual R process. The summary
+says when a stage was killed for memory, and prints the container's peak memory
+(`memory_peak_gb` in the rebuild stage of `report/report.json`). For the current
 human-run Docker command and pending acceptance work, see
 [the continuation handoff](planning/migration-continuation-20261008.md).
+
+### Machine memory
+
+The largest manuscript step, Bogotá's 20 km IDW, joins about 57,000 census units with 48
+stations for every hour of a month in DuckDB. Two settings decide whether it fits:
+
+- **Docker's memory.** On macOS and Windows, Docker Desktop gives containers a fixed share
+  of the computer's memory (Settings → Resources → Memory). Give it as much as the
+  computer can spare, leaving about 8 GB for the operating system: 48 GB on a 64 GB machine.
+  On Linux, containers use the machine's memory directly. The repository cannot change
+  this setting.
+- **DuckDB's limit.** `idw_duckdb_mem_gb` in `config/analysis_settings.R` is `"auto"`:
+  every IDW run takes the memory of the machine or container minus 6 GB left for R, and
+  DuckDB spills to disk above it. The log prints the limit used (`DuckDB memory limit:
+  42 GB`). Set a number to override it; the same setting applies to runs outside Docker.
+
+`verify.R --full` prints Docker's memory before building the image and records it as
+`docker_memory_gb` in `report.json`. Once a complete run has recorded its peak,
+`required_docker_memory_gb` in `tools/reproduction/verify.R` is set to that value, and the
+verifier stops before the build when Docker has less.
+
+The smallest computer that can run the manuscript graph is not yet established. On 14
+November 2026, a run with 16.5 GB for Docker and the former fixed 40 GB DuckDB limit was
+killed during Bogotá's 20 km IDW. The DuckDB steps can run under a small limit by
+spilling to disk, more slowly, but several R steps hold large tables in memory: Bogotá's
+census has 9 million person records, and the CDMX census preparation peaked at 3.2 GB. The
+peak of the first complete run will set the requirement.
 
 Keep a tested image by identity rather than mutable tag:
 

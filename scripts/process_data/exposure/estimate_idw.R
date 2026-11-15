@@ -111,6 +111,7 @@ for (buffer_km in idw_buffers_km) {
       group_name           = "edu_quintile",
       buffer_km            = buffer_km,
       distance_power       = idw_distance_power,
+      mem_gb               = idw_duckdb_mem_gb,
       outdir_exp           = dir_idw,
       return_data          = FALSE)
 
@@ -126,6 +127,7 @@ for (buffer_km in idw_buffers_km) {
       group_name           = "edu_quintile",
       buffer_km            = buffer_km,
       distance_power       = idw_distance_power,
+      mem_gb               = idw_duckdb_mem_gb,
       outdir_exp           = dir_idw,
       return_data          = FALSE)
 
@@ -141,6 +143,7 @@ for (buffer_km in idw_buffers_km) {
       group_name           = "income_quintile",
       buffer_km            = buffer_km,
       distance_power       = idw_distance_power,
+      mem_gb               = idw_duckdb_mem_gb,
       outdir_exp           = dir_idw,
       out_suffix           = "income",
       reuse_exposure       = TRUE,
@@ -162,6 +165,7 @@ for (buffer_km in idw_buffers_km) {
       group_name           = "edu_quintile",
       buffer_km            = buffer_km,
       distance_power       = idw_distance_power,
+      mem_gb               = idw_duckdb_mem_gb,
       outdir_exp           = dir_idw,
       return_data          = FALSE)
 
@@ -177,6 +181,7 @@ for (buffer_km in idw_buffers_km) {
       group_name           = "edu_quintile",
       buffer_km            = buffer_km,
       distance_power       = idw_distance_power,
+      mem_gb               = idw_duckdb_mem_gb,
       outdir_exp           = dir_idw,
       return_data          = FALSE)
 
@@ -192,6 +197,7 @@ for (buffer_km in idw_buffers_km) {
       group_name           = "income_decile",
       buffer_km            = buffer_km,
       distance_power       = idw_distance_power,
+      mem_gb               = idw_duckdb_mem_gb,
       outdir_exp           = dir_idw,
       out_suffix           = "income",
       reuse_exposure       = TRUE,

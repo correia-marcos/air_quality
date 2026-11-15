@@ -31,6 +31,9 @@ run <- normalizePath(run)
 Sys.setenv(AIR_VERIFY_STRICT = "1", OMP_NUM_THREADS = "1", OPENBLAS_NUM_THREADS = "1")
 Sys.setenv(AIR_RUN_ID = basename(run))
 set.seed(20230901)
+# Docker memory (GB) the manuscript graph needs. NA only reports Docker's memory; set it
+# from a complete run's recorded peak (report/report.json, stages$rebuild$memory_peak_gb).
+required_docker_memory_gb <- NA_real_
 source(here::here("src", "general_utilities", "verification_cli.R"))
 source(here::here("src", "general_utilities", "reproducibility.R"))
 
@@ -81,6 +84,20 @@ if (full) {
   report$stages$docker <- verification_command("docker", c("version"), file.path(run,
     "docker.log"))
   if (report$stages$docker$exit_status == 0L) {
+    # Report Docker's memory before the build; stop early when it is below the requirement.
+    docker_bytes <- suppressWarnings(as.numeric(verification_capture("docker",
+      c("info", "--format", "'{{.MemTotal}}'"))[1]))
+    report$docker_memory_gb <- round(docker_bytes / 2^30, 1)
+    cat("Docker memory:", report$docker_memory_gb, "GB\n")
+    if (!is.na(required_docker_memory_gb) && !is.na(report$docker_memory_gb) &&
+        report$docker_memory_gb < required_docker_memory_gb) {
+      report$findings <- c(report$findings, paste0("Docker has ",
+        report$docker_memory_gb, " GB; the manuscript graph needs ",
+        required_docker_memory_gb, " GB. Raise it in Docker Desktop, Settings, Resources."))
+      verification_save_report(report, run)
+      verification_print_summary(report, run, 1L)
+      quit(status = 1L)
+    }
     image <- Sys.getenv("AIR_VERIFY_IMAGE", "air-monitoring-verification:local")
     Sys.setenv(AIR_VERIFY_IMAGE = image)
     report$stages$build <- verification_command("docker", c("build", "-t",

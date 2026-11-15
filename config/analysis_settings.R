@@ -151,6 +151,11 @@ exposure_table_labels_edu <- c(Bogota = "Bogota", CDMX = "Mexico City",
 exposure_table_labels_inc <- c(CDMX = "Mexico City (income quintiles)",
                               `Sao Paulo` = "Sao Paulo (income deciles)")
 
+# DuckDB memory limit (GB) of every IDW run "auto" uses this machine's or container's 
+# memory minus 6 GB left for R; change with a number. Above the limit DuckDB spills to 
+# disk instead of failing (this is a machine resource, no a shared analytical choice).
+idw_duckdb_mem_gb <- "auto"
+
 # ========================================================================================
 # Imputation
 # ========================================================================================
@@ -208,7 +213,7 @@ resolution_grid_buffers_km      <- c(1, 2, 3, 5, 8, 10, 12, 15, 17, 20)
 resolution_grid_distance_powers <- c(1, 2)
 # Exponent 2 runs on a subset of the buffers, a reduction for the runtime budget of the
 # 14 October 2026 run; exponent 1 runs on every buffer.
-resolution_grid_power2_buffers_km <- c(1, 2, 3, 5, 10, 20)
+resolution_grid_power2_buffers_km <- c(1, 2, 3, 5, 8, 10, 12, 15, 17, 20)
 
 # Station sets keep stations with valid hours in analysis_year. A station enters a set
 # for a pollutant when that pollutant and every pollutant in `require` have valid hours

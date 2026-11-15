@@ -44,3 +44,20 @@ test_that("successful local checks do not imply scientific reproduction", {
   expect_true(any(grepl("Recorded reproduction status: incomplete", output, fixed = TRUE)))
   expect_false(any(grepl("Failed stage:", output, fixed = TRUE)))
 })
+
+test_that("a rebuild killed for memory says so and reports the container's peak", {
+  source(here::here("src", "general_utilities", "verification_cli.R"), local = TRUE)
+  root <- tempfile("verification-memory-")
+  dir.create(file.path(root, "report"), recursive = TRUE)
+  on.exit(unlink(root, recursive = TRUE), add = TRUE)
+  child <- list(reproduction_verified = FALSE,
+    stages = list(rebuild = list(exit_status = 1L, log = "rebuild.log",
+      memory_events_before = c("oom 0", "oom_kill 0"),
+      memory_events_after = c("oom 0", "oom_kill 1"), memory_peak_gb = 16.4)))
+  jsonlite::write_json(child, file.path(root, "report", "report.json"), auto_unbox = TRUE)
+  report <- list(reproduction_verified = FALSE,
+    stages = list(container = list(exit_status = 1L, log = "container.log")))
+  output <- capture.output(verification_print_summary(report, root, 1L))
+  expect_true(any(grepl("ran out of memory", output, fixed = TRUE)))
+  expect_true(any(grepl("Container peak memory: 16.4 GB", output, fixed = TRUE)))
+})

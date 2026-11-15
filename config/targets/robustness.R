@@ -24,6 +24,7 @@ list(
           group_name = "edu_quintile",
           buffer_km = robustness_buffer_km,
           distance_power = idw_distance_power,
+          mem_gb = idw_duckdb_mem_gb,
           outdir_exp = dir_idw,
           return_data = FALSE))
       # The individual groups belong to bogota_2018_idw; keep the 5 km files.
@@ -54,6 +55,7 @@ list(
           group_name = "edu_quintile",
           buffer_km = robustness_buffer_km,
           distance_power = idw_distance_power,
+          mem_gb = idw_duckdb_mem_gb,
           outdir_exp = dir_idw,
           return_data = FALSE),
         income =
@@ -68,6 +70,7 @@ list(
           group_name = "income_quintile",
           buffer_km = robustness_buffer_km,
           distance_power = idw_distance_power,
+          mem_gb = idw_duckdb_mem_gb,
           outdir_exp = dir_idw,
           out_suffix = "income",
           reuse_exposure = TRUE,
@@ -100,6 +103,7 @@ list(
           group_name = "edu_quintile",
           buffer_km = robustness_buffer_km,
           distance_power = idw_distance_power,
+          mem_gb = idw_duckdb_mem_gb,
           outdir_exp = dir_idw,
           return_data = FALSE))
       # The individual groups belong to santiago_2017_idw; keep the 5 km files.
@@ -130,6 +134,7 @@ list(
           group_name = "edu_quintile",
           buffer_km = robustness_buffer_km,
           distance_power = idw_distance_power,
+          mem_gb = idw_duckdb_mem_gb,
           outdir_exp = dir_idw,
           return_data = FALSE),
         income =
@@ -144,6 +149,7 @@ list(
           group_name = "income_decile",
           buffer_km = robustness_buffer_km,
           distance_power = idw_distance_power,
+          mem_gb = idw_duckdb_mem_gb,
           outdir_exp = dir_idw,
           out_suffix = "income",
           reuse_exposure = TRUE,

@@ -82,6 +82,7 @@ list(
         geo_sta_pq = matrix, geo_census = geo, micro_census = micro,
         socio_var = "education", n_groups = 5L, group_name = "edu_quintile",
         buffer_km = imputed_exposure_buffer_km, distance_power = idw_distance_power,
+        mem_gb = idw_duckdb_mem_gb,
         outdir_exp = here::here("data", "processed", "idw_estimates_imputed"))
       unlist(result, use.names = FALSE)
     }, format = "file"),
@@ -116,6 +117,7 @@ list(
         geo_sta_pq = matrix, geo_census = geo, micro_census = micro,
         socio_var = "education", n_groups = 5L, group_name = "edu_quintile",
         buffer_km = imputed_exposure_buffer_km, distance_power = idw_distance_power,
+        mem_gb = idw_duckdb_mem_gb,
         outdir_exp = here::here("data", "processed", "idw_estimates_imputed"))
       unlist(result, use.names = FALSE)
     }, format = "file"),
@@ -150,6 +152,7 @@ list(
         geo_sta_pq = matrix, geo_census = geo, micro_census = micro,
         socio_var = "education", n_groups = 5L, group_name = "edu_quintile",
         buffer_km = imputed_exposure_buffer_km, distance_power = idw_distance_power,
+        mem_gb = idw_duckdb_mem_gb,
         outdir_exp = here::here("data", "processed", "idw_estimates_imputed"))
       unlist(result, use.names = FALSE)
     }, format = "file"),
@@ -185,6 +188,7 @@ list(
         geo_sta_pq = matrix, geo_census = geo, micro_census = micro,
         socio_var = "education", n_groups = 5L, group_name = "edu_quintile",
         buffer_km = imputed_exposure_buffer_km, distance_power = idw_distance_power,
+        mem_gb = idw_duckdb_mem_gb,
         outdir_exp = here::here("data", "processed", "idw_estimates_imputed"))
       unlist(result, use.names = FALSE)
     }, format = "file"),
