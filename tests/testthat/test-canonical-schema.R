@@ -13,7 +13,8 @@
 #' @Author: Marcos Paulo (initial draft by Claude Code)
 # ============================================================================================
 
-# One entry per canonical census artifact: the file, and which level it is.
+# One entry per canonical census artifact: the file, and which level it is. Santiago 2024 is
+# optional (not in the manuscript graph): checked when present, not required for release.
 canonical_census_files <- function() {
   root <- here::here("data", "interim", "census")
 
@@ -32,10 +33,10 @@ canonical_census_files <- function() {
          path = file.path(root, "santiago_2017", "census_individual_2017.parquet")),
     list(city = "santiago_2017", level = "geo",
          path = file.path(root, "santiago_2017", "census_collapsed_2017.parquet")),
-    list(city = "santiago_2024", level = "micro",
+    list(city = "santiago_2024", level = "micro", optional = TRUE,
          path = file.path(root, "santiago_2024",
                           "census_santiago_individual_2024.parquet")),
-    list(city = "santiago_2024", level = "geo",
+    list(city = "santiago_2024", level = "geo", optional = TRUE,
          path = file.path(root, "santiago_2024",
                           "census_santiago_collapsed_2024.parquet")),
     list(city = "sao_paulo_2010", level = "micro",
@@ -60,9 +61,10 @@ required_cols <- list(
 skip_without_census <- function() {
   if (identical(getOption("airmonitoring.test_mode"), "release")) {
     if (!requireNamespace("arrow", quietly = TRUE)) stop("Release requires arrow.")
-    absent <- vapply(canonical_census_files(), function(f) !file.exists(f$path), logical(1))
+    required <- Filter(function(f) !isTRUE(f$optional), canonical_census_files())
+    absent   <- vapply(required, function(f) !file.exists(f$path), logical(1))
     if (any(absent)) stop("Release requires all declared census artifacts: ",
-      paste(vapply(canonical_census_files()[absent], `[[`, "", "path"), collapse = ", "))
+      paste(vapply(required[absent], `[[`, "", "path"), collapse = ", "))
   }
   testthat::skip_if_not_installed("arrow")
 
