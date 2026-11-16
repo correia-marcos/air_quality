@@ -324,21 +324,23 @@ stations for every hour of a month in DuckDB. Two settings decide whether it fit
   On Linux, containers use the machine's memory directly. The repository cannot change
   this setting.
 - **DuckDB's limit.** `idw_duckdb_mem_gb` in `config/analysis_settings.R` is `"auto"`:
-  every IDW run takes the memory of the machine or container minus 6 GB left for R, and
+  every IDW run takes the memory of the machine or container minus 8 GB left for R, and
   DuckDB spills to disk above it. The log prints the limit used (`DuckDB memory limit:
-  42 GB`). Set a number to override it; the same setting applies to runs outside Docker.
+  40 GB`). Set a number to override it; the same setting applies to runs outside Docker.
 
 `verify.R --full` prints Docker's memory before building the image and records it as
-`docker_memory_gb` in `report.json`. Once a complete run has recorded its peak,
-`required_docker_memory_gb` in `tools/reproduction/verify.R` is set to that value, and the
-verifier stops before the build when Docker has less.
+`docker_memory_gb` in `report.json`; when `required_docker_memory_gb` in
+`tools/reproduction/verify.R` is set, it stops before the build if Docker has less. The
+value is `NA` for now: a run's recorded peak is not the minimum, because DuckDB fills
+whatever "auto" limit it is given. Only a run with less memory can establish the minimum.
 
 The smallest computer that can run the manuscript graph is not yet established. On 14
 November 2026, a run with 16.5 GB for Docker and the former fixed 40 GB DuckDB limit was
-killed during Bogotá's 20 km IDW. The DuckDB steps can run under a small limit by
-spilling to disk, more slowly, but several R steps hold large tables in memory: Bogotá's
-census has 9 million person records, and the CDMX census preparation peaked at 3.2 GB. The
-peak of the first complete run will set the requirement.
+killed during Bogotá's 20 km IDW. On 15 November 2026 the first complete run, with 47 GB
+for Docker and DuckDB at 40 GB, took 3 h 26 min and peaked at 45.9 GB: R and the rest used
+at least 5.9 GB alongside DuckDB, hence the 8 GB reserve. The DuckDB steps can run under a
+small limit by spilling to disk, more slowly, but several R steps hold large tables in
+memory (Bogotá's census has 9 million person records).
 
 Keep a tested image by identity rather than mutable tag:
 
@@ -476,7 +478,23 @@ literal TeX and exact GeoPackage attributes/geometry/CRS.
 
 Reruns can differ in the last bits of a double. DuckDB adds numbers in a different order on
 each multithreaded run, and another machine may use wider accumulators or another math
-library. This issue is almost completely gone when running inside the Docker container - that's the benefit of our approach!
+library.
+
+The verification container removes most of these sources. Its image fixes the operating
+system (Linux), the system libraries that handle geography (GDAL, GEOS, PROJ), R itself and
+every R package (`renv.lock`), so a rerun on another computer uses the same software. Two
+sources remain outside its control:
+
+- **The processor.** Docker builds the image for the computer's own architecture (arm64 on
+  Apple-silicon Macs, x86-64 on most other machines). Additions and multiplications round
+  the same way on both, but math functions such as `exp()` or `^` may differ in the last
+  bit.
+- **DuckDB's summation order.** DuckDB splits a sum across threads and adds their partial
+  results in the order the threads finish, which the operating system decides while the
+  query runs. This is not random-number generation, so no seed controls it, and two runs
+  in the same container can differ in the last bits. A single thread would fix the order
+  but ran about 1.3 times slower in a benchmark, so the rule below tolerates it instead.
+
 A registered double column passes when
 
 ```text
@@ -498,7 +516,10 @@ registry's `bound_scale`:
   a bound relative to the value would fail on correct code.
 
 Integers, counts, dates, identifiers and missingness compare exactly; `rounding_steps = 0`
-requires equality.
+requires equality. Hours above a WHO target are counts too. The IDW counts an hour when its
+value is at or above the target minus that value's rounding bound (`gamma_(2k+1)` for k
+stations), so an hour exactly at a target counts on every run and machine
+(`aggregate_idw_exposure()`, threshold ties).
 
 Counting: a sum of k terms counts k - 1, and each product, division, square root, decimal
 parse or unit conversion counts 1. Each projected distance counts 10; this allowance

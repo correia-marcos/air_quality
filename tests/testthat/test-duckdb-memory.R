@@ -1,4 +1,4 @@
-# The DuckDB memory limit of the IDW runs: a number is used as given, "auto" leaves 6 GB
+# The DuckDB memory limit of the IDW runs: a number is used as given, "auto" leaves 8 GB
 # of the machine's memory for R, and an unreadable machine asks for a number.
 test_that("the IDW DuckDB limit takes a number as given and sizes auto to the machine", {
   e <- new.env(parent = globalenv())
@@ -7,7 +7,7 @@ test_that("the IDW DuckDB limit takes a number as given and sizes auto to the ma
   expect_identical(e$duckdb_memory_limit_gb(0.5), 1L)
 
   e$machine_memory_gb <- function() 48
-  expect_identical(e$duckdb_memory_limit_gb("auto"), 42L)
+  expect_identical(e$duckdb_memory_limit_gb("auto"), 40L)
   e$machine_memory_gb <- function() 4
   expect_identical(e$duckdb_memory_limit_gb("auto"), 1L)
 

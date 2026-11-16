@@ -111,22 +111,22 @@ machine_memory_gb <- function() {
 # Function: duckdb_memory_limit_gb
 #
 #' @param mem_gb     numeric GB, or "auto" (the setting idw_duckdb_mem_gb).
-#' @param reserve_gb numeric; GB left for R when mem_gb is "auto". Default 6.
+#' @param reserve_gb numeric; GB left for R when mem_gb is "auto". Default 8.
 #
 #' @return  integer; the DuckDB memory limit in GB, at least 1.
 #
 #' @details
 #   A number is used as given. "auto" takes machine_memory_gb() minus reserve_gb, so the
 #   same setting fits a 64 GB Mac, a 48 GB Docker container or a smaller computer
-#   without editing; DuckDB spills to disk above the limit. The 6 GB reserve covers R's
-#   own tables during IDW: the October 2026 CDMX census preparation peaked at 3.2 GB and
-#   Bogotá's census holds 9 million person records. It is provisional until a complete
-#   verification run records the container's peak memory (verification_command()).
+#   without editing; DuckDB spills to disk above the limit. The 8 GB reserve covers R's
+#   own tables during IDW: in the first complete verification run (15 November 2026)
+#   the container peaked at 45.9 GB with DuckDB limited to 40 GB, so R and the rest
+#   used at least 5.9 GB alongside DuckDB.
 #
 #' @Written_on : November 2026
 #' @Written_by : Marcos Paulo
 # ------------------------------------------------------------------------------------------
-duckdb_memory_limit_gb <- function(mem_gb, reserve_gb = 6) {
+duckdb_memory_limit_gb <- function(mem_gb, reserve_gb = 8) {
   if (is.numeric(mem_gb)) return(max(1L, as.integer(mem_gb)))
   if (!identical(mem_gb, "auto")) stop("mem_gb must be a number of GB or \"auto\".")
   total_gb <- machine_memory_gb()
@@ -191,6 +191,17 @@ duckdb_memory_limit_gb <- function(mem_gb, reserve_gb = 6) {
 #   group_var is cut into n_groups equal-population bins (group 1 = lowest), so the
 #   same code path serves education quintiles and income deciles. One grouping is
 #   produced per call (run separately for edu_quintile and income_decile).
+#
+#   THRESHOLD TIES: an hour counts toward hrs_d_<pollutant>_<target> when its IDW value
+#   is at or above the WHO target. The value is sum(v * w) / sum(w) in floating point.
+#   When every station in reach reports the target exactly (common: CDMX, Santiago and
+#   São Paulo report whole numbers), the computed value can fall one unit in the last
+#   place below it, and whether the hour counted then depended on summation order and on
+#   last-digit differences in the weights (up to 209 hours a year for one CDMX unit). The
+#   comparison therefore allows the value's proven rounding bound gamma_m =
+#   m * u / (1 - m * u), m = 2k + 1 operations for k stations (all stations in the
+#   distance matrix, an upper bound) and u = 2^-53: about 1e-14 relative. See
+#   doc/HOW_TO_RUN.md, numerical comparison rule.
 #
 #   geo_id_col and pop_col default to the canonical individual schema, which is the
 #   path run_idw_city() takes, so the paper pipeline passes neither. They remain for
@@ -660,6 +671,10 @@ aggregate_idw_exposure <- function(
             " matrix station(s) have no rows in the hourly data (expected).")
   }
 
+  # Rounding bound of an hourly IDW value; see @details: threshold ties.
+  tie_steps <- 2L * length(matrix_stations) + 1L
+  tie_bound <- tie_steps * 2^-53 / (1 - tie_steps * 2^-53)
+
   # 7. Year x pollutant loop
   # -----------------------------------------------------------------------
   yearly_list <- vector("list", length(years))
@@ -697,10 +712,10 @@ aggregate_idw_exposure <- function(
           vapply(seq_along(thr), function(i) {
             sprintf(
               paste0(
-                ",\n       SUM(CASE WHEN idw >= %s ",
+                ",\n       SUM(CASE WHEN idw >= %.17g ",
                 "THEN 1 ELSE 0 END) AS %s"
               ),
-              thr[[i]],
+              thr[[i]] * (1 - tie_bound),
               who_cols[[i]]
             )
           }, character(1)),

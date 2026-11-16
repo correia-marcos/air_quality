@@ -2273,7 +2273,9 @@ bogota_filter_stations_in_metro <- function(
 #     values are used (NA hours stay NA, not filled from SISAIRE). SISAIRE is
 #     used only for station x year x param combinations RMCAB never tracked.
 #     Coverage is checked at param level so a station can take RMCAB PM10 and
-#     SISAIRE PM2.5 in the same year.
+#     SISAIRE PM2.5 in the same year. The `sources` column lists every source label
+#     among an hour's parameters, sorted and joined by "|" (e.g. "RMCAB|SISAIRE"), so
+#     the label does not depend on DuckDB's row order (FIRST() did, until Nov 2026).
 #   SISAIRE SUB-HOURLY DATA:
 #     Some SISAIRE files report at 5-minute cadence (e.g. BOGOTA RURAL -
 #     MOCHUELO, 2017); others hourly. We floor SISAIRE timestamps to the hour
@@ -2679,7 +2681,7 @@ bogota_process_stations_data_to_parquet <- function(
                  THEN value END) AS wind_speed,
         AVG(CASE WHEN param='dir_viento'
                  THEN value END) AS wind_dir,
-        FIRST(source_origin)     AS primary_source
+        STRING_AGG(DISTINCT source_origin, '|' ORDER BY source_origin) AS sources
       FROM staging_merged
       GROUP BY datetime, station, year
       ORDER BY station, datetime

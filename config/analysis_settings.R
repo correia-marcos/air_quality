@@ -151,9 +151,9 @@ exposure_table_labels_edu <- c(Bogota = "Bogota", CDMX = "Mexico City",
 exposure_table_labels_inc <- c(CDMX = "Mexico City (income quintiles)",
                               `Sao Paulo` = "Sao Paulo (income deciles)")
 
-# DuckDB memory limit (GB) of every IDW run "auto" uses this machine's or container's 
-# memory minus 6 GB left for R; change with a number. Above the limit DuckDB spills to 
-# disk instead of failing (this is a machine resource, no a shared analytical choice).
+# DuckDB memory limit (GB) of every IDW run. "auto" uses this machine's or container's
+# memory minus 8 GB left for R; change it with a number. Above the limit DuckDB spills to
+# disk instead of failing (this is a machine resource, not a shared analytical choice).
 idw_duckdb_mem_gb <- "auto"
 
 # ========================================================================================

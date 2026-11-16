@@ -211,8 +211,11 @@ value, the interpolated `(v·w)/w` can round just below `v`, so an hour exactly 
 threshold is counted or not depending on the weight. `design_a_grid_threshold_ties.csv`
 reports the share of station-hours exactly at each threshold, and
 `design_a_grid_single_station.csv` the hour differences between exponents for
-single-station units, which can only come from this rounding. The estimator is unchanged;
-these tables bound the numerical part of threshold-hour differences.
+single-station units, which can only come from this rounding. These tables bound the
+numerical part of threshold-hour differences in the saved outputs. Since November 2026,
+`aggregate_idw_exposure()` compares each hourly value with the target minus its proven
+rounding bound, so an hour exactly at a target counts whatever the weight; saved outputs
+change at ties once the sensitivity recipes are rerun.
 
 ## Fixed-sample decomposition across buffers
 

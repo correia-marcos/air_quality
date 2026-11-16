@@ -31,8 +31,8 @@ run <- normalizePath(run)
 Sys.setenv(AIR_VERIFY_STRICT = "1", OMP_NUM_THREADS = "1", OPENBLAS_NUM_THREADS = "1")
 Sys.setenv(AIR_RUN_ID = basename(run))
 set.seed(20230901)
-# Docker memory (GB) the manuscript graph needs. NA only reports Docker's memory; set it
-# from a complete run's recorded peak (report/report.json, stages$rebuild$memory_peak_gb).
+# Docker memory (GB) the manuscript graph needs. NA only reports Docker's memory. A run's
+# peak is not the minimum (DuckDB fills its "auto" limit); set this from a run with less.
 required_docker_memory_gb <- NA_real_
 source(here::here("src", "general_utilities", "verification_cli.R"))
 source(here::here("src", "general_utilities", "reproducibility.R"))

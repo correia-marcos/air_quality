@@ -133,3 +133,52 @@ test_that("exponent 2 squares the weights and leaves eligibility and hours uncha
                                               hrs_d_pm10_it3, hrs_d_pm10_it4)])),
                c(0, 1, 1, 1))
 })
+
+test_that("an hour exactly at a WHO target counts despite last-digit rounding", {
+  testthat::skip_if_not_installed("arrow")
+  testthat::skip_if_not_installed("duckdb", minimum_version = "0.9.2")
+
+  # One station 2.3 km from g1 reads exactly 50 (the PM10 IT4 target). With w = 1/2.3,
+  # (50 * w) / w is 49.999999999999993 in floating point, so `idw >= 50` alone fails.
+  w <- 1 / 2.3
+  expect_lt((50 * w) / w, 50)
+
+  root <- tempfile("idw_tie_")
+  dir.create(root)
+  on.exit(unlink(root, recursive = TRUE), add = TRUE)
+  dist <- data.table::data.table(geo_id = c("g1", "g2"), station_id = c("s1", "s2"),
+                                 distance_km = c(2.3, 1))
+  arrow::write_parquet(dist, file.path(root, "dist.parquet"))
+  poll <- data.table::data.table(station = c("s1", "s2"),
+    datetime = as.POSIXct("2023-01-01 00:00:00", tz = "UTC"), pm10 = c(50, 10))
+  dir.create(file.path(root, "arrow", "year=2023"), recursive = TRUE)
+  arrow::write_parquet(poll, file.path(root, "arrow", "year=2023", "part-0.parquet"))
+  census <- data.table::data.table(geo_id = c("g1", "g2"), pop_total = c(100, 200),
+                                   education_mean = c(5, 15))
+
+  out <- suppressMessages(aggregate_idw_exposure(
+    arrow_dir      = file.path(root, "arrow"),
+    geo_sta_pq     = file.path(root, "dist.parquet"),
+    census_col     = census,
+    pop_col        = "pop_total",
+    group_var      = "education_mean",
+    n_groups       = 2L,
+    group_name     = "edu_half",
+    quintile_level = "geo",
+    buffer_km      = 3,
+    distance_power = 1,
+    target_years   = 2023,
+    pollutants     = "pm10",
+    mem_gb         = 1,
+    n_threads      = 1,
+    out_dir        = file.path(root, "out"),
+    out_name       = "toy_tie",
+    chunk_by_month = FALSE,
+    quiet          = TRUE,
+    return_data    = TRUE))
+
+  res <- data.table::as.data.table(out$exposure_yearly)
+  data.table::setkey(res, geo_id)
+  expect_equal(as.numeric(unlist(res["g1", .(hrs_d_pm10_it3, hrs_d_pm10_it4)])), c(0, 1))
+  expect_equal(as.numeric(res["g2"]$hrs_d_pm10_it4), 0)
+})

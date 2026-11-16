@@ -41,7 +41,7 @@ file_summary   <- here::here(outdir_imputed,
 # II: Process data
 # ==========================================================================================
 # Each call writes the hourly dataset and returns paths, per-pollutant and per-year counts.
-# CDMX uses station_code; the other cities use station.
+# Stations are keyed by name: two CDMX stations share the code ATI.
 res_bogota   <- impute_missing_hourly_ols(arrow_dir  = panel_bogota,
                                           out_dir    = outdir_imputed,
                                           out_name   = "bogota_imputed",
@@ -54,7 +54,7 @@ res_cdmx     <- impute_missing_hourly_ols(arrow_dir  = panel_cdmx,
                                           out_dir    = outdir_imputed,
                                           out_name   = "cdmx_imputed",
                                           pollutants = imputation_pollutants,
-                                          id_col     = "station_code",
+                                          id_col     = "station",
                                           years      = imputation_year,
                                           diag_year  = imputation_year)
 

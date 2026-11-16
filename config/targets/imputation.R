@@ -15,7 +15,7 @@ list(
       result <- impute_missing_hourly_ols(arrow_dir = cdmx_outliers,
         out_dir = here::here("data", "processed", "imputed_ols"),
         out_name = "cdmx_imputed", pollutants = imputation_pollutants,
-        id_col = "station_code", years = imputation_year, diag_year = imputation_year)
+        id_col = "station", years = imputation_year, diag_year = imputation_year)
       files <- c(result$out_path, result$diag_path, result$summary_path)
       files[!is.na(files)]
     }, format = "file"),
