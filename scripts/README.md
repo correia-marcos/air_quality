@@ -42,6 +42,6 @@ tables only.
   report: Santiago with the 2024 census, satellite comparisons, supporting diagnostics and
   the legacy validation.
 
-[`run_pipeline.R`](run_pipeline.R) runs every manuscript recipe in one session, and
-[`run_targets.R`](run_targets.R) runs the same steps through the targets graph
-([how to run](../doc/HOW_TO_RUN.md#manuscript-pipeline)).
+[`run_pipeline.R`](run_pipeline.R) builds every manuscript result through the targets graph,
+which calls the same functions as the recipes; [`run_targets.R`](run_targets.R) runs one
+stage or lists what would rerun ([how to run](../doc/HOW_TO_RUN.md#manuscript-pipeline)).

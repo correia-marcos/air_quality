@@ -37,8 +37,8 @@ src/                    - Functions (logic). Sourced, never run directly.
     validation/                - prepare_panels, compare_inputs, compare_results, progression
   
 scripts/                - Execution. Each script sources the src/ it needs, then runs.
-  run_pipeline.R           - Transitional sequential runner, pending scientific acceptance
-  run_targets.R            - Candidate incremental manuscript runner; explicit stage selection
+  run_pipeline.R           - Builds every manuscript result through the targets graph
+  run_targets.R            - One stage of the graph, or the list of what would rerun
   download_data/             - Pull raw inputs (APIs, Selenium, Earthdata)
   process_data/              - raw -> interim -> processed
   tables_images/             - processed -> results (manuscript), results/figures, results/tables
@@ -60,7 +60,7 @@ data/                   - raw/ interim/ processed/ downloads/ _legacy/   (all gi
 results/                - figures/ and tables/, one folder per analysis that writes them,
                           mirroring scripts/ (robustness/ and not_in_paper/ included).
 
-_targets.R              - Small candidate manuscript graph entry point
+_targets.R              - Manuscript graph entry point; the only manuscript runner
 _targets_specification.R - Separate specification-sensitivity graph (own store); reads
                            frozen manuscript products, never rebuilds them
 tools/reproduction/     - Verification, stage reporting, manifest checks and export
@@ -77,16 +77,15 @@ analysis. The specification-sensitivity exercise keeps its role subfolders in
 
 Scripts are named for what they produce, never numbered. The complete entry-point inventory
 is `doc/planning/remaining-work.md`; tests require exactly one row per script/report.
-The candidate graph combines literal target lists from `config/targets/` using base
+The graph combines literal target lists from `config/targets/` using base
 `source(..., local = TRUE)$value`. Scientific logic stays in `src/`; declaration modules
 show names, dependencies and output paths. Explicit common package defaults replace
 incidental package attachment. Station temporal preparation uses current observed cleaned
 partitions, never optional satellite inputs. PDF writers preserve explicit rendering options.
 Worker font/theme setup remains where plots are built or rendered.
-The candidate graph uses ordinary `tar_target()` declarations. Until acceptance, the
-Makefile and sequential runner remain transitional and their paths must also stay valid.
-After acceptance, remove Makefile and its RStudio build setting; make `run_pipeline.R`
-a compatibility launcher for targets. Optional analyses remain explicit separate commands.
+The graph uses ordinary `tar_target()` declarations. It was accepted in November 2026 and
+replaced the Makefile and the sequential runner; `run_pipeline.R` now launches it.
+Optional analyses remain explicit separate commands.
 
 The distance, city, outlier, IDW, observed/imputed-exposure and hourly-imputation recipes
 call scientific functions directly. Imputation diagnostics expose station summaries and plots
@@ -99,9 +98,8 @@ from computation, using the same scientific functions and shared indicator setti
 The broader descriptive recipe also exposes each city's missingness, station counts,
 WHO comparisons, hourly thresholds, education-quintile availability and census summaries.
 Separate writers report all 41 files; table-rendering targets consume the required families.
-The migration candidate
-shares transformation functions with the interactive recipes. The new
-graph declares concrete city functions, configurations and upstream file targets; it does not
+The graph shares transformation functions with the interactive recipes. 
+It declares concrete city functions, configurations and upstream file targets; it does not
 dispatch an opaque `city_process(id)` target. `city_process()` remains a convenience dispatcher, running prerequisites in order.
 Reader-facing city scripts expose source paths, geographic objects, selected stations and
 census output paths. Bogotá's geographic preparation consumes explicit local archives and
@@ -123,8 +121,8 @@ Observed exposure estimates and their writers are separate targets. Individual c
 files stay file-backed; consumers read them explicitly. Outlier datasets retain all years,
 and each IDW city/vintage target serializes all buffers and income reuse. Shared year,
 buffer and distance-power choices are in `config/analysis_settings.R`.
-The default runner changes only after isolated scientific acceptance; see the development
-record in `doc/planning/targets-migration.md` (excluded from runtime images).
+The development record is `doc/planning/targets-migration.md` (excluded from runtime
+images); the acceptance is in `doc/planning/implementation-record.md`.
 
 `src/` defines functions and configuration; `scripts/` executes the analysis. Modules may
 attach their required installed packages at the top, as in `bogota.R`. Sourcing a module
@@ -132,20 +130,18 @@ must not install packages, acquire data or run an analysis.
 
 ## How to run
 
-- **Development:** `docker compose up` starts live-code RStudio. Add
+- **Development:** `docker compose up --build` starts live-code RStudio. Add
   `--profile acquisition` only when a download script needs Selenium.
-- **Interactive image-baked code:** `docker compose -f docker-compose.release.yml up` mounts
-  declared source inputs read-only and derived/output roots writable.
-- **Manuscript pipeline:** `make all` or
-  `source(here::here("scripts", "run_pipeline.R"))` runs the maintained manuscript stages,
-  including station-only hourly preparation and the robustness checks. `make merra2` is optional supporting analysis.
+- **Interactive image-baked code:** `docker compose -f docker-compose.release.yml up --build`
+  mounts declared source inputs read-only and derived/output roots writable. Both
+  containers keep their targets store in `_targets_docker/`.
+- **Manuscript pipeline:** `Rscript scripts/run_pipeline.R` builds the targets graph,
+  including station-only hourly preparation and the robustness checks.
+  `Rscript scripts/run_targets.R <target>` builds one stage; add `--outdated` to list what
+  would rerun. Satellite comparisons are optional supporting analysis.
 - **Isolated verification:** `Rscript tools/reproduction/verify.R --full` rebuilds derived
-  outputs with source mounts read-only and runtime networking disabled.
-- **Migration candidate:** `make targets STAGE=bogota_geography` runs the preparation pilot;
-  `make targets` selects manuscript export and its prerequisites. `make targets-outdated`
-  inspects that selection. `Rscript tools/reproduction/verify.R --full --targets` requests
-  a fresh isolated targets store and records target metadata. These commands require restored
-  dependencies and preserved inputs; they do not establish acceptance merely by existing.
+  outputs in a fresh targets store, with source mounts read-only and runtime networking
+  disabled, and records target metadata.
 - **One stage:** run the relevant script in `scripts/`; each is self-contained via `here::here()`.
   Restore packages with `renv::restore()` when required. See `doc/HOW_TO_RUN.md` for the
   acquisition and evidence contract.

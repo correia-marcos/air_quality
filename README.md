@@ -12,10 +12,13 @@ revision-matched numerical comparisons, and review of plot data and rendering. H
 outputs are not a reviewed baseline. See [doc/HOW_TO_RUN.md](doc/HOW_TO_RUN.md) for the
 current procedure and limitations.
 
-The migration code and earlier memory repairs are committed. The latest isolated image
-build succeeds, but manuscript execution still needs a verified complete run after the
-CDMX census memory repair. Scientific review and the final scheduler switch remain pending;
-see [the 14 October verification record](doc/planning/migration-verification-20261014.md).
+Since November 2026 the targets graph is the only manuscript runner. Complete isolated runs
+from the declared sources, without network access, finished on 15–17 November 2026: tests
+and export passed, and the targets and former Make routes agreed to within 10⁻¹³ (see the
+[implementation record](doc/planning/implementation-record.md)). A reproduction claim still
+needs an isolated run of the final revision (the fixes after 16 November have only run
+locally), a reviewed baseline for `verify.R` to compare against, and a review of plot data
+and rendering. Independent reproduction by someone else is a separate claim.
 
 Choose a route:
 
@@ -25,7 +28,7 @@ Choose a route:
 | Learn the repository as a student | [First run](doc/guides/first-run.md) |
 | Run the analysis script by script in RStudio | [Run order](doc/guides/run-order.md), [scripts map](scripts/README.md) |
 | Contribute changes | [Contributor guide](doc/guides/contributing.md) |
-| Assess repository evidence and limitations | [Current review](doc/REPO_REVIEW.md), [review catalog](doc/reviews/README.md) |
+| Assess repository evidence and limitations | [Repository review, September 2026](doc/REPO_REVIEW.md), [review catalog](doc/reviews/README.md) |
 | Study specification sensitivity (geographic support, IDW buffer and exponent) | [Supporting analysis guide](doc/RESOLUTION_SENSITIVITY.md) |
 | Reproduce manuscript outputs | [Run and verify](doc/HOW_TO_RUN.md#manuscript-pipeline) |
 | Run optional satellite comparisons | [Supporting analyses](doc/HOW_TO_RUN.md#supporting-analyses) |
@@ -48,8 +51,8 @@ doc/ai/              Shared guidance for coding assistants
 tools/harness/       Optional Claude/Codex development-tooling policy
 ```
 
-`src/` contains reusable logic; `scripts/` runs it. The stage lists in
-`scripts/run_pipeline.R` and the `Makefile` are maintained together.
+`src/` contains reusable logic; `scripts/` runs it. The targets graph (`_targets.R`, with
+one module per analysis in `config/targets/`) calls the same functions in dependency order.
 
 ## Inputs and geography
 
@@ -74,10 +77,14 @@ Three Compose files serve distinct uses:
 
 | Command | Use |
 |---|---|
-| `docker compose up` | Interactive RStudio with live project code for development. |
-| `docker compose --profile acquisition up` | Development plus Selenium for acquisition scripts that need a browser. |
-| `docker compose -f docker-compose.release.yml up` | Interactive RStudio using code baked into the image, with source inputs read-only. |
+| `docker compose up --build` | Interactive RStudio with live project code for development. |
+| `docker compose --profile acquisition up --build` | Development plus Selenium for acquisition scripts that need a browser. |
+| `docker compose -f docker-compose.release.yml up --build` | Interactive RStudio using code baked into the image, with source inputs read-only. |
 | `Rscript tools/reproduction/verify.R --full` | Batch-only isolated verification with fresh derived outputs and no runtime network. |
+
+`--build` brings the image up to date with the current code; without it, Compose reuses
+the last image it built, however old. The containers keep their own targets store in
+`_targets_docker/`.
 
 **Memory.** The full manuscript run needs far more memory than Docker Desktop's default.
 Before `verify.R --full`, give Docker as much as the computer can spare, leaving about
@@ -94,24 +101,24 @@ the environment evidence. There is no active dated package-repository setting.
 
 ## Manuscript pipeline
 
-After authorized inputs have been acquired, run either entry point from the repository root:
+After authorized inputs have been acquired, run from the repository root:
 
 ```sh
-make all
+Rscript scripts/run_pipeline.R
 # or, in R:
 source(here::here("scripts", "run_pipeline.R"))
 ```
 
-Both routes run city processing, the core analysis, station-only hourly preparation,
-manuscript figures and tables, and the reported robustness checks. The appendix uses city-hour means of available observed metropolitan stations from the
+Through the targets graph it builds city processing, the core analysis, station-only hourly
+preparation, manuscript figures and tables, and the reported robustness checks; later
+builds rerun only what changed. The appendix uses city-hour means of available observed metropolitan stations from the
 current cleaned partitions. Missing hours break pollution episodes. MERRA-2 is optional.
 To run the same recipes one at a time in RStudio, follow the
 [run order](doc/guides/run-order.md).
 
-`make merra2` runs optional satellite extraction and comparisons after current station
-and geography products and additional satellite/NASA inputs are available. It is separate
-from manuscript execution. The targets route remains a migration candidate until full
-scientific acceptance: `Rscript scripts/run_targets.R all`.
+Optional satellite extraction and comparisons run separately, after current station and
+geography products and additional satellite/NASA inputs are available; their commands are
+in [supporting analyses](doc/HOW_TO_RUN.md#supporting-analyses).
 
 ```mermaid
 flowchart TD

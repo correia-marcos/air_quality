@@ -147,7 +147,7 @@ more concise, only harder to follow.
 **The `@tag` line takes `#'`; continuation lines and the `# ===` banner rules stay plain `#`.**
 The `#'` prefix is for RStudio only — it colours the tags and is what makes these blocks
 scannable. roxygen2 never runs here (no `R/`, no `NAMESPACE`, `DESCRIPTION` is `Type: Project`,
-`Coding.Rproj` is `BuildType: Makefile`), so the custom `@Goal` / `@Summary` tags cost nothing.
+`Coding.Rproj` has no package build type), so the custom `@Goal` / `@Summary` tags cost nothing.
 
 Section dividers inside the script reuse the same `# ===` rule with a `# I:` / `# II:`
 label. Banner rules must also fit within 92 characters.

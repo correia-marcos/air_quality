@@ -34,7 +34,7 @@ Then generate the file:
    [R style](../rules/r-style.md#spacing-calls-and-comments). Keep function rationale in
    `@Description` / `@details` rather than long in-body comment blocks.
 
-Do **not** add it to the manuscript graph or `run_pipeline.R` yet — show me the script first,
+Do **not** add it to the manuscript graph yet — show me the script first,
 declare its upstream targets and owned files, tell me where in the
 pipeline order it belongs, and let me confirm before wiring it in.
 

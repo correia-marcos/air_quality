@@ -1,11 +1,11 @@
 # ============================================================================================
 # IDB: Air monitoring
 # ============================================================================================
-#' @Goal: Execute or inspect the candidate manuscript dependency graph.
+#' @Goal: Execute or inspect one stage of the manuscript dependency graph.
 #' @Description: Uses an explicit cache and never installs packages or acquires inputs.
-# The script runner remains the default until migration acceptance is complete. A stage
-# that is not a manuscript target is looked up in the specification-sensitivity graph
-# (_targets_specification.R), which has its own cache.
+# scripts/run_pipeline.R builds everything; this launcher selects a stage or lists what
+# would rerun. A stage that is not a manuscript target is looked up in the
+# specification-sensitivity graph (_targets_specification.R), which has its own cache.
 #' @Summary:
 #   I. Settings and arguments.
 #   II. Resolve target selection.

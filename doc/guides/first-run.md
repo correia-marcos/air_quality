@@ -1,6 +1,6 @@
 # First run: three stations, three distances
 
-Start at the repository root. Use `docker compose up` and open the project in its RStudio
+Start at the repository root. Use `docker compose up --build` and open the project in its RStudio
 session, or restore the project packages locally with `renv::restore()` before opening
 `Coding.Rproj`. The local route also needs the system libraries used by sf/terra and Arrow;
 [the setup guide](../HOW_TO_RUN.md#development-and-acquisition) describes both routes.

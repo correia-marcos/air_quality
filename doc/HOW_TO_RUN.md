@@ -25,13 +25,18 @@ data.table. Its root cause is unresolved. Record `R.home()`, `Sys.which("Rscript
 using `Rscript --vanilla` and `R_LIBS_USER` is recorded separately from normal renv startup;
 do not upgrade dependencies to hide a binary mismatch.
 
-Use `docker compose up` for interactive RStudio with live code. Run
-`docker compose --profile acquisition up` when a download script needs Selenium. The
-release Compose file starts interactive RStudio from code baked into the image:
+Use `docker compose up --build` for interactive RStudio server with live code. Run
+`docker compose --profile acquisition up --build` when a download script needs Selenium.
+The release Compose file starts interactive RStudio from code baked into the image:
 
 ```sh
-docker compose -f docker-compose.release.yml up
+docker compose -f docker-compose.release.yml up --build
 ```
+
+`--build` brings the image up to date with the current folder; unchanged steps come from
+Docker's cache. Without it, Compose reuses the image it built last, however old. Both
+containers keep their own targets store in `_targets_docker/` (see
+[The targets graph](#the-targets-graph)).
 
 Copy `.env.example` to `.env` only for interactive RStudio configuration. Keep Earthdata
 and other source credentials outside the repository. The batch verifier needs neither
@@ -200,37 +205,35 @@ Actual RStudio walkthroughs and full scientific parity remain acceptance require
 
 ## Manuscript pipeline
 
-The following entry points are transitional until scientific acceptance of the targets
-candidate. They share scientific functions with it and are not independent baselines.
 From the repository root, after inputs are available:
 
 ```sh
-make all
+Rscript scripts/run_pipeline.R
 ```
 
-```r
-source(here::here("scripts", "run_pipeline.R"))
+In RStudio, `source(here::here("scripts", "run_pipeline.R"))` does the same. It builds the
+targets graph declared in `_targets.R`, whose modules are in `config/targets/`: city
+processing, the core station/census analysis, station-only hourly preparation, manuscript
+figures and tables, the reported robustness checks (the 5 km buffer and the
+individual-level regression, in `scripts/*/robustness/`) and `verification_records` (each
+city's particulate screening, the imputation counts and the IT2 episodes, which the
+verification registry compares but no figure or table reads). Station counts,
+missingness, census summaries, exposure tables and figure inputs have named data targets.
+
+Targets reruns only the targets whose code, settings or input files changed since the last
+build. It compares file contents, so a newer timestamp alone reruns nothing. Each recipe in
+`scripts/` still runs on its own and calls the same functions as its targets, so a reader
+can follow one analysis line by line. Run one stage, or list what would rerun:
+
+```sh
+Rscript scripts/run_targets.R robustness
+Rscript scripts/run_targets.R all --outdated
 ```
-
-Both routes execute city processing, the core station/census analysis, station-only hourly
-preparation, manuscript figures and tables, and the reported robustness checks (the 5 km
-buffer and the individual-level regression, in `scripts/*/robustness/`). `make` uses stage
-stamps; after changing or reacquiring source data, force a rebuild with `make -B all`.
-`make robustness` runs the robustness checks alone, after the exposure stage.
-
-The candidate's direct command is `Rscript scripts/run_targets.R all`, which builds the
-manuscript export, the `robustness` target and `verification_records` (each city's
-particulate screening, the imputation counts and the IT2 episodes, which the verification
-registry compares but no figure or table reads). Inspect the ordinary
-declarations under `config/targets/`, loaded by `_targets.R`; cached station counts, missingness, census summaries,
-exposure tables and figure inputs have named data targets. After scientific acceptance,
-targets becomes the sole manuscript scheduler: remove Makefile and RStudio's Make build
-setting, and reduce `run_pipeline.R` to a compatibility launcher. This cutover is pending.
 
 Distance targets now separate input reading, calculation and file writing. For example,
 `bogota_2018_distance_matrices` stores the computed tables and `bogota_2018_distances`
 owns the two Parquet files. The `distances` selection still requests all four contexts.
-The candidate graph retains upstream city preparation: an existing derived file alone
+The graph retains upstream city preparation: an existing derived file alone
 does not bypass missing preserved sources in a fresh targets run.
 
 The temporal appendix now uses current cleaned observed station partitions, filtered by
@@ -242,30 +245,38 @@ convention is retained; source-timezone methodology remains a separate review.
 
 ## Supporting analyses
 
-The inventory records direct commands and prerequisites for every optional workflow,
-including resolution, manual diagnostics and legacy validation. These commands remain
-separate from manuscript targets. Existing optional Make commands are transitional aliases.
+These workflows stay outside the manuscript graph. The inventory records each one's direct
+command and prerequisites, including resolution, manual diagnostics and legacy validation.
 
-Run optional satellite comparisons separately:
+Satellite comparisons need their additional MERRA-2/NASA inputs and the station-hourly
+checkpoints of the manuscript build. Run, in order:
 
 ```sh
-make merra2
+Rscript scripts/process_data/not_in_paper/satellite/generate_panel_air_quality_merra2.R
+Rscript scripts/process_data/not_in_paper/satellite/prepare_station_temporal.R
+Rscript scripts/process_data/not_in_paper/satellite/process_merra2_panels.R
+Rscript scripts/tables_images/not_in_paper/satellite/figure_merra2_vs_stations.R
+Rscript scripts/tables_images/not_in_paper/satellite/figure_aerosol_composition.R
 ```
 
 This prepares optional aerosol panels with current generated city geography and joins them
 to the station-hourly checkpoints. It adds country/NASA comparisons, satellite
-correlations, aerosol figures, thermal-inversion comparisons, and grid illustrations. Acquire
-its additional MERRA-2/NASA inputs before running it. `make merra2` is supporting analysis and
-does not replace `make all` as the manuscript route.
+correlations, aerosol figures, thermal-inversion comparisons, and grid illustrations. It is
+supporting analysis, not part of the manuscript.
 
-Context maps are also optional: `make context-maps` prepares the city inputs and renders
-additional context figures. Its Stadia basemap may require online access and credentials;
-these unselected figures are outside offline manuscript verification. Legacy comparison uses
-`make validate` and its separate authorized legacy inputs.
+Context maps are also optional: after the manuscript build, run
+`Rscript scripts/tables_images/not_in_paper/supporting/figure_study_area_maps.R`. Its Stadia
+basemap may require online access and credentials; these unselected figures are outside
+offline manuscript verification. Legacy comparison runs `prepare_bogota_2005_inputs.R`, then
+`compare_bogota.R`, both in `scripts/process_data/not_in_paper/legacy_validation/`, with
+their separate authorized legacy inputs.
 
-Santiago with the 2024 census communes is not in the paper: `make santiago-2024` builds the
-2024 communes and census, their distances, IDW and exposure tables
-(`data/processed/idw_regressions/santiago_2024/`) and six figures. It needs the preserved
+Santiago with the 2024 census communes is not in the paper. After the manuscript build, run
+`process_santiago_2024_data.R` and `estimate_santiago_2024_exposure.R` (in
+`scripts/process_data/not_in_paper/santiago_2024/`), then `figure_santiago_2024_exposure.R`
+(in `scripts/tables_images/not_in_paper/santiago_2024/`). They build the 2024 communes and
+census, their distances, IDW and exposure tables
+(`data/processed/idw_regressions/santiago_2024/`) and six figures. They need the preserved
 2024 census cartography and census archive, and the main Santiago products.
 
 ## Checks
@@ -284,14 +295,13 @@ known limitations; it is not a clean-room reproduction claim.
 
 ```sh
 Rscript tools/reproduction/verify.R --full
-Rscript tools/reproduction/verify.R --full --targets
 ```
 
 `--full` builds the image and invokes `docker-compose.verify.yml`. The verifier mounts
 `data/raw/`, `data/downloads/`, and `data/_legacy/` read-only; starts generated directories
-empty; uses image-baked code; and disables runtime networking. The default executes
-`make -B all`; `--targets` selects the candidate manuscript graph with a fresh cache.
-Both routes recreate geography and derived products from the declared source copies.
+and the targets store empty; uses image-baked code; and disables runtime networking. It
+builds the manuscript graph with `Rscript scripts/run_targets.R all`, recreating geography
+and derived products from the declared source copies.
 
 The verifier prints its exit status, reproduction status, failed stages and log paths.
 It also reports failures from the nested container report. Read the outer `report.json`
@@ -390,25 +400,33 @@ silently.
 packages from downstream dependencies. Dependency changes use renv, with analytical versions
 reviewed separately from the testing additions.
 
-## Candidate manuscript migration to targets
+## The targets graph
 
-The candidate graph is available alongside the current default runner. Scientific acceptance
-and default cutover remain pending. It uses the same reusable transformations as the manual
-scripts, tracks files and directory membership, and never downloads inputs or installs packages.
-Restore the full project environment before execution; installing `targets` alone is insufficient.
+The graph uses the same reusable transformations as the recipes, tracks files and directory
+membership, and never downloads inputs or installs packages. Restore the full project
+environment before execution; installing `targets` alone is insufficient. It was accepted in
+November 2026. Built in isolation from one commit, it matched the former Make route: data
+equal to within 10⁻¹³ and figures pixel-identical, after the fixes recorded in the
+[implementation record](planning/implementation-record.md). Changing one function, one
+setting or one input file reran only the targets that depend on it.
 
 ```sh
-make targets STAGE=bogota_geography  # pilot; writes derived geography
-make targets STAGE=bogota_pollution_parquet  # prerequisites included
-make targets                       # manuscript export and all its prerequisites
-make targets-outdated              # inspect the manuscript selection without processing
-Rscript tools/reproduction/verify.R --full --targets
+Rscript scripts/run_targets.R bogota_geography   # one target and its prerequisites
+Rscript scripts/run_targets.R all                # the same build as run_pipeline.R
+Rscript scripts/run_targets.R all --outdated     # list what would rerun, without running
 ```
 
-Development and image-baked Compose services mount `_targets/` as the persistent cache.
-The verification service uses a fresh per-run cache, read-only sources and isolated output roots.
-`AIR_TARGETS_STORE` overrides the cache location, not the data/output roots. Selecting a different
-cache does **not** isolate data writes; use verification Compose for comparison runs.
+Each place that runs the graph keeps its own store. On your computer it is `_targets/`.
+The development and release containers share `_targets_docker/`, which they see as
+`_targets/`. The verification service starts a fresh store in each run folder. targets
+records full file paths, and inside a container the project sits at `/air_monitoring`, so a
+store built in one place would look entirely out of date in the other. The data and
+results folders are shared, though: after a build in a container, the next build on your
+computer reruns the targets whose files the container rewrote (Linux and macOS write
+slightly different bytes for the same results), and the other way round.
+`AIR_TARGETS_STORE` overrides the store location, not the data/output roots. Selecting a
+different store does **not** isolate data writes; use verification Compose for comparison
+runs.
 The complete graph requires canonical data roots because downstream analytical readers use
 that layout. A noncanonical city output root is rejected; manual city wrappers can use separate
 configured roots for city-level comparisons.
@@ -447,10 +465,19 @@ The specification-sensitivity analysis for Bogotá, Santiago and São Paulo runs
 derived inputs and never invokes or exports the manuscript workflow:
 
 ```sh
-make resolution                       # freeze inputs; designs A/B/C for every declared variant
-make targets STAGE=resolution_quintile_20km   # one declared variant, with its prerequisites
-make specification-grid               # primary Design A: IDW buffer x exponent grid
-make specification-panel              # panel, variance decomposition, grid figures
+# Freeze the inputs, then designs A/B/C for every declared variant
+Rscript scripts/process_data/specification_sensitivity/prepare_resolution_inputs.R
+Rscript scripts/process_data/specification_sensitivity/estimate_resolution_sensitivity.R
+Rscript scripts/tables_images/specification_sensitivity/figure_resolution_sensitivity.R
+# One declared variant, with its prerequisites
+Rscript scripts/run_targets.R resolution_quintile_20km
+# Primary Design A: IDW buffer x exponent grid
+Rscript scripts/process_data/specification_sensitivity/estimate_idw_specification_grid.R
+Rscript scripts/process_data/specification_sensitivity/estimate_design_a_grid.R
+# Panel, variance decomposition and grid figures
+Rscript scripts/process_data/specification_sensitivity/build_specification_panel.R
+Rscript scripts/process_data/specification_sensitivity/estimate_specification_variance_decomposition.R
+Rscript scripts/tables_images/specification_sensitivity/figure_design_a_grid.R
 ```
 
 The recipes read no options; the variants (IDW buffer × education grouping) are declared

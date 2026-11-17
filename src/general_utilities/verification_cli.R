@@ -65,7 +65,7 @@ verification_code_inventory <- function(root) {
   code <- code[!grepl("(^|/)__pycache__(/|$)|[.]py[cod]$", code$path), ]
   code <- code[basename(code$path) != ".DS_Store" &
     code$path != "scripts/export/paper.local.sh", ]
-  root_code <- c("Dockerfile", "Makefile", "renv.lock", "DESCRIPTION", ".Rprofile",
+  root_code <- c("Dockerfile", "renv.lock", "DESCRIPTION", ".Rprofile",
     "_targets.R", ".dockerignore", "docker-compose.yml", "docker-compose.release.yml",
     "docker-compose.verify.yml", "doc/planning/remaining-work.md")
   root_code <- root_code[file.exists(file.path(root, root_code))]

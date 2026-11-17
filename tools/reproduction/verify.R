@@ -17,10 +17,7 @@
 args <- commandArgs(trailingOnly = TRUE)
 full <- "--full" %in% args
 rebuild <- "--rebuild" %in% args
-engine <- if ("--targets" %in% args) "targets" else Sys.getenv("AIR_PIPELINE", "scripts")
-if (!engine %in% c("scripts", "targets")) stop("Unknown pipeline engine")
-Sys.setenv(AIR_PIPELINE = engine)
-if (any(!args %in% c("--full", "--rebuild", "--release", "--targets"))) {
+if (any(!args %in% c("--full", "--rebuild", "--release"))) {
   stop("Unknown verification argument")
 }
 root <- normalizePath(getwd())
@@ -51,7 +48,6 @@ report <- list(started_utc = format(Sys.time(), tz = "UTC", usetz = TRUE),
   seed = 20230901, threads = Sys.getenv(c("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS")),
   tolerance = list(rule = "|new - baseline| <= 2 * gamma(rounding_steps) * scale",
     unit_roundoff = 2^-53), stages = list(), findings = character(),
-  pipeline = engine,
   targets_version = if (requireNamespace("targets", quietly = TRUE))
     as.character(packageVersion("targets")) else NA_character_,
   reproduction_verified = FALSE, independent_reproduction = "not performed")
@@ -152,20 +148,14 @@ if (rebuild) {
         paste("Acquire missing preparation sources before rebuilding:",
               paste(missing, collapse = "; ")))
     } else {
-      if (engine == "targets") {
-        store <- Sys.getenv("AIR_TARGETS_STORE", here::here("_targets"))
-        if (dir.exists(store) && length(list.files(store, all.files = TRUE,
-          no.. = TRUE))) {
-          stop("Verification requires a fresh targets store")
-        }
-        report$stages$rebuild <- verification_command("Rscript",
-          c("scripts/run_targets.R", "all"),
-          file.path(run, "rebuild.log"))
-      } else {
-        report$stages$rebuild <- verification_command("make",
-          c("-B", shQuote("RUN=Rscript tools/reproduction/run_stage.R"), "all"),
-          file.path(run, "rebuild.log"))
+      store <- Sys.getenv("AIR_TARGETS_STORE", here::here("_targets"))
+      if (dir.exists(store) && length(list.files(store, all.files = TRUE,
+        no.. = TRUE))) {
+        stop("Verification requires a fresh targets store")
       }
+      report$stages$rebuild <- verification_command("Rscript",
+        c("scripts/run_targets.R", "all"),
+        file.path(run, "rebuild.log"))
     }
   }
 }

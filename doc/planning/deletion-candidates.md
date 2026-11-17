@@ -22,8 +22,8 @@ that inventory; this file records removal proposals only.
 
 | Candidate | Current callers / consumers | Outputs and replacement | Consequence / disposition |
 |---|---|---|---|
-| Makefile manuscript scheduler | HOW_TO_RUN, RStudio Build setting, verification, Make path tests | Derived manuscript files; replace scheduling with `scripts/run_targets.R` and translate optional commands to documented CLI sequences | Removal is gated on isolated scientific acceptance. Keep transitional automation until then. |
-| Sequential body of `scripts/run_pipeline.R` | Manual users and active documentation | Same manuscript products; retain the filename as a targets compatibility launcher | Change only at cutover. It shares scientific functions with targets and is not an independent baseline. |
+| Makefile manuscript scheduler | None | Derived manuscript files; scheduling by `scripts/run_pipeline.R` and `scripts/run_targets.R`, optional commands as documented CLI sequences | Removed in November 2026 after the targets graph was accepted, with its stamps, the RStudio Make build setting, `tools/reproduction/run_stage.R` and the Make path test. |
+| Sequential body of `scripts/run_pipeline.R` | None | Same manuscript products through the targets graph | Done in November 2026: the file is now a launcher of the graph. |
 | Historical `prepare_station_scatter_data()` | No definition or execution caller found in the current src/scripts tree | Maintained station inputs use `build_station_scatter_inputs()` | Already absent; the August proposal is stale, not a new deletion candidate. |
 | `summarize_stations_by_pollutant()` / `table_stations_by_pollutant()` | No execution callers found in current src/scripts search | Long city/year/pollutant summary and corresponding table; manuscript uses the distinct compact station-count route | Remove as a pair only if that optional long-form product is retired. No deletion now. |
 

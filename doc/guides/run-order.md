@@ -116,8 +116,9 @@ The exposure gaps with one choice changed
 
 ## The whole sequence at once
 
-`source(here::here("scripts", "run_pipeline.R"))` runs the same recipes in one R session, and
-`make all` runs them with stage stamps ([manuscript pipeline](../HOW_TO_RUN.md#manuscript-pipeline)).
+`source(here::here("scripts", "run_pipeline.R"))` builds every step through the targets graph,
+which calls the same functions in dependency order and reruns only what changed
+([manuscript pipeline](../HOW_TO_RUN.md#manuscript-pipeline)).
 
 ## Beyond the paper
 

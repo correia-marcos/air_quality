@@ -2,8 +2,8 @@
 
 Each check here repeats the exposure analysis in [`../exposure/`](../exposure/) with one
 choice changed, to show that the education and income gaps do not depend on it. The checks
-run with the manuscript (`make all`, `Rscript scripts/run_targets.R all`, or `make
-robustness` after the exposure stage). None of their tables or figures is among the exported
+run with the manuscript (`Rscript scripts/run_pipeline.R`, or
+`Rscript scripts/run_targets.R robustness` alone). None of their tables or figures is among the exported
 manuscript files in [`config/paper_artifacts.csv`](../../../config/paper_artifacts.csv).
 Their settings are in the Robustness section of
 [`config/analysis_settings.R`](../../../config/analysis_settings.R).

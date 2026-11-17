@@ -579,7 +579,7 @@ Implementation: [`processing.R`](../../src/city_specific/processing.R),
 `src/pipeline/core.R` (retired on 24 September; calls now live in scripts and targets),
 `src/pipeline/stages/` (retired), [`_targets.R`](../../_targets.R),
 [`runner`](../../scripts/run_targets.R), [`verification`](../../tools/reproduction/verify.R).
-Commands: [HOW_TO_RUN](../HOW_TO_RUN.md#candidate-manuscript-migration-to-targets).
+Commands: [HOW_TO_RUN](../HOW_TO_RUN.md#the-targets-graph).
 
 ## Evidence and acceptance limits
 

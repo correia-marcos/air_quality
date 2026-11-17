@@ -35,17 +35,17 @@ B (exposure rebuilt at each support) and C (area classification) are robustness 
 No recipe reads command-line options. The robustness variants, their cities and the
 variants with figures are declared in `config/analysis_settings.R`
 (`resolution_specifications`, `resolution_cities`, `resolution_figure_specifications`).
-Make targets: `resolution` (steps 1, 2 for every declared variant, and its figures),
-`specification-grid` (3, 4), `specification-panel` (6, 7, 8) and
-`specification-station-sets` (9, 10, 11). One declared variant runs alone with
-`make targets STAGE=resolution_<id>`. Step 0, step 5 and the support-variance figure run
-directly; see `doc/HOW_TO_RUN.md`. Undeclared values run with
+Each step runs with `Rscript` in the order of the table above: steps 1 and 2 for every
+declared variant, then their figures; the grid (3, 4); the panel (6, 7, 8); and the station
+sets (9, 10, 11). One declared variant runs alone with
+`Rscript scripts/run_targets.R resolution_<id>`. Step 0, step 5 and the support-variance
+figure also run directly; see `doc/HOW_TO_RUN.md`. Undeclared values run with
 `tools/explore/run_resolution_sensitivity.R`, which writes only to `data/exploration/`.
 
 When the paper adopts this analysis: prepare reads the live manuscript products instead of
 refusing input drift; `config/targets/specification_sensitivity.R` joins `_targets.R`
 (`_targets_specification.R` and the exclusion in `tests/check-targets-contracts.R` go);
-and `make all` includes it. The folders already sit at the main level.
+and `scripts/run_pipeline.R` builds it. The folders already sit at the main level.
 
 ## Functions
 

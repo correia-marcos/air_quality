@@ -24,14 +24,8 @@ execution in `scripts/`.
 ## Run
 
 Use the project's restored R environment with the existing derived census, geometry,
-station, distance, and exposure products present:
-
-```sh
-make resolution
-```
-
-After the one-time Bogotá crosswalk (`build_bogota_localidad_crosswalk.R`, a frozen
-input), this runs, in order:
+station, distance, and exposure products present. After the one-time Bogotá crosswalk
+(`build_bogota_localidad_crosswalk.R`, a frozen input), run, in order:
 
 ```sh
 Rscript scripts/process_data/specification_sensitivity/prepare_resolution_inputs.R
@@ -45,15 +39,17 @@ buffer and one individual education grouping per id; quintile runs first) and
 `resolution_figure_specifications` (the variants with review figures).
 `resolution_specification()` validates each one and derives its folders and file prefix.
 One declared variant runs alone through the specification-sensitivity targets graph, for
-example `make targets STAGE=resolution_education_group3_20km`. Undeclared values (another
+example `Rscript scripts/run_targets.R resolution_education_group3_20km`. Undeclared values (another
 buffer, grouping or city subset) run with
 `Rscript tools/explore/run_resolution_sensitivity.R --run-id=<id> --buffer-km=<km>
 --grouping=<g>`, which calls the same functions and writes only to the git-ignored
 `data/exploration/<id>/`.
 
-The primary Design A grid then runs with `make specification-grid`, and after it
-`make specification-panel`; the review script (`figure_resolution_review.R`) runs between
-them. See the folder README for the order.
+The primary Design A grid then runs (`estimate_idw_specification_grid.R`,
+`estimate_design_a_grid.R`), then the review script (`figure_resolution_review.R`), then
+the panel (`build_specification_panel.R`,
+`estimate_specification_variance_decomposition.R`, `figure_design_a_grid.R`). See the
+folder README for the order.
 
 The preparation step records input MD5 hashes and refuses an unreviewed change to an
 existing input manifest. It does not download source replacements. The recipes rebuild
@@ -428,8 +424,8 @@ checking their pollution, distance-matrix and IDW-code hashes; interpolation nev
 socioeconomic groups. The matrix diagnostics are rerun as an independent reconciliation:
 
 ```sh
-make targets STAGE=resolution_education_group3_3km     # or any declared id
-make targets STAGE=resolution_education_group3_20km
+Rscript scripts/run_targets.R resolution_education_group3_3km     # or any declared id
+Rscript scripts/run_targets.R resolution_education_group3_20km
 Rscript scripts/tables_images/specification_sensitivity/figure_resolution_review.R
 ```
 
