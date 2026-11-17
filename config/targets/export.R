@@ -39,5 +39,12 @@ list(
         suppressMessages(sf::sf_use_s2(TRUE))
         prepare_paper_export(c(figures, tables), paper_manifest)
     },
+    format = "file"),
+
+  # Records the verification registry compares that no figure or table reads: each
+  # city's particulate screening, the imputation counts and the IT2 episodes.
+  targets::tar_target(verification_records,
+    c(bogota_quality_report, cdmx_quality_report, santiago_quality_report,
+      sao_paulo_quality_report, imputation_count_file, station_temporal_episode_file),
     format = "file")
 )

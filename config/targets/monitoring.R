@@ -410,7 +410,8 @@ list(
         ed_col = "education_mean",
         pop_col = "pop_total",
         buffer_km = station_context_buffer_km,
-        city_label = "")
+        city_label = "",
+        legend_pos = c(0.9, 0.2))
     }),
 
   targets::tar_target(cdmx_station_plot_data,
@@ -867,7 +868,8 @@ list(
         ed_col = "education_mean",
         pop_col = "pop_total",
         buffer_km = station_context_buffer_km,
-        city_label = "")
+        city_label = "",
+        legend_pos = c(0.15, 0.85))
     }),
 
   targets::tar_target(sao_paulo_station_plot_data,
@@ -1111,7 +1113,8 @@ list(
         ed_col = "education_mean",
         pop_col = "pop_total",
         buffer_km = station_context_buffer_km,
-        city_label = "")
+        city_label = "",
+        legend_pos = c(0.8, 0.2))
     }),
 
   targets::tar_target(figure_station_scatter,

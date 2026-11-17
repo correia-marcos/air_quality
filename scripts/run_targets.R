@@ -29,9 +29,11 @@ if (!requireNamespace("targets", quietly = TRUE)) {
 # ============================================================================================
 # II: Resolve target selection
 # ============================================================================================
-# "all" adds the reported robustness checks to the manuscript export.
+# "all" adds the reported robustness checks and the verification records to the export.
 selection <- if (length(args)) args else "paper_export"
-if (identical(selection, "all")) selection <- c("paper_export", "robustness")
+if (identical(selection, "all")) {
+  selection <- c("paper_export", "robustness", "verification_records")
+}
 script <- here::here("_targets.R")
 store <- Sys.getenv("AIR_TARGETS_STORE", here::here("_targets"))
 manifest <- targets::tar_manifest(fields = "name", script = script)

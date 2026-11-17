@@ -219,7 +219,9 @@ stamps; after changing or reacquiring source data, force a rebuild with `make -B
 `make robustness` runs the robustness checks alone, after the exposure stage.
 
 The candidate's direct command is `Rscript scripts/run_targets.R all`, which builds the
-manuscript export and the `robustness` target. Inspect the ordinary
+manuscript export, the `robustness` target and `verification_records` (each city's
+particulate screening, the imputation counts and the IT2 episodes, which the verification
+registry compares but no figure or table reads). Inspect the ordinary
 declarations under `config/targets/`, loaded by `_targets.R`; cached station counts, missingness, census summaries,
 exposure tables and figure inputs have named data targets. After scientific acceptance,
 targets becomes the sole manuscript scheduler: remove Makefile and RStudio's Make build
