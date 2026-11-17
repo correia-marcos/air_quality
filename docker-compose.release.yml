@@ -19,4 +19,5 @@ services:
       - ./data/processed:/air_monitoring/data/processed
       - ./data/validation:/air_monitoring/data/validation
       - ./results:/air_monitoring/results
-      - ./_targets:/air_monitoring/_targets
+      # The store records full file paths, so containers keep their own (doc/HOW_TO_RUN.md).
+      - ./_targets_docker:/air_monitoring/_targets

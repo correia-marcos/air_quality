@@ -12,7 +12,6 @@ services:
       AIR_VERIFY_RUN: /air_monitoring/data/verification
       AIR_CODE_REVISION: ${AIR_CODE_REVISION:-unrecorded}
       AIR_IMAGE_ID: ${AIR_IMAGE_ID:-unrecorded}
-      AIR_PIPELINE: ${AIR_PIPELINE:-scripts}
       AIR_TARGETS_STORE: /air_monitoring/_targets
       OMP_NUM_THREADS: "1"
       OPENBLAS_NUM_THREADS: "1"
