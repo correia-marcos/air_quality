@@ -8,6 +8,65 @@ retains that implementation's checks and limits.
 The dated records below retain earlier implementation and validation evidence; they are
 not the current execution specification.
 
+## The targets graph replaces Make — 13–17 November 2026
+
+The manuscript targets graph was accepted and is now the only manuscript runner.
+`scripts/run_pipeline.R` launches it (`paper_export`, `robustness`,
+`verification_records`); `scripts/run_targets.R` runs one stage or lists what would rerun.
+Removed: the Makefile, its `data/.make` stamps, the RStudio Make build setting,
+`tools/reproduction/run_stage.R` (the verifier's Make wrapper) and `test-pipeline-paths.R`
+(Make and sequential-runner paths). `verify.R` has no engine choice (`--targets` is gone).
+`test-results-freshness.R` asks the store which manuscript targets would rerun instead of
+comparing folder timestamps. Optional analyses are documented `Rscript` sequences.
+
+Acceptance runs, from fresh stores with read-only sources and no network:
+
+| Check | Result |
+|---|---|
+| First complete isolated build (`data/verification/20261115T181338`) | 323 targets in 3 h 26; container peak memory 45.9 of 47 GB with DuckDB at 40 GB |
+| Same commit (`c876448`) built by targets and by Make | Every data file equal to within 10⁻¹³; hours above thresholds and quintiles identical; 148 of 152 PDFs pixel-identical, the other 4 fixed below |
+| Local build into a fresh store, 17 November | 0 errors. 2 hours-above tables and 34 PDFs changed through the fixes below; 118 PDFs pixel-identical; all 60 maps match. Committed as `61b64ab`, with 4 orphan bar plots removed |
+| Invalidation (`tests/_cache/d-accept/invalidation_check.R`) | A changed function, setting or input file marked exactly its graph descendants outdated (4, 11, 2 targets); a comment-only edit and a touched timestamp marked none. Real builds after the change and after its revert ran only `census_table_tex`; downstream targets were skipped because its value did not change |
+| RStudio walkthrough | `compute_distance_band_descriptives.R` run by hand: `all.equal(distance_bands, tar_read(distance_band_summary))` is `TRUE` |
+| Release container | Raw inputs read-only; a recipe ran from image-baked code. The Mac store showed 339 of 356 targets outdated there (below) |
+
+Fixes made during acceptance, each approved by Marcos:
+
+- **Memory.** `idw_duckdb_mem_gb <- "auto"` gives DuckDB the machine's or container's
+  memory minus 8 GB for R, after a 16.5 GB container was killed at Bogotá's 20 km IDW. The
+  verifier prints Docker's memory and the run's peak.
+- **Exceedance ties.** Integer readings sit exactly on the 25 and 50 µg/m³ targets
+  thousands of times, so rounding in the IDW sums flipped up to 209 hours per unit between
+  machines. Hours count as above a target when
+  `idw >= target * (1 - gamma_(2k+1))` (see `doc/HOW_TO_RUN.md`).
+  The density figures' trim keeps values up to the cut-off times `1 + 2 * gamma_979`.
+- **CDMX imputation key.** The code ATI belongs to two stations (Atizapán and Centro de
+  Salud, Atitalaquia); imputation now keys stations by name. This also repaired the CDMX
+  ratio figure, where no station had matched its education data.
+- **Smaller ones.** The Bogotá station record lists every source in a fixed order instead
+  of an unordered first value; the São Paulo and Santiago writers create their folders
+  before DuckDB writes; the targets map calls received the recipes' legend positions; a
+  `verification_records` target builds the files the registry compares that no figure
+  reads; the four `quality_inputs_*` registry rows, which hashed interim bytes, were
+  removed.
+
+Each environment keeps its own store. targets records full file paths, and the project is
+at `/air_monitoring` inside a container, so the Mac store looked out of date there. Both
+Compose files now mount `_targets_docker/` as the containers' `_targets/`; shared data and
+results folders still make each environment rerun what the other rewrote (Linux and macOS
+write slightly different bytes). The Compose commands in the documentation gained
+`--build`, after the release check first ran a pre-refactor image.
+
+Known and left as is: the 5 km targets rewrite each city's `*_indiv_groups.parquet`,
+which the main IDW target owns. The bytes are identical, so targets only refreshes the
+recorded time.
+
+| Check for the cutover | Result |
+|---|---|
+| Synthetic suite | 1,168 passed, 0 failed, after the removals |
+| Targets contracts; reader workflows; links; harness | 150 and 760 assertions passed; 482 links, 0 errors; 15 tests OK |
+| `Rscript scripts/run_pipeline.R` on the built store | Nothing outdated; 339 targets skipped |
+
 ## Results grouped by analysis — 10 November 2026
 
 100 result files moved into the analysis folder of the recipe that writes them:
@@ -1285,7 +1344,7 @@ the complete scientific environment before interpreting any migration as accepte
 default runner is retained pending parity. No data acquisition, scientific result regeneration,
 Git staging, commit or push was performed.
 
-Commands are in [HOW_TO_RUN](../HOW_TO_RUN.md#candidate-manuscript-migration-to-targets).
+Commands are in [HOW_TO_RUN](../HOW_TO_RUN.md#the-targets-graph).
 The public development [migration record](targets-migration.md) contains acceptance
 criteria, model responsibility and recommended review groups; it is excluded from runtime images.
 ## Reader-first targets revision — 2026-09-23
