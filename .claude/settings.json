@@ -9,7 +9,6 @@
       "Bash(R -q *)",
       "Bash(R --vanilla *)",
       "Bash(quarto *)",
-      "Bash(make -n *)",
       "Bash(python3 -B -m unittest *)",
       "Bash(python3 -B tools/docs/check_links.py*)",
       "Bash(git status *)",
