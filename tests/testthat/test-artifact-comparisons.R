@@ -73,10 +73,10 @@ test_that("registered station provenance enters the generated-product comparison
   manifest <- "data/interim/monitoring_stations/cdmx_metro_source_manifest.csv"
   coverage <- "data/interim/monitoring_stations/cdmx_metro_source_coverage.csv"
   analytical <- c(manifest, coverage, "data/processed/station_hourly/cdmx.parquet",
-    "data/processed/clean/_audit/input_partitions.csv",
     "data/interim/geospatial_data/cdmx/metro.gpkg", "results/tables/coefficients.tex")
   excluded <- c("data/downloads/cdmx/original.csv", "data/_legacy/baseline.csv",
-    "results/figures/temporal/ridge.pdf", "data/interim/census_extracted/persons.csv")
+    "results/figures/temporal/ridge.pdf", "data/interim/census_extracted/persons.csv",
+    "data/processed/clean/_audit/input_partitions.csv")
   for (relative in c(analytical, excluded)) {
     path <- file.path(root, relative)
     dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)

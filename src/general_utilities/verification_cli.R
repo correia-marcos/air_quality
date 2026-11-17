@@ -78,6 +78,9 @@ verification_code_inventory <- function(root) {
 #' @param root Repository or isolated rebuild root.
 #' @return Sorted relative paths, including station source manifests and coverage tables.
 #' @details Original inputs and rendered PDFs are excluded. Rendering requires review.
+#   `_audit/input_partitions.csv` is excluded too: it fingerprints the interim files'
+#   bytes, which change whenever DuckDB writes rows in another order, so it cannot match a
+#   baseline.
 verification_product_paths <- function(root) {
   root <- normalizePath(root, mustWork = TRUE)
   patterns <- c("data/processed" = "[.](parquet|csv)$",
@@ -88,6 +91,7 @@ verification_product_paths <- function(root) {
     list.files(file.path(root, directory), pattern = patterns[[directory]],
       recursive = TRUE, full.names = TRUE)
   }), use.names = FALSE)
+  files <- files[!grepl("/_audit/input_partitions[.]csv$", files)]
   sort(unique(substring(files, nchar(root) + 2L)))
 }
 

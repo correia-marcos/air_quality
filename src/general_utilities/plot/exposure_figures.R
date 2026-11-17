@@ -480,6 +480,13 @@ compute_exposure_quintile_weights <- function(groups_file) {
 #   restricted to adults and cut into equal-population groups. The supplied weights
 #   retain those groups, keeping the figure and regressions on the same definition.
 #
+#   TRIMMING TIES: units served by the same stations share one exposure value, so many can
+#   sit exactly at the x_trim_q cut-off, and the last-digit drift of DuckDB's sums would
+#   split them differently on each run. The trim keeps every value up to the cut-off plus
+#   twice the IDW exposure rounding bound (doc/HOW_TO_RUN.md, numerical comparison rule:
+#   m = 2k + 779, with k = 100 above the largest station count of any city), about 2e-13
+#   relative, so a tied group stays together.
+#
 #' @Written_on : April 2026
 #' @Written_by : Marcos Paulo
 #' @Updated_on : August 2026
@@ -517,7 +524,9 @@ plot_exposure_density_by_quintile <- function(
   xs  <- dt[[x_col]][ord]
   ws  <- dt$quintile_population[ord]
   cutoff <- xs[which(cumsum(ws) / sum(ws) >= x_trim_q)[1L]]
-  if (is.finite(cutoff)) dt <- dt[get(x_col) <= cutoff]
+  tie_steps <- 2L * 100L + 779L
+  tie_bound <- 2 * tie_steps * 2^-53 / (1 - tie_steps * 2^-53)
+  if (is.finite(cutoff)) dt <- dt[get(x_col) <= cutoff * (1 + tie_bound)]
 
   ggplot2::ggplot(
     dt,

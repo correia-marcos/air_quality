@@ -340,7 +340,7 @@ explicitly to inspect them. The file target owns the entire directory, including
 
 | Audit table | Contents and join keys |
 |---|---|
-| `_audit/input_partitions.csv` | `year`, `input_id`; one identity per input year, joined by `year`. Identities hash all input files in that year and are independent of absolute location. |
+| `_audit/input_partitions.csv` | `year`, `input_id`; one identity per input year, joined by `year`. Identities hash all input files in that year and are independent of absolute location. They hash file bytes, which change when DuckDB writes rows in another order, so verification does not compare them between runs. |
 | `_audit/station_month_diagnostics.parquet` | One row per `station`, `year`, `month`, `pollutant`, with counts of missing/zero temporal and spatial SD for above-p99 observations. |
 | `_audit/source_contributions/year=YYYY/data.parquet` | Where source IDs are supplied (currently CDMX), actual contributing `source_ids` and source validation for each station-hour/pollutant, including retained readings. Join by `station`, `datetime`, `year`, `pollutant`; original labels are also retained. |
 
