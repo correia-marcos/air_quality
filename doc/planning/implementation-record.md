@@ -8,6 +8,30 @@ retains that implementation's checks and limits.
 The dated records below retain earlier implementation and validation evidence; they are
 not the current execution specification.
 
+## CDMX station columns and São Paulo codes — 18 November 2026
+
+CDMX's SINAICA files hold one column per station of a state's networks, and station codes
+repeat across networks. A column now enters only when its file's state, its code and its
+name match a station of the buffer catalogue (`.cdmx_station_columns()`); before, the code
+alone decided. Four stations of other networks leave the panel: Corregidora (Querétaro),
+Palacio de Gobierno (Tlaxcala), Tecnológico (Puebla) and Tecnológico de Zacatepec
+(Morelos), 403,224 station-hours from 2000–2022 and none in 2023. São Paulo's IBGE codes
+(`code_weighting`, `code_muni`, `code_state`, `code_region`) are now text in the
+weighting-area geography.
+
+A local rebuild was compared with a copy of the outputs taken before it (ignored scripts in
+`tests/_cache/cdmx-stations/`, outputs in `data/exploration/cdmx-stations-20261118/`):
+
+| Output | Result |
+|---|---|
+| CDMX interim and cleaned panels | Equal to the earlier panels without the four stations' rows |
+| `cdmx_metro_station_columns.csv` (new) | 60 columns accepted, 47 rejected; the only rejected column with a catalogue code is PGO, Palacio de Gobierno (Tlaxcala) |
+| Source manifest and coverage | Changes only in the Puebla, Querétaro, Tlaxcala and Zacatepec files; 242 coverage rows, all of the four stations, removed |
+| São Paulo geography | Same 633 areas and geometry; codes now text |
+| 2023 data and every TeX table but one | Same data, or numeric gaps of at most 10⁻¹² relative from DuckDB's summation order |
+| `who_exceedances_all_cities.tex` (not exported) | CDMX rows for 2000–2022 changed; 2023 unchanged |
+| Figures | 133 of 136 rewritten PDFs pixel-identical; the CDMX curves of `all_2022`, `all_pm25_2019` and `all_pm25_2022` changed (paper figures) |
+
 ## The targets graph replaces Make — 13–17 November 2026
 
 The manuscript targets graph was accepted and is now the only manuscript runner.
