@@ -5,11 +5,13 @@
 #
 #' @Description: Month × hour missing-pattern diagnostic. For each city, DuckDB computes
 # the exact two-way share of missing hours (month × hour) in the cleaned station panel,
-# the panel the paper's missingness tables use, over all years; `plot_missing_heatmap()`
-# renders it. One PDF per city and pollutant in results/figures/not_in_paper/supporting/.
+# the panel the paper's missingness tables use, in analysis_year (2023), the year the
+# paper analyses. As in those tables, only stations that report the pollutant in the
+# year count; `plot_missing_heatmap()` renders it. One PDF per city and pollutant in
+# results/figures/not_in_paper/supporting/.
 #
 #' @Summary:
-#   I.   Import data: source functions, set the theme and declare paths.
+#   I.   Import data: source functions and settings, set the theme and declare paths.
 #   II.  Build figures: one heatmap per city and pollutant.
 #   III. Save figures.
 #
@@ -22,6 +24,7 @@
 # ========================================================================================
 source(here::here("src", "general_utilities", "config_utils_plot_tables.R"))
 source(here::here("src", "general_utilities", "config_utils_process_data.R"))
+source(here::here("config", "analysis_settings.R"))
 
 # Register Tex Gyre Pagella and set the paper ggplot theme for this script.
 set_paper_theme()
@@ -31,12 +34,14 @@ dir_pollution <- here::here("data", "processed", "monitoring_stations_outliers")
 outdir_figs   <- here::here("results", "figures", "not_in_paper", "supporting")
 dir.create(outdir_figs, recursive = TRUE, showWarnings = FALSE)
 
-# Set each city's cleaned station panel, named by the city id used in file names.
+# Set each city's cleaned station panel for analysis_year only (its year=2023 folder),
+# named by the city id used in file names.
+year_dir   <- paste0("year=", analysis_year)
 arrow_dirs <- c(
-  bogota    = here::here(dir_pollution, "bogota_metro_clean"),
-  cdmx      = here::here(dir_pollution, "cdmx_metro_clean"),
-  santiago  = here::here(dir_pollution, "santiago_metro_clean"),
-  sao_paulo = here::here(dir_pollution, "sao_paulo_metro_clean"))
+  bogota    = here::here(dir_pollution, "bogota_metro_clean", year_dir),
+  cdmx      = here::here(dir_pollution, "cdmx_metro_clean", year_dir),
+  santiago  = here::here(dir_pollution, "santiago_metro_clean", year_dir),
+  sao_paulo = here::here(dir_pollution, "sao_paulo_metro_clean", year_dir))
 
 # Set the plot titles.
 city_labels <- c(bogota = "Bogotá", cdmx = "Mexico City", santiago = "Santiago",
@@ -59,7 +64,8 @@ for (city in names(arrow_dirs)) {
                                           row_dim      = "month",
                                           col_dim      = "hour",
                                           pollutant    = pol,
-                                          city_label   = city_labels[[city]],
+                                          city_label   = paste0(city_labels[[city]], ", ",
+                                                                analysis_year),
                                           arrow_dir    = arrow_dirs[[city]])
   }
 }

@@ -558,7 +558,11 @@ latex_exposure_hours_by_group <- function(summary_dt, panel_cities,
 #                      in missing_list). If NULL, the function falls back to a naive
 #                      outer-join reconstruction, which only works when the dims are
 #                      independent. Only the year files are read (panel_parquet_files()),
-#                      so a cleaned panel's _audit/ folder is skipped.
+#                      so a cleaned panel's _audit/ folder is skipped. Only stations with
+#                      at least one reading of the pollutant in those files enter the
+#                      shares, as in the paper's missingness tables
+#                      (education_quintile_shares()); a station that never measures it
+#                      would count as missing every hour.
 #' @param mem_gb      numeric; DuckDB memory ceiling. Default 4.
 #
 #' @return  ggplot2 heatmap.
@@ -598,14 +602,16 @@ plot_missing_heatmap <- function(
     )
     if (!(row_dim %in% names(dim_expr) && col_dim %in% names(dim_expr)))
       stop("row_dim / col_dim must be month, hour, day_of_week, or year.")
+    # Reporting stations only; see @param arrow_dir.
     q <- sprintf(
       "SELECT %s AS %s, %s AS %s,
               100.0 * SUM(CASE WHEN %s IS NULL THEN 1 ELSE 0 END) / COUNT(*) AS pct
        FROM pollution
+       WHERE station IN (SELECT station FROM pollution WHERE %s IS NOT NULL)
        GROUP BY 1, 2 ORDER BY 1, 2;",
       dim_expr[[row_dim]], row_dim,
       dim_expr[[col_dim]], col_dim,
-      tolower(pollutant)
+      tolower(pollutant), tolower(pollutant)
     )
     d <- data.table::as.data.table(DBI::dbGetQuery(con, q))
   } else {
