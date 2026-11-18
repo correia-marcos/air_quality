@@ -29,6 +29,9 @@ Acceptance runs, from fresh stores with read-only sources and no network:
 | Invalidation (`tests/_cache/d-accept/invalidation_check.R`) | A changed function, setting or input file marked exactly its graph descendants outdated (4, 11, 2 targets); a comment-only edit and a touched timestamp marked none. Real builds after the change and after its revert ran only `census_table_tex`; downstream targets were skipped because its value did not change |
 | RStudio walkthrough | `compute_distance_band_descriptives.R` run by hand: `all.equal(distance_bands, tar_read(distance_band_summary))` is `TRUE` |
 | Release container | Raw inputs read-only; a recipe ran from image-baked code. The Mac store showed 339 of 356 targets outdated there (below) |
+| Isolated run of the final revision `3563c88` (`data/verification/20261117T200558`) | Rebuild 2 h 05 min; release tests 1,243 passed, 0 failed; export passed; container peak 45.8 of 47 GB, no memory events |
+| Same revision with 15.4 GB for Docker (`data/verification/20261117T222721`) | Stopped after 1 h 6 min, 115 targets built: DuckDB, limited to 7 GB, ran out of memory in Bogotá's 20 km IDW (July, PM10). No container memory events |
+| `20261117T200558` against the local macOS build | 35 TeX tables byte-identical. Data: 254 of 354 differing files are the same data or the same rows in another order, 100 differ in numbers by at most 1.8 × 10⁻¹⁰ relative (predictions near zero: at most 8.1 × 10⁻¹³ of the column's scale). 263 of 269 PDFs pixel-identical (below) |
 
 Fixes made during acceptance, each approved by Marcos:
 
@@ -60,6 +63,21 @@ write slightly different bytes). The Compose commands in the documentation gaine
 Known and left as is: the 5 km targets rewrite each city's `*_indiv_groups.parquet`,
 which the main IDW target owns. The bytes are identical, so targets only refreshes the
 recorded time.
+
+The final run was compared with the macOS build by ignored scripts in
+`tests/_cache/d-final/` (outputs in `data/exploration/d-final-20261117/`). This was the
+first comparison across machines, so it also tested the tolerance rule's allowance for
+projected distances, as `doc/HOW_TO_RUN.md` asked. The image has PROJ 9.4.0 and GEOS
+3.12.1, the Mac PROJ 9.5.1 and GEOS 3.13.0. Distances differ by up to 1.1 × 10⁻¹¹
+relative, far beyond the 10 rounding steps the rule allows, and Bogotá's annual IDW
+exposure exceeds its bound by up to four times (8.0 × 10⁻¹³ of the value against
+1.9 × 10⁻¹³); every other registered file passes. The rule therefore applies to runs with
+the same spatial libraries. The same libraries draw the station buffers on the 3 km maps
+of Bogotá, Santiago and São Paulo, which differ in 0.002–0.13 % of pixels, at scattered
+edges; Mexico City's map matches. The 12 station scatter PNGs, not in the paper, differ in
+6–8 % of pixels because the macOS and Linux PNG devices rasterize differently. The other
+differing files are the export manifest, which records each machine's paths and hashes,
+and the four `_audit/input_partitions.csv`, which the verifier excludes.
 
 | Check for the cutover | Result |
 |---|---|
