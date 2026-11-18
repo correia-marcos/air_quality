@@ -664,7 +664,11 @@ sao_paulo_download_weighting_areas <- function(year = 2010,
 #' @param source_file Local unfiltered weighting-area RDS file.
 #' @param keep_municipality IBGE municipality codes to retain.
 #' @param quiet Suppress progress messages.
-#' @return An sf object with code_muni as character; no downloads or output writes.
+#' @return An sf object with the IBGE codes (code_weighting, code_muni, code_state,
+#   code_region) as character; no downloads or output writes.
+#' @details geobr ships the codes as numbers, and a 13-digit weighting-area code then
+#   displays as 3.503901e+12. As text, the codes read as in the census and in the other
+#   cities' geographies, and as.character() keeps every digit below 2^53.
 sao_paulo_prepare_weighting_areas <- function(source_file,
     keep_municipality = sao_paulo_cfg$cities_in_metro, quiet = FALSE) {
   require_local_sources(source_file,
@@ -676,8 +680,10 @@ sao_paulo_prepare_weighting_areas <- function(source_file,
   # Ensure character matching for IBGE codes to prevent silent failures
   keep_municipality <- as.character(keep_municipality)
   
-  sf_out <- data_sf |> 
-    dplyr::mutate(code_muni = as.character(code_muni)) |>
+  # Keep the IBGE codes as text (see @details).
+  sf_out <- data_sf |>
+    dplyr::mutate(dplyr::across(c(code_weighting, code_muni, code_state, code_region),
+                                as.character)) |>
     dplyr::filter(code_muni %in% keep_municipality)
   
   if (nrow(sf_out) == 0) {

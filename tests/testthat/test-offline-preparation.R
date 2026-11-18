@@ -93,8 +93,10 @@ test_that("São Paulo local weighting source filters codes without changing geom
   work <- tempfile("sp-source-")
   dir.create(work)
   on.exit(unlink(work, recursive = TRUE), add = TRUE)
+  # geobr ships every IBGE code as a number
   source_sf <- sf::st_sf(code_muni = c(3550308, 3550308, 3509502),
-    code_weighting = c("3550308001", "3550308002", "3509502001"),
+    code_weighting = c(3550308005001, 3550308005002, 3509502005001),
+    code_state = 35, code_region = 3,
     geometry = sf::st_sfc(
       offline_rectangle(0, 0, 1, 1), offline_rectangle(1, 0, 2, 1),
       offline_rectangle(2, 0, 3, 1), crs = 4674))
@@ -105,7 +107,8 @@ test_that("São Paulo local weighting source filters codes without changing geom
   result <- env$sao_paulo_prepare_weighting_areas(source_file = source_path,
     keep_municipality = "3550308", quiet = TRUE)
   expect_identical(result$code_muni, c("3550308", "3550308"))
-  expect_identical(result$code_weighting, source_sf$code_weighting[1:2])
+  expect_identical(result$code_weighting, c("3550308005001", "3550308005002"))
+  expect_identical(result$code_state, c("35", "35"))
   expect_identical(sf::st_geometry(result), sf::st_geometry(source_sf[1:2, ]))
   expect_equal(sf::st_crs(result)$epsg, 4674)
   expect_equal(tools::md5sum(source_path), before)
