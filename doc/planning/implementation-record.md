@@ -30,7 +30,7 @@ Acceptance runs, from fresh stores with read-only sources and no network:
 | RStudio walkthrough | `compute_distance_band_descriptives.R` run by hand: `all.equal(distance_bands, tar_read(distance_band_summary))` is `TRUE` |
 | Release container | Raw inputs read-only; a recipe ran from image-baked code. The Mac store showed 339 of 356 targets outdated there (below) |
 | Isolated run of the final revision `3563c88` (`data/verification/20261117T200558`) | Rebuild 2 h 05 min; release tests 1,243 passed, 0 failed; export passed; container peak 45.8 of 47 GB, no memory events |
-| Same revision with 15.4 GB for Docker (`data/verification/20261117T222721`) | Stopped after 1 h 6 min, 115 targets built: DuckDB, limited to 7 GB, ran out of memory in Bogotá's 20 km IDW (July, PM10). No container memory events |
+| `e2bcdd5` (the same code; only a harness setting changed) with 15.4 GB for Docker (`data/verification/20261117T222721`) | Stopped after 1 h 6 min, 115 targets built: DuckDB, limited to 7 GB, ran out of memory in Bogotá's 20 km IDW (July, PM10). No container memory events |
 | `20261117T200558` against the local macOS build | 35 TeX tables byte-identical. Data: 254 of 354 differing files are the same data or the same rows in another order, 100 differ in numbers by at most 1.8 × 10⁻¹⁰ relative (predictions near zero: at most 8.1 × 10⁻¹³ of the column's scale). 263 of 269 PDFs pixel-identical (below) |
 
 Fixes made during acceptance, each approved by Marcos:
