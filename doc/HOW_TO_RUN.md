@@ -352,7 +352,10 @@ killed during Bogotá's 20 km IDW. On 15 November 2026 the first complete run, w
 for Docker and DuckDB at 40 GB, took 3 h 26 min and peaked at 45.9 GB: R and the rest used
 at least 5.9 GB alongside DuckDB, hence the 8 GB reserve. The DuckDB steps can run under a
 small limit by spilling to disk, more slowly, but several R steps hold large tables in
-memory (Bogotá's census has 9 million person records).
+memory (Bogotá's census has 9 million person records). On 17 November 2026 a run with
+15.4 GB for Docker, so DuckDB at 7 GB, stopped after 1 h 6 min in Bogotá's 20 km IDW:
+DuckDB exhausted its own limit (`Out of Memory Error`) while Docker never reached its
+memory limit. With the current code, 16 GB of Docker memory is not enough.
 
 Keep a tested image by identity rather than mutable tag:
 
@@ -551,9 +554,12 @@ stations), so an hour exactly at a target counts on every run and machine
 (`aggregate_idw_exposure()`, threshold ties).
 
 Counting: a sum of k terms counts k - 1, and each product, division, square root, decimal
-parse or unit conversion counts 1. Each projected distance counts 10; this allowance
-assumes the same projection library on both machines and should be checked the first
-time a baseline from another machine is compared. Each row's
+parse or unit conversion counts 1. Each projected distance counts 10, which holds only
+when both runs use the same projection and geometry libraries. On 17 November 2026,
+distances from the image (PROJ 9.4.0, GEOS 3.12.1) and from macOS (PROJ 9.5.1, GEOS
+3.13.0) differed by up to 1.1e-11 relative, and Bogotá's IDW exposure then exceeded its
+bound by up to four times. Compare a baseline only with runs that use the same spatial
+libraries, such as runs from the same image. Each row's
 `rounding_steps_basis` gives its formula and counts:
 
 | Product | m | Scale | Status |

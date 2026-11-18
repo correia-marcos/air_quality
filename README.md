@@ -12,13 +12,13 @@ revision-matched numerical comparisons, and review of plot data and rendering. H
 outputs are not a reviewed baseline. See [doc/HOW_TO_RUN.md](doc/HOW_TO_RUN.md) for the
 current procedure and limitations.
 
-Since November 2026 the targets graph is the only manuscript runner. Complete isolated runs
-from the declared sources, without network access, finished on 15–17 November 2026: tests
-and export passed, and the targets and former Make routes agreed to within 10⁻¹³ (see the
-[implementation record](doc/planning/implementation-record.md)). A reproduction claim still
-needs an isolated run of the final revision (the fixes after 16 November have only run
-locally), a reviewed baseline for `verify.R` to compare against, and a review of plot data
-and rendering. Independent reproduction by someone else is a separate claim.
+The reference environment is the Docker image. A result counts as reproduced when an
+isolated run from the image matches a reviewed baseline from the same image; no baseline is
+registered yet. Isolated runs of the final revision pass their tests and export, and they
+agree with the local macOS build: identical tables, data within 2 × 10⁻¹⁰ relative. The
+committed results were built on macOS and will be rebuilt in the image. The
+[implementation record](doc/planning/implementation-record.md) lists every run and
+comparison. Independent reproduction by someone else is a separate claim.
 
 Choose a route:
 
