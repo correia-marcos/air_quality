@@ -99,4 +99,23 @@ test_that("the public CDMX reader retains cross-year station codes and hourly me
   expect_true(is.na(panel[datetime == hour + 3600, pm25]))
   expect_equal(sort(panel[year == 2021L & !is.na(pm25), pm25]), c(40, 50))
   expect_identical(tools::md5sum(files), before)
+  columns <- data.table::fread(file.path(root, "derived", "cdmx_station_columns.csv"))
+  expect_identical(columns[accepted == TRUE, unique(code)], "AAA")
+  expect_identical(columns[code == "AAC", accepted], FALSE)
+})
+
+test_that("CDMX station columns enter only by state, code and name together", {
+  source(here::here("src", "city_specific", "registry.R"), local = TRUE)
+  source(here::here("src", "city_specific", "cdmx.R"), local = TRUE)
+  lookup <- data.frame(lookup_key = c("cdmx__corena", "morelos__cuernavaca_01"),
+    code = c("COR", "PGO"), station_name_official = c("CORENA", "Cuernavaca 01"))
+  columns <- c("Fecha", "COR : Corena", "COR : Corregidora", "PGO : Palacio de Gobierno",
+               "PGO : Cuernavaca 01")
+  in_cdmx <- .cdmx_station_columns(columns, "cmdx__valle__pm10__2022.csv", lookup)
+  expect_identical(in_cdmx$column[in_cdmx$accepted], "COR : Corena")
+  expect_identical(in_cdmx$state[1], "cdmx")
+  in_morelos <- .cdmx_station_columns(columns, "morelos__cue__pm10__2022.csv", lookup)
+  expect_identical(in_morelos$column[in_morelos$accepted], "PGO : Cuernavaca 01")
+  elsewhere <- .cdmx_station_columns(columns, "querétaro__zmq__pm10__2022.csv", lookup)
+  expect_false(any(elsewhere$accepted))
 })

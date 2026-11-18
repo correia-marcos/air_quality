@@ -125,6 +125,14 @@ to parsed station/pollutant/year coverage, units, first/last records, contributi
 negative counts and missing values. Requested query dates and historical retrieval dates
 are explicitly unknown when no acquisition evidence supplies them; observed coverage is
 not substituted for a requested query period. Manifests stay outside the Parquet directory.
+
+A primary SINAICA file holds one column per station of a state's networks, headed
+"CODE : Name", and codes repeat across networks. Since November 2026 a column enters only
+when its file's state, its code and its name all match a station in the buffer catalogue.
+Matching the code alone had admitted four stations of other networks (Corregidora,
+Palacio de Gobierno, Tecnológico and Tecnológico de Zacatepec), all with data only before
+2023. `cdmx_metro_station_columns.csv`, beside the manifest, lists every station column
+of the primary files with `accepted` and the number of files it appears in.
 Future acquisition logs retain small and incomplete runs as well as the secondary feed.
 Do not run acquisition merely to populate historical metadata.
 

@@ -179,7 +179,8 @@ city_pollution_outputs <- function(id, cfg) {
     comparison = here::here(root, "bogota_rmcab_sisaire_comparison"))
   if (id == "cdmx") paths <- c(paths,
     source_manifest = here::here(root, "cdmx_metro_source_manifest.csv"),
-    source_coverage = here::here(root, "cdmx_metro_source_coverage.csv"))
+    source_coverage = here::here(root, "cdmx_metro_source_coverage.csv"),
+    station_columns = here::here(root, "cdmx_metro_station_columns.csv"))
   processing_files(paths)
   partitions <- list.files(dataset, pattern = "\\.parquet$", recursive = TRUE)
   if (!length(partitions) || any(!grepl("^year=[0-9]{4}/", partitions))) {

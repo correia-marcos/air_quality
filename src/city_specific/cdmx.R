@@ -3754,8 +3754,46 @@ cdmx_download_census_data <- function(
     dplyr::select(lookup_key, code, station_name_official = station) |>
     sf::st_drop_geometry() |>
     dplyr::distinct(lookup_key, .keep_all = TRUE)
-  
+
   return(lookup)
+}
+
+
+# ----------------------------------------------------------------------------------------
+# Helper: .cdmx_station_columns
+#
+#' @param columns        character; headers of one primary CSV.
+#' @param file_name      string; that CSV's file name, which opens with its state
+#                        ("hidalgo__...", "cmdx__..." for Mexico City).
+#' @param station_lookup data.frame from .prepare_station_lookup(): lookup_key
+#                        ("<state>__<station>"), code and station_name_official.
+#
+#' @return data.frame with one row per station column ("CODE : Name"): column, state,
+#          code, name and accepted (logical).
+#
+#' @details
+#   SINAICA station codes are unique only within a monitoring network, and one state's
+#   download holds all its networks. A column is accepted only when the file's state,
+#   the code and the name (normalize_station()) match one catalogue station of the
+#   buffer. Matching the code alone admitted four stations of other networks:
+#   Corregidora (Querétaro, COR) as CORENA, Palacio de Gobierno (Tlaxcala, PGO) as
+#   Cuernavaca 01, and Tecnológico (Puebla) and Tecnológico de Zacatepec (Morelos), both
+#   TEC, as Cerro del Tepeyac. In the November 2026 downloads, the 60 accepted columns
+#   match their catalogue station exactly; no spelling variant needed mapping.
+#
+#' @Written_on : November 2026
+#' @Written_by : Marcos Paulo
+# ----------------------------------------------------------------------------------------
+.cdmx_station_columns <- function(columns, file_name, station_lookup) {
+  columns <- columns[grepl(":", columns, fixed = TRUE)]
+  state <- tolower(stringi::stri_trans_general(sub("__.*$", "", file_name), "Latin-ASCII"))
+  state <- sub("^cmdx$", "cdmx", state)  # Mexico City's downloads are named "cmdx__"
+  code  <- trimws(sub(":.*$", "", columns))
+  name  <- trimws(sub("^[^:]*:", "", columns))
+  known <- paste(sub("__.*$", "", station_lookup$lookup_key), station_lookup$code,
+                 normalize_station(station_lookup$station_name_official))
+  data.frame(column = columns, state = state, code = code, name = name,
+             accepted = paste(state, code, normalize_station(name)) %in% known)
 }
 
 
@@ -3989,10 +4027,11 @@ cdmx_download_census_data <- function(
     station_code <- .tnb(sp[, 1])
     station_name <- .tnb(sp[, 2])
     
-    # Keep only allowlisted station codes.
+    # Keep the catalogue's stations, matched by state, code and name.
     if (!is.null(station_lookup)) {
-      valid_codes <- unique(station_lookup$code)
-      ok <- station_code %in% valid_codes
+      checked <- .cdmx_station_columns(unique(long$station_label), basename(path),
+                                       station_lookup)
+      ok <- long$station_label %in% checked$column[checked$accepted]
       if (!any(ok)) return(NULL)
       long <- long[ok, , drop = FALSE]
       station_code <- station_code[ok]
@@ -4441,19 +4480,15 @@ cdmx_download_census_data <- function(
       param_sel <- paste0(.ds(g), " AS param_src")
     }
     
-    # Station columns shaped "CODE : Name"; keep only allowlisted codes.
+    # Station columns shaped "CODE : Name"; keep the catalogue's stations, matched by
+    # state, code and name (see .cdmx_station_columns()).
     meta_cols <- c("Fecha","Hora","Unidad","Parámetro","Parametro","parametro")
     potential_st_cols <- setdiff(cr, meta_cols)
-    
+
     valid_st_cols <- character()
     if (!is.null(station_lookup)) {
-      valid_codes <- unique(station_lookup$code)
-      for (col in potential_st_cols) {
-        code_part <- trimws(strsplit(col, ":")[[1]][1])
-        if (code_part %in% valid_codes) {
-          valid_st_cols <- c(valid_st_cols, col)
-        }
-      }
+      checked <- .cdmx_station_columns(potential_st_cols, basename(path), station_lookup)
+      valid_st_cols <- checked$column[checked$accepted]
     } else {
       valid_st_cols <- potential_st_cols[grepl(":", potential_st_cols)]
     }
@@ -4743,10 +4778,16 @@ cdmx_download_census_data <- function(
 #' @param verbose             print progress (default TRUE)
 #' @param engine              "duckdb" (default) or "memory".
 #' @param include_source_metadata Retain actual contributor IDs and feed status; FALSE.
-#' @Return: Arrow Dataset handle (if Parquet written) else tibble.
-#' @Steps : (1) discover sources, (2) use the requested engine,
-#          (3A) memory engine, (3B) duckdb engine.
+#' @Return: Arrow Dataset handle (if Parquet written) else tibble. With stations_sf, also
+#          writes <out_name>_station_columns.csv in out_dir: every station column of the
+#          primary CSVs (state, network, code, name, accepted, n_files).
+#' @Steps : (1) discover sources, (2) record the station columns, (3) use the requested
+#          engine: memory or duckdb.
 #' @details
+#   STATION COLUMNS:
+#     A primary CSV holds one column per station of a state's networks, headed
+#     "CODE : Name". Only columns matching a catalogue station of the buffer by state,
+#     code and name enter (.cdmx_station_columns(), which explains why codes alone fail).
 #   NEGATIVE READINGS:
 #     secondary_data_dir holds SINAICA's unvalidated "Datos crudos" feed, which ships no
 #     per-reading validity flag. The 2023 CALPULALPAN audit found negative readings and
@@ -4793,8 +4834,27 @@ cdmx_merge_pollution_data <- function(
   }
   
   if (length(csvs) == 0 && length(new_files) == 0) stop("No data files found.")
-  
-  # 3. Run Engine
+
+  # 3. Record every station column of the primary CSVs and whether it enters; the
+  #    engines apply the same decision (see .cdmx_station_columns()).
+  if (!is.null(st_lookup) && length(csvs)) {
+    columns <- data.table::rbindlist(lapply(csvs, function(path) {
+      header <- names(readr::read_csv(path, n_max = 0, show_col_types = FALSE,
+        col_types = readr::cols(.default = readr::col_character()),
+        locale = readr::locale(encoding = "Latin1")))
+      checked <- .cdmx_station_columns(trimws(gsub(" ", " ", header, fixed = TRUE)),
+                                       basename(path), st_lookup)
+      checked$network <- rep(strsplit(basename(path), "__")[[1]][2], nrow(checked))
+      checked
+    }))
+    columns <- columns[, .(n_files = .N), by = .(state, network, code, name, accepted)]
+    columns <- columns[order(!accepted, state, network, code, name)]
+    dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+    data.table::fwrite(columns,
+                       file.path(out_dir, paste0(out_name, "_station_columns.csv")))
+  }
+
+  # 4. Run Engine
   # We now pass the raw XLS/XLSX files directly to the engines
   if (engine == "duckdb") {
     .cdmx_merge_duckdb_engine(
