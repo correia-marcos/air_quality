@@ -285,8 +285,9 @@ plot_metro_area_national_context <- function(
 #' @param stations_sf      sf POINTS of stations; must include columns:
 #                          • code (station_code), • station (name),
 #                          • entity (state),      • altitude_m (meters)
-#' @param pollution_ds     OPTIONAL Arrow Dataset (or dplyr tbl) with columns:
-#                          station_code, year, pm10, `pm2.5`  (default NULL)
+#' @param pollution_ds     OPTIONAL Arrow Dataset (or dplyr tbl), such as a cleaned station
+#                          panel, with columns station (name), year, pm10, pm25
+#                          (default NULL)
 #' @param legacy_df        OPTIONAL tibble with columns station, year
 #                          (used only for color_scheme = "legacy2023")
 #' @param filter_type      one of:
@@ -301,18 +302,17 @@ plot_metro_area_national_context <- function(
 #                          • legacy2023 : color by presence in legacy_df (year==2023)
 #' @param buffer_km        numeric; radius for outside-station buffers (default 20)
 #' @param city_name        character; used in the map title/control
-#' @param stadiamaps_key   character; your Stadia Maps API key. If empty, function
-#                          falls back to CartoDB Positron tiles (no key needed).
-#                          A convenient pattern is to pass:
-#                          Sys.getenv("STADIA_MAPS_API_KEY", unset = "")
-#' @param tileset          Stadia tileset id (e.g. "stamen_terrain_background",
-#                          "stamen_toner", "stamen_watercolor").
 #' @return  leaflet htmlwidget (interactive map)
-#' @Purpose : Interactive metro map with basemap, metro polygon, station points,
+#' @Purpose : Interactive metro map with basemaps, metro polygon, station points,
 #            optional 20-km buffers for stations outside the metro polygon,
 #            optional filters from a parquet/Arrow dataset, and info-rich tooltips.
 #            The corner box shows the city + number of stations; legend labels
-#            include per-category counts.
+#            include per-category counts. Filters match stations to the panel by
+#            name (normalize_station()), because one code can belong to two
+#            stations: CDMX's ATI is Atizapán and Centro de Salud (Atitalaquia).
+#            Three keyless basemaps can be switched: terrain (OpenTopoMap), satellite
+#            (Esri World Imagery) and light (CARTO). A saved widget stores the tile
+#            addresses, so a basemap that needs an API key would publish the key.
 #' @Written_on: 30/09/2025
 #' @Written_by: Marcos Paulo
 # ============================================================================================
@@ -326,24 +326,13 @@ plot_metro_area_interactive <- function(
     pollutant      = c("none", "pm25", "pm10"),
     color_scheme   = c("entity", "legacy2023"),
     buffer_km      = 20,
-    city_name      = "the city",
-    stadiamaps_key = Sys.getenv("STADIA_MAPS_API_KEY", unset = ""),
-    tileset        = "stamen_terrain_background"
+    city_name      = "the city"
 ) {
   # ---- 0) Dependencies & argument checks ------------------------------------
   stopifnot(inherits(metro_area_sf, "sf"), inherits(stations_sf, "sf"))
   filter_type  <- match.arg(filter_type)
   pollutant    <- match.arg(pollutant)
   color_scheme <- match.arg(color_scheme)
-  
-  # If no Stadia key, we *warn* and later fall back to CartoDB Positron tiles
-  if (!nzchar(stadiamaps_key)) {
-    # Try alternate env var name before warning (handy if you stored a different key)
-    stadiamaps_key <- Sys.getenv("STADIA_MAPS_KEY", unset = "")
-    if (!nzchar(stadiamaps_key)) {
-      message("ℹ No Stadia key supplied; using CartoDB Positron fallback basemap.")
-    }
-  }
   
   # ---- 1) Make sure station columns exist & work in WGS84 for leaflet --------
   needed_cols <- c("code", "station", "entity", "altitude_m")
@@ -353,61 +342,58 @@ plot_metro_area_interactive <- function(
   metro_84    <- sf::st_transform(metro_area_sf, 4326)
   stations_84 <- sf::st_transform(stations_sf, 4326)
   
-  # ---- 2) (Optional) build a station-code filter from the Arrow dataset ------
+  # ---- 2) (Optional) build a station-name filter from the Arrow dataset ------
   # This block only runs if a filter was requested. It returns character vector
-  # 'codes_keep' with station codes that pass the filter; stations outside this
-  # set are dropped from the plot.
-  codes_keep <- NULL
+  # 'stations_keep' with the names of stations that pass the filter; stations
+  # outside this set are dropped from the plot (see @Purpose: names, not codes).
+  stations_keep <- NULL
   if (filter_type != "none") {
     if (is.null(pollution_ds))
       stop("filter_type='", filter_type, "' requires 'pollution_ds'.")
     
-    # Arrow/dplyr quirk: backtick the pm2.5 column name via parse_expr
-    pm25_expr <- rlang::parse_expr("`pm2.5`")
-    pm10_expr <- rlang::sym("pm10")
-    
-    if (!all(c("station_code", "year") %in% names(pollution_ds)))
-      stop("pollution_ds must contain 'station_code' and 'year'.")
+    if (!all(c("station", "year") %in% names(pollution_ds)))
+      stop("pollution_ds must contain 'station' and 'year'.")
     
     if (filter_type == "has_pm_any") {
-      codes_keep <- pollution_ds |>
-        dplyr::select(station_code, !!pm10_expr, !!pm25_expr) |>
-        dplyr::filter(!is.na(!!pm10_expr) | !is.na(!!pm25_expr)) |>
-        dplyr::distinct(station_code) |>
+      stations_keep <- pollution_ds |>
+        dplyr::select(station, pm10, pm25) |>
+        dplyr::filter(!is.na(pm10) | !is.na(pm25)) |>
+        dplyr::distinct(station) |>
         dplyr::collect() |>
-        dplyr::pull(station_code)
+        dplyr::pull(station)
       
     } else if (filter_type == "has_pm_in_year") {
       if (pollutant == "none")
         stop("For 'has_pm_in_year' set pollutant = 'pm25' or 'pm10'.")
-      col_expr <- if (pollutant == "pm25") pm25_expr else pm10_expr
+      col_expr <- rlang::sym(pollutant)
       
-      codes_keep <- pollution_ds |>
-        dplyr::select(station_code, year, !!col_expr) |>
+      stations_keep <- pollution_ds |>
+        dplyr::select(station, year, !!col_expr) |>
         dplyr::filter(year == !!filter_year, !is.na(!!col_expr)) |>
-        dplyr::distinct(station_code) |>
+        dplyr::distinct(station) |>
         dplyr::collect() |>
-        dplyr::pull(station_code)
+        dplyr::pull(station)
       
     } else if (filter_type == "has_both_in_year") {
-      codes_keep <- pollution_ds |>
-        dplyr::select(station_code, year, !!pm10_expr, !!pm25_expr) |>
+      stations_keep <- pollution_ds |>
+        dplyr::select(station, year, pm10, pm25) |>
         dplyr::filter(year == !!filter_year) |>
-        dplyr::group_by(station_code) |>
+        dplyr::group_by(station) |>
         dplyr::summarise(
-          has10 = any(!is.na(!!pm10_expr)),
-          has25 = any(!is.na(!!pm25_expr)),
+          has10 = any(!is.na(pm10)),
+          has25 = any(!is.na(pm25)),
           .groups = "drop"
         ) |>
         dplyr::filter(has10 & has25) |>
         dplyr::collect() |>
-        dplyr::pull(station_code)
+        dplyr::pull(station)
     }
   }
   
-  if (!is.null(codes_keep)) {
+  if (!is.null(stations_keep)) {
     stations_84 <- stations_84 |>
-      dplyr::filter(.data$code %in% codes_keep)
+      dplyr::filter(normalize_station(.data$station) %in%
+                      normalize_station(stations_keep))
   }
   
   # ---- 3) Compute 20-km buffers for stations outside the metro polygon -------
@@ -517,27 +503,10 @@ plot_metro_area_interactive <- function(
   )
   stations_84$.popup <- htmltools::HTML(stations_84$.label)
   
-  # ---- 6) Basemap URL (Stadia if key available; else CartoDB Positron) -------
-  if (nzchar(stadiamaps_key)) {
-    tile_url <- sprintf(
-      "https://tiles.stadiamaps.com/tiles/%s/{z}/{x}/{y}.png?api_key=%s",
-      tileset, stadiamaps_key
-    )
-    tile_attr <- paste0(
-      '&copy; <a href="https://stadiamaps.com/">Stadia Maps</a>, ',
-      '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>, ',
-      'Map tiles & styles by Stamen/Stadia'
-    )
-    base_group <- "Stadia"
-  } else {
-    # Nice, light fallback that needs no key
-    tile_url <- "https://cartodb-basemaps-a.global.ssl.fastly.net/light_all/{z}/{x}/{y}.png"
-    tile_attr <- paste0(
-      '&copy; <a href="https://carto.com/attributions">CARTO</a> | ',
-      '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
-    )
-    base_group <- "CartoDB Positron"
-  }
+  # ---- 6) Basemaps: keyless tile providers, first one shown -----------------
+  basemaps <- c("Terrain (OpenTopoMap)" = "OpenTopoMap",
+                "Satellite (Esri)"      = "Esri.WorldImagery",
+                "Light (CARTO)"         = "CartoDB.Positron")
   
   # ---- 7) Fit view to metro area bbox ----------------------------------------
   bbox84 <- sf::st_bbox(metro_84)
@@ -545,10 +514,10 @@ plot_metro_area_interactive <- function(
   
   # ---- 8) Build leaflet map (no 'if' mid-pipe; mutate object instead) --------
   m <- leaflet::leaflet(options = leaflet::leafletOptions(minZoom = 3))
+  for (group in names(basemaps)) {
+    m <- leaflet::addProviderTiles(m, provider = basemaps[[group]], group = group)
+  }
   m <- m |>
-    leaflet::addTiles(urlTemplate = tile_url,
-                      attribution = tile_attr,
-                      group = base_group) |>
     leaflet::fitBounds(lng1 = view[2], lat1 = view[1],
                        lng2 = view[4], lat2 = view[3])
   
@@ -606,7 +575,7 @@ plot_metro_area_interactive <- function(
   
   m <- m |>
     leaflet::addLayersControl(
-      baseGroups    = c(base_group),
+      baseGroups    = names(basemaps),
       overlayGroups = overlay_groups,
       options       = leaflet::layersControlOptions(collapsed = FALSE)
     )

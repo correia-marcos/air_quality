@@ -1,80 +1,74 @@
-# ============================================================================================
+# ========================================================================================
 # IDB: Air monitoring
-# ============================================================================================
-#' @Goal: Inspect historical CDMX station membership in interactive maps.
-#' @Description: Reads the historical input paths below and saves two HTML widgets.
-# These paths need a separate provenance review; the script is outside the manuscript.
-# This cleanup preserves the existing sample and does not replace missing inputs.
+# ========================================================================================
+#' @Goal: Interactive maps of the CDMX monitoring stations around the metro area.
+#
+#' @Description: Reads the CDMX metro municipalities, the stations within its buffer and the
+# standardized hourly station panel (2000-2023, before cleaning). Draws two leaflet maps:
+# every station, and the stations with any PM10 or PM2.5 reading. Stations are matched
+# to the panel by name, because CDMX's code ATI belongs to two stations. Saves two
+# self-contained HTML files in results/figures/not_in_paper/supporting/.
 #
 #' @Summary:
-#   I. Import data.
-#   II. Process data.
-#   III. Save data.
+#   I.   Import data: source functions, declare paths, read the geography and panel.
+#   II.  Process data: draw the two maps.
+#   III. Save outputs: save the maps as HTML.
 #
-#' @Date: Sep 2025
+#' @Date: November 2026
 #' @Author: Marcos Paulo
-# ============================================================================================
+# ========================================================================================
 
-# Get all libraries and functions
-# ============================================================================================
+# ========================================================================================
 # I: Import data
-# ============================================================================================
+# ========================================================================================
 source(here::here("src", "general_utilities", "config_utils_plot_tables.R"))
 
-# Define the location of datasets
-dir_cdmx_stations_data   <- here::here("data", "raw","air_monitoring_stations",
-                                       "cdmx_metro_buffer_stations_dataset")
-dir_cdmx_area            <- here::here("data", "interim", "geospatial_data",
-                                       "metro_areas", "cdmx_metro.gpkg")
-dir_cdmx_station_loc     <- here::here("data", "interim", "spatial_filtered_stations",
-                                       "CDMX_stations.gpkg")
-# Open air pollution dataframes
-cdmx_stations_data <- arrow::open_dataset(dir_cdmx_stations_data)
-
-# Open spatial data
-cdmx              <- sf::st_read(dir_cdmx_area)
-stations_in_metro <- sf::st_read(dir_cdmx_station_loc)
-
-# ============================================================================================
-# II: Process data
-# ============================================================================================
-# Apply function to generate interactive plot for CDMX
-# 1) No filter; color by entity
-cdmx_all_stations_entity_scheme <- plot_metro_area_interactive(
-  metro_area_sf = cdmx,
-  stations_sf   = stations_in_metro,
-  filter_type   = "none",
-  color_scheme  = "entity",
-  city_name     = "Mexico City"
-)
-
-# 2) Keep stations with PM2.5 OR PM10 anywhere; color by entity
-cdmx_has_pm_stations_entity_scheme <- plot_metro_area_interactive(
-  metro_area_sf = cdmx,
-  stations_sf   = stations_in_metro,
-  pollution_ds  = cdmx_stations_data,
-  filter_type   = "has_pm_any",
-  color_scheme  = "entity",
-  city_name     = "Mexico City"
-)
-
-# ============================================================================================
-# III: Save data
-# ============================================================================================
-# Ensure output folder exists
-outdir <- here::here("results", "figures", "not_in_paper", "supporting")
+# Set the source files and the output folder.
+dir_cdmx_geo    <- here::here("data", "interim", "geospatial_data", "cdmx")
+file_cdmx_metro <- here::here(dir_cdmx_geo, "cdmx_area_metro_municipalities_2024.gpkg")
+file_stations   <- here::here(dir_cdmx_geo, "cdmx_stations_buffer_metro.gpkg")
+dir_panel       <- here::here("data", "interim", "monitoring_stations",
+                              "cdmx_metro_dataset")
+outdir          <- here::here("results", "figures", "not_in_paper", "supporting")
 dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
 
-# Save plot
-htmlwidgets::saveWidget(
-  cdmx_all_stations_entity_scheme,
-  here::here(outdir, "cdmx_all_stations_by_entity.html"),
-  selfcontained = TRUE)
+# Read the metro area's municipalities and the stations within its buffer.
+cdmx_metro    <- sf::st_read(file_cdmx_metro, quiet = TRUE)
+cdmx_stations <- sf::st_read(file_stations, quiet = TRUE)
 
-htmlwidgets::saveWidget(
-  cdmx_has_pm_stations_entity_scheme,
-  here::here(outdir, "cdmx_pm10_pm25_stations_by_entity.html"),
-  selfcontained = TRUE)
+# Connect to the hourly panel on disk.
+cdmx_panel <- arrow::open_dataset(dir_panel)
 
-# Print a success message for when running inside Docker Container
-cat("Script from the IDB projected executed successfully in the Docker container!\n")
+# ========================================================================================
+# II: Process data
+# ========================================================================================
+# Draw every station, coloured by state.
+cdmx_all_stations_map <- plot_metro_area_interactive(metro_area_sf = cdmx_metro,
+                                                     stations_sf   = cdmx_stations,
+                                                     filter_type   = "none",
+                                                     color_scheme  = "entity",
+                                                     city_name     = "Mexico City")
+
+# Keep the stations with any PM10 or PM2.5 reading in the panel, coloured by state.
+cdmx_pm_stations_map <- plot_metro_area_interactive(metro_area_sf = cdmx_metro,
+                                                    stations_sf   = cdmx_stations,
+                                                    pollution_ds  = cdmx_panel,
+                                                    filter_type   = "has_pm_any",
+                                                    color_scheme  = "entity",
+                                                    city_name     = "Mexico City")
+
+# ========================================================================================
+# III: Save outputs
+# ========================================================================================
+# Save both maps as self-contained HTML files. saveWidget() inlines the JavaScript
+# libraries (pandoc, bundled with RStudio) and then removes its temporary lib folder,
+# which it finds only by an absolute path.
+htmlwidgets::saveWidget(cdmx_all_stations_map,
+                        here::here(outdir, "cdmx_all_stations_by_entity.html"),
+                        selfcontained = TRUE,
+                        libdir        = here::here(outdir, "lib"))
+
+htmlwidgets::saveWidget(cdmx_pm_stations_map,
+                        here::here(outdir, "cdmx_pm10_pm25_stations_by_entity.html"),
+                        selfcontained = TRUE,
+                        libdir        = here::here(outdir, "lib"))
