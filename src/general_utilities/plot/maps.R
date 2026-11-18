@@ -310,9 +310,10 @@ plot_metro_area_national_context <- function(
 #            include per-category counts. Filters match stations to the panel by
 #            name (normalize_station()), because one code can belong to two
 #            stations: CDMX's ATI is Atizapán and Centro de Salud (Atitalaquia).
-#            Three keyless basemaps can be switched: terrain (OpenTopoMap), satellite
-#            (Esri World Imagery) and light (CARTO). A saved widget stores the tile
-#            addresses, so a basemap that needs an API key would publish the key.
+#            Three keyless basemaps can be switched: terrain (OpenTopoMap, drawn at 75%
+#            opacity so the metro area stands out), satellite (Esri World Imagery) and
+#            light gray (Esri). A saved widget stores the tile addresses, so a basemap
+#            that needs an API key (Stadia; CARTO since 2025) would publish the key.
 #' @Written_on: 30/09/2025
 #' @Written_by: Marcos Paulo
 # ============================================================================================
@@ -506,7 +507,9 @@ plot_metro_area_interactive <- function(
   # ---- 6) Basemaps: keyless tile providers, first one shown -----------------
   basemaps <- c("Terrain (OpenTopoMap)" = "OpenTopoMap",
                 "Satellite (Esri)"      = "Esri.WorldImagery",
-                "Light (CARTO)"         = "CartoDB.Positron")
+                "Light gray (Esri)"     = "Esri.WorldGrayCanvas")
+  tile_opacity <- c("Terrain (OpenTopoMap)" = 0.75, "Satellite (Esri)" = 1,
+                    "Light gray (Esri)" = 1)
   
   # ---- 7) Fit view to metro area bbox ----------------------------------------
   bbox84 <- sf::st_bbox(metro_84)
@@ -515,7 +518,8 @@ plot_metro_area_interactive <- function(
   # ---- 8) Build leaflet map (no 'if' mid-pipe; mutate object instead) --------
   m <- leaflet::leaflet(options = leaflet::leafletOptions(minZoom = 3))
   for (group in names(basemaps)) {
-    m <- leaflet::addProviderTiles(m, provider = basemaps[[group]], group = group)
+    m <- leaflet::addProviderTiles(m, provider = basemaps[[group]], group = group,
+      options = leaflet::providerTileOptions(opacity = tile_opacity[[group]]))
   }
   m <- m |>
     leaflet::fitBounds(lng1 = view[2], lat1 = view[1],
@@ -525,8 +529,8 @@ plot_metro_area_interactive <- function(
   m <- m |>
     leaflet::addPolygons(
       data = metro_84,
-      color = "#1E3A8A", weight = 1, fillColor = "#1D4ED8",
-      fillOpacity = 0.25, group = "Metro area",
+      color = "#1E3A8A", weight = 2, fillColor = "#1D4ED8",
+      fillOpacity = 0.35, group = "Metro area",
       highlightOptions = leaflet::highlightOptions(
         weight = 2, color = "#0F172A", bringToFront = TRUE
       )
