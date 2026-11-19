@@ -77,10 +77,11 @@ verification_code_inventory <- function(root) {
 # List generated tables and geography eligible for registered baseline comparisons.
 #' @param root Repository or isolated rebuild root.
 #' @return Sorted relative paths, including station source manifests and coverage tables.
-#' @details Original inputs and rendered PDFs are excluded. Rendering requires review.
-#   `_audit/input_partitions.csv` is excluded too: it fingerprints the interim files'
-#   bytes, which change whenever DuckDB writes rows in another order, so it cannot match a
-#   baseline.
+#' @details Original inputs and rendered PDFs are excluded; figures are compared through
+#   their plot layers and a pixel review. `_audit/input_partitions.csv` is excluded too:
+#   it fingerprints the interim files' bytes, which change whenever DuckDB writes rows in
+#   another order, so it cannot match a baseline. So is the export inventory under
+#   `data/processed/paper/`, which records absolute paths and the PDFs' checksums.
 verification_product_paths <- function(root) {
   root <- normalizePath(root, mustWork = TRUE)
   patterns <- c("data/processed" = "[.](parquet|csv)$",
@@ -92,6 +93,7 @@ verification_product_paths <- function(root) {
       recursive = TRUE, full.names = TRUE)
   }), use.names = FALSE)
   files <- files[!grepl("/_audit/input_partitions[.]csv$", files)]
+  files <- files[!grepl("/data/processed/paper/", files, fixed = TRUE)]
   sort(unique(substring(files, nchar(root) + 2L)))
 }
 

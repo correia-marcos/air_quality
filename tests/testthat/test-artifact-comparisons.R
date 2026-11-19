@@ -50,6 +50,26 @@ test_that("registered rounding steps are counted, explained and scaled", {
   expect_true(all(registry$bound_scale %in% c("value", "column")))
 })
 
+test_that("tables without a unique key compare as exact multisets", {
+  source(here::here("src/general_utilities/reproducibility.R"), local = TRUE)
+  root <- tempfile("keyless-comparisons-"); dir.create(root)
+  on.exit(unlink(root, recursive = TRUE), add = TRUE)
+  a <- file.path(root, "actual.parquet"); b <- file.path(root, "baseline.parquet")
+  # Two people can share every recorded attribute, so the rows have no key.
+  people <- data.frame(geo_id = c("1", "1", "2"), weight = c(1.5, 1.5, 2),
+                       quintile = c(1L, 1L, 3L))
+  arrow::write_parquet(people, a)
+  arrow::write_parquet(people[c(3, 1, 2), ], b)
+  expect_equal(nrow(compare_registered_artifact(a, b, character())), 0)
+  # Duplicates count: the same rows in other multiplicities differ.
+  arrow::write_parquet(people[c(1, 3, 3), ], b)
+  expect_error(compare_registered_artifact(a, b, character()), "geo_id")
+  people$weight[3] <- 2 * (1 + 2^-52)
+  arrow::write_parquet(people, b)
+  expect_error(compare_registered_artifact(a, b, character()), "weight")
+  expect_error(compare_registered_artifact(a, a, character(), 1L), "0 steps")
+})
+
 test_that("geographic baselines detect geometry changes with unchanged attributes", {
   source(here::here("src/general_utilities/reproducibility.R"), local = TRUE)
   root <- tempfile("geographic-comparisons-"); dir.create(root)
@@ -76,7 +96,8 @@ test_that("registered station provenance enters the generated-product comparison
     "data/interim/geospatial_data/cdmx/metro.gpkg", "results/tables/coefficients.tex")
   excluded <- c("data/downloads/cdmx/original.csv", "data/_legacy/baseline.csv",
     "results/figures/temporal/ridge.pdf", "data/interim/census_extracted/persons.csv",
-    "data/processed/clean/_audit/input_partitions.csv")
+    "data/processed/clean/_audit/input_partitions.csv",
+    "data/processed/paper/export-manifest.csv")
   for (relative in c(analytical, excluded)) {
     path <- file.path(root, relative)
     dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)

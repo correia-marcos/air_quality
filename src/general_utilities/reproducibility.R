@@ -248,17 +248,23 @@ compare_numerical_tables <- function(actual, expected, keys, rounding_steps = 0L
 # ----------------------------------------------------------------------------------------
 # Function: compare_registered_artifact
 #' @param actual_path,baseline_path Generated product and reviewed baseline filenames.
-#' @param keys Unique table identifiers. Empty for literal TeX comparisons.
+#' @param keys Unique table identifiers. Empty for TeX, compared as literal lines, and for
+#   tables without a unique key, compared as sorted multisets (`rounding_steps` 0).
 #' @param rounding_steps,bound_scale Declared rounding steps and scale, as in
 #   compare_numerical_tables().
 #' @return The observed differences from compare_numerical_tables(), invisibly (no rows
-#   for TeX), or a comparison error. Does not modify either file.
+#   for TeX or keyless tables), or a comparison error. Does not modify either file.
 #' @details CSV and Parquet compare keyed tables; TeX compares literal lines. GeoPackages
-# compare attributes and exact geometry/CRS. PDF/PNG rendering needs separate human review,
-# paired with numerical plot-data comparisons; byte equality is not a rendering criterion.
+# compare attributes and exact geometry/CRS. A table without a unique key, such as the
+# person-level census records where two people can share every recorded attribute, is
+# sorted on all its columns and must be identical, duplicates included. Figures are
+# compared through the data they draw (write_plot_layers()) and a separate pixel review;
+# byte equality is not a rendering criterion.
 # ----------------------------------------------------------------------------------------
 compare_registered_artifact <- function(actual_path, baseline_path, keys,
                                         rounding_steps = 0L, bound_scale = "value") {
+  none <- data.frame(column = character(), max_abs_diff = numeric(),
+                     max_scaled_diff = numeric(), bound = numeric())
   extension <- tolower(tools::file_ext(actual_path))
   if (!identical(extension, tolower(tools::file_ext(baseline_path)))) {
     stop("Comparison file formats differ.")
@@ -266,8 +272,7 @@ compare_registered_artifact <- function(actual_path, baseline_path, keys,
   if (extension == "tex") {
     if (!identical(readLines(actual_path, warn = FALSE),
       readLines(baseline_path, warn = FALSE))) stop("TeX content differs.")
-    return(invisible(data.frame(column = character(), max_abs_diff = numeric(),
-                                max_scaled_diff = numeric(), bound = numeric())))
+    return(invisible(none))
   }
   read_table <- function(path) {
     if (extension == "parquet") return(as.data.frame(arrow::read_parquet(path)))
@@ -285,7 +290,104 @@ compare_registered_artifact <- function(actual_path, baseline_path, keys,
   actual <- read_table(actual_path)
   baseline <- read_table(baseline_path)
   if (!identical(attr(actual, "crs"), attr(baseline, "crs"))) stop("CRS differs.")
-  compare_numerical_tables(actual, baseline, keys, rounding_steps, bound_scale)
+  if (length(keys)) {
+    return(compare_numerical_tables(actual, baseline, keys, rounding_steps, bound_scale))
+  }
+  # See @details: a keyless table compares as a sorted multiset.
+  if (rounding_steps != 0) stop("A table without keys compares exactly; declare 0 steps.")
+  if (!identical(names(actual), names(baseline)) || nrow(actual) != nrow(baseline) ||
+      !identical(lapply(actual, class), lapply(baseline, class))) {
+    stop("Schema names, classes or row count differ.")
+  }
+  data.table::setDT(actual)
+  data.table::setDT(baseline)
+  data.table::setorderv(actual, names(actual), na.last = TRUE)
+  data.table::setorderv(baseline, names(baseline), na.last = TRUE)
+  differ <- names(actual)[!mapply(identical, actual, baseline)]
+  if (length(differ)) {
+    stop("Keyless table content differs: ", paste(differ, collapse = ", "))
+  }
+  invisible(none)
+}
+
+# ----------------------------------------------------------------------------------------
+# Function: write_plot_layers
+#' @param plots One ggplot, or a list of them nested to any depth, as a plot target
+#   returns it.
+#' @param file  Parquet file to write.
+#' @return The file path, invisibly. Writes one row per drawn row of every layer of every
+#   plot: `plot` (its path in the list, such as `ci_edu/<name>.pdf`; empty when `plots`
+#   is a single ggplot), `layer`, `geom` and `row`, then the layer's built columns.
+#' @details
+#   ggplot2::ggplot_build() computes the numbers a figure draws: stat output such as
+#   densities and fitted lines, positions and mapped aesthetics. Since ggplot2 4.0 default
+#   sizes and colours come from the active theme, so call this after set_paper_theme(),
+#   as the figure writers do before ggsave(). Built columns are made comparable as
+#   Parquet: PANEL becomes an integer, discrete positions plain doubles, other factors
+#   text, and a geometry column its SHA-256 per feature, the rule
+#   compare_registered_artifact() applies to GeoPackages, plus each feature's bounding
+#   box (`geometry_xmin` ... `geometry_ymax`; ggplot's own `xmin` ... `ymax` hold the
+#   layer's), which shows how far a feature moved when its hash differs. Colours stay
+#   as hex text and compare exactly. A colour from a
+#   continuous scale (the ridge fills) is an 8-bit sample of its value, so a rerun changes
+#   it only if a value lies within about 1e-11 of a rounding boundary of a channel.
+#   Within a layer, rows are sorted on every column, exact ones first, and numbered, so
+#   `plot;layer;row` is a unique key that does not depend on the input's row order.
+#   Layers are stacked with data.table::rbindlist(fill = TRUE), which gives a column that
+#   changes type between layers its widest type. A cowplot grid holds its panels as
+#   images, so only their positions are recorded.
+# ----------------------------------------------------------------------------------------
+write_plot_layers <- function(plots, file) {
+  flatten <- function(x, path) {
+    if (inherits(x, "ggplot")) return(stats::setNames(list(x), path))
+    if (is.null(x)) return(list())
+    if (!is.list(x) || is.data.frame(x)) stop("Not a ggplot or a list of them: ", path)
+    labels <- if (is.null(names(x))) as.character(seq_along(x)) else names(x)
+    paths <- if (nzchar(path)) paste(path, labels, sep = "/") else labels
+    do.call(c, lapply(seq_along(x), function(i) flatten(x[[i]], paths[i])))
+  }
+  plot_list <- flatten(plots, "")
+
+  layers <- list()
+  for (i in seq_along(plot_list)) {
+    built <- ggplot2::ggplot_build(plot_list[[i]])
+    for (j in seq_along(built$data)) {
+      layer <- as.data.frame(built$data[[j]])
+      for (column in names(layer)) {
+        value <- layer[[column]]
+        if (inherits(value, "sfc")) {
+          box <- vapply(value, function(feature) as.numeric(sf::st_bbox(feature)),
+                        numeric(4))
+          sides <- paste0(column, c("_xmin", "_ymin", "_xmax", "_ymax"))
+          for (k in 1:4) layer[[sides[k]]] <- box[k, ]
+          layer[[paste0(column, "_sha256")]] <- vapply(sf::st_as_binary(value),
+            digest::digest, character(1), algo = "sha256", serialize = FALSE)
+          layer[[column]] <- NULL
+        } else if (column == "PANEL") {
+          layer[[column]] <- as.integer(value)
+        } else if (inherits(value, "mapped_discrete")) {
+          layer[[column]] <- as.numeric(unclass(value))
+        } else if (is.factor(value)) {
+          layer[[column]] <- as.character(value)
+        } else if (is.list(value) || is.object(value)) {
+          stop("Cannot record layer column ", column, " of ", names(plot_list)[i])
+        }
+      }
+
+      # Sort on the exact columns first, then the doubles; see @details.
+      layer <- data.table::as.data.table(layer)
+      exact <- names(layer)[!vapply(layer, is.double, logical(1))]
+      data.table::setorderv(layer, c(exact, setdiff(names(layer), exact)), na.last = TRUE)
+      layers[[length(layers) + 1L]] <- cbind(
+        data.table::data.table(plot = names(plot_list)[i], layer = j,
+          geom = class(plot_list[[i]]$layers[[j]]$geom)[1], row = seq_len(nrow(layer))),
+        layer)
+    }
+  }
+
+  dir.create(dirname(file), recursive = TRUE, showWarnings = FALSE)
+  arrow::write_parquet(data.table::rbindlist(layers, use.names = TRUE, fill = TRUE), file)
+  invisible(file)
 }
 
 # --------------------------------------------------------------------------------------------
