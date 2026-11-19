@@ -8,6 +8,44 @@ retains that implementation's checks and limits.
 The dated records below retain earlier implementation and validation evidence; they are
 not the current execution specification.
 
+## Every product registered, and the data each figure draws — 18 November 2026
+
+The verifier scans every Parquet, CSV, GeoPackage and table that a run writes, but the
+registry held 87 rows. In the isolated run `20261117T200558`, 217 of 304 scanned products
+had none, so every run would have reported them as uncompared. Figures were compared only
+as PDFs. Changes:
+
+| Change | Where |
+|---|---|
+| `plot_layer_records` builds all 37 plot targets with `ggplot_build()` under the paper theme and writes one Parquet file per target to `data/processed/plot_layers/` | `write_plot_layers()`, `config/targets/export.R` |
+| 254 registry rows: 37 plot layers and 217 products, each with keys and a rounding basis | `config/verification_comparisons.csv` (341 rows) |
+| A table without a unique key compares as an exact sorted multiset (person-level census records: CDMX has 536,653 rows but 472,614 distinct) | `compare_registered_artifact()` |
+| The export inventory (`data/processed/paper/`) leaves the scan: it holds absolute paths and PDF checksums | `verification_product_paths()` |
+| Every run reports unregistered products, also without a baseline; the review flag for figures is `rendering_reviewed` only | `tools/reproduction/verify.R` |
+| A baseline is prepared from an isolated run (`--source`), with the run's revision, image and code inventory | `tools/reproduction/prepare_baseline.R` |
+
+Read-only probes of the run's targets store shaped the plot layers (scratchpad scripts,
+not kept):
+
+- The figure writers save the stored plot objects unchanged.
+- ggplot2 4.0.3 takes default sizes and colours from the active theme. A point is size 1.5
+  under `theme_grey()` and 1.91 under the paper theme, so the records are built after
+  `set_paper_theme()`, as the writers build them in `ggsave()`.
+- The plot code has no jitter, sampling or loess. Every probed plot rebuilt `identical()`
+  in 0.02–0.32 s.
+- The ridge plots build only with ggplot2 attached, which the graph provides.
+- Without geometry, 1,650 of Santiago's 1,655 map rows were duplicates. A SHA-256 hash and
+  a bounding box per feature make them unique. ggplot's own `xmin`–`ymax` in sf layers
+  hold the layer's box, not each feature's.
+- Colours stay as hex text. Dropping continuous ones would lose a heatmap-style value that
+  the built data keep nowhere else. A ridge fill changes on a rerun only if its value lies
+  within about 1e-11 of an 8-bit channel boundary.
+
+The 4.8e-15 geometry gap seen earlier in `bogota_area_metro_2018.gpkg` came from
+comparing the image with the Mac build, which have different spatial libraries. Exact
+geometry within one image is expected but untested. So is exact equality of the person
+files, which also requires that quintile assignment not depend on row order at ties.
+
 ## CDMX station columns and São Paulo codes — 18 November 2026
 
 CDMX's SINAICA files hold one column per station of a state's networks, and station codes

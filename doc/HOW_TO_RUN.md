@@ -389,8 +389,8 @@ and rendering still require recorded review.
 ## Acceptance limits
 
 An accepted scientific reproduction still needs a fresh isolated run, declared and unchanged
-inputs, revision-matched numerical baselines, review of plot data and rendering, and a recorded
-independent researcher run. Do not fill comparison or review evidence on another person's
+inputs, revision-matched numerical baselines (which include the data each figure draws),
+a rendering review, and a recorded independent researcher run. Do not fill comparison or review evidence on another person's
 behalf, manufacture a baseline, raise a row's `rounding_steps` without recording the reason
 (see [Numerical comparison rule](#numerical-comparison-rule)), or substitute newer inputs
 silently.
@@ -494,17 +494,39 @@ definitions, outputs and limitations are in [RESOLUTION_SENSITIVITY.md](RESOLUTI
 
 ## Prepare a comparison candidate
 
-The comparison registry covers station-hourly/episode data, quality summaries and linked
-screened records, CDMX source manifests, reporting/threshold/availability summaries, observed
-and imputed exposure coefficients, observed panels, IDW annual estimates, station-context
-plot data, imputation predictions, and exported manuscript TeX tables. The registry now
-also registers compact-schema input identities, station-month diagnostics and CDMX
-source-contribution partitions for 2000–2023. Rendering review and unregistered plotting inputs
-are still necessary for complete acceptance.
-Baseline filenames are
-relative to `AIR_BASELINE_ROOT` (default `data/verification/baseline`), mounted read-only as
-`/baseline` in the verifier. The shared comparison function also handles keyed CSV tables,
-literal TeX and exact GeoPackage attributes/geometry/CRS.
+The comparison registry (`config/verification_comparisons.csv`) has one row for every
+product the verifier scans. `verification_product_paths()` scans every Parquet and CSV file
+under `data/processed/`, the GeoPackages under `data/interim/geospatial_data/`, the station
+CSVs under `data/interim/monitoring_stations/` and every table under `results/tables/`.
+Two kinds of file are left out because they cannot match a baseline by design. The input
+fingerprints (`_audit/input_partitions.csv`) record file bytes. The export inventory
+(`data/processed/paper/`) records absolute paths and the PDFs' checksums. Every run reports
+any other product without a row as "Uncompared analytical products", including a run
+without a baseline.
+
+Results are compared at three levels:
+
+| Level | What is compared | Rule |
+|---|---|---|
+| Tables and TeX | Counts, identifiers and literal manuscript tables | Exact |
+| Data and plot layers | Every double, including the data each figure draws | The bound below |
+| Rendering | PDF pixels of two runs of the same image | Human review |
+
+The plot layers are written inside the run by `plot_layer_records`
+(`write_plot_layers()`, one file per plot target in `data/processed/plot_layers/`). The
+target builds each stored plot with `ggplot2::ggplot_build()` under the paper theme, as the
+writers do before `ggsave()`. ggplot2 takes default sizes and colours from the active
+theme, so the records hold the numbers on the page: densities, fitted lines, positions and
+colours. Each map geometry becomes a SHA-256 hash and a bounding box per feature, the
+geometry rule of the GeoPackage comparisons. The one panel grid,
+`results/figures/temporal/exceedance_shares.pdf` (not in the paper), keeps its panels as
+images, so only their positions are recorded.
+
+Rows without keys are compared as wholes. A TeX row compares literal lines. A table without
+a unique key, such as the person-level census records where two people can share every
+recorded attribute, is sorted on all its columns and must be identical. Baseline filenames
+are relative to `AIR_BASELINE_ROOT` (default `data/verification/baseline`), mounted
+read-only as `/baseline` in the verifier.
 
 ### Numerical comparison rule
 
@@ -571,6 +593,11 @@ libraries, such as runs from the same image. Each row's
 | Station context, N persons in one unit, G units | 4N + 2G + 6 | value | Proven |
 | Imputation predictions | 18514 + 4k: 8,760 fitted hours, 2k + 496 coefficients | column | Screen |
 | Exposure regressions | Outcome chain twice, person sums and cells | column | Screen |
+| Group means and coverage, N persons | Outcome chain + 2N; population shares N | value | Proven |
+| Projected distances | 10 | value | Same spatial libraries |
+| Map layers and GeoPackages | 0: geometry hash and copied coordinates | value | Exact |
+| Plot layers of a density, n values | Input chain + 2n + 7 (bandwidth) + n (binning) + 33 | column | Screen |
+| Plot layers of a fitted line, n points | Input chain twice + 2n + 15 | column | Screen |
 
 For regressions and imputation predictions the count covers only their sums, while an
 estimator can magnify input differences by its condition number (Higham 2002, ch. 20);
@@ -589,15 +616,25 @@ sums such as the IDW averages. Observed differences sit far below the worst case
 the specification-sensitivity tables on 29 October 2026 moved Bogotá values by at most
 1.24e-14 of each column's scale, about 112u.
 
-After generating the registered products, prepare a new snapshot:
+A baseline comes from an isolated run, so later runs of the same image compare against
+the same software. After `verify.R --full` has finished and its container report lists no
+uncompared products, prepare a snapshot of that run:
 
 ```sh
-Rscript tools/reproduction/prepare_baseline.R --destination data/verification/new-baseline-candidate
+Rscript tools/reproduction/prepare_baseline.R --source data/verification/<run> \
+  --destination data/verification/new-baseline-candidate
 ```
 
-The tool refuses an occupied destination and records every approval flag as false. A human
-must review input identifiers and station membership, numerical criteria, missingness,
-plot data, renderings and scientific claims. Do not relabel an unreviewed snapshot as an
-accepted baseline. Extend the registry to the remaining manuscript products and use a
-fresh, revision-matched review record before release verification. Existing processed
-outputs alone do not establish clean-source regeneration.
+The tool copies the run's registered products and code inventory, records their hashes
+and the run's revision, image and code identity, and writes every approval flag as false.
+It refuses an occupied destination, a run that lacks a registered product, and a run whose
+report lists unregistered products. A human must review input identifiers and station
+membership, numerical criteria, missingness, plot layers and scientific claims, then fill
+`human_reviewed`, `reviewer` and `baseline_revision`. Do not relabel an unreviewed snapshot
+as an accepted baseline.
+
+Rendering is reviewed between two runs of the same image (the baseline's and a later one).
+Rasterise each run's `results/figures/` PDFs with the same Poppler `pdftoppm` version and
+resolution. Record the version, the resolution and the share of differing pixels per page,
+then set `rendering_reviewed`. Pixels are a check on drawing, not numerical evidence; the
+numbers are in the plot layers.
