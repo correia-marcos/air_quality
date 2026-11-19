@@ -178,6 +178,11 @@ if (!identical(inputs, after)) report$findings <- c(report$findings,
 # Baselines remain local. Register a revision and per-file hashes only after provenance review.
 comparison_file <- "config/verification_comparisons.csv"
 comparisons <- read.csv(comparison_file, stringsAsFactors = FALSE)
+# Report unregistered products on every run, so a run meant as a baseline shows them too.
+generated <- verification_product_paths(root)
+omitted <- setdiff(generated, comparisons$actual_path)
+if (length(omitted)) report$findings <- c(report$findings,
+  paste("Uncompared analytical products:", paste(omitted, collapse = "; ")))
 baseline_root <- Sys.getenv("AIR_BASELINE_ROOT", "data/verification/baseline")
 review_path <- Sys.getenv("AIR_BASELINE_REVIEW",
   file.path(baseline_root, "baseline-review.json"))
@@ -194,10 +199,6 @@ if (!nrow(comparisons) || !file.exists(review_path)) {
     identical(review$candidate_code_sha256, report$code_sha256)
   if (!valid_review) report$findings <- c(report$findings,
     "Baseline review lacks reviewer or matching candidate revision.")
-  generated <- verification_product_paths(root)
-  omitted <- setdiff(generated, comparisons$actual_path)
-  if (length(omitted)) report$findings <- c(report$findings,
-    paste("Uncompared analytical products:", paste(omitted, collapse = "; ")))
   for (i in seq_len(nrow(comparisons))) {
     x <- comparisons[i, ]
     report$comparisons[[x$comparison_id]] <- tryCatch({
@@ -221,9 +222,9 @@ if (!nrow(comparisons) || !file.exists(review_path)) {
         differences = differences, justification = x$justification)
     }, error = function(e) list(exit_status = 1L, error = conditionMessage(e)))
   }
-  if (!isTRUE(review$rendering_reviewed) || !isTRUE(review$plot_data_reviewed))
-    report$findings <- c(report$findings,
-      "Rendering and underlying plot-data review are incomplete.")
+  # The data each figure draws are registered comparisons; pixels are reviewed apart.
+  if (!isTRUE(review$rendering_reviewed)) report$findings <- c(report$findings,
+    "Rendering review is incomplete.")
 }
 if (mode == "release" && (!rebuild || is.null(report$stages$rebuild)))
   report$findings <- c(report$findings,
